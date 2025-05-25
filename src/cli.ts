@@ -2,17 +2,15 @@ import { clear } from ".";
 import { config } from "dotenv";
 import { getGasPrice } from "./gas";
 import { AppOptions } from "./yaml";
-import { BigNumber, ethers } from "ethers";
-import { Context } from "@opentelemetry/api";
+import { startup } from "./cli/startup";
 import { getOrderChanges } from "./query";
-import { Resource } from "@opentelemetry/resources";
+import { BigNumber, ethers } from "ethers";
+import { RainSolverLogger } from "./logger";
+import { Context } from "@opentelemetry/api";
 import { sleep, withBigintSerializer } from "./utils";
 import { ErrorSeverity, errorSnapshot } from "./error";
-import { Tracer } from "@opentelemetry/sdk-trace-base";
 import { getDataFetcher, getMetaInfo } from "./config";
-import { CompressionAlgorithm } from "@opentelemetry/otlp-exporter-base";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { SEMRESATTRS_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import { trace, Tracer, context, SpanStatusCode } from "@opentelemetry/api";
 import { sweepToEth, manageAccounts, sweepToMainWallet, getBatchEthBalance } from "./account";
 import {
     BotConfig,
@@ -27,21 +25,6 @@ import {
     handleAddOrderbookOwnersProfileMap,
     handleRemoveOrderbookOwnersProfileMap,
 } from "./order";
-import {
-    diag,
-    trace,
-    context,
-    DiagLogLevel,
-    SpanStatusCode,
-    DiagConsoleLogger,
-} from "@opentelemetry/api";
-import {
-    BasicTracerProvider,
-    BatchSpanProcessor,
-    ConsoleSpanExporter,
-    SimpleSpanProcessor,
-} from "@opentelemetry/sdk-trace-base";
-import { startup } from "./cli/startup";
 
 config();
 
@@ -115,45 +98,14 @@ export const arbRound = async (
 };
 
 export const main = async (argv: any, version?: string) => {
-    // startup otel to collect span, logs, etc
-    // diag otel
-    diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.ERROR);
-
-    const exporter = new OTLPTraceExporter(
-        process?.env?.HYPERDX_API_KEY
-            ? {
-                  url: "https://in-otel.hyperdx.io/v1/traces",
-                  headers: {
-                      authorization: process?.env?.HYPERDX_API_KEY,
-                  },
-                  compression: CompressionAlgorithm.GZIP,
-              }
-            : {
-                  compression: CompressionAlgorithm.GZIP,
-              },
-    );
-    const provider = new BasicTracerProvider({
-        resource: new Resource({
-            [SEMRESATTRS_SERVICE_NAME]: process?.env?.TRACER_SERVICE_NAME ?? "rain-solver",
-        }),
-    });
-    provider.addSpanProcessor(new BatchSpanProcessor(exporter));
-
-    // console spans in case hyperdx api is not defined
-    if (!process?.env?.HYPERDX_API_KEY) {
-        const consoleExporter = new ConsoleSpanExporter();
-        provider.addSpanProcessor(new SimpleSpanProcessor(consoleExporter));
-    }
-
-    provider.register();
-    const tracer = provider.getTracer("rain-solver-tracer");
+    const logger = new RainSolverLogger();
 
     // parse cli args and startup bot configuration
     const { state, config, options, watchedTokens, startupTimestamp, orderbooksOwnersProfileMap } =
-        await tracer.startActiveSpan("startup", async (startupSpan) => {
+        await logger.tracer.startActiveSpan("startup", async (startupSpan) => {
             const ctx = trace.setSpan(context.active(), startupSpan);
             try {
-                const result = await startup(argv, version, tracer, ctx);
+                const result = await startup(argv, version, logger.tracer, ctx);
                 startupSpan.setStatus({ code: SpanStatusCode.OK });
                 startupSpan.end();
                 return result;
@@ -189,7 +141,7 @@ export const main = async (argv: any, version?: string) => {
     // run bot's processing orders in a loop
     // eslint-disable-next-line no-constant-condition
     while (true) {
-        await tracer.startActiveSpan(`round-${counter}`, async (roundSpan) => {
+        await logger.tracer.startActiveSpan(`round-${counter}`, async (roundSpan) => {
             const roundCtx = trace.setSpan(context.active(), roundSpan);
             const newMeta = await getMetaInfo(config, options.subgraph);
             roundSpan.setAttributes({
@@ -208,7 +160,7 @@ export const main = async (argv: any, version?: string) => {
                 ),
             });
 
-            await tracer.startActiveSpan(
+            await logger.tracer.startActiveSpan(
                 "check-wallet-balance",
                 {},
                 roundCtx,
@@ -266,7 +218,7 @@ export const main = async (argv: any, version?: string) => {
                 roundSpan.setAttribute("details.rpc", state.rpc.urls);
                 await getGasPrice(config, state);
                 const roundResult = await arbRound(
-                    tracer,
+                    logger.tracer,
                     roundCtx,
                     options,
                     config,
@@ -330,7 +282,7 @@ export const main = async (argv: any, version?: string) => {
                         lastUsedAccountIndex,
                         wgc,
                         state,
-                        tracer,
+                        logger.tracer,
                         roundCtx,
                     );
                 }
@@ -346,7 +298,7 @@ export const main = async (argv: any, version?: string) => {
                                     config.mainAccount,
                                     state,
                                     config,
-                                    tracer,
+                                    logger.tracer,
                                     roundCtx,
                                 );
                                 if (!wgc[k].BOUNTY.length) {
@@ -380,7 +332,7 @@ export const main = async (argv: any, version?: string) => {
                     }
                     // try to sweep main wallet's tokens back to eth
                     try {
-                        await sweepToEth(config, state, tracer, roundCtx);
+                        await sweepToEth(config, state, logger.tracer, roundCtx);
                     } catch {
                         /**/
                     }
@@ -474,7 +426,7 @@ export const main = async (argv: any, version?: string) => {
 
             // report rpcs performance for round
             for (const rpc in state.rpc.metrics) {
-                await tracer.startActiveSpan("rpc-report", {}, roundCtx, async (span) => {
+                await logger.tracer.startActiveSpan("rpc-report", {}, roundCtx, async (span) => {
                     const record = state.rpc.metrics[rpc];
                     span.setAttributes({
                         "rpc-url": rpc,
@@ -493,21 +445,26 @@ export const main = async (argv: any, version?: string) => {
             // report write rpcs performance
             if (state.writeRpc) {
                 for (const rpc in state.writeRpc.metrics) {
-                    await tracer.startActiveSpan("rpc-report", {}, roundCtx, async (span) => {
-                        const record = state.writeRpc!.metrics[rpc];
-                        span.setAttributes({
-                            "rpc-url": rpc,
-                            "request-count": record.req,
-                            "success-count": record.success,
-                            "failure-count": record.failure,
-                            "timeout-count": record.timeout,
-                            "avg-request-interval": record.avgRequestIntervals,
-                            "latest-success-rate": record.progress.successRate / 100,
-                            "selection-weight": record.progress.selectionWeight,
-                        });
-                        record.reset();
-                        span.end();
-                    });
+                    await logger.tracer.startActiveSpan(
+                        "rpc-report",
+                        {},
+                        roundCtx,
+                        async (span) => {
+                            const record = state.writeRpc!.metrics[rpc];
+                            span.setAttributes({
+                                "rpc-url": rpc,
+                                "request-count": record.req,
+                                "success-count": record.success,
+                                "failure-count": record.failure,
+                                "timeout-count": record.timeout,
+                                "avg-request-interval": record.avgRequestIntervals,
+                                "latest-success-rate": record.progress.successRate / 100,
+                                "selection-weight": record.progress.selectionWeight,
+                            });
+                            record.reset();
+                            span.end();
+                        },
+                    );
                 }
             }
 
@@ -532,6 +489,6 @@ export const main = async (argv: any, version?: string) => {
     }
 
     // flush and close the connection.
-    await exporter.shutdown();
+    await logger.shutdown();
     await sleep(10000);
 };

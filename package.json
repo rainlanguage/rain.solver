@@ -31,13 +31,14 @@
     "scripts": {
         "prepublish": "npm run build",
         "test": "npm run unit-test && npm run e2e-test",
-        "unit-test": "hardhat test ./test/*.test.* && npm run vitest",
+        "unit-test": "hardhat test ./test/*.test.*",
         "e2e-test": "hardhat test",
         "lint": "eslint ./src ./test ./rain-solver.js",
         "lint-fix": "eslint ./src ./test ./rain-solver.js --fix",
         "rain-solver": "ts-node rain-solver",
         "build": "tsc",
-        "vitest": "vitest run -c ./vitest.config.ts"
+        "vitest:logger": "vitest run ./src/logger.test.ts --disableConsoleIntercept",
+        "vitest": "vitest run -c ./vitest.config.ts --exclude ./src/logger.test.ts && npm run vitest:logger"
     },
     "dependencies": {
         "@opentelemetry/api": "^1.8.0",
