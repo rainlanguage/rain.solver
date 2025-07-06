@@ -73,7 +73,9 @@ export async function processTransaction({
                 },
                 withBigintSerializer,
             );
-            baseResult.spanAttributes["txNoneNodeError"] = !containsNodeError(e as BaseError);
+            baseResult.spanAttributes["txNoneNodeError"] = !(await containsNodeError(
+                e as BaseError,
+            ));
             return async () =>
                 Result.err({
                     ...baseResult,
@@ -110,7 +112,7 @@ export async function processTransaction({
                 },
                 withBigintSerializer,
             );
-            baseResult.spanAttributes["txNoneNodeError"] = !containsNodeError(e);
+            baseResult.spanAttributes["txNoneNodeError"] = !(await containsNodeError(e));
             return Result.err({
                 ...baseResult,
                 txUrl,

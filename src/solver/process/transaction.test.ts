@@ -194,7 +194,7 @@ describe("Test processTransaction", () => {
         it("should return error result when both send attempts fail", async () => {
             const mockError = new Error("Persistent network error");
             mockWriteSigner.sendTx.mockRejectedValue(mockError);
-            (containsNodeError as Mock).mockReturnValue(false);
+            (containsNodeError as Mock).mockResolvedValue(false);
             const settlerFn = await processTransaction(mockArgs);
             const result = await settlerFn();
 
@@ -215,7 +215,7 @@ describe("Test processTransaction", () => {
         it("should correctly identify node errors in transaction failures", async () => {
             const mockNodeError = new BaseError("Node connection failed");
             mockWriteSigner.sendTx.mockRejectedValue(mockNodeError);
-            (containsNodeError as Mock).mockReturnValue(true);
+            (containsNodeError as Mock).mockResolvedValue(true);
             const settlerFn = await processTransaction(mockArgs);
             const result = await settlerFn();
 
@@ -234,7 +234,7 @@ describe("Test processTransaction", () => {
                 receiptError,
             );
             (mockSigner.state.client.getTransactionReceipt as Mock).mockRejectedValue(receiptError);
-            (containsNodeError as Mock).mockReturnValue(true);
+            (containsNodeError as Mock).mockResolvedValue(true);
             const settlerFn = await processTransaction(mockArgs);
             const result = await settlerFn();
 
@@ -263,7 +263,7 @@ describe("Test processTransaction", () => {
                 mockReceipt,
             );
             (processReceipt as Mock).mockRejectedValueOnce(handleReceiptError);
-            (containsNodeError as Mock).mockReturnValue(false);
+            (containsNodeError as Mock).mockResolvedValue(false);
             const settlerFn = await processTransaction(mockArgs);
             const result = await settlerFn();
 
