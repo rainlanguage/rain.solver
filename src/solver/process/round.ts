@@ -1,5 +1,5 @@
 import { RainSolver } from "..";
-import { Result } from "../../result";
+import { Result } from "../../common";
 import { PreAssembledSpan } from "../../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { ErrorSeverity, errorSnapshot, isTimeout, KnownErrors } from "../../error";

@@ -6,7 +6,8 @@ import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 vi.mock("../../signer", () => ({
     RainSolverSigner: class {},
 }));
-vi.mock("../../utils", () => ({
+vi.mock("../../common", async (importOriginal) => ({
+    ...(await importOriginal()),
     withBigintSerializer: (_: string, value: any) =>
         typeof value === "bigint" ? value.toString() : value,
 }));

@@ -1,7 +1,7 @@
 import assert from "assert";
 import { erc20Abi } from "viem";
 import { RainSolver } from "../..";
-import { Result } from "../../../result";
+import { Result } from "../../../common";
 import { BundledOrders } from "../../../order";
 import { ONE18, scale18 } from "../../../math";
 import { Attributes } from "@opentelemetry/api";
