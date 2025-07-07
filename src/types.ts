@@ -1,12 +1,11 @@
 import { BigNumber } from "ethers";
 import { LiquidityProviders, RainDataFetcher } from "sushi";
-import { AttributeValue } from "@opentelemetry/api";
 import { Chain, PublicClient } from "viem";
 import { AppOptions } from "./config";
 import { Token } from "sushi/currency";
 import { Dispair } from "./state";
 import { RainSolverSigner, RawTransaction } from "./signer";
-import { ProcessOrderHaltReason, ProcessOrderStatus } from "./solver/types";
+import { Attributes } from "@opentelemetry/api";
 
 export type BotError = {
     snapshot: string;
@@ -28,38 +27,6 @@ export type BotConfig = Omit<AppOptions, "dispair"> & {
     dispair: Dispair;
 };
 
-export type Report = {
-    status: ProcessOrderStatus;
-    tokenPair: string;
-    buyToken: string;
-    sellToken: string;
-    txUrl?: string;
-    clearedAmount?: string;
-    actualGasCost?: string;
-    inputTokenIncome?: string;
-    outputTokenIncome?: string;
-    clearedOrders?: string[];
-    income?: BigNumber;
-    netProfit?: BigNumber;
-    reason?: ProcessOrderHaltReason;
-    error?: any;
-};
-
-export type RoundReport = {
-    reports: Report[];
-    avgGasCost?: BigNumber;
-};
-
-export type SpanAttrs = Record<string, AttributeValue>;
-
-export type ProcessPairResult = {
-    reason?: ProcessOrderHaltReason;
-    error?: any;
-    report: Report;
-    gasCost?: BigNumber;
-    spanAttributes: SpanAttrs;
-};
-
 export type DryrunValue = {
     rawtx?: RawTransaction;
     maximumInput?: BigNumber;
@@ -73,7 +40,7 @@ export type DryrunValue = {
 export type DryrunResult = {
     value?: DryrunValue;
     reason?: number;
-    spanAttributes: SpanAttrs;
+    spanAttributes: Attributes;
 };
 
 export type SelfFundVault = {

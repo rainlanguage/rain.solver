@@ -1,16 +1,11 @@
 import { RainSolver } from "..";
-import { ethers } from "ethers";
 import { TimeoutError } from "viem";
+import { Result } from "../../result";
 import { ErrorSeverity } from "../../error";
-import { processPair } from "../../processOrders";
 import { SpanStatusCode } from "@opentelemetry/api";
-import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 import { finalizeRound, initializeRound, Settlement } from "./round";
 import { ProcessOrderStatus, ProcessOrderHaltReason } from "../types";
-
-vi.mock("../../processOrders", () => ({
-    processPair: vi.fn().mockResolvedValue(vi.fn()),
-}));
+import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
 describe("Test initializeRound", () => {
     type initializeRoundType = Awaited<ReturnType<typeof initializeRound>>;
@@ -53,6 +48,7 @@ describe("Test initializeRound", () => {
             state: mockState,
             config: {},
             appOptions: mockAppOptions,
+            processOrder: vi.fn(),
         } as any;
     });
 
@@ -77,7 +73,7 @@ describe("Test initializeRound", () => {
             const mockSettleFn = vi.fn();
             mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
             mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
-            (processPair as Mock).mockResolvedValue(mockSettleFn);
+            (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
 
             const result: initializeRoundType = await initializeRound.call(mockSolver);
 
@@ -180,7 +176,7 @@ describe("Test initializeRound", () => {
 
             expect(result.settlements).toHaveLength(1);
             expect(result.checkpointReports).toHaveLength(1);
-            expect(processPair as Mock).toHaveBeenCalledWith(
+            expect(mockSolver.processOrder).toHaveBeenCalledWith(
                 expect.objectContaining({
                     genericArb: undefined,
                 }),
@@ -197,7 +193,7 @@ describe("Test initializeRound", () => {
             expect(result.settlements).toHaveLength(0);
             expect(result.checkpointReports).toHaveLength(0);
             expect(mockWalletManager.getRandomSigner).not.toHaveBeenCalled();
-            expect(processPair as Mock).not.toHaveBeenCalled();
+            expect(mockSolver.processOrder).not.toHaveBeenCalled();
         });
 
         it("should skip orderbooks with empty takeOrders", async () => {
@@ -219,7 +215,7 @@ describe("Test initializeRound", () => {
             expect(result.settlements).toHaveLength(0);
             expect(result.checkpointReports).toHaveLength(0);
             expect(mockWalletManager.getRandomSigner).not.toHaveBeenCalled();
-            expect(processPair as Mock).not.toHaveBeenCalled();
+            expect(mockSolver.processOrder).not.toHaveBeenCalled();
         });
     });
 
@@ -257,7 +253,7 @@ describe("Test initializeRound", () => {
             expect(mockWalletManager.getRandomSigner).toHaveBeenCalledTimes(2);
         });
 
-        it("should call processPair with correct parameters structure", async () => {
+        it("should call processOrder with correct parameters structure", async () => {
             const orderDetails = {
                 orderbook: "0x3333333333333333333333333333333333333333",
                 buyToken: "0xETH",
@@ -275,18 +271,13 @@ describe("Test initializeRound", () => {
 
             await initializeRound.call(mockSolver);
 
-            expect(processPair as Mock).toHaveBeenCalledWith({
-                config: {},
-                orderPairObject: orderDetails,
-                viemClient: mockState.client,
-                dataFetcher: mockState.dataFetcher,
+            expect(mockSolver.processOrder).toHaveBeenCalledWith({
+                orderDetails,
                 signer: mockSigner,
                 arb: expect.any(Object),
                 genericArb: expect.any(Object),
                 orderbook: expect.any(Object),
-                pair: "ETH/USDC",
                 orderbooksOrders: mockOrders,
-                state: mockState,
             });
         });
     });
@@ -383,7 +374,7 @@ describe("Test initializeRound", () => {
 
             const result: initializeRoundType = await initializeRound.call(mockSolver);
 
-            // All checkpoint reports should be ended
+            // all checkpoint reports should be ended
             result.checkpointReports.forEach((report) => {
                 expect(report.endTime).toBeTypeOf("number");
                 expect(report.endTime).toBeGreaterThan(0);
@@ -450,11 +441,14 @@ describe("Test finalizeRound", () => {
 
     describe("successful settlements", () => {
         it("should handle ZeroOutput status and update gas costs", async () => {
-            const mockSettle = vi.fn().mockResolvedValue({
-                gasCost: ethers.BigNumber.from("1000000"),
-                report: { status: ProcessOrderStatus.ZeroOutput, tokenPair: "ETH/USDC" },
-                spanAttributes: { "test.attr": "value" },
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.ok({
+                    gasCost: 1000000n,
+                    status: ProcessOrderStatus.ZeroOutput,
+                    tokenPair: "ETH/USDC",
+                    spanAttributes: { "test.attr": "value" },
+                }),
+            );
 
             settlements = [
                 {
@@ -467,19 +461,23 @@ describe("Test finalizeRound", () => {
 
             const result: finalizeRoundType = await finalizeRound.call(mockSolver, settlements);
 
-            // Assert function behavior
+            // assert function behavior
             expect(result.results).toHaveLength(1);
             expect(result.reports).toHaveLength(1);
-            expect(result.results[0]).toEqual({
+            const result1 = result.results[0];
+            assert(result1.isOk());
+            expect(result1.value).toEqual({
                 status: ProcessOrderStatus.ZeroOutput,
                 tokenPair: "ETH/USDC",
+                gasCost: 1000000n,
+                spanAttributes: { "test.attr": "value" },
             });
 
-            // Assert gas cost tracking
+            // assert gas cost tracking
             expect(mockSolver.state.gasCosts).toHaveLength(1);
             expect(mockSolver.state.gasCosts[0]).toBe(1000000n);
 
-            // Assert span creation and attributes
+            // assert span creation and attributes
             const report = result.reports[0];
             expect(report.name).toBe("order_ETH/USDC");
             expect(report.attributes["details.owner"]).toBe("0x123");
@@ -488,12 +486,14 @@ describe("Test finalizeRound", () => {
             expect(report.status?.message).toBe("zero max output");
         });
 
-        it("should handle NoOpportunity status with error string", async () => {
-            const mockSettle = vi.fn().mockResolvedValue({
-                report: { status: ProcessOrderStatus.NoOpportunity },
-                spanAttributes: { liquidity: "low" },
-                error: "insufficient liquidity",
-            });
+        it("should handle NoOpportunity status with message string", async () => {
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.ok({
+                    status: ProcessOrderStatus.NoOpportunity,
+                    spanAttributes: { liquidity: "low" },
+                    message: "insufficient liquidity",
+                }),
+            );
 
             settlements = [
                 {
@@ -506,17 +506,25 @@ describe("Test finalizeRound", () => {
 
             const result: finalizeRoundType = await finalizeRound.call(mockSolver, settlements);
 
-            expect(result.results[0]).toEqual({ status: ProcessOrderStatus.NoOpportunity });
+            const result1 = result.results[0];
+            assert(result1.isOk());
+            expect(result1.value).toEqual({
+                status: ProcessOrderStatus.NoOpportunity,
+                spanAttributes: { liquidity: "low" },
+                message: "insufficient liquidity",
+            });
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.ERROR);
             expect(result.reports[0].status?.message).toBe("insufficient liquidity");
             expect(result.reports[0].attributes["liquidity"]).toBe("low");
         });
 
         it("should handle NoOpportunity status without error", async () => {
-            const mockSettle = vi.fn().mockResolvedValue({
-                report: { status: ProcessOrderStatus.NoOpportunity },
-                spanAttributes: {},
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.ok({
+                    status: ProcessOrderStatus.NoOpportunity,
+                    spanAttributes: {},
+                }),
+            );
 
             settlements = [
                 {
@@ -534,10 +542,13 @@ describe("Test finalizeRound", () => {
         });
 
         it("should handle FoundOpportunity status", async () => {
-            const mockSettle = vi.fn().mockResolvedValue({
-                report: { status: ProcessOrderStatus.FoundOpportunity, profit: "0.05" },
-                spanAttributes: { "profit.eth": "0.05" },
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.ok({
+                    status: ProcessOrderStatus.FoundOpportunity,
+                    profit: "0.05",
+                    spanAttributes: { "profit.eth": "0.05" },
+                }),
+            );
 
             settlements = [
                 {
@@ -550,9 +561,12 @@ describe("Test finalizeRound", () => {
 
             const result: finalizeRoundType = await finalizeRound.call(mockSolver, settlements);
 
-            expect(result.results[0]).toEqual({
+            const result1 = result.results[0];
+            assert(result1.isOk());
+            expect(result1.value).toEqual({
                 status: ProcessOrderStatus.FoundOpportunity,
                 profit: "0.05",
+                spanAttributes: { "profit.eth": "0.05" },
             });
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
             expect(result.reports[0].status?.message).toBe("found opportunity");
@@ -560,10 +574,12 @@ describe("Test finalizeRound", () => {
         });
 
         it("should handle unknown status as unexpected error", async () => {
-            const mockSettle = vi.fn().mockResolvedValue({
-                report: { status: "UNKNOWN_STATUS" as any },
-                spanAttributes: { custom: "attr" },
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.ok({
+                    status: "UNKNOWN_STATUS" as any,
+                    spanAttributes: { custom: "attr" },
+                }),
+            );
 
             settlements = [
                 {
@@ -582,11 +598,13 @@ describe("Test finalizeRound", () => {
         });
 
         it("should handle settlement without gas cost", async () => {
-            const mockSettle = vi.fn().mockResolvedValue({
-                report: { status: ProcessOrderStatus.FoundOpportunity },
-                spanAttributes: {},
-                // No gasCost provided
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.ok({
+                    status: ProcessOrderStatus.FoundOpportunity,
+                    spanAttributes: {},
+                    // No gasCost provided
+                }),
+            );
 
             settlements = [
                 {
@@ -606,11 +624,13 @@ describe("Test finalizeRound", () => {
 
     describe("error handling", () => {
         it("should handle FailedToQuote error without error details", async () => {
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.FailedToQuote,
-                spanAttributes: { provider: "chainlink" },
-                report: { status: "failed" },
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.FailedToQuote,
+                    spanAttributes: { provider: "chainlink" },
+                    status: "failed",
+                }),
+            );
 
             settlements = [
                 {
@@ -623,10 +643,12 @@ describe("Test finalizeRound", () => {
 
             const result: finalizeRoundType = await finalizeRound.call(mockSolver, settlements);
 
-            expect(result.results[0]).toEqual({
+            const result1 = result.results[0];
+            assert(result1.isErr());
+            expect(result1.error).toEqual({
                 status: "failed",
-                error: undefined,
                 reason: ProcessOrderHaltReason.FailedToQuote,
+                spanAttributes: { provider: "chainlink" },
             });
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
             expect(result.reports[0].status?.message).toBe("failed to quote order: 0xabc");
@@ -634,12 +656,14 @@ describe("Test finalizeRound", () => {
 
         it("should handle FailedToQuote error with error details", async () => {
             const error = new Error("quote service down");
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.FailedToQuote,
-                spanAttributes: { "retry.count": "3" },
-                report: { status: "failed" },
-                error,
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.FailedToQuote,
+                    spanAttributes: { "retry.count": "3" },
+                    status: "failed",
+                    error,
+                }),
+            );
 
             settlements = [
                 {
@@ -652,8 +676,10 @@ describe("Test finalizeRound", () => {
 
             const result: finalizeRoundType = await finalizeRound.call(mockSolver, settlements);
 
-            expect(result.results[0].error).toBe(error);
-            expect(result.results[0].reason).toBe(ProcessOrderHaltReason.FailedToQuote);
+            const result1 = result.results[0];
+            assert(result1.isErr());
+            expect(result1.error.error).toBe(error);
+            expect(result1.error.reason).toBe(ProcessOrderHaltReason.FailedToQuote);
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
             expect(result.reports[0].status?.message).toContain("failed to quote order: 0xdef");
             expect(result.reports[0].status?.message).toContain("quote service down");
@@ -661,12 +687,14 @@ describe("Test finalizeRound", () => {
 
         it("should handle FailedToGetPools error with medium severity", async () => {
             const error = new Error("pool fetch failed");
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.FailedToGetPools,
-                spanAttributes: { "pool.count": "0" },
-                report: { status: "failed" },
-                error,
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.FailedToGetPools,
+                    spanAttributes: { "pool.count": "0" },
+                    status: "failed",
+                    error,
+                }),
+            );
 
             settlements = [
                 {
@@ -693,12 +721,14 @@ describe("Test finalizeRound", () => {
 
         it("should handle FailedToGetEthPrice error with OK status", async () => {
             const error = new Error("eth price unavailable");
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.FailedToGetEthPrice,
-                spanAttributes: {},
-                report: { status: "failed" },
-                error,
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.FailedToGetEthPrice,
+                    spanAttributes: {},
+                    status: "failed",
+                    error,
+                }),
+            );
 
             settlements = [
                 {
@@ -719,12 +749,14 @@ describe("Test finalizeRound", () => {
         });
 
         it("should handle FailedToUpdatePools error", async () => {
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.FailedToUpdatePools,
-                spanAttributes: { "test.attr": "value" },
-                report: { status: "failed" },
-                error: new Error("update failed"),
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.FailedToUpdatePools,
+                    spanAttributes: { "test.attr": "value" },
+                    status: "failed",
+                    error: new Error("update failed"),
+                }),
+            );
 
             settlements = [
                 {
@@ -748,12 +780,14 @@ describe("Test finalizeRound", () => {
 
         it("should handle TxFailed error with timeout (low severity)", async () => {
             const timeoutError = new TimeoutError({ body: {}, url: "http://example.com" });
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.TxFailed,
-                spanAttributes: { "tx.hash": "0x123" },
-                report: { status: "failed" },
-                error: timeoutError,
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.TxFailed,
+                    spanAttributes: { "tx.hash": "0x123" },
+                    status: "failed",
+                    error: timeoutError,
+                }),
+            );
 
             settlements = [
                 {
@@ -774,12 +808,14 @@ describe("Test finalizeRound", () => {
 
         it("should handle TxFailed error without timeout (high severity)", async () => {
             const error = new Error("gas too low");
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.TxFailed,
-                spanAttributes: {},
-                report: { status: "failed" },
-                error,
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.TxFailed,
+                    spanAttributes: {},
+                    status: "failed",
+                    error,
+                }),
+            );
 
             settlements = [
                 {
@@ -797,11 +833,13 @@ describe("Test finalizeRound", () => {
         });
 
         it("should handle TxFailed error without error details", async () => {
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.TxFailed,
-                spanAttributes: { "test.attr": "value" },
-                report: { status: "failed" },
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.TxFailed,
+                    spanAttributes: { "test.attr": "value" },
+                    status: "failed",
+                }),
+            );
 
             settlements = [
                 {
@@ -820,12 +858,14 @@ describe("Test finalizeRound", () => {
         });
 
         it("should handle TxReverted error with snapshot", async () => {
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.TxReverted,
-                spanAttributes: { "block.number": "12345" },
-                report: { status: "reverted" },
-                error: { snapshot: "Transaction reverted: INSUFFICIENT_LIQUIDITY" },
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.TxReverted,
+                    spanAttributes: { "block.number": "12345" },
+                    status: "reverted",
+                    error: { snapshot: "Transaction reverted: INSUFFICIENT_LIQUIDITY" },
+                }),
+            );
 
             settlements = [
                 {
@@ -846,12 +886,14 @@ describe("Test finalizeRound", () => {
         });
 
         it("should handle TxReverted error with known error (no high severity)", async () => {
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.TxReverted,
-                spanAttributes: { "test.attr": "value" },
-                report: { status: "failed" },
-                error: { err: new Error("INSUFFICIENT_LIQUIDITY") }, // This is typically a known error
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.TxReverted,
+                    spanAttributes: { "test.attr": "value" },
+                    status: "failed",
+                    error: { err: new Error("INSUFFICIENT_LIQUIDITY") }, // This is typically a known error
+                }),
+            );
 
             settlements = [
                 {
@@ -870,12 +912,14 @@ describe("Test finalizeRound", () => {
         });
 
         it("should handle TxReverted error with txNoneNodeError flag (high severity)", async () => {
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.TxReverted,
-                spanAttributes: { txNoneNodeError: true },
-                report: { status: "reverted" },
-                error: { err: new Error("unknown revert") },
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.TxReverted,
+                    spanAttributes: { txNoneNodeError: true },
+                    status: "reverted",
+                    error: { err: new Error("unknown revert") },
+                }),
+            );
 
             settlements = [
                 {
@@ -896,12 +940,14 @@ describe("Test finalizeRound", () => {
         it("should handle TxMineFailed error with timeout", async () => {
             const timeoutError = new TimeoutError({ body: {}, url: "http://example.com" });
 
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.TxMineFailed,
-                spanAttributes: { "test.attr": "value" },
-                report: { status: "failed" },
-                error: timeoutError,
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.TxMineFailed,
+                    spanAttributes: { "test.attr": "value" },
+                    status: "failed",
+                    error: timeoutError,
+                }),
+            );
 
             settlements = [
                 {
@@ -921,12 +967,14 @@ describe("Test finalizeRound", () => {
         });
 
         it("should handle TxMineFailed error without timeout", async () => {
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.TxMineFailed,
-                spanAttributes: { "test.attr": "value" },
-                report: { status: "failed" },
-                error: new Error("rpc error"),
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.TxMineFailed,
+                    spanAttributes: { "test.attr": "value" },
+                    status: "failed",
+                    error: new Error("rpc error"),
+                }),
+            );
 
             settlements = [
                 {
@@ -944,12 +992,14 @@ describe("Test finalizeRound", () => {
         });
 
         it("should handle unexpected error and set reason", async () => {
-            const mockSettle = vi.fn().mockRejectedValue({
-                reason: "unknown_reason",
-                spanAttributes: { "test.attr": "value" },
-                report: { status: "failed" },
-                error: new Error("unexpected"),
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: "unknown_reason",
+                    spanAttributes: { "test.attr": "value" },
+                    status: "failed",
+                    error: new Error("unexpected"),
+                }),
+            );
 
             settlements = [
                 {
@@ -965,25 +1015,34 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].attributes["severity"]).toBe(ErrorSeverity.HIGH);
             expect(result.reports[0].exception?.exception).toBeInstanceOf(Error);
             expect((result.reports[0].exception?.exception as any)?.message).toBe("unexpected");
-            expect(result.results[0].reason).toBe(ProcessOrderHaltReason.UnexpectedError);
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.ERROR);
+
+            const result1 = result.results[0];
+            assert(result1.isErr());
+            expect(result1.error.reason).toBe(ProcessOrderHaltReason.UnexpectedError);
         });
     });
 
     describe("multiple settlements", () => {
         it("should process multiple settlements and return correct results", async () => {
-            const mockSettle1 = vi.fn().mockResolvedValue({
-                gasCost: ethers.BigNumber.from("1000000"),
-                report: { status: ProcessOrderStatus.FoundOpportunity, txUrl: "url1" },
-                spanAttributes: { success: true },
-            });
+            const mockSettle1 = vi.fn().mockResolvedValue(
+                Result.ok({
+                    gasCost: 1000000n,
+                    status: ProcessOrderStatus.FoundOpportunity,
+                    txUrl: "url1",
+                    spanAttributes: { success: true },
+                }),
+            );
 
-            const mockSettle2 = vi.fn().mockRejectedValue({
-                reason: ProcessOrderHaltReason.TxFailed,
-                spanAttributes: { failed: true },
-                report: { status: "failed", txUrl: "url2" },
-                error: new Error("tx failed"),
-            });
+            const mockSettle2 = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.TxFailed,
+                    spanAttributes: { failed: true },
+                    status: "failed",
+                    txUrl: "url2",
+                    error: new Error("tx failed"),
+                }),
+            );
 
             settlements = [
                 {
@@ -1002,25 +1061,29 @@ describe("Test finalizeRound", () => {
 
             const result: finalizeRoundType = await finalizeRound.call(mockSolver, settlements);
 
-            // Assert correct number of results and reports
+            // assert correct number of results and reports
             expect(result.results).toHaveLength(2);
             expect(result.reports).toHaveLength(2);
 
-            // Assert first result (success)
-            expect(result.results[0].txUrl).toBe("url1");
-            expect(result.results[0].status).toBe(ProcessOrderStatus.FoundOpportunity);
+            // assert first result (success)
+            const result1 = result.results[0];
+            assert(result1.isOk());
+            expect(result1.value.txUrl).toBe("url1");
+            expect(result1.value.status).toBe(ProcessOrderStatus.FoundOpportunity);
             expect(result.reports[0].name).toBe("order_ETH/USDC");
             expect(result.reports[0].attributes["success"]).toBe(true);
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
 
-            // Assert second result (error)
-            expect(result.results[1].txUrl).toBe("url2");
-            expect(result.results[1].reason).toBe(ProcessOrderHaltReason.TxFailed);
+            // assert second result (error)
+            const result2 = result.results[1];
+            assert(result2.isErr());
+            expect(result2.error.txUrl).toBe("url2");
+            expect(result2.error.reason).toBe(ProcessOrderHaltReason.TxFailed);
             expect(result.reports[1].name).toBe("order_BTC/USDT");
             expect(result.reports[1].attributes["failed"]).toBe(true);
             expect(result.reports[1].status?.code).toBe(SpanStatusCode.ERROR);
 
-            // Assert gas costs only added for successful settlement
+            // assert gas costs only added for successful settlement
             expect(mockSolver.state.gasCosts).toHaveLength(1);
             expect(mockSolver.state.gasCosts[0]).toBe(1000000n);
         });
@@ -1028,10 +1091,12 @@ describe("Test finalizeRound", () => {
 
     describe("span management", () => {
         it("should create spans with correct names and set owner attribute", async () => {
-            const mockSettle = vi.fn().mockResolvedValue({
-                report: { status: ProcessOrderStatus.FoundOpportunity },
-                spanAttributes: {},
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.ok({
+                    status: ProcessOrderStatus.FoundOpportunity,
+                    spanAttributes: {},
+                }),
+            );
 
             settlements = [
                 {
@@ -1052,10 +1117,12 @@ describe("Test finalizeRound", () => {
 
         it("should extend span attributes from settlement result", async () => {
             const spanAttributes = { "custom.attr": "test", "another.attr": 123 };
-            const mockSettle = vi.fn().mockResolvedValue({
-                report: { status: ProcessOrderStatus.FoundOpportunity },
-                spanAttributes,
-            });
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.ok({
+                    status: ProcessOrderStatus.FoundOpportunity,
+                    spanAttributes,
+                }),
+            );
 
             settlements = [
                 {

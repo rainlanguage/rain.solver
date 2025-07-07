@@ -7,7 +7,7 @@ import { isBytes, isHexString } from "ethers/lib/utils";
 import { BigNumber, BigNumberish, ethers } from "ethers";
 import { erc20Abi, parseEventLogs, TransactionReceipt } from "viem";
 import { BotConfig } from "./types";
-import { RainDataFetcher, DataFetcherOptions, LiquidityProviders, Router } from "sushi/router";
+import { RainDataFetcher, LiquidityProviders, Router } from "sushi/router";
 import { TokenDetails } from "./state";
 import { RainSolverSigner } from "./signer";
 
@@ -145,70 +145,6 @@ export function getActualPrice(
         }
     } catch {}
     return undefined;
-}
-
-/**
- * Gets token price against ETH
- * @param config - The network config data
- * @param targetTokenAddress - The token address
- * @param targetTokenDecimals - The token decimals
- * @param gasPrice - The network gas price
- * @param dataFetcher - (optional) The RainDataFetcher instance
- * @param options - (optional) The RainDataFetcher options
- */
-export async function getEthPrice(
-    config: any,
-    targetTokenAddress: string,
-    targetTokenDecimals: number,
-    gasPrice: BigNumber,
-    dataFetcher: RainDataFetcher,
-    options?: DataFetcherOptions,
-    fetchPools = true,
-): Promise<string | undefined> {
-    if (targetTokenAddress.toLowerCase() == config.nativeWrappedToken.address.toLowerCase()) {
-        return "1";
-    }
-    const amountIn = BigNumber.from("1" + "0".repeat(targetTokenDecimals));
-    const toToken = new Token({
-        chainId: config.chain.id,
-        decimals: config.nativeWrappedToken.decimals,
-        address: config.nativeWrappedToken.address,
-        symbol: config.nativeWrappedToken.symbol,
-    });
-    const fromToken = new Token({
-        chainId: config.chain.id,
-        decimals: targetTokenDecimals,
-        address: targetTokenAddress,
-    });
-    if (fetchPools)
-        await dataFetcher.fetchPoolsForToken(fromToken, toToken, PoolBlackList, options);
-    const pcMap = dataFetcher.getCurrentPoolCodeMap(fromToken, toToken);
-    const route = Router.findBestRoute(
-        pcMap,
-        config.chain.id,
-        fromToken,
-        amountIn.toBigInt(),
-        toToken,
-        gasPrice.toNumber(),
-        undefined,
-        RPoolFilter,
-        // 30e9,
-        // providers,
-        // poolFilter
-    );
-    if (route.status == "NoWay") {
-        if (!fetchPools)
-            return await getEthPrice(
-                config,
-                targetTokenAddress,
-                targetTokenDecimals,
-                gasPrice,
-                dataFetcher,
-                options,
-                true,
-            );
-        else return undefined;
-    } else return ethers.utils.formatUnits(route.amountOutBI);
 }
 
 /**
@@ -700,40 +636,6 @@ export function withBigintSerializer(_k: string, v: any) {
  */
 export function toNumber(value: BigNumberish): number {
     return Number.parseFloat(ethers.utils.formatUnits(value));
-}
-
-/**
- * Get market quote (price) for a token pair using sushi router
- */
-export function getMarketQuote(
-    config: BotConfig,
-    fromToken: Token,
-    toToken: Token,
-    gasPrice: BigNumber,
-) {
-    const amountIn = ethers.utils.parseUnits("1", fromToken.decimals);
-    const amountInFixed = ethers.utils.parseUnits("1");
-    const pcMap = config.dataFetcher.getCurrentPoolCodeMap(fromToken, toToken);
-    const route = Router.findBestRoute(
-        pcMap,
-        config.chain.id as ChainId,
-        fromToken,
-        amountIn.toBigInt(),
-        toToken,
-        gasPrice.toNumber(),
-        undefined,
-        RPoolFilter,
-    );
-    if (route.status == "NoWay") {
-        return undefined;
-    } else {
-        const rateFixed = scale18(route.amountOutBI, toToken.decimals);
-        const price = rateFixed.mul(ONE18).div(amountInFixed);
-        return {
-            price: ethers.utils.formatUnits(price),
-            amountOut: ethers.utils.formatUnits(route.amountOutBI, toToken.decimals),
-        };
-    }
 }
 
 /**

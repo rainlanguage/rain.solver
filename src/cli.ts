@@ -197,7 +197,9 @@ export const main = async (argv: any, version?: string) => {
                 reports.forEach((report) => {
                     logger.exportPreAssembledSpan(report, roundCtx);
                 });
-                const txUrls = results.filter((v) => v.txUrl).map((v) => v.txUrl);
+                const txUrls = results
+                    .map((v) => (v.isOk() ? v.value.txUrl : v.error.txUrl))
+                    .filter((v) => !!v);
                 const foundOpp = txUrls.length > 0;
                 if (foundOpp) {
                     roundSpan.setAttribute("foundOpp", true);

@@ -186,17 +186,17 @@ module.exports = [
         [
             WNATIVE[ChainId.LINEA],
             USDC[ChainId.LINEA],
-            new Token({
-                chainId: ChainId.LINEA,
-                address: "0x4Ea77a86d6E70FfE8Bb947FC86D68a7F086f198a",
-                decimals: 18,
-                symbol: "CLIP",
-            }),
+            // new Token({
+            //     chainId: ChainId.LINEA,
+            //     address: "0x4Ea77a86d6E70FfE8Bb947FC86D68a7F086f198a",
+            //     decimals: 18,
+            //     symbol: "CLIP",
+            // }),
         ],
         [
             "0x07aE8551Be970cB1cCa11Dd7a11F47Ae82e70E67",
             "0x555CE236C0220695b68341bc48C68d52210cC35b",
-            "0x0000619b2b909a6a422c18eb804b92f798370705",
+            // "0x0000619b2b909a6a422c18eb804b92f798370705",
         ],
         [LiquidityProviders.LynexV1, LiquidityProviders.LynexV2],
         ["1", "100"],

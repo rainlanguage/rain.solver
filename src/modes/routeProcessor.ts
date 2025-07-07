@@ -4,7 +4,7 @@ import { BigNumber, Contract, ethers } from "ethers";
 import { containsNodeError, errorSnapshot } from "../error";
 import { getBountyEnsureRainlang, parseRainlang } from "../task";
 import { BaseError, ExecutionRevertedError, PublicClient } from "viem";
-import { SpanAttrs, BotConfig, DryrunResult } from "../types";
+import { BotConfig, DryrunResult } from "../types";
 import {
     ONE18,
     scale18,
@@ -17,6 +17,7 @@ import {
 } from "../utils";
 import { BundledOrders } from "../order";
 import { RainSolverSigner } from "../signer";
+import { Attributes } from "@opentelemetry/api";
 
 /**
  * Specifies the reason that dryrun failed
@@ -58,7 +59,7 @@ export async function dryrun({
     maximumInput: BigNumber;
     hasPriceMatch?: { value: boolean };
 }) {
-    const spanAttributes: SpanAttrs = {};
+    const spanAttributes: Attributes = {};
     const result: DryrunResult = {
         value: undefined,
         reason: undefined,
@@ -390,7 +391,7 @@ export async function findOpp({
     toToken: Token;
     fromToken: Token;
 }): Promise<DryrunResult> {
-    const spanAttributes: SpanAttrs = {};
+    const spanAttributes: Attributes = {};
     const result: DryrunResult = {
         value: undefined,
         reason: undefined,
@@ -505,7 +506,7 @@ export async function findOppWithRetries({
     toToken: Token;
     fromToken: Token;
 }): Promise<DryrunResult> {
-    const spanAttributes: SpanAttrs = {};
+    const spanAttributes: Attributes = {};
     const result: DryrunResult = {
         value: undefined,
         reason: undefined,

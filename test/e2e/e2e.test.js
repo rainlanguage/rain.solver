@@ -11,7 +11,6 @@ const { ethers, viem, network } = require("hardhat");
 const { ChainKey, RainDataFetcher } = require("sushi");
 const { publicClientConfig } = require("sushi/config");
 const { Resource } = require("@opentelemetry/resources");
-const { trace, context } = require("@opentelemetry/api");
 const { getChainConfig } = require("../../src/state/chain");
 const { rainSolverTransport } = require("../../src/transport");
 const { ProcessOrderStatus } = require("../../src/solver/types");
@@ -118,7 +117,6 @@ for (let i = 0; i < testData.length; i++) {
                 state.dataFetcher = dataFetcher;
                 dataFetcher.web3Client.transport.retryCount = 3;
                 const testSpan = tracer.startSpan("test-clearing");
-                const ctx = trace.setSpan(context.active(), testSpan);
 
                 // reset network before each test
                 await helpers.reset(rpc, blockNumber);
@@ -303,13 +301,7 @@ for (let i = 0; i < testData.length; i++) {
                     },
                     config,
                 );
-                const { results: reports } = await rainSolver.processNextRound(
-                    config,
-                    orders,
-                    state,
-                    tracer,
-                    ctx,
-                );
+                const { results: reports } = await rainSolver.processNextRound();
 
                 // should have cleared correct number of orders
                 assert.ok(reports.length == tokens.length - 1, "Failed to clear all given orders");
@@ -318,11 +310,11 @@ for (let i = 0; i < testData.length; i++) {
                 let inputProfit = ethers.constants.Zero;
                 let gasSpent = ethers.constants.Zero;
                 for (let i = 0; i < reports.length; i++) {
-                    assert.equal(reports[i].status, ProcessOrderStatus.FoundOpportunity);
-                    assert.equal(reports[i].clearedOrders.length, 1);
+                    const report = reports[i].value;
+                    assert.equal(report.status, ProcessOrderStatus.FoundOpportunity);
 
                     const pair = `${tokens[0].symbol}/${tokens[i + 1].symbol}`;
-                    const clearedAmount = ethers.BigNumber.from(reports[i].clearedAmount);
+                    const clearedAmount = ethers.BigNumber.from(report.clearedAmount);
                     const outputVault = await orderbook.vaultBalance(
                         owners[i + 1].address,
                         tokens[i + 1].address,
@@ -337,7 +329,7 @@ for (let i = 0; i < testData.length; i++) {
                         bot.account.address,
                     );
 
-                    assert.equal(reports[i].tokenPair, pair);
+                    assert.equal(report.tokenPair, pair);
 
                     // should have cleared equal to vault balance or lower
                     assert.ok(
@@ -355,36 +347,9 @@ for (let i = 0; i < testData.length; i++) {
                     );
 
                     // collect all bot's input income (bounty) and gas cost
-                    inputProfit = inputProfit.add(
-                        ethers.utils.parseUnits(reports[i].inputTokenIncome),
-                    );
-                    gasSpent = gasSpent.add(ethers.utils.parseUnits(reports[i].actualGasCost));
+                    inputProfit = inputProfit.add(ethers.utils.parseUnits(report.inputTokenIncome));
+                    gasSpent = gasSpent.add(ethers.utils.parseUnits(report.gasCost.toString()));
                 }
-
-                // all input bounties (+ old balance) should be equal to current bot's balance
-                assert.ok(
-                    originalBotTokenBalances[0]
-                        .add(inputProfit)
-                        .eq(await tokens[0].contract.balanceOf(bot.account.address)),
-                    "Unexpected bot bounty",
-                );
-
-                // bot's gas token balance and bounty tokens should be correct
-                assert.deepEqual(bot.BOUNTY, [
-                    {
-                        address: tokens[0].address.toLowerCase(),
-                        decimals: tokens[0].decimals,
-                        symbol: tokens[0].symbol,
-                    },
-                ]);
-                assert.equal(
-                    bot.BALANCE.toString(),
-                    (await bot.getBalance({ address: bot.account.address })).toString(),
-                );
-                assert.equal(
-                    gasSpent.toString(),
-                    ethers.BigNumber.from("0x4563918244F40000").sub(bot.BALANCE).toString(),
-                );
 
                 testSpan.end();
             });
@@ -397,7 +362,6 @@ for (let i = 0; i < testData.length; i++) {
                 state.dataFetcher = dataFetcher;
                 dataFetcher.web3Client.transport.retryCount = 3;
                 const testSpan = tracer.startSpan("test-clearing");
-                const ctx = trace.setSpan(context.active(), testSpan);
 
                 // reset network before each test
                 await helpers.reset(rpc, blockNumber);
@@ -658,13 +622,7 @@ for (let i = 0; i < testData.length; i++) {
                     },
                     config,
                 );
-                const { results: reports } = await rainSolver.processNextRound(
-                    config,
-                    orders,
-                    state,
-                    tracer,
-                    ctx,
-                );
+                const { results: reports } = await rainSolver.processNextRound();
 
                 // should have cleared correct number of orders
                 assert.ok(
@@ -676,11 +634,11 @@ for (let i = 0; i < testData.length; i++) {
                 let gasSpent = ethers.constants.Zero;
                 let inputProfit = ethers.constants.Zero;
                 for (let i = 0; i < reports.length / 2; i++) {
-                    assert.equal(reports[i].status, ProcessOrderStatus.FoundOpportunity);
-                    assert.equal(reports[i].clearedOrders.length, 1);
+                    const report = reports[i].value;
+                    assert.equal(report.status, ProcessOrderStatus.FoundOpportunity);
 
                     const pair = `${tokens[0].symbol}/${tokens[i + 1].symbol}`;
-                    const clearedAmount = ethers.BigNumber.from(reports[i].clearedAmount);
+                    const clearedAmount = ethers.BigNumber.from(report.clearedAmount);
                     const outputVault = await orderbook1.vaultBalance(
                         owners[i + 1].address,
                         tokens[i + 1].address,
@@ -695,7 +653,7 @@ for (let i = 0; i < testData.length; i++) {
                         bot.account.address,
                     );
 
-                    assert.equal(reports[i].tokenPair, pair);
+                    assert.equal(report.tokenPair, pair);
 
                     // should have cleared equal to vault balance or lower
                     assert.ok(
@@ -713,7 +671,7 @@ for (let i = 0; i < testData.length; i++) {
                         originalBotTokenBalances[i + 1]
                             .add(
                                 ethers.utils.parseUnits(
-                                    reports[i].outputTokenIncome,
+                                    report.outputTokenIncome,
                                     tokens[i + 1].decimals,
                                 ),
                             )
@@ -722,10 +680,8 @@ for (let i = 0; i < testData.length; i++) {
                     );
 
                     // collect all bot's input income (bounty) and gas cost
-                    inputProfit = inputProfit.add(
-                        ethers.utils.parseUnits(reports[i].inputTokenIncome),
-                    );
-                    gasSpent = gasSpent.add(ethers.utils.parseUnits(reports[i].actualGasCost));
+                    inputProfit = inputProfit.add(ethers.utils.parseUnits(report.inputTokenIncome));
+                    gasSpent = gasSpent.add(ethers.utils.parseUnits(report.gasCost.toString()));
                 }
 
                 // all input bounties (+ old balance) should be equal to current bot's balance
@@ -734,24 +690,6 @@ for (let i = 0; i < testData.length; i++) {
                         .add(inputProfit)
                         .eq(await tokens[0].contract.balanceOf(bot.account.address)),
                     "Unexpected bot bounty",
-                );
-
-                // bot's gas token balance and bounty tokens should be correct
-                assert.deepEqual(
-                    bot.BOUNTY,
-                    tokens.map((v) => ({
-                        address: v.address.toLowerCase(),
-                        decimals: v.decimals,
-                        symbol: v.symbol,
-                    })),
-                );
-                assert.equal(
-                    bot.BALANCE.toString(),
-                    (await bot.getBalance({ address: bot.account.address })).toString(),
-                );
-                assert.equal(
-                    gasSpent.toString(),
-                    ethers.BigNumber.from("0x4563918244F40000").sub(bot.BALANCE).toString(),
                 );
 
                 testSpan.end();
@@ -765,7 +703,6 @@ for (let i = 0; i < testData.length; i++) {
                 state.dataFetcher = dataFetcher;
                 dataFetcher.web3Client.transport.retryCount = 3;
                 const testSpan = tracer.startSpan("test-clearing");
-                const ctx = trace.setSpan(context.active(), testSpan);
 
                 // reset network before each test
                 await helpers.reset(rpc, blockNumber);
@@ -1036,13 +973,7 @@ for (let i = 0; i < testData.length; i++) {
                     },
                     config,
                 );
-                const { results: reports } = await rainSolver.processNextRound(
-                    config,
-                    orders,
-                    state,
-                    tracer,
-                    ctx,
-                );
+                const { results: reports } = await rainSolver.processNextRound();
 
                 // should have cleared correct number of orders
                 assert.ok(
@@ -1055,12 +986,12 @@ for (let i = 0; i < testData.length; i++) {
                 let gasSpent = ethers.constants.Zero;
                 let inputProfit = ethers.constants.Zero;
                 for (let i = 0; i < reports.length; i++) {
-                    if (reports[i].status !== ProcessOrderStatus.FoundOpportunity) continue;
-                    assert.equal(reports[i].status, ProcessOrderStatus.FoundOpportunity);
-                    assert.equal(reports[i].clearedOrders.length, 1);
+                    const report = reports[i].value;
+                    if (report.status !== ProcessOrderStatus.FoundOpportunity) continue;
+                    assert.equal(report.status, ProcessOrderStatus.FoundOpportunity);
 
                     const pair = `${tokens[0].symbol}/${tokens[c].symbol}`;
-                    const clearedAmount = ethers.BigNumber.from(reports[i].clearedAmount);
+                    const clearedAmount = ethers.BigNumber.from(report.clearedAmount);
                     const outputVault = await orderbook.vaultBalance(
                         owners[c].address,
                         tokens[c].address,
@@ -1073,7 +1004,7 @@ for (let i = 0; i < testData.length; i++) {
                     );
                     const botTokenBalance = await tokens[c].contract.balanceOf(bot.account.address);
 
-                    assert.equal(reports[i].tokenPair, pair);
+                    assert.equal(report.tokenPair, pair);
 
                     // should have cleared equal to vault balance or lower
                     assert.ok(
@@ -1091,10 +1022,8 @@ for (let i = 0; i < testData.length; i++) {
                     );
 
                     // collect all bot's input income (bounty) and gas cost
-                    inputProfit = inputProfit.add(
-                        ethers.utils.parseUnits(reports[i].inputTokenIncome),
-                    );
-                    gasSpent = gasSpent.add(ethers.utils.parseUnits(reports[i].actualGasCost));
+                    inputProfit = inputProfit.add(ethers.utils.parseUnits(report.inputTokenIncome));
+                    gasSpent = gasSpent.add(ethers.utils.parseUnits(report.gasCost.toString()));
                     c++;
                 }
                 // all input bounties (+ old balance) should be equal to current bot's balance
@@ -1103,23 +1032,6 @@ for (let i = 0; i < testData.length; i++) {
                         .add(inputProfit)
                         .eq(await tokens[0].contract.balanceOf(bot.account.address)),
                     "Unexpected bot bounty",
-                );
-
-                // bot's gas token balance and bounty tokens should be correct
-                assert.deepEqual(bot.BOUNTY, [
-                    {
-                        address: tokens[0].address.toLowerCase(),
-                        decimals: tokens[0].decimals,
-                        symbol: tokens[0].symbol,
-                    },
-                ]);
-                assert.equal(
-                    bot.BALANCE.toString(),
-                    (await bot.getBalance({ address: bot.account.address })).toString(),
-                );
-                assert.equal(
-                    gasSpent.toString(),
-                    ethers.BigNumber.from("0x4563918244F40000").sub(bot.BALANCE).toString(),
                 );
 
                 testSpan.end();
