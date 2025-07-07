@@ -1,7 +1,7 @@
-import { Attributes } from "@opentelemetry/api";
-import { EstimateGasCostResult, RawTransaction } from "../signer";
 import { Result } from "../result";
 import { Evaluable, TakeOrder } from "../order";
+import { Attributes } from "@opentelemetry/api";
+import { EstimateGasCostResult, RawTransaction } from "../signer";
 
 /** Specifies reason that order process halted with failure */
 export enum ProcessOrderHaltReason {
@@ -29,7 +29,6 @@ export type ProcessOrderResultBase = {
     buyToken: string;
     sellToken: string;
     spanAttributes: Attributes;
-    txUrl?: string;
     gasCost?: bigint;
 };
 
@@ -65,10 +64,10 @@ export type TaskType = {
     signedContext: any[];
 };
 
+// dryrun result types
 export type DryrunResultBase = {
     spanAttributes: Attributes;
 };
-
 export type DryrunSuccess = DryrunResultBase & {
     estimatedGasCost: bigint;
     estimation: EstimateGasCostResult;
@@ -79,6 +78,7 @@ export type DryrunFailure = DryrunResultBase & {
 };
 export type DryrunResult = Result<DryrunSuccess, DryrunFailure>;
 
+// simulation result types
 export type SuccessSimulation = {
     spanAttributes: Attributes;
     estimatedGasCost: bigint;

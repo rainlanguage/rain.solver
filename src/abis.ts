@@ -103,6 +103,9 @@ export const MulticallAbi = parseAbi(multicall3Abi);
 export const Deposit2Abi = parseAbi([orderbookAbi[4]]);
 export const ArbAbi = parseAbi(arbAbis);
 export const TakeOrdersV2Abi = parseAbi([orderbookAbi[11]]);
+export const Withdraw2Abi = parseAbi([orderbookAbi[7]]);
+export const Clear2Abi = parseAbi([orderbookAbi[12]]);
+export const OrderbookMulticallAbi = parseAbi([orderbookAbi[10]]);
 
 /**
  * Arbitrum node interface address, used to get L1 gas limit.
