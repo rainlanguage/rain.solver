@@ -76,7 +76,7 @@ export async function trySimulateTrade(
                 minimumInput: 1n,
                 maximumInput: opposingMaxInput, // main maxout * main ratio
                 maximumIORatio: opposingMaxIORatio, // inverse of main ratio (1 / ratio)
-                orders: [counterpartyOrderDetails.takeOrder], // opposing orders
+                orders: [counterpartyOrderDetails.takeOrder.takeOrder], // opposing orders
                 data: "0x",
             },
         ],
