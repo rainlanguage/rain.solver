@@ -15,6 +15,7 @@ import {
     PrivateKeyAccount,
     privateKeyToAccount,
 } from "viem/accounts";
+import { MulticallAbi } from "../abis";
 
 export * from "./config";
 
@@ -672,5 +673,33 @@ export class WalletManager {
                 await sleep(30);
             }
         }
+    }
+
+    /** Returns ETH (gas token) balance of worker wallets by performing a multicall `getEthBalance` */
+    async getWorkerWalletsBalance(): Promise<Record<string, bigint>> {
+        // return empry if singlw wallet mode
+        if (this.config.type === WalletType.PrivateKey) return {};
+
+        const result: Record<string, bigint> = {};
+        const workersList = Array.from(this.workers.signers);
+        const balances: bigint[] = await this.state.client
+            .multicall({
+                multicallAddress: this.state.client.chain?.contracts?.multicall3
+                    ?.address as `0x${string}`,
+                allowFailure: false,
+                contracts: workersList.map(([, v]) => ({
+                    address: this.state.client.chain?.contracts?.multicall3
+                        ?.address as `0x${string}`,
+                    allowFailure: false,
+                    abi: MulticallAbi,
+                    functionName: "getEthBalance",
+                    args: [v.account.address],
+                })),
+            })
+            .catch(() => []);
+        for (let i = 0; i < balances.length; i++) {
+            result[workersList[i][0]] = balances[i];
+        }
+        return result;
     }
 }
