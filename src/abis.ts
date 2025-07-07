@@ -39,6 +39,7 @@ export const orderbookAbi = [
     `function clear2(${OrderV3} memory aliceOrder, ${OrderV3} memory bobOrder, ${ClearConfig} calldata clearConfig, ${SignedContextV1}[] memory aliceSignedContext, ${SignedContextV1}[] memory bobSignedContext) external`,
     `event TakeOrderV2(address sender, ${TakeOrderConfigV3} config, uint256 input, uint256 output)`,
     `function quote(${Quote} calldata quoteConfig) external view returns (bool, uint256, uint256)`,
+    `event ClearV2(address sender, ${OrderV3} alice, ${OrderV3} bob, ${ClearConfig} clearConfig)`,
 ] as const;
 
 /**
@@ -106,6 +107,8 @@ export const TakeOrdersV2Abi = parseAbi([orderbookAbi[11]]);
 export const Withdraw2Abi = parseAbi([orderbookAbi[7]]);
 export const Clear2Abi = parseAbi([orderbookAbi[12]]);
 export const OrderbookMulticallAbi = parseAbi([orderbookAbi[10]]);
+export const Arb3Abi = parseAbi([arbAbis[1]]);
+export const Clear2EventAbi = parseAbi([orderbookAbi[15]]);
 
 /**
  * Arbitrum node interface address, used to get L1 gas limit.

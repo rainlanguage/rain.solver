@@ -38,7 +38,7 @@
         "rain-solver": "ts-node rain-solver",
         "build": "tsc",
         "vitest:logger": "vitest run ./src/logger.test.ts --disableConsoleIntercept",
-        "vitest": "vitest run --exclude ./src/logger.test.ts && npm run vitest:logger"
+        "vitest": "npm run vitest:logger && vitest run --exclude ./src/logger.test.ts"
     },
     "dependencies": {
         "@opentelemetry/api": "^1.8.0",
