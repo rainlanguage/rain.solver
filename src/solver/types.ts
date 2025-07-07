@@ -1,4 +1,7 @@
 import { Attributes } from "@opentelemetry/api";
+import { EstimateGasCostResult, RawTransaction } from "../signer";
+import { Result } from "../result";
+import { Evaluable, TakeOrder } from "../order";
 
 /** Specifies reason that order process halted with failure */
 export enum ProcessOrderHaltReason {
@@ -48,3 +51,40 @@ export type ProcessOrderFailure = ProcessOrderResultBase & {
     error?: any;
     txUrl?: string;
 };
+
+export type TakeOrdersConfigType = {
+    minimumInput: bigint;
+    maximumInput: bigint;
+    maximumIORatio: bigint;
+    orders: TakeOrder[];
+    data: `0x${string}`;
+};
+
+export type TaskType = {
+    evaluable: Evaluable;
+    signedContext: any[];
+};
+
+export type DryrunResultBase = {
+    spanAttributes: Attributes;
+};
+
+export type DryrunSuccess = DryrunResultBase & {
+    estimatedGasCost: bigint;
+    estimation: EstimateGasCostResult;
+};
+export type DryrunFailure = DryrunResultBase & {
+    reason?: number;
+    noneNodeError?: string;
+};
+export type DryrunResult = Result<DryrunSuccess, DryrunFailure>;
+
+export type SuccessSimulation = {
+    spanAttributes: Attributes;
+    estimatedGasCost: bigint;
+    estimatedProfit: bigint;
+    rawtx: RawTransaction;
+    oppBlockNumber: number;
+};
+export type FailedSimulation = DryrunFailure;
+export type SimulationResult = Result<SuccessSimulation, FailedSimulation>;
