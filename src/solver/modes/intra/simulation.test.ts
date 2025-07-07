@@ -1,7 +1,7 @@
 import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
 import { ONE18 } from "../../../math";
-import { Result } from "../../../result";
+import { Result } from "../../../common";
 import { encodeFunctionData } from "viem";
 import { BundledOrders, TakeOrderDetails } from "../../../order";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";

@@ -1,4 +1,4 @@
-import { Result } from "../../../result";
+import { Result } from "../../../common";
 import { SimulationResult } from "../../types";
 import { trySimulateTrade } from "./simulation";
 import { findBestIntraOrderbookTrade } from "./index";

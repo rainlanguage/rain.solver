@@ -5,7 +5,7 @@ import { OrderManager } from "../order";
 import { RainSolverCli } from "./index";
 import { RainSolverLogger } from "../logger";
 import { WalletManager, WalletType } from "../wallet";
-import { sleep, withBigintSerializer } from "../utils";
+import { sleep, withBigintSerializer } from "../common";
 import { SharedState, SharedStateConfig } from "../state";
 import { SubgraphConfig, SubgraphManager } from "../subgraph";
 import { SpanStatusCode, trace, context } from "@opentelemetry/api";
@@ -53,7 +53,7 @@ vi.mock("sushi", async (importOriginal) => ({
     },
 }));
 
-vi.mock("../utils", async (importOriginal) => ({
+vi.mock("../common", async (importOriginal) => ({
     ...(await importOriginal()),
     sleep: vi.fn(),
 }));

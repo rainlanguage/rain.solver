@@ -1,6 +1,6 @@
 import axios from "axios";
 import assert from "assert";
-import { Result } from "../result";
+import { Result } from "../common";
 import { decodeErrorResult, isHex } from "viem";
 import {
     PANIC_ABI,

@@ -1,6 +1,6 @@
-import * as utils from "../utils";
 import { RpcState } from "../rpc";
 import { BigNumber } from "ethers";
+import * as common from "../common";
 import { SharedState } from "../state";
 import { RainSolverSigner } from "./index";
 import { publicActionsL2 } from "viem/op-stack";
@@ -303,7 +303,7 @@ describe("Test waitUntilFree", () => {
             busy: true,
         } as unknown as RainSolverSigner;
 
-        sleepSpy = vi.spyOn(utils, "sleep");
+        sleepSpy = vi.spyOn(common, "sleep");
         vi.clearAllMocks();
     });
 

@@ -1,5 +1,5 @@
 import { BigNumber } from "ethers";
-import { sleep } from "../../utils";
+import { sleep } from "../../common";
 import { Token } from "sushi/currency";
 import { TransactionReceipt } from "viem";
 import { handleRevert } from "../../error";
@@ -14,7 +14,7 @@ vi.mock("../../error", () => ({
     handleRevert: vi.fn(),
 }));
 
-vi.mock("../../utils", async (importOriginal) => ({
+vi.mock("../../common", async (importOriginal) => ({
     ...(await importOriginal()),
     sleep: vi.fn(),
 }));

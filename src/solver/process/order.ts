@@ -1,5 +1,5 @@
 import { RainSolver } from "..";
-import { Result } from "../../result";
+import { Result } from "../../common";
 import { toNumber } from "../../math";
 import { Token } from "sushi/currency";
 import { BundledOrders } from "../../order";

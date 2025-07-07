@@ -1,6 +1,6 @@
 import assert from "assert";
 import { RainSolver } from "..";
-import { Result } from "../../result";
+import { Result } from "../../common";
 import { Token } from "sushi/currency";
 import { BundledOrders } from "../../order";
 import { FindBestTradeResult } from "../types";

@@ -1,5 +1,5 @@
-import * as utils from "../utils";
 import { parseUnits } from "viem";
+import * as common from "../common";
 import * as sweepFns from "./sweep";
 import { WalletType } from "./config";
 import { MulticallAbi } from "../abis";
@@ -1418,7 +1418,7 @@ describe("Test WalletManager", () => {
                 (worker as any).busy = false;
             }
             // spy on shuffleArray utility
-            const shuffleArraySpy = vi.spyOn(utils, "shuffleArray");
+            const shuffleArraySpy = vi.spyOn(common, "shuffleArray");
             await walletManager.getRandomSigner(true);
 
             expect(shuffleArraySpy).toHaveBeenCalledTimes(1);

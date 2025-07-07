@@ -3,7 +3,7 @@ import { RainSolver } from "../..";
 import { Token } from "sushi/currency";
 import { ArbAbi } from "../../../abis";
 import { ChainId, Router } from "sushi";
-import { Result } from "../../../result";
+import { Result } from "../../../common";
 import { estimateProfit } from "./utils";
 import { BundledOrders } from "../../../order";
 import { Attributes } from "@opentelemetry/api";

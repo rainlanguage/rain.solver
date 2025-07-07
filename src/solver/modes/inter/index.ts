@@ -1,6 +1,6 @@
 import assert from "assert";
 import { RainSolver } from "../..";
-import { Result } from "../../../result";
+import { Result } from "../../../common";
 import { trySimulateTrade } from "./simulate";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";

@@ -1,4 +1,4 @@
-import { Result } from "../result";
+import { Result } from "../common";
 import { AppOptions } from "../config";
 import { SharedState } from "../state";
 import { OrderManager } from "../order";

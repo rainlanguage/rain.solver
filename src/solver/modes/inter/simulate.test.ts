@@ -1,7 +1,7 @@
 import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
 import { ONE18 } from "../../../math";
-import { Result } from "../../../result";
+import { Result } from "../../../common";
 import { SimulationResult } from "../../types";
 import { BundledOrders, Pair } from "../../../order";
 import { encodeFunctionData, encodeAbiParameters } from "viem";

@@ -1,7 +1,7 @@
 import { erc20Abi } from "viem";
 import { SgOrder } from "../subgraph";
 import { SharedState } from "../state";
-import { shuffleArray } from "../utils";
+import { shuffleArray } from "../common";
 import { quoteSingleOrder } from "./quote";
 import { PreAssembledSpan } from "../logger";
 import { SubgraphManager } from "../subgraph";

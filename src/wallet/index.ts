@@ -3,7 +3,7 @@ import { formatUnits } from "viem";
 import { fundVault } from "./fundVault";
 import { RainSolverSigner } from "../signer";
 import { PreAssembledSpan } from "../logger";
-import { shuffleArray, sleep } from "../utils";
+import { shuffleArray, sleep } from "../common";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { SharedState, TokenDetails } from "../state";
 import { ErrorSeverity, errorSnapshot } from "../error";
