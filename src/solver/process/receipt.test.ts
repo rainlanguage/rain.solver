@@ -205,7 +205,7 @@ describe("Test processReceipt", () => {
         });
 
         it("should call handleRevert with correct parameters", async () => {
-            const mockBalance = BigNumber.from("1000000000000000000");
+            const mockBalance = "1000000000000000000";
             (handleRevert as Mock).mockResolvedValue({ snapshot: "test", nodeError: false });
             await processReceipt(mockArgs);
 

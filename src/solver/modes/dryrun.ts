@@ -50,8 +50,8 @@ export async function dryrun(
         };
         return Result.ok(result);
     } catch (e) {
-        const isNodeError = containsNodeError(e as BaseError);
-        const errMsg = errorSnapshot("", e);
+        const isNodeError = await containsNodeError(e as BaseError);
+        const errMsg = await errorSnapshot("", e);
         spanAttributes["isNodeError"] = isNodeError;
         spanAttributes["error"] = errMsg;
         spanAttributes["rawtx"] = JSON.stringify(

@@ -98,7 +98,7 @@ export namespace SharedStateConfig {
                     functionName,
                 });
             } catch (error) {
-                throw errorSnapshot(`failed to get dispair ${functionName} address`, error);
+                throw await errorSnapshot(`failed to get dispair ${functionName} address`, error);
             }
         };
         const interpreter = await getDispairAddress("iInterpreter");

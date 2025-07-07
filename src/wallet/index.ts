@@ -199,7 +199,7 @@ export class WalletManager {
                 report.recordException(error);
                 report.setStatus({
                     code: SpanStatusCode.ERROR,
-                    message: errorSnapshot("Failed to topup wallet", error),
+                    message: await errorSnapshot("Failed to topup wallet", error),
                 });
                 report.end();
                 throw report;
@@ -263,7 +263,7 @@ export class WalletManager {
             report.recordException(error);
             report.setStatus({
                 code: SpanStatusCode.ERROR,
-                message: errorSnapshot("Failed to check main wallet balance", error),
+                message: await errorSnapshot("Failed to check main wallet balance", error),
             });
             report.setAttr("severity", ErrorSeverity.LOW);
         }
@@ -332,12 +332,12 @@ export class WalletManager {
                     );
                     report.setAttr(
                         `details.transfers.${tokenDetails.symbol}.status`,
-                        errorSnapshot("", error.error),
+                        await errorSnapshot("", error.error),
                     );
                 } else {
                     report.setAttr(
                         `details.transfers.${tokenDetails.symbol}.status`,
-                        errorSnapshot("Failed to transfer", error),
+                        await errorSnapshot("Failed to transfer", error),
                     );
                 }
             }
@@ -363,10 +363,13 @@ export class WalletManager {
                 );
                 report.setAttr(
                     `details.transfers.remainingGas.status`,
-                    errorSnapshot("", error.error),
+                    await errorSnapshot("", error.error),
                 );
             } else {
-                report.setAttr(`details.transfers.remainingGas.status`, errorSnapshot("", error));
+                report.setAttr(
+                    `details.transfers.remainingGas.status`,
+                    await errorSnapshot("", error),
+                );
             }
         }
 
@@ -469,12 +472,12 @@ export class WalletManager {
                     );
                     report.setAttr(
                         `details.swaps.${tokenDetails.symbol}.status`,
-                        errorSnapshot("", error.error),
+                        await errorSnapshot("", error.error),
                     );
                 } else {
                     report.setAttr(
                         `details.swaps.${tokenDetails.symbol}.status`,
-                        errorSnapshot("Failed to convert token to gas", error),
+                        await errorSnapshot("Failed to convert token to gas", error),
                     );
                 }
             }
@@ -632,7 +635,7 @@ export class WalletManager {
                     // record funding results
                     let message = "";
                     if ("txHash" in error) {
-                        message = errorSnapshot("Failed to fund vault", error.error);
+                        message = await errorSnapshot("Failed to fund vault", error.error);
                         report.setAttr(
                             "details.tx",
                             this.state.chainConfig.blockExplorers?.default.url +
@@ -640,7 +643,7 @@ export class WalletManager {
                                 error.txHash,
                         );
                     } else {
-                        message = errorSnapshot("Failed to fund vault", error);
+                        message = await errorSnapshot("Failed to fund vault", error);
                     }
                     report.setAttr("severity", ErrorSeverity.MEDIUM);
                     report.setStatus({ code: SpanStatusCode.ERROR, message });

@@ -57,7 +57,7 @@ describe("Test dryrun", () => {
             gas: 0n,
             l1Cost: 0n,
         });
-        (errorSnapshot as Mock).mockReturnValue("0 gas limit");
+        (errorSnapshot as Mock).mockResolvedValue("0 gas limit");
 
         const result = await dryrun(signer, rawtx, gasPrice, gasLimitMultiplier);
         assert(result.isErr());
@@ -78,8 +78,8 @@ describe("Test dryrun", () => {
     it("should return err result with node error", async () => {
         const error = new Error("node error");
         (signer.estimateGasCost as Mock).mockRejectedValue(error);
-        (containsNodeError as Mock).mockReturnValue(true);
-        (errorSnapshot as Mock).mockReturnValue("node error snapshot");
+        (containsNodeError as Mock).mockResolvedValue(true);
+        (errorSnapshot as Mock).mockResolvedValue("node error snapshot");
 
         const result = await dryrun(signer, rawtx, gasPrice, gasLimitMultiplier);
 
@@ -95,8 +95,8 @@ describe("Test dryrun", () => {
     it("should return err result with noneNodeError if not a node error", async () => {
         const error = new Error("other error");
         (signer.estimateGasCost as Mock).mockRejectedValue(error);
-        (containsNodeError as Mock).mockReturnValue(false);
-        (errorSnapshot as Mock).mockReturnValue("other error snapshot");
+        (containsNodeError as Mock).mockResolvedValue(false);
+        (errorSnapshot as Mock).mockResolvedValue("other error snapshot");
 
         const result = await dryrun(signer, rawtx, gasPrice, gasLimitMultiplier);
 

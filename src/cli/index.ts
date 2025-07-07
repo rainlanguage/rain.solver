@@ -111,7 +111,7 @@ export class RainSolverCli {
 
                 return { cmdOptions, appOptions, state };
             } catch (err: any) {
-                const snapshot = errorSnapshot("", err);
+                const snapshot = await errorSnapshot("", err);
                 report.setAttr("severity", ErrorSeverity.HIGH);
                 report.setStatus({ code: SpanStatusCode.ERROR, message: snapshot });
                 report.recordException(err);
@@ -210,7 +210,7 @@ export class RainSolverCli {
                 // record ok status if we reach here
                 roundSpan.setStatus({ code: SpanStatusCode.OK });
             } catch (err: any) {
-                const snapshot = errorSnapshot("", err);
+                const snapshot = await errorSnapshot("", err);
                 roundSpan.setAttribute("severity", ErrorSeverity.HIGH);
                 roundSpan.setAttribute("didClear", false);
                 roundSpan.recordException(err);
