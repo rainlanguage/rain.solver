@@ -31,7 +31,7 @@ export function estimateProfit(
         counterpartyInput += (maxOut * quote.ratio) / ONE18;
         opposingMaxInput -= maxOut;
     }
-    const outputProfit = orderOutput - (counterpartyInput * outputToEthPrice) / ONE18;
-    const inputProfit = counterpartyOutput - (orderInput * inputToEthPrice) / ONE18;
+    const outputProfit = ((orderOutput - counterpartyInput) * outputToEthPrice) / ONE18;
+    const inputProfit = ((counterpartyOutput - orderInput) * inputToEthPrice) / ONE18;
     return outputProfit + inputProfit;
 }
