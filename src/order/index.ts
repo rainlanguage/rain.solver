@@ -431,20 +431,47 @@ export class OrderManager {
     /**
      * Gets opposing orders for a given order
      * @param orderDetails - Details of the order to find opposing orders for
-     * @param sameOrderbook - Whether opposing orders should be in the same orderbook
+     * @param sameOb - Whether opposing orders should be in the same orderbook or
      */
-    getOpposingOrders(orderDetails: BundledOrders, sameOrderbook: boolean): Pair[] {
+    getCounterpartyOrders(orderDetails: BundledOrders, sameOb: true): Pair[];
+    getCounterpartyOrders(orderDetails: BundledOrders, sameOb: false): Pair[][];
+    getCounterpartyOrders(orderDetails: BundledOrders, sameOb: boolean): Pair[] | Pair[][] {
         const opposingPairKey = `${orderDetails.sellToken.toLowerCase()}/${orderDetails.buyToken.toLowerCase()}`;
-        if (sameOrderbook) {
-            return this.pairMap.get(orderDetails.orderbook)?.get(opposingPairKey) ?? [];
+        if (sameOb) {
+            return (
+                this.pairMap
+                    .get(orderDetails.orderbook)
+                    ?.get(opposingPairKey)
+                    ?.sort((a, b) => {
+                        if (!a.takeOrder.quote && !b.takeOrder.quote) return 0;
+                        if (!a.takeOrder.quote) return 1;
+                        if (!b.takeOrder.quote) return -1;
+                        return a.takeOrder.quote.ratio < b.takeOrder.quote.ratio
+                            ? 1
+                            : a.takeOrder.quote.ratio > b.takeOrder.quote.ratio
+                              ? -1
+                              : 0;
+                    }) ?? []
+            );
         } else {
-            const opposingOrders: Pair[] = [];
+            const counterpartyOrders: Pair[][] = [];
             this.pairMap.forEach((pairMap, orderbook) => {
                 // skip same orderbook
                 if (orderbook === orderDetails.orderbook) return;
-                opposingOrders.push(...(pairMap.get(opposingPairKey) ?? []));
+                counterpartyOrders.push(
+                    pairMap.get(opposingPairKey)?.sort((a, b) => {
+                        if (!a.takeOrder.quote && !b.takeOrder.quote) return 0;
+                        if (!a.takeOrder.quote) return 1;
+                        if (!b.takeOrder.quote) return -1;
+                        return a.takeOrder.quote.ratio < b.takeOrder.quote.ratio
+                            ? 1
+                            : a.takeOrder.quote.ratio > b.takeOrder.quote.ratio
+                              ? -1
+                              : 0;
+                    }) ?? [],
+                );
             });
-            return opposingOrders;
+            return counterpartyOrders;
         }
     }
 }
