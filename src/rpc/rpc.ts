@@ -1,7 +1,7 @@
-import { promiseTimeout, sleep } from "./common";
-import { onFetchRequest, onFetchResponse } from "./client";
+import { promiseTimeout, sleep } from "../common";
 import { http, Transport, HttpTransportConfig } from "viem";
 import { RainSolverTransportTimeoutError } from "./transport";
+import { normalizeUrl, onFetchRequest, onFetchResponse, probablyPicksFrom } from ".";
 
 /** The rpc configurations */
 export type RpcConfig = {
@@ -252,37 +252,4 @@ export class RpcProgress {
             this.buffer[index] = RpcBufferType.Success;
         }
     }
-}
-
-/**
- * Normalizes the given url
- */
-export function normalizeUrl(url: string): string {
-    return url.endsWith("/") ? url : `${url}/`;
-}
-
-/**
- * Probably picks an item from the given array of success rates as probablity ranges
- * which are in 2 fixed point decimalss
- * @param ranges - The array of success rates as ranges to randomly select from
- * @returns The index of the picked item from the array or NaN if out-of-range
- */
-export function probablyPicksFrom(ranges: number[]): number {
-    // pick a random int from [1, max] range
-    const max = ranges.reduce((a, b) => a + Math.max(b, 10_000), 0);
-    const pick = Math.floor(Math.random() * max) + 1;
-
-    // we now match the selection rates against
-    // picked random int to get picked index
-    for (let i = 0; i < ranges.length; i++) {
-        const offset = ranges.slice(0, i).reduce((a, b) => a + Math.max(b, 10_000), 0);
-        const lowerBound = offset + 1;
-        const upperBound = offset + ranges[i];
-        if (lowerBound <= pick && pick <= upperBound) {
-            return i;
-        }
-    }
-
-    // out-of-range, picked value didnt match any of the items from the given list
-    return NaN;
 }

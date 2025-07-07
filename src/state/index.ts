@@ -12,7 +12,7 @@ import { ChainConfig, getChainConfig } from "./chain";
 import { createPublicClient, PublicClient } from "viem";
 import { LiquidityProviders, RainDataFetcher } from "sushi";
 import { getMarketPrice, processLiquidityProviders } from "../router";
-import { rainSolverTransport, RainSolverTransportConfig } from "../transport";
+import { rainSolverTransport, RainSolverTransportConfig } from "../rpc";
 
 /**
  * Rain dispair contracts, deployer, store and interpreter

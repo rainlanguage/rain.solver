@@ -1,6 +1,6 @@
 import { parseUnits } from "viem";
 import { AppOptions } from "../config";
-import { SelfFundVault } from "../types";
+import { SelfFundVault } from "../config";
 
 /** Standard base path for eth accounts */
 export const BasePath = "m/44'/60'/0'/0/" as const;

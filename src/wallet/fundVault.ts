@@ -1,5 +1,5 @@
 import { Router } from "sushi";
-import { SelfFundVault } from "../types";
+import { SelfFundVault } from "../config";
 import { RainSolverSigner } from "../signer";
 import { Native, Token } from "sushi/currency";
 import { Deposit2Abi, VaultBalanceAbi } from "../abis";

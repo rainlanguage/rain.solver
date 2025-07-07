@@ -5,14 +5,13 @@ const { RainSolver } = require("../../src/solver");
 const { arbAbis } = require("../../src/abis");
 const { RpcState } = require("../../src/rpc");
 const mockServer = require("mockttp").getLocal();
-const { publicRpcs } = require("../../src/client");
 const { sendTx, waitUntilFree, estimateGasCost } = require("../../src/signer/actions");
 const { ethers, viem, network } = require("hardhat");
 const { ChainKey, RainDataFetcher } = require("sushi");
 const { publicClientConfig } = require("sushi/config");
 const { Resource } = require("@opentelemetry/resources");
 const { getChainConfig } = require("../../src/state/chain");
-const { rainSolverTransport } = require("../../src/transport");
+const { rainSolverTransport } = require("../../src/rpc");
 const { ProcessOrderStatus } = require("../../src/solver/types");
 const ERC20Artifact = require("../abis/ERC20Upgradeable.json");
 const { abi: orderbookAbi } = require("../abis/OrderBook.json");
@@ -98,7 +97,7 @@ for (let i = 0; i < testData.length; i++) {
             createPublicClient({
                 chain: publicClientConfig[chainId].chain,
                 transport: rainSolverTransport(rpcState, {
-                    retryCountNext: Math.max(publicRpcs[chainId] * 2, 50),
+                    retryCountNext: 50,
                     timeout: 600_000,
                 }),
             }),

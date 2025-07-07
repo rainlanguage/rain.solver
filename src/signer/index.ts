@@ -1,6 +1,6 @@
 import { SharedState } from "../state";
 import { RainSolverSignerActions } from "./actions";
-import { rainSolverTransport, RainSolverTransport } from "../transport";
+import { rainSolverTransport, RainSolverTransport } from "../rpc";
 import {
     Chain,
     Client,

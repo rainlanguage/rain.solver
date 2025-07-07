@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /* eslint-disable no-console */
-const { main } = require("./dist/cli/main");
+const { main } = require("./dist");
 const { version } = require("./package.json");
 
 main(process.argv, version)

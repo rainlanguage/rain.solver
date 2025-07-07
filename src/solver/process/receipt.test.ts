@@ -1,4 +1,3 @@
-import { BigNumber } from "ethers";
 import { sleep } from "../../common";
 import { Token } from "sushi/currency";
 import { TransactionReceipt } from "viem";
@@ -123,7 +122,7 @@ describe("Test processReceipt", () => {
                 ...mockReceipt,
                 l1Fee: 50000000000000n,
             } as any;
-            (getActualClearAmount as Mock).mockReturnValue(BigNumber.from("1000000"));
+            (getActualClearAmount as Mock).mockReturnValue(1000000n);
             (getIncome as Mock).mockReturnValue(undefined);
             (getTotalIncome as Mock).mockReturnValue(undefined);
             const result = await processReceipt(mockArgs);
@@ -134,7 +133,7 @@ describe("Test processReceipt", () => {
         });
 
         it("should handle case with no income", async () => {
-            (getActualClearAmount as Mock).mockReturnValue(BigNumber.from("1000000"));
+            (getActualClearAmount as Mock).mockReturnValue(1000000n);
             (getIncome as Mock).mockReturnValue(undefined);
             (getTotalIncome as Mock).mockReturnValue(undefined);
 
