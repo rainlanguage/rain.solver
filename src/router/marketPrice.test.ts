@@ -1,12 +1,13 @@
 import { Router } from "sushi";
-import { SharedState } from ".";
 import { parseUnits } from "viem";
+import { SharedState } from "../state";
 import { Token } from "sushi/currency";
 import { getMarketPrice } from "./marketPrice";
-import { PoolBlackList, RPoolFilter } from "../utils";
+import { PoolBlackList, RPoolFilter } from ".";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 
-vi.mock("sushi", () => ({
+vi.mock("sushi", async (importOriginal) => ({
+    ...(await importOriginal()),
     Router: {
         findBestRoute: vi.fn(),
     },

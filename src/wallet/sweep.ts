@@ -1,4 +1,4 @@
-import { RPoolFilter } from "../utils";
+import { RPoolFilter } from "../router";
 import { TokenDetails } from "../state";
 import { ChainId, Router } from "sushi";
 import { RainSolverSigner } from "../signer";
