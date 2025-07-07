@@ -136,14 +136,14 @@ export async function processOrder(
     try {
         inputToEthPrice = (
             await this.state.getMarketPrice(
-                fromToken,
+                toToken,
                 this.state.chainConfig.nativeWrappedToken,
                 dataFetcherBlockNumber,
             )
         )?.price;
         outputToEthPrice = (
             await this.state.getMarketPrice(
-                toToken,
+                fromToken,
                 this.state.chainConfig.nativeWrappedToken,
                 dataFetcherBlockNumber,
             )
