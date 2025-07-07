@@ -1,8 +1,8 @@
-import { assert } from "chai";
 import { getLocal } from "mockttp";
-import { BigNumber, utils } from "ethers";
-import { createPublicClient, encodeAbiParameters, http } from "viem";
-import { getBountyEnsureRainlang, getWithdrawEnsureRainlang, parseRainlang } from "../src/task";
+import { randomBytes } from "crypto";
+import { describe, it, assert } from "vitest";
+import { getBountyEnsureRainlang, getWithdrawEnsureRainlang, parseRainlang } from ".";
+import { createPublicClient, encodeAbiParameters, formatUnits, http, toHex } from "viem";
 
 describe("Test task", async function () {
     const mockServer = getLocal();
@@ -10,10 +10,10 @@ describe("Test task", async function () {
     afterEach(() => mockServer.stop());
 
     it("should get ensure bounty rainlang", async function () {
-        const inputToEthPrice = BigNumber.from(10);
-        const outputToEthPrice = BigNumber.from(20);
-        const minimumExpected = BigNumber.from(15);
-        const sender = utils.hexlify(utils.randomBytes(20));
+        const inputToEthPrice = 10n;
+        const outputToEthPrice = 20n;
+        const minimumExpected = 15n;
+        const sender = toHex(randomBytes(20));
 
         const result = await getBountyEnsureRainlang(
             inputToEthPrice,
@@ -24,13 +24,13 @@ describe("Test task", async function () {
         const expected = `/* 0. main */ 
 :ensure(equal-to(${sender} context<0 0>()) "unknown sender"),
 total-bounty-eth: add(
-    mul(${utils.formatUnits(inputToEthPrice)} context<1 0>())
-    mul(${utils.formatUnits(outputToEthPrice)} context<1 1>())
+    mul(${formatUnits(inputToEthPrice, 18)} context<1 0>())
+    mul(${formatUnits(outputToEthPrice, 18)} context<1 1>())
 ),
 :ensure(
     greater-than-or-equal-to(
         total-bounty-eth
-        ${utils.formatUnits(minimumExpected)}
+        ${formatUnits(minimumExpected, 18)}
     )
     "minimum sender output"
 );`;
@@ -38,15 +38,15 @@ total-bounty-eth: add(
     });
 
     it("should get withdraw ensure bounty rainlang", async function () {
-        const inputToEthPrice = BigNumber.from(10);
-        const outputToEthPrice = BigNumber.from(20);
-        const minimumExpected = BigNumber.from(15);
-        const sender = utils.hexlify(utils.randomBytes(20));
-        const botAddress = utils.hexlify(utils.randomBytes(20));
-        const inputToken = utils.hexlify(utils.randomBytes(20));
-        const outputToken = utils.hexlify(utils.randomBytes(20));
-        const orgInputBalance = BigNumber.from(45);
-        const orgOutputBalance = BigNumber.from(55);
+        const inputToEthPrice = 10n;
+        const outputToEthPrice = 20n;
+        const minimumExpected = 15n;
+        const sender = toHex(randomBytes(20));
+        const botAddress = toHex(randomBytes(20));
+        const inputToken = toHex(randomBytes(20));
+        const outputToken = toHex(randomBytes(20));
+        const orgInputBalance = 45n;
+        const orgOutputBalance = 55n;
 
         const result = await getWithdrawEnsureRainlang(
             botAddress,
@@ -63,20 +63,20 @@ total-bounty-eth: add(
 :ensure(equal-to(${sender} context<0 0>()) "unknown sender"),
 input-bounty: sub(
     erc20-balance-of(${inputToken} ${botAddress})
-    ${utils.formatUnits(orgInputBalance)}
+    ${formatUnits(orgInputBalance, 18)}
 ),
 output-bounty: sub(
     erc20-balance-of(${outputToken} ${botAddress})
-    ${utils.formatUnits(orgOutputBalance)}
+    ${formatUnits(orgOutputBalance, 18)}
 ),
 total-bounty-eth: add(
-    mul(input-bounty ${utils.formatUnits(inputToEthPrice)})
-    mul(output-bounty ${utils.formatUnits(outputToEthPrice)})
+    mul(input-bounty ${formatUnits(inputToEthPrice, 18)})
+    mul(output-bounty ${formatUnits(outputToEthPrice, 18)})
 ),
 :ensure(
     greater-than-or-equal-to(
         total-bounty-eth
-        ${utils.formatUnits(minimumExpected)}
+        ${formatUnits(minimumExpected, 18)}
     )
     "minimum sender output"
 );`;
@@ -89,12 +89,12 @@ total-bounty-eth: add(
         });
         const rainlang = "some-rainlang";
         const dispair = {
-            interpreter: utils.hexlify(utils.randomBytes(20)),
-            store: utils.hexlify(utils.randomBytes(20)),
-            deployer: utils.hexlify(utils.randomBytes(20)),
+            interpreter: toHex(randomBytes(20)),
+            store: toHex(randomBytes(20)),
+            deployer: toHex(randomBytes(20)),
         };
 
-        const expected = utils.hexlify(utils.randomBytes(32)) as `0x${string}`;
+        const expected = toHex(randomBytes(32)) as `0x${string}`;
         const callResult = encodeAbiParameters([{ type: "bytes" }], [expected]);
 
         // mock call

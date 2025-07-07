@@ -1,8 +1,9 @@
 import { SharedState } from ".";
 import { Token } from "sushi/currency";
 import { ChainId, Router } from "sushi";
+import { ONE18, scale18 } from "../math";
 import { formatUnits, parseUnits } from "viem";
-import { ONE18, PoolBlackList, RPoolFilter, scale18 } from "../utils";
+import { PoolBlackList, RPoolFilter } from "../utils";
 
 /**
  * Get market price for 1 unit of token for a token pair
@@ -43,7 +44,7 @@ export async function getMarketPrice(
             return;
         } else {
             const ratioFixed18 = scale18(route.amountOutBI, toToken.decimals);
-            const price = ratioFixed18.mul(ONE18).div(amountInFixed).toBigInt();
+            const price = (ratioFixed18 * ONE18) / amountInFixed;
             return {
                 price: formatUnits(price, 18),
                 amountOut: formatUnits(route.amountOutBI, toToken.decimals),

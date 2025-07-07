@@ -4,16 +4,11 @@ import { containsNodeError, errorSnapshot } from "../error";
 import { getBountyEnsureRainlang, parseRainlang } from "../task";
 import { BaseError, ExecutionRevertedError, PublicClient } from "viem";
 import { BotConfig, DryrunResult } from "../types";
-import {
-    ONE18,
-    scale18To,
-    estimateProfit,
-    withBigintSerializer,
-    extendSpanAttributes,
-} from "../utils";
+import { estimateProfit, withBigintSerializer, extendSpanAttributes } from "../utils";
 import { BundledOrders } from "../order";
 import { RainSolverSigner } from "../signer";
 import { Attributes } from "@opentelemetry/api";
+import { ONE18, scale18To } from "../math";
 
 const obInterface = new ethers.utils.Interface(orderbookAbi);
 
@@ -50,14 +45,19 @@ export async function dryrun({
         spanAttributes,
     };
 
-    const maximumInput = scale18To(maximumInputFixed, orderPairObject.sellTokenDecimals);
+    const maximumInput = BigNumber.from(
+        scale18To(maximumInputFixed.toBigInt(), orderPairObject.sellTokenDecimals),
+    );
     spanAttributes["maxInput"] = maximumInput.toString();
 
     const opposingMaxInput =
         orderPairObject.takeOrders[0].quote!.ratio === 0n
             ? ethers.constants.MaxUint256
             : scale18To(
-                  maximumInputFixed.mul(orderPairObject.takeOrders[0].quote!.ratio).div(ONE18),
+                  maximumInputFixed
+                      .mul(orderPairObject.takeOrders[0].quote!.ratio)
+                      .div(ONE18)
+                      .toBigInt(),
                   orderPairObject.buyTokenDecimals,
               );
 
@@ -98,9 +98,9 @@ export async function dryrun({
                     ? "0x"
                     : await parseRainlang(
                           await getBountyEnsureRainlang(
-                              ethers.utils.parseUnits(inputToEthPrice),
-                              ethers.utils.parseUnits(outputToEthPrice),
-                              ethers.constants.Zero,
+                              ethers.utils.parseUnits(inputToEthPrice).toBigInt(),
+                              ethers.utils.parseUnits(outputToEthPrice).toBigInt(),
+                              0n,
                               signer.account.address,
                           ),
                           config.viemClient,
@@ -179,9 +179,9 @@ export async function dryrun({
             .toString();
         task.evaluable.bytecode = await parseRainlang(
             await getBountyEnsureRainlang(
-                ethers.utils.parseUnits(inputToEthPrice),
-                ethers.utils.parseUnits(outputToEthPrice),
-                gasCost.mul(headroom).div("100"),
+                ethers.utils.parseUnits(inputToEthPrice).toBigInt(),
+                ethers.utils.parseUnits(outputToEthPrice).toBigInt(),
+                gasCost.mul(headroom).div("100").toBigInt(),
                 signer.account.address,
             ),
             config.viemClient,
@@ -231,9 +231,9 @@ export async function dryrun({
             );
             task.evaluable.bytecode = await parseRainlang(
                 await getBountyEnsureRainlang(
-                    ethers.utils.parseUnits(inputToEthPrice),
-                    ethers.utils.parseUnits(outputToEthPrice),
-                    gasCost.mul(config.gasCoveragePercentage).div("100"),
+                    ethers.utils.parseUnits(inputToEthPrice).toBigInt(),
+                    ethers.utils.parseUnits(outputToEthPrice).toBigInt(),
+                    gasCost.mul(config.gasCoveragePercentage).div("100").toBigInt(),
                     signer.account.address,
                 ),
                 config.viemClient,

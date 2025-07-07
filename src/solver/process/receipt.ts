@@ -1,17 +1,19 @@
 import { BigNumber } from "ethers";
+import { sleep } from "../../utils";
 import { Result } from "../../result";
 import { Token } from "sushi/currency";
 import { handleRevert } from "../../error";
 import { formatUnits, TransactionReceipt } from "viem";
 import { OpStackTransactionReceipt } from "viem/chains";
 import { RainSolverSigner, RawTransaction } from "../../signer";
-import { sleep, toNumber, getIncome, getTotalIncome, getActualClearAmount } from "../../utils";
+import { getIncome, getTotalIncome, getActualClearAmount } from "./log";
 import {
     ProcessOrderFailure,
     ProcessOrderSuccess,
     ProcessOrderHaltReason,
     ProcessOrderResultBase,
 } from "../types";
+import { toNumber } from "../../math";
 
 /** Arguments for processing a transaction receipt */
 export type ProcessReceiptArgs = {
@@ -66,7 +68,7 @@ export async function processReceipt({
             toToken.decimals,
             fromToken.decimals,
         );
-        const netProfit = income ? income.sub(gasCost) : undefined;
+        const netProfit = income ? income - gasCost : undefined;
 
         baseResult.spanAttributes["details.actualGasCost"] = toNumber(gasCost);
         if (l1Fee) {
@@ -78,13 +80,13 @@ export async function processReceipt({
         }
         if (inputTokenIncome) {
             baseResult.spanAttributes["details.inputTokenIncome"] = formatUnits(
-                inputTokenIncome.toBigInt(),
+                inputTokenIncome,
                 toToken.decimals,
             );
         }
         if (outputTokenIncome) {
             baseResult.spanAttributes["details.outputTokenIncome"] = formatUnits(
-                outputTokenIncome.toBigInt(),
+                outputTokenIncome,
                 fromToken.decimals,
             );
         }
@@ -93,10 +95,10 @@ export async function processReceipt({
             ...baseResult,
             clearedAmount: clearActualAmount?.toString(),
             gasCost: gasCost,
-            income: income?.toBigInt(),
+            income,
             inputTokenIncome: baseResult.spanAttributes["details.inputTokenIncome"] as any,
             outputTokenIncome: baseResult.spanAttributes["details.outputTokenIncome"] as any,
-            netProfit: netProfit?.toBigInt(),
+            netProfit,
         };
 
         return Result.ok({

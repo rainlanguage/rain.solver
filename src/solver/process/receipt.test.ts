@@ -1,12 +1,13 @@
 import { BigNumber } from "ethers";
+import { sleep } from "../../utils";
 import { Token } from "sushi/currency";
 import { TransactionReceipt } from "viem";
 import { handleRevert } from "../../error";
 import { RainSolverSigner } from "../../signer";
 import { OpStackTransactionReceipt } from "viem/chains";
 import { ProcessOrderHaltReason, ProcessOrderStatus } from "../types";
+import { getActualClearAmount, getIncome, getTotalIncome } from "./log";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import { sleep, getActualClearAmount, getIncome, getTotalIncome } from "../../utils";
 import { getL1Fee, tryGetReceipt, processReceipt, ProcessReceiptArgs } from "./receipt";
 
 vi.mock("../../error", () => ({
@@ -16,6 +17,10 @@ vi.mock("../../error", () => ({
 vi.mock("../../utils", async (importOriginal) => ({
     ...(await importOriginal()),
     sleep: vi.fn(),
+}));
+
+vi.mock("./log", async (importOriginal) => ({
+    ...(await importOriginal()),
     getIncome: vi.fn(),
     getTotalIncome: vi.fn(),
     getActualClearAmount: vi.fn(),
@@ -80,10 +85,10 @@ describe("Test processReceipt", () => {
 
     describe("successful receipt processing", () => {
         it("should process successful receipt and return ok result", async () => {
-            const mockClearAmount = BigNumber.from("1000000");
-            const mockInputIncome = BigNumber.from("2000000000");
-            const mockOutputIncome = BigNumber.from("1000000000000000000");
-            const mockTotalIncome = BigNumber.from("4000000000000000000");
+            const mockClearAmount = 1000000n;
+            const mockInputIncome = 2000000000n;
+            const mockOutputIncome = 1000000000000000000n;
+            const mockTotalIncome = 4000000000000000000n;
             (getActualClearAmount as Mock).mockReturnValue(mockClearAmount);
             (getIncome as Mock)
                 .mockReturnValueOnce(mockInputIncome) // input token income
@@ -95,7 +100,7 @@ describe("Test processReceipt", () => {
             expect(result.value.status).toBe(ProcessOrderStatus.FoundOpportunity);
             expect(result.value.clearedAmount).toBe(mockClearAmount.toString());
             expect(result.value.gasCost).toBe(420000000000000n); // gasUsed * effectiveGasPrice
-            expect(result.value.income).toBe(mockTotalIncome.toBigInt());
+            expect(result.value.income).toBe(mockTotalIncome);
             expect(result.value.inputTokenIncome).toBe("2000");
             expect(result.value.outputTokenIncome).toBe("1");
             expect(result.value.netProfit).toBeDefined();

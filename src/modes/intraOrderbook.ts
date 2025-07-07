@@ -3,11 +3,12 @@ import { BigNumber, ethers } from "ethers";
 import { containsNodeError, errorSnapshot } from "../error";
 import { getWithdrawEnsureRainlang, parseRainlang } from "../task";
 import { BaseError, erc20Abi, ExecutionRevertedError, PublicClient } from "viem";
-import { estimateProfit, scale18, withBigintSerializer, extendSpanAttributes } from "../utils";
+import { estimateProfit, withBigintSerializer, extendSpanAttributes } from "../utils";
 import { BotConfig, DryrunResult } from "../types";
 import { BundledOrders, TakeOrderDetails } from "../order";
 import { RainSolverSigner } from "../signer";
 import { Attributes } from "@opentelemetry/api";
+import { scale18 } from "../math";
 
 const obInterface = new ethers.utils.Interface(orderbookAbi);
 
@@ -55,11 +56,11 @@ export async function dryrun({
                     signer.account.address,
                     orderPairObject.buyToken,
                     orderPairObject.sellToken,
-                    inputBalance,
-                    outputBalance,
-                    ethers.utils.parseUnits(inputToEthPrice),
-                    ethers.utils.parseUnits(outputToEthPrice),
-                    ethers.constants.Zero,
+                    inputBalance.toBigInt(),
+                    outputBalance.toBigInt(),
+                    ethers.utils.parseUnits(inputToEthPrice).toBigInt(),
+                    ethers.utils.parseUnits(outputToEthPrice).toBigInt(),
+                    0n,
                     signer.account.address,
                 ),
                 config.viemClient,
@@ -166,11 +167,11 @@ export async function dryrun({
                 signer.account.address,
                 orderPairObject.buyToken,
                 orderPairObject.sellToken,
-                inputBalance,
-                outputBalance,
-                ethers.utils.parseUnits(inputToEthPrice),
-                ethers.utils.parseUnits(outputToEthPrice),
-                gasCost.mul(headroom).div("100"),
+                inputBalance.toBigInt(),
+                outputBalance.toBigInt(),
+                ethers.utils.parseUnits(inputToEthPrice).toBigInt(),
+                ethers.utils.parseUnits(outputToEthPrice).toBigInt(),
+                gasCost.mul(headroom).div("100").toBigInt(),
                 signer.account.address,
             ),
             config.viemClient,
@@ -227,11 +228,11 @@ export async function dryrun({
                     signer.account.address,
                     orderPairObject.buyToken,
                     orderPairObject.sellToken,
-                    inputBalance,
-                    outputBalance,
-                    ethers.utils.parseUnits(inputToEthPrice),
-                    ethers.utils.parseUnits(outputToEthPrice),
-                    gasCost.mul(config.gasCoveragePercentage).div("100"),
+                    inputBalance.toBigInt(),
+                    outputBalance.toBigInt(),
+                    ethers.utils.parseUnits(inputToEthPrice).toBigInt(),
+                    ethers.utils.parseUnits(outputToEthPrice).toBigInt(),
+                    gasCost.mul(config.gasCoveragePercentage).div("100").toBigInt(),
                     signer.account.address,
                 ),
                 config.viemClient,
@@ -380,8 +381,8 @@ export async function findOpp({
                 outputToEthPrice,
                 config,
                 viemClient,
-                inputBalance,
-                outputBalance,
+                inputBalance: BigNumber.from(inputBalance),
+                outputBalance: BigNumber.from(outputBalance),
             });
         } catch (e: any) {
             allNoneNodeErrors.push(e?.value?.noneNodeError);

@@ -1,20 +1,12 @@
 import { ChainId } from "sushi/chain";
-import { AfterClearAbi } from "./abis";
 import { RouteLeg } from "sushi/tines";
 import { Token, Type } from "sushi/currency";
 import BlackList from "./pool-blacklist.json";
-import { isBytes, isHexString } from "ethers/lib/utils";
-import { BigNumber, BigNumberish, ethers } from "ethers";
-import { erc20Abi, parseEventLogs, TransactionReceipt } from "viem";
+import { BigNumber, ethers } from "ethers";
 import { BotConfig } from "./types";
 import { RainDataFetcher, LiquidityProviders, Router } from "sushi/router";
 import { TokenDetails } from "./state";
 import { RainSolverSigner } from "./signer";
-
-/**
- * One ether which equals to 1e18
- */
-export const ONE18 = 1_000_000_000_000_000_000n as const;
 
 export const PoolBlackList = new Set(BlackList);
 export function RPoolFilter(pool: any) {
@@ -30,121 +22,6 @@ export async function sleep(ms: number, msg = "") {
     return new Promise(
         (resolve) => (_timeoutReference = setTimeout(() => resolve(msg), ms)),
     ).finally(() => clearTimeout(_timeoutReference));
-}
-
-/**
- * Extracts the income (received token value) from transaction receipt
- * @param signerAddress - The signer address
- * @param receipt - The transaction receipt
- * @param token - The token address that was transfered
- * @returns The income value or undefined if cannot find any valid value
- */
-export function getIncome(
-    signerAddress: string,
-    receipt: TransactionReceipt,
-    token: string,
-): BigNumber | undefined {
-    try {
-        const logs = parseEventLogs({
-            abi: erc20Abi,
-            eventName: "Transfer",
-            logs: receipt.logs,
-        });
-        for (const log of logs) {
-            if (
-                log.eventName === "Transfer" &&
-                (log.address && token ? BigNumber.from(log.address).eq(token) : true) &&
-                BigNumber.from(log.args.to).eq(signerAddress)
-            ) {
-                return BigNumber.from(log.args.value);
-            }
-        }
-    } catch {}
-    return undefined;
-}
-
-/**
- * Extracts the actual clear amount (received token value) from transaction receipt
- * @param toAddress - The to address
- * @param obAddress - The orderbook address
- * @param receipt - The transaction receipt
- * @returns The actual clear amount
- */
-export function getActualClearAmount(
-    toAddress: string,
-    obAddress: string,
-    receipt: TransactionReceipt,
-): BigNumber | undefined {
-    if (toAddress.toLowerCase() !== obAddress.toLowerCase()) {
-        try {
-            const logs = parseEventLogs({
-                abi: erc20Abi,
-                eventName: "Transfer",
-                logs: receipt.logs,
-            });
-            for (const log of logs) {
-                if (
-                    log.eventName === "Transfer" &&
-                    BigNumber.from(log.args.to).eq(toAddress) &&
-                    BigNumber.from(log.args.from).eq(obAddress)
-                ) {
-                    return BigNumber.from(log.args.value);
-                }
-            }
-        } catch {}
-        return undefined;
-    } else {
-        try {
-            const logs = parseEventLogs({
-                abi: AfterClearAbi,
-                eventName: "AfterClear",
-                logs: receipt.logs,
-            });
-            for (const log of logs) {
-                if (log.eventName === "AfterClear") {
-                    return BigNumber.from(log.args.clearStateChange.aliceOutput);
-                }
-            }
-        } catch {}
-        return undefined;
-    }
-}
-
-/**
- * Calculates the actual clear price from transactioin event
- * @param receipt - The transaction receipt
- * @param orderbook - The Orderbook contract address
- * @param arb - The Arb contract address
- * @param clearAmount - The clear amount
- * @param tokenDecimals - The buy token decimals
- * @returns The actual clear price or undefined if necessary info not found in transaction events
- */
-export function getActualPrice(
-    receipt: TransactionReceipt,
-    orderbook: string,
-    arb: string,
-    clearAmount: string,
-    tokenDecimals: number,
-): string | undefined {
-    try {
-        const logs = parseEventLogs({
-            abi: erc20Abi,
-            eventName: "Transfer",
-            logs: receipt.logs,
-        });
-        for (const log of logs) {
-            if (
-                log.eventName === "Transfer" &&
-                BigNumber.from(log.args.to).eq(arb) &&
-                !BigNumber.from(log.args.from).eq(orderbook)
-            ) {
-                return ethers.utils.formatUnits(
-                    scale18(log.args.value, tokenDecimals).mul(ONE18).div(clearAmount),
-                );
-            }
-        }
-    } catch {}
-    return undefined;
 }
 
 /**
@@ -402,47 +279,6 @@ export function clone<T>(obj: any): T {
 }
 
 /**
- * Get total income in native chain's token units
- * @param inputTokenIncome
- * @param outputTokenIncome
- * @param inputTokenPrice
- * @param outputTokenPrice
- * @param inputTokenDecimals
- * @param outputTokenDecimals
- */
-export function getTotalIncome(
-    inputTokenIncome: BigNumber | undefined,
-    outputTokenIncome: BigNumber | undefined,
-    inputTokenPrice: string,
-    outputTokenPrice: string,
-    inputTokenDecimals: number,
-    outputTokenDecimals: number,
-): BigNumber | undefined {
-    if (!inputTokenIncome && !outputTokenIncome) return undefined;
-    const inputTokenIncomeInEth = (() => {
-        if (inputTokenIncome) {
-            return ethers.utils
-                .parseUnits(inputTokenPrice)
-                .mul(scale18(inputTokenIncome, inputTokenDecimals))
-                .div(ONE18);
-        } else {
-            return ethers.constants.Zero;
-        }
-    })();
-    const outputTokenIncomeInEth = (() => {
-        if (outputTokenIncome) {
-            return ethers.utils
-                .parseUnits(outputTokenPrice)
-                .mul(scale18(outputTokenIncome, outputTokenDecimals))
-                .div(ONE18);
-        } else {
-            return ethers.constants.Zero;
-        }
-    })();
-    return inputTokenIncomeInEth.add(outputTokenIncomeInEth);
-}
-
-/**
  * Estimates profit for a arb/clear2 tx
  * @param orderPairObject
  * @param inputToEthPrice
@@ -632,28 +468,6 @@ export function withBigintSerializer(_k: string, v: any) {
 }
 
 /**
- * Converts to a float number
- */
-export function toNumber(value: BigNumberish): number {
-    return Number.parseFloat(ethers.utils.formatUnits(value));
-}
-
-/**
- * Checks if an a value is a big numberish, from ethers
- */
-export function isBigNumberish(value: any): value is BigNumberish {
-    return (
-        value != null &&
-        (BigNumber.isBigNumber(value) ||
-            (typeof value === "number" && value % 1 === 0) ||
-            (typeof value === "string" && !!value.match(/^-?[0-9]+$/)) ||
-            isHexString(value) ||
-            typeof value === "bigint" ||
-            isBytes(value))
-    );
-}
-
-/**
  * Helper function to log memory usage
  */
 export function memory(msg: string) {
@@ -665,30 +479,6 @@ export function memory(msg: string) {
     }
     // eslint-disable-next-line no-console
     console.log("\n---\n");
-}
-
-/**
- * Scales a given value and its decimals to 18 fixed point decimals
- */
-export function scale18(value: BigNumberish, decimals: BigNumberish): BigNumber {
-    const d = BigNumber.from(decimals).toNumber();
-    if (d > 18) {
-        return BigNumber.from(value).div("1" + "0".repeat(d - 18));
-    } else {
-        return BigNumber.from(value).mul("1" + "0".repeat(18 - d));
-    }
-}
-
-/**
- * Scales a given 18 fixed point decimals value to the given decimals point value
- */
-export function scale18To(value: BigNumberish, targetDecimals: BigNumberish): BigNumber {
-    const decimals = BigNumber.from(targetDecimals).toNumber();
-    if (decimals > 18) {
-        return BigNumber.from(value).mul("1" + "0".repeat(decimals - 18));
-    } else {
-        return BigNumber.from(value).div("1" + "0".repeat(18 - decimals));
-    }
 }
 
 /**

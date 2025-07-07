@@ -6,9 +6,6 @@ import { getBountyEnsureRainlang, parseRainlang } from "../task";
 import { BaseError, ExecutionRevertedError, PublicClient } from "viem";
 import { BotConfig, DryrunResult } from "../types";
 import {
-    ONE18,
-    scale18,
-    scale18To,
     RPoolFilter,
     estimateProfit,
     visualizeRoute,
@@ -18,6 +15,7 @@ import {
 import { BundledOrders } from "../order";
 import { RainSolverSigner } from "../signer";
 import { Attributes } from "@opentelemetry/api";
+import { ONE18, scale18, scale18To } from "../math";
 
 /**
  * Specifies the reason that dryrun failed
@@ -70,7 +68,9 @@ export async function dryrun({
     const isPartial =
         orderPairObject.takeOrders[0].quote!.maxOutput != maximumInputFixed.toBigInt();
 
-    const maximumInput = scale18To(maximumInputFixed, orderPairObject.sellTokenDecimals);
+    const maximumInput = BigNumber.from(
+        scale18To(maximumInputFixed.toBigInt(), orderPairObject.sellTokenDecimals),
+    );
     spanAttributes["amountIn"] = ethers.utils.formatUnits(maximumInputFixed);
 
     // get route details from sushi dataFetcher
@@ -94,7 +94,9 @@ export async function dryrun({
         return Promise.reject(result);
     } else {
         spanAttributes["amountOut"] = ethers.utils.formatUnits(route.amountOutBI, toToken.decimals);
-        const rateFixed = scale18(route.amountOutBI, orderPairObject.buyTokenDecimals);
+        const rateFixed = BigNumber.from(
+            scale18(route.amountOutBI, orderPairObject.buyTokenDecimals),
+        );
         const price = rateFixed.mul(ONE18).div(maximumInputFixed);
         spanAttributes["marketPrice"] = ethers.utils.formatEther(price);
 
@@ -158,9 +160,9 @@ export async function dryrun({
                         ? "0x"
                         : await parseRainlang(
                               await getBountyEnsureRainlang(
-                                  ethers.utils.parseUnits(ethPrice),
-                                  ethers.constants.Zero,
-                                  ethers.constants.Zero,
+                                  ethers.utils.parseUnits(ethPrice).toBigInt(),
+                                  0n,
+                                  0n,
                                   signer.account.address,
                               ),
                               config.viemClient,
@@ -243,9 +245,9 @@ export async function dryrun({
                 .toString();
             task.evaluable.bytecode = await parseRainlang(
                 await getBountyEnsureRainlang(
-                    ethers.utils.parseUnits(ethPrice),
-                    ethers.constants.Zero,
-                    gasCost.mul(headroom).div("100"),
+                    ethers.utils.parseUnits(ethPrice).toBigInt(),
+                    0n,
+                    gasCost.mul(headroom).div("100").toBigInt(),
                     signer.account.address,
                 ),
                 config.viemClient,
@@ -295,9 +297,9 @@ export async function dryrun({
                 );
                 task.evaluable.bytecode = await parseRainlang(
                     await getBountyEnsureRainlang(
-                        ethers.utils.parseUnits(ethPrice),
-                        ethers.constants.Zero,
-                        gasCost.mul(config.gasCoveragePercentage).div("100"),
+                        ethers.utils.parseUnits(ethPrice).toBigInt(),
+                        0n,
+                        gasCost.mul(config.gasCoveragePercentage).div("100").toBigInt(),
                         signer.account.address,
                     ),
                     config.viemClient,
@@ -596,10 +598,12 @@ export function findMaxInput({
     const result: BigNumber[] = [];
     const ratio = orderPairObject.takeOrders[0].quote!.ratio;
     const pcMap = dataFetcher.getCurrentPoolCodeMap(fromToken, toToken);
-    const initAmount = scale18To(maximumInputFixed, fromToken.decimals).div(2);
+    const initAmount = BigNumber.from(
+        scale18To(maximumInputFixed.toBigInt(), fromToken.decimals),
+    ).div(2);
     let maximumInput = BigNumber.from(initAmount.toString());
     for (let i = 1; i < 26; i++) {
-        const maxInput18 = scale18(maximumInput, fromToken.decimals);
+        const maxInput18 = BigNumber.from(scale18(maximumInput.toBigInt(), fromToken.decimals));
         const route = Router.findBestRoute(
             pcMap,
             config.chain.id as ChainId,
@@ -616,7 +620,7 @@ export function findMaxInput({
         if (route.status == "NoWay") {
             maximumInput = maximumInput.sub(initAmount.div(2 ** i));
         } else {
-            const amountOut = scale18(route.amountOutBI, toToken.decimals);
+            const amountOut = BigNumber.from(scale18(route.amountOutBI, toToken.decimals));
             const price = amountOut.mul(ONE18).div(maxInput18);
 
             if (price.lt(ratio)) {
