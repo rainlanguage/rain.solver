@@ -63,16 +63,19 @@ describe("Test findBestInterOrderbookTrade", () => {
 
         const mockResults = [
             Result.ok({
+                type: "interOrderbook",
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 100n,
                 oppBlockNumber: 123,
             }),
             Result.ok({
+                type: "interOrderbook",
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 200n, // highest profit
                 oppBlockNumber: 123,
             }),
             Result.ok({
+                type: "interOrderbook",
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 150n,
                 oppBlockNumber: 123,
@@ -100,6 +103,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             false,
         );
         expect(trySimulateTrade).toHaveBeenCalledTimes(3);
+        expect(result.value.type).toBe("interOrderbook");
     });
 
     it("should return success result when only some simulations succeed", async () => {
@@ -115,10 +119,12 @@ describe("Test findBestInterOrderbookTrade", () => {
 
         const mockResults = [
             Result.err({
+                type: "interOrderbook",
                 spanAttributes: { error: "failed" },
                 noneNodeError: "simulation failed",
             }),
             Result.ok({
+                type: "interOrderbook",
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 300n,
                 oppBlockNumber: 123,
@@ -141,6 +147,7 @@ describe("Test findBestInterOrderbookTrade", () => {
         expect(result.value.estimatedProfit).toBe(300n);
         expect(result.value.oppBlockNumber).toBe(123);
         expect(trySimulateTrade).toHaveBeenCalledTimes(2);
+        expect(result.value.type).toBe("interOrderbook");
     });
 
     it("should return error when all simulations fail", async () => {
@@ -186,6 +193,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             { error: "failed2" },
             "againstOrderbooks.0xorderbook2",
         );
+        expect(result.error.type).toBe("interOrderbook");
     });
 
     it("should handle empty counterparty orders", async () => {
@@ -205,6 +213,7 @@ describe("Test findBestInterOrderbookTrade", () => {
         assert(result.isErr());
         expect(result.error.noneNodeError).toBeUndefined();
         expect(trySimulateTrade).not.toHaveBeenCalled();
+        expect(result.error.type).toBe("interOrderbook");
     });
 
     it("should limit to top 3 counterparty orders per orderbook", async () => {
@@ -289,16 +298,19 @@ describe("Test findBestInterOrderbookTrade", () => {
 
         const mockResults = [
             Result.ok({
+                type: "interOrderbook",
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 50n, // lowest
                 oppBlockNumber: 123,
             }),
             Result.ok({
+                type: "interOrderbook",
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 500n, // highest
                 oppBlockNumber: 123,
             }),
             Result.ok({
+                type: "interOrderbook",
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 250n, // middle
                 oppBlockNumber: 123,
@@ -319,5 +331,6 @@ describe("Test findBestInterOrderbookTrade", () => {
 
         assert(result.isOk());
         expect(result.value.estimatedProfit).toBe(500n); // should return the highest profit
+        expect(result.value.type).toBe("interOrderbook");
     });
 });

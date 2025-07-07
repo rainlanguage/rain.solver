@@ -170,6 +170,12 @@ for (let i = 0; i < testData.length; i++) {
                     ? await arbDeploy(orderbook.address, config.routeProcessors[rpVersion])
                     : await ethers.getContractAt(arbAbis, arbAddress);
 
+                state.dispair = {
+                    interpreter: interpreter.address,
+                    store: store.address,
+                    deployer: deployer.address,
+                };
+
                 // set up tokens contracts and impersonate owners
                 const owners = [];
                 for (let i = 0; i < tokens.length; i++) {
@@ -278,7 +284,7 @@ for (let i = 0; i < testData.length; i++) {
                 config.accounts = [];
                 config.mainAccount = bot;
                 config.gasPriceMultiplier = 107;
-                config.gasLimitMultiplier = 100;
+                config.gasLimitMultiplier = 120;
                 config.dispair = {
                     interpreter: interpreter.address,
                     store: store.address,
@@ -299,7 +305,7 @@ for (let i = 0; i < testData.length; i++) {
                         mainSigner: bot,
                         getRandomSigner: () => bot,
                     },
-                    config,
+                    // config,
                 );
                 const { results: reports } = await rainSolver.processNextRound();
 
@@ -416,6 +422,12 @@ for (let i = 0; i < testData.length; i++) {
                 const arb = !arbAddress
                     ? await arbDeploy(orderbook1.address, config.routeProcessors[rpVersion])
                     : await ethers.getContractAt(arbAbis, arbAddress);
+
+                state.dispair = {
+                    interpreter: interpreter.address,
+                    store: store.address,
+                    deployer: deployer.address,
+                };
 
                 // set up tokens contracts and impersonate owners
                 const owners = [];
@@ -581,7 +593,7 @@ for (let i = 0; i < testData.length; i++) {
                 config.accounts = [];
                 config.mainAccount = bot;
                 config.gasPriceMultiplier = 107;
-                config.gasLimitMultiplier = 100;
+                config.gasLimitMultiplier = 120;
                 config.dispair = {
                     interpreter: interpreter.address,
                     store: store.address,
@@ -620,7 +632,7 @@ for (let i = 0; i < testData.length; i++) {
                         mainSigner: bot,
                         getRandomSigner: () => bot,
                     },
-                    config,
+                    // config,
                 );
                 const { results: reports } = await rainSolver.processNextRound();
 
@@ -755,6 +767,12 @@ for (let i = 0; i < testData.length; i++) {
                 const arb = !arbAddress
                     ? await arbDeploy(orderbook.address, config.routeProcessors[rpVersion])
                     : await ethers.getContractAt(arbAbis, arbAddress);
+
+                state.dispair = {
+                    interpreter: interpreter.address,
+                    store: store.address,
+                    deployer: deployer.address,
+                };
 
                 // set up tokens contracts and impersonate owners
                 const owners = [];
@@ -932,7 +950,7 @@ for (let i = 0; i < testData.length; i++) {
                 config.accounts = [];
                 config.mainAccount = bot;
                 config.gasPriceMultiplier = 107;
-                config.gasLimitMultiplier = 100;
+                config.gasLimitMultiplier = 120;
                 config.dispair = {
                     interpreter: interpreter.address,
                     store: store.address,
@@ -971,7 +989,7 @@ for (let i = 0; i < testData.length; i++) {
                         mainSigner: bot,
                         getRandomSigner: () => bot,
                     },
-                    config,
+                    // config,
                 );
                 const { results: reports } = await rainSolver.processNextRound();
 

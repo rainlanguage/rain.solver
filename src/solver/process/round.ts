@@ -1,8 +1,6 @@
-import { ethers } from "ethers";
 import { RainSolver } from "..";
 import { Result } from "../../result";
 import { PreAssembledSpan } from "../../logger";
-import { arbAbis, orderbookAbi } from "../../abis";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { ErrorSeverity, errorSnapshot, isTimeout, KnownErrors } from "../../error";
 import {
@@ -25,21 +23,10 @@ export type Settlement = {
  */
 export async function initializeRound(this: RainSolver) {
     const orders = this.orderManager.getNextRoundOrders(true);
-
-    // instantiating arb contract
-    const arb = new ethers.Contract(this.appOptions.arbAddress, arbAbis);
-    let genericArb;
-    if (this.appOptions.genericArbAddress) {
-        genericArb = new ethers.Contract(this.appOptions.genericArbAddress, arbAbis);
-    }
-
     const settlements: Settlement[] = [];
     const checkpointReports: PreAssembledSpan[] = [];
     for (const orderbookOrders of orders) {
         for (const pairOrders of orderbookOrders) {
-            // instantiating orderbook contract
-            const orderbook = new ethers.Contract(pairOrders.orderbook, orderbookAbi);
-
             for (let i = 0; i < pairOrders.takeOrders.length; i++) {
                 const orderDetails = {
                     orderbook: pairOrders.orderbook,
@@ -60,7 +47,7 @@ export async function initializeRound(this: RainSolver) {
                 report.extendAttrs({
                     "details.pair": pair,
                     "details.orderHash": orderDetails.takeOrders[0].id,
-                    "details.orderbook": orderbook.address,
+                    "details.orderbook": orderDetails.orderbook,
                     "details.sender": signer.account.address,
                     "details.owner": orderDetails.takeOrders[0].takeOrder.order.owner,
                 });
@@ -71,10 +58,6 @@ export async function initializeRound(this: RainSolver) {
                 const settle = await this.processOrder({
                     orderDetails,
                     signer,
-                    arb,
-                    genericArb,
-                    orderbook,
-                    orderbooksOrders: orders,
                 });
                 settlements.push({
                     settle,

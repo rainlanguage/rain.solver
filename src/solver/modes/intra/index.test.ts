@@ -106,16 +106,19 @@ describe("Test findBestIntraOrderbookTrade", () => {
 
         const mockResults = [
             Result.ok({
+                type: "intraOrderbook",
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 100n,
                 oppBlockNumber: 123,
             }),
             Result.ok({
+                type: "intraOrderbook",
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 250n, // highest profit
                 oppBlockNumber: 123,
             }),
             Result.ok({
+                type: "intraOrderbook",
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 150n,
                 oppBlockNumber: 123,
@@ -143,6 +146,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             true,
         );
         expect(trySimulateTrade).toHaveBeenCalledTimes(3);
+        expect(result.value.type).toBe("intraOrderbook");
     });
 
     it("should return success result when only some simulations succeed", async () => {
@@ -174,10 +178,12 @@ describe("Test findBestIntraOrderbookTrade", () => {
 
         const mockResults = [
             Result.err({
+                type: "intraOrderbook",
                 spanAttributes: { error: "failed" },
                 noneNodeError: "simulation failed",
             }),
             Result.ok({
+                type: "intraOrderbook",
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 300n,
                 oppBlockNumber: 123,
@@ -200,6 +206,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
         expect(result.value.estimatedProfit).toBe(300n);
         expect(result.value.oppBlockNumber).toBe(123);
         expect(trySimulateTrade).toHaveBeenCalledTimes(2);
+        expect(result.value.type).toBe("intraOrderbook");
     });
 
     it("should return error when all simulations fail", async () => {
@@ -253,6 +260,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
 
         assert(result.isErr());
         expect(result.error.noneNodeError).toBe("simulation failed 1"); // first error
+        expect(result.error.type).toBe("intraOrderbook");
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             { error: "failed1" },
@@ -591,5 +599,6 @@ describe("Test findBestIntraOrderbookTrade", () => {
         assert(result.isErr());
         expect(result.error.noneNodeError).toBeUndefined();
         expect(trySimulateTrade).not.toHaveBeenCalled();
+        expect(result.error.type).toBe("intraOrderbook");
     });
 });

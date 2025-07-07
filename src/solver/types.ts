@@ -22,6 +22,13 @@ export enum ProcessOrderStatus {
     FoundOpportunity = 3,
 }
 
+/** Specifies types of trades */
+export enum TradeType {
+    RouteProcessor = "routeProcessor",
+    IntraOrderbook = "intraOrderbook",
+    InterOrderbook = "interOrderbook",
+}
+
 /** Base type for process order results containing shared fields */
 export type ProcessOrderResultBase = {
     status: ProcessOrderStatus;
@@ -79,12 +86,20 @@ export type DryrunFailure = DryrunResultBase & {
 export type DryrunResult = Result<DryrunSuccess, DryrunFailure>;
 
 // simulation result types
-export type SuccessSimulation = {
+export type SimulationResultBase = {
+    type: TradeType;
+};
+export type SuccessSimulation = SimulationResultBase & {
     spanAttributes: Attributes;
     estimatedGasCost: bigint;
     estimatedProfit: bigint;
     rawtx: RawTransaction;
     oppBlockNumber: number;
 };
-export type FailedSimulation = DryrunFailure;
+export type FailedSimulation = SimulationResultBase & DryrunFailure;
 export type SimulationResult = Result<SuccessSimulation, FailedSimulation>;
+
+// find best trade result types
+export type FindBestTradeSuccess = SuccessSimulation;
+export type FindBestTradeFailure = Pick<FailedSimulation, "spanAttributes" | "noneNodeError">;
+export type FindBestTradeResult = Result<FindBestTradeSuccess, FindBestTradeFailure>;

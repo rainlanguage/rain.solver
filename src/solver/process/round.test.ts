@@ -46,7 +46,6 @@ describe("Test initializeRound", () => {
             orderManager: mockOrderManager,
             walletManager: mockWalletManager,
             state: mockState,
-            config: {},
             appOptions: mockAppOptions,
             processOrder: vi.fn(),
         } as any;
@@ -176,11 +175,10 @@ describe("Test initializeRound", () => {
 
             expect(result.settlements).toHaveLength(1);
             expect(result.checkpointReports).toHaveLength(1);
-            expect(mockSolver.processOrder).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    genericArb: undefined,
-                }),
-            );
+            expect(mockSolver.processOrder).toHaveBeenCalledWith({
+                orderDetails: expect.objectContaining(mockOrders[0][0]),
+                signer: mockSigner,
+            });
         });
     });
 
@@ -274,10 +272,6 @@ describe("Test initializeRound", () => {
             expect(mockSolver.processOrder).toHaveBeenCalledWith({
                 orderDetails,
                 signer: mockSigner,
-                arb: expect.any(Object),
-                genericArb: expect.any(Object),
-                orderbook: expect.any(Object),
-                orderbooksOrders: mockOrders,
             });
         });
     });

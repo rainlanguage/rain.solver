@@ -1,8 +1,8 @@
 import { RainSolver } from "..";
-import { findOpp } from "../../modes";
 import { Result } from "../../result";
+import { toNumber } from "../../math";
 import { Token } from "sushi/currency";
-import { Contract, ethers } from "ethers";
+import { PoolBlackList } from "../../utils";
 import { BundledOrders } from "../../order";
 import { errorSnapshot } from "../../error";
 import { formatUnits, parseUnits } from "viem";
@@ -10,7 +10,6 @@ import { RainDataFetcherOptions } from "sushi";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../signer";
 import { processTransaction } from "./transaction";
-import { PoolBlackList } from "../../utils";
 import {
     ProcessOrderStatus,
     ProcessOrderSuccess,
@@ -18,16 +17,11 @@ import {
     ProcessOrderHaltReason,
     ProcessOrderResultBase,
 } from "../types";
-import { toNumber } from "../../math";
 
 /** Arguments for processing an order */
 export type ProcessOrderArgs = {
     orderDetails: BundledOrders;
     signer: RainSolverSigner;
-    arb: Contract;
-    genericArb: Contract | undefined;
-    orderbook: Contract;
-    orderbooksOrders: BundledOrders[][];
 };
 
 /**
@@ -39,7 +33,7 @@ export async function processOrder(
     this: RainSolver,
     args: ProcessOrderArgs,
 ): Promise<() => Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>>> {
-    const { orderDetails, signer, arb, genericArb, orderbook, orderbooksOrders } = args;
+    const { orderDetails, signer } = args;
     const fromToken = new Token({
         chainId: this.state.chainConfig.id,
         decimals: orderDetails.sellTokenDecimals,
@@ -191,48 +185,25 @@ export async function processOrder(
         spanAttributes["details.gasPriceL1"] = this.state.l1GasPrice.toString();
     }
 
-    // find opp through different modes
-    let rawtx, oppBlockNumber, estimatedProfit;
-    try {
-        const findOppResult = await findOpp({
-            orderPairObject: orderDetails,
-            dataFetcher: this.state.dataFetcher,
-            arb,
-            genericArb,
-            fromToken,
-            toToken,
-            signer,
-            gasPrice: this.state.gasPrice,
-            config: this.config,
-            viemClient: this.state.client,
-            inputToEthPrice,
-            outputToEthPrice,
-            orderbooksOrders,
-        });
-        ({ rawtx, oppBlockNumber, estimatedProfit } = findOppResult.value!);
-
-        if (!rawtx || !oppBlockNumber) throw "undefined tx/block number";
-
-        // record span attrs
-        spanAttributes["details.estimatedProfit"] = ethers.utils.formatUnits(estimatedProfit);
-        for (const attrKey in findOppResult.spanAttributes) {
-            if (attrKey !== "oppBlockNumber" && attrKey !== "foundOpp") {
-                spanAttributes["details." + attrKey] = findOppResult.spanAttributes[attrKey];
-            } else {
-                spanAttributes[attrKey] = findOppResult.spanAttributes[attrKey];
-            }
-        }
-    } catch (e: any) {
+    const trade = await this.findBestTrade({
+        orderDetails,
+        signer,
+        toToken,
+        fromToken,
+        inputToEthPrice,
+        outputToEthPrice,
+    });
+    if (trade.isErr()) {
         const result: ProcessOrderSuccess = {
             ...baseResult,
         };
         // record all span attributes
-        for (const attrKey in e.spanAttributes) {
-            spanAttributes["details." + attrKey] = e.spanAttributes[attrKey];
+        for (const attrKey in trade.error.spanAttributes) {
+            spanAttributes["details." + attrKey] = trade.error.spanAttributes[attrKey];
         }
-        if (e.noneNodeError) {
+        if (trade.error.noneNodeError) {
             spanAttributes["details.noneNodeError"] = true;
-            result.message = e.noneNodeError;
+            result.message = trade.error.noneNodeError;
         } else {
             spanAttributes["details.noneNodeError"] = false;
         }
@@ -240,8 +211,19 @@ export async function processOrder(
     }
 
     // from here on we know an opp is found, so record it in report and in otel span attributes
+    const { rawtx, oppBlockNumber, estimatedProfit } = trade.value;
+
+    // record span attrs and status
     baseResult.status = ProcessOrderStatus.FoundOpportunity;
     spanAttributes["foundOpp"] = true;
+    spanAttributes["details.estimatedProfit"] = formatUnits(estimatedProfit, 18);
+    for (const attrKey in trade.value.spanAttributes) {
+        if (attrKey !== "oppBlockNumber" && attrKey !== "foundOpp") {
+            spanAttributes["details." + attrKey] = trade.value.spanAttributes[attrKey];
+        } else {
+            spanAttributes[attrKey] = trade.value.spanAttributes[attrKey];
+        }
+    }
 
     // get block number
     let blockNumber: number;
@@ -264,6 +246,6 @@ export async function processOrder(
         baseResult,
         inputToEthPrice,
         outputToEthPrice,
-        orderbook: orderbook.address as `0x${string}`,
+        orderbook: orderDetails.orderbook as `0x${string}`,
     });
 }

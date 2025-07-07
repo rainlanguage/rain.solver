@@ -5,11 +5,11 @@ import { estimateProfit } from "./utils";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
-import { SimulationResult, TaskType } from "../../types";
 import { BundledOrders, TakeOrderDetails } from "../../../order";
 import { encodeFunctionData, maxUint256, parseUnits } from "viem";
 import { getWithdrawEnsureRainlang, parseRainlang } from "../../../task";
 import { Clear2Abi, OrderbookMulticallAbi, Withdraw2Abi } from "../../../abis";
+import { FailedSimulation, SimulationResult, TaskType, TradeType } from "../../types";
 
 /** Arguments for simulating inter-orderbook trade */
 export type SimulateIntraOrderbookTradeArgs = {
@@ -134,7 +134,8 @@ export async function trySimulateTrade(
     if (initDryrunResult.isErr()) {
         spanAttributes["stage"] = 1;
         Object.assign(initDryrunResult.error.spanAttributes, spanAttributes);
-        return Result.err(initDryrunResult.error);
+        (initDryrunResult.error as FailedSimulation).type = TradeType.IntraOrderbook;
+        return Result.err(initDryrunResult.error as FailedSimulation);
     }
 
     let { estimation, estimatedGasCost } = initDryrunResult.value;
@@ -201,7 +202,8 @@ export async function trySimulateTrade(
         if (finalDryrunResult.isErr()) {
             spanAttributes["stage"] = 2;
             Object.assign(finalDryrunResult.error.spanAttributes, spanAttributes);
-            return Result.err(finalDryrunResult.error);
+            (finalDryrunResult.error as FailedSimulation).type = TradeType.IntraOrderbook;
+            return Result.err(finalDryrunResult.error as FailedSimulation);
         }
 
         ({ estimation, estimatedGasCost } = finalDryrunResult.value);
@@ -257,6 +259,7 @@ export async function trySimulateTrade(
     // if reached here, it means there was a success and found opp
     spanAttributes["foundOpp"] = true;
     const result = {
+        type: TradeType.IntraOrderbook,
         spanAttributes,
         rawtx,
         estimatedGasCost,

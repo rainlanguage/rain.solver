@@ -66,6 +66,7 @@ describe("Test findBestRouteProcessorTrade", () => {
 
     it("should return success result if full trade size simulation succeeds", async () => {
         const mockSuccessResult = Result.ok({
+            type: "routeProcessor",
             spanAttributes: { foundOpp: true },
             estimatedProfit: 100n,
             oppBlockNumber: 123,
@@ -85,6 +86,7 @@ describe("Test findBestRouteProcessorTrade", () => {
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.estimatedProfit).toBe(100n);
         expect(result.value.oppBlockNumber).toBe(123);
+        expect(result.value.type).toBe("routeProcessor");
         expect(trySimulateTrade).toHaveBeenCalledWith({
             orderDetails,
             fromToken,
@@ -116,6 +118,7 @@ describe("Test findBestRouteProcessorTrade", () => {
 
         assert(result.isErr());
         expect(result.error.noneNodeError).toBe("no route available");
+        expect(result.error.type).toBe("routeProcessor");
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             { route: "no-way" },
@@ -130,6 +133,7 @@ describe("Test findBestRouteProcessorTrade", () => {
             noneNodeError: "order ratio issue",
         });
         const mockPartialTradeSuccess = Result.ok({
+            type: "routeProcessor",
             spanAttributes: { foundOpp: true },
             estimatedProfit: 50n,
             oppBlockNumber: 123,
@@ -152,6 +156,7 @@ describe("Test findBestRouteProcessorTrade", () => {
         assert(result.isOk());
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.estimatedProfit).toBe(50n);
+        expect(result.value.type).toBe("routeProcessor");
         expect(findLargestTradeSize).toHaveBeenCalledWith(orderDetails, toToken, fromToken, 3000n);
         expect(trySimulateTrade).toHaveBeenCalledTimes(2);
         expect(trySimulateTrade).toHaveBeenLastCalledWith({
@@ -187,6 +192,7 @@ describe("Test findBestRouteProcessorTrade", () => {
 
         assert(result.isErr());
         expect(result.error.noneNodeError).toBe("order ratio issue");
+        expect(result.error.type).toBe("routeProcessor");
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             { error: "ratio too high" },
@@ -222,6 +228,7 @@ describe("Test findBestRouteProcessorTrade", () => {
 
         assert(result.isErr());
         expect(result.error.noneNodeError).toBe("order ratio issue"); // from full trade error
+        expect(result.error.type).toBe("routeProcessor");
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             { error: "ratio too high" },
@@ -241,6 +248,7 @@ describe("Test findBestRouteProcessorTrade", () => {
             noneNodeError: "order ratio issue",
         });
         const mockPartialTradeSuccess = Result.ok({
+            type: "routeProcessor",
             spanAttributes: { foundOpp: true },
             estimatedProfit: 75n,
             oppBlockNumber: 123,
@@ -264,6 +272,7 @@ describe("Test findBestRouteProcessorTrade", () => {
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.estimatedProfit).toBe(75n);
         expect(result.value.oppBlockNumber).toBe(123);
+        expect(result.value.type).toBe("routeProcessor");
         expect(findLargestTradeSize).toHaveBeenCalledWith(orderDetails, toToken, fromToken, 3000n);
         expect(trySimulateTrade).toHaveBeenCalledTimes(2);
         expect(trySimulateTrade).toHaveBeenLastCalledWith({

@@ -105,6 +105,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error).toHaveProperty("reason");
         expect(result.error.reason).toBe(RouteProcessorSimulationHaltReason.NoRoute);
         expect(result.error.spanAttributes.route).toBe("no-way");
+        expect(result.error.type).toBe("routeProcessor");
     });
 
     it("should return OrderRatioGreaterThanMarketPrice if price < order ratio", async () => {
@@ -126,6 +127,7 @@ describe("Test trySimulateTrade", () => {
         );
         expect(result.error.spanAttributes.error).toBe("Order's ratio greater than market price");
         expect(Array.isArray(result.error.spanAttributes.route)).toBe(true);
+        expect(result.error.type).toBe("routeProcessor");
     });
 
     it("should return NoOpportunity if initial dryrun fails", async () => {
@@ -150,6 +152,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.reason).toBe(RouteProcessorSimulationHaltReason.NoOpportunity);
         expect(result.error.spanAttributes.stage).toBe(1);
         expect(result.error.spanAttributes.oppBlockNumber).toBe(123);
+        expect(result.error.type).toBe("routeProcessor");
     });
 
     it("should return ok result if all steps succeed with gasCoveragePercentage 0", async () => {
@@ -183,6 +186,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.rawtx).toHaveProperty("data", "0xdata");
         expect(result.value.rawtx).toHaveProperty("to", "0xarb");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
+        expect(result.value.type).toBe("routeProcessor");
 
         // Assert encodeFunctionData was called correctly
         expect(encodeFunctionData).toHaveBeenCalledWith({
@@ -256,6 +260,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.rawtx).toHaveProperty("data", "0xdata");
         expect(result.value.rawtx).toHaveProperty("to", "0xarb");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
+        expect(result.value.type).toBe("routeProcessor");
 
         // verify called times
         expect(encodeFunctionData).toHaveBeenCalledTimes(3);
@@ -282,6 +287,7 @@ describe("Test trySimulateTrade", () => {
 
         assert(result.isOk());
         expect(result.value.spanAttributes.foundOpp).toBe(true);
+        expect(result.value.type).toBe("routeProcessor");
 
         // verify encodeAbiParameters was called with partial flag affecting maximumInput
         expect(encodeAbiParameters).toHaveBeenCalledWith(
@@ -320,6 +326,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error).toHaveProperty("reason");
         expect(result.error.reason).toBe(RouteProcessorSimulationHaltReason.NoOpportunity);
         expect(result.error.spanAttributes.stage).toBe(2);
+        expect(result.error.type).toBe("routeProcessor");
 
         // verify encodeFunctionData was called twice (for both dryruns)
         expect(encodeFunctionData).toHaveBeenCalledTimes(2);

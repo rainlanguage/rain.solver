@@ -1,11 +1,11 @@
 import { RainSolver } from "../..";
 import { Token } from "sushi/currency";
 import { Result } from "../../../result";
-import { SimulationResult } from "../../types";
 import { BundledOrders } from "../../../order";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
+import { SimulationResult, TradeType } from "../../types";
 import {
     trySimulateTrade,
     findLargestTradeSize,
@@ -54,6 +54,7 @@ export async function findBestRouteProcessorTrade(
     // return early if no route was found for this order's pair
     if (fullTradeSizeSimResult.error.reason === RouteProcessorSimulationHaltReason.NoRoute) {
         return Result.err({
+            type: TradeType.RouteProcessor,
             spanAttributes,
             noneNodeError: fullTradeSizeSimResult.error.noneNodeError,
         });
@@ -69,6 +70,7 @@ export async function findBestRouteProcessorTrade(
     );
     if (!partialTradeSize) {
         return Result.err({
+            type: TradeType.RouteProcessor,
             spanAttributes,
             noneNodeError: fullTradeSizeSimResult.error.noneNodeError,
         });
@@ -92,6 +94,7 @@ export async function findBestRouteProcessorTrade(
         "partial",
     );
     return Result.err({
+        type: TradeType.RouteProcessor,
         spanAttributes,
         noneNodeError:
             fullTradeSizeSimResult.error.noneNodeError ??

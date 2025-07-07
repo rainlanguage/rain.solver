@@ -2,11 +2,11 @@ import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
 import { ONE18 } from "../../../math";
 import { Result } from "../../../result";
+import { SimulationResult } from "../../types";
 import { BundledOrders, Pair } from "../../../order";
 import { encodeFunctionData, encodeAbiParameters } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { trySimulateTrade, SimulateInterOrderbookTradeArgs } from "./simulate";
-import { SimulationResult } from "../../types";
 
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
@@ -95,6 +95,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.spanAttributes.stage).toBe(1);
         expect(result.error.spanAttributes.oppBlockNumber).toBe(123);
         expect(result.error.spanAttributes.maxInput).toBe("10000000000000000000");
+        expect(result.error.type).toBe("interOrderbook");
     });
 
     it("should return ok result if all steps succeed with gasCoveragePercentage 0", async () => {
@@ -123,6 +124,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.rawtx).toHaveProperty("data", "0xdata");
         expect(result.value.rawtx).toHaveProperty("to", "0xarb");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
+        expect(result.value.type).toBe("interOrderbook");
 
         // Assert encodeFunctionData was called correctly
         expect(encodeFunctionData).toHaveBeenCalledWith({
@@ -195,6 +197,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.rawtx).toHaveProperty("data", "0xdata");
         expect(result.value.rawtx).toHaveProperty("to", "0xarb");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
+        expect(result.value.type).toBe("interOrderbook");
 
         // Verify encodeFunctionData called 3 times (initial, final, and last)
         expect(encodeFunctionData).toHaveBeenCalledTimes(4);
@@ -215,6 +218,7 @@ describe("Test trySimulateTrade", () => {
 
         assert(result.isOk());
         expect(result.value.spanAttributes.foundOpp).toBe(true);
+        expect(result.value.type).toBe("interOrderbook");
 
         // Verify that maxUint256 is used for zero ratio
         expect(encodeFunctionData).toHaveBeenCalledWith({
@@ -258,6 +262,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.spanAttributes["gasEst.initial.totalCost"]).toBe("200");
         expect(result.error.spanAttributes["gasEst.initial.gasPrice"]).toBe("1");
         expect(result.error.spanAttributes["gasEst.initial.minBountyExpected"]).toBe("206");
+        expect(result.error.type).toBe("interOrderbook");
 
         // Verify encodeFunctionData was called twice (for both dryruns)
         expect(encodeFunctionData).toHaveBeenCalledTimes(3);
@@ -283,5 +288,6 @@ describe("Test trySimulateTrade", () => {
         assert(result.isOk());
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.spanAttributes.maxInput).toBe("10000000"); // scaled to 6 decimals
+        expect(result.value.type).toBe("interOrderbook");
     });
 });
