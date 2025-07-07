@@ -38,9 +38,9 @@ describe("Test estimateProfit", () => {
         // opposingMaxIORatio = 1^2 / 2 = 0.5
         // Since opposingMaxIORatio (0.5) < counterpartyOrder.ratio (1.5), counterparty conditions not met
         // counterpartyInput = 0, counterpartyOutput = 0
-        // outputProfit = 10 - (0 * 3) / 1 = 10
-        // inputProfit = 0 - (20 * 1) / 1 = -20
-        // total = 10 + (-20) = -10
+        // outputProfit = ((10 - 0) * 3) / 1 = 30
+        // inputProfit = ((0 - 20) * 1) / 1 = -20
+        // total = 30 + (-20) = 10
         const result = estimateProfit(
             orderDetails,
             inputToEthPrice,
@@ -48,7 +48,7 @@ describe("Test estimateProfit", () => {
             counterpartyOrder,
             maxInput,
         );
-        expect(result).toBe(-10n * ONE18);
+        expect(result).toBe(10n * ONE18);
     });
 
     it("should handle zero ratio in order (maxUint256 case)", () => {
@@ -66,9 +66,9 @@ describe("Test estimateProfit", () => {
         // maxOut = min(maxUint256, 5) = 5
         // counterpartyOutput = 5
         // counterpartyInput = (5 * 1) / 1 = 5
-        // outputProfit = 10 - (5 * 2) / 1 = 0
-        // inputProfit = 5 - (0 * 1) / 1 = 5
-        // total = 0 + 5 = 5
+        // outputProfit = ((10 - 5) * 2) / 1 = 10
+        // inputProfit = ((5 - 0) * 1) / 1 = 5
+        // total = 10 + 5 = 5
         const result = estimateProfit(
             orderDetails,
             inputToEthPrice,
@@ -76,7 +76,7 @@ describe("Test estimateProfit", () => {
             counterpartyOrder,
             maxInput,
         );
-        expect(result).toBe(5n * ONE18);
+        expect(result).toBe(15n * ONE18);
     });
 
     it("should handle counterparty trade when opposing max input is limiting factor", () => {
@@ -94,9 +94,9 @@ describe("Test estimateProfit", () => {
         // maxOut = min(10, 20) = 10 (opposingMaxInput is limiting)
         // counterpartyOutput = 10
         // counterpartyInput = (10 * 0.5) / 1 = 5
-        // outputProfit = 10 - (5 * 1) / 1 = 5
-        // inputProfit = 10 - (10 * 2) / 1 = -10
-        // total = 5 + (-10) = -5
+        // outputProfit = ((10 - 5) * 1) / 1 = 5
+        // inputProfit = ((10 - 10) * 2) / 1 = 0
+        // total = 5 + 0 = 5
         const result = estimateProfit(
             orderDetails,
             inputToEthPrice,
@@ -104,7 +104,7 @@ describe("Test estimateProfit", () => {
             counterpartyOrder,
             maxInput,
         );
-        expect(result).toBe(-5n * ONE18);
+        expect(result).toBe(5n * ONE18);
     });
 
     it("should handle counterparty trade when counterparty max output is limiting factor", () => {
