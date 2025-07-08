@@ -1,7 +1,7 @@
 require("dotenv").config();
 const { assert } = require("chai");
 const testData = require("./data");
-const { RainSolver } = require("../../src/solver");
+const { RainSolver } = require("../../src/core");
 const { arbAbis } = require("../../src/abis");
 const { RpcState } = require("../../src/rpc");
 const mockServer = require("mockttp").getLocal();
@@ -12,7 +12,7 @@ const { publicClientConfig } = require("sushi/config");
 const { Resource } = require("@opentelemetry/resources");
 const { getChainConfig } = require("../../src/state/chain");
 const { rainSolverTransport } = require("../../src/rpc");
-const { ProcessOrderStatus } = require("../../src/solver/types");
+const { ProcessOrderStatus } = require("../../src/core/types");
 const ERC20Artifact = require("../abis/ERC20Upgradeable.json");
 const { abi: orderbookAbi } = require("../abis/OrderBook.json");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");

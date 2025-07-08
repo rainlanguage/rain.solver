@@ -1,8 +1,8 @@
 export * as sushi from "sushi";
 export { main } from "./cli/main";
+export { RainSolver } from "./core";
 export { RainSolverCli } from "./cli";
 export { AppOptions } from "./config";
-export { RainSolver } from "./solver";
 export { OrderManager } from "./order";
 export { WalletManager, WalletConfig } from "./wallet";
 export { SharedState, SharedStateConfig } from "./state";
