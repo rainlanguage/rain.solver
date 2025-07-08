@@ -217,6 +217,15 @@ export const processOrders = async (
             reports.push(result.report);
 
             // set the span attributes with the values gathered at processPair()
+            for (const attrKey in result.spanAttributes) {
+                if (attrKey.startsWith("event.")) {
+                    span.addEvent(
+                        attrKey.replace("event.", ""),
+                        result.spanAttributes[attrKey] as number,
+                    );
+                }
+                delete result.spanAttributes[attrKey];
+            }
             span.setAttributes(result.spanAttributes);
 
             // set the otel span status based on report status
@@ -237,6 +246,15 @@ export const processOrders = async (
             }
         } catch (e: any) {
             // set the span attributes with the values gathered at processPair()
+            for (const attrKey in e.spanAttributes) {
+                if (attrKey.startsWith("event.")) {
+                    span.addEvent(
+                        attrKey.replace("event.", ""),
+                        e.spanAttributes[attrKey] as number,
+                    );
+                }
+                delete e.spanAttributes[attrKey];
+            }
             span.setAttributes(e.spanAttributes);
 
             // record otel span status based on reported reason
