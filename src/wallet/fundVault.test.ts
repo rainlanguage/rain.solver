@@ -1,7 +1,7 @@
 import { Router } from "sushi";
 import { parseUnits } from "viem";
 import { fundVault } from "./fundVault";
-import { SelfFundVault } from "../types";
+import { SelfFundVault } from "../config";
 import { RainSolverSigner } from "../signer";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 

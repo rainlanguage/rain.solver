@@ -1,9 +1,8 @@
 import assert from "assert";
 import { parse } from "yaml";
-import { ethers } from "ethers";
+import { isAddress } from "viem";
 import { readFileSync } from "fs";
 import { RpcConfig } from "../rpc";
-import { SelfFundVault } from "../types";
 import { isBigNumberish } from "../math";
 import { SgFilter } from "../subgraph/filter";
 
@@ -15,6 +14,15 @@ export const FLOAT_PATTERN = /^[0-9]+(\.[0-9]+)?$/;
 
 /** Solidity hash pattern */
 export const HASH_PATTERN = /^(0x)?[a-fA-F0-9]{64}$/;
+
+/** Represents a type for self-funding vaults from config */
+export type SelfFundVault = {
+    token: string;
+    vaultId: string;
+    orderbook: string;
+    threshold: string;
+    topupAmount: string;
+};
 
 /** Rain Solver app yaml configurations */
 export type AppOptions = {
@@ -330,7 +338,7 @@ export namespace AppOptions {
         const address = readValue(input).value;
         if (isOptional && address === undefined) return undefined as any;
         assert(
-            typeof address === "string" && ethers.utils.isAddress(address),
+            typeof address === "string" && isAddress(address, { strict: false }),
             `expected valid ${addressName} contract address`,
         );
         return address.toLowerCase() as any;
@@ -458,7 +466,7 @@ export namespace AppOptions {
         const ownerProfile = readValue(input);
         const profiles: Record<string, number> = {};
         const validate = (owner: string, limit: string) => {
-            assert(ethers.utils.isAddress(owner), `Invalid owner address: ${owner}`);
+            assert(isAddress(owner, { strict: false }), `Invalid owner address: ${owner}`);
             assert(
                 (INT_PATTERN.test(limit) && Number(limit) > 0) || limit === "max",
                 "Invalid owner profile limit, must be an integer gte 0 or 'max' for no limit",
@@ -512,8 +520,11 @@ export namespace AppOptions {
                 threshold = undefined,
                 topupAmount = undefined,
             } = details;
-            assert(token && ethers.utils.isAddress(token), "invalid token address");
-            assert(orderbook && ethers.utils.isAddress(orderbook), "invalid orderbook address");
+            assert(token && isAddress(token, { strict: false }), "invalid token address");
+            assert(
+                orderbook && isAddress(orderbook, { strict: false }),
+                "invalid orderbook address",
+            );
             assert(vaultId && isBigNumberish(vaultId), "invalid vault id");
             assert(
                 threshold && FLOAT_PATTERN.test(threshold),
@@ -660,7 +671,7 @@ export function tryIntoArray(value?: string): string[] | undefined {
  */
 export function validateAddress(value?: unknown): string {
     if (typeof value !== "string") throw "expected string";
-    if (!ethers.utils.isAddress(value)) {
+    if (!isAddress(value, { strict: false })) {
         throw `${value} is not a valid address`;
     }
     return value.toLowerCase();

@@ -1,16 +1,17 @@
 import { createWalletClient } from "viem";
 import { RainSolverSigner } from "./index";
 import { type SharedState } from "../state";
+import { rainSolverTransport } from "../rpc";
 import { describe, it, expect, vi } from "vitest";
-import { rainSolverTransport } from "../transport";
 import { RainSolverSignerActions } from "./actions";
 import { HDAccount, PrivateKeyAccount, publicActions } from "viem";
 
-vi.mock("../transport", () => ({
+vi.mock("../rpc", () => ({
     rainSolverTransport: vi.fn().mockReturnValue("mockedTransport"),
 }));
 
-vi.mock("viem", () => ({
+vi.mock("viem", async (importOriginal) => ({
+    ...(await importOriginal()),
     createWalletClient: vi.fn().mockReturnValue({
         extend: vi.fn().mockReturnThis(),
     }),

@@ -1,8 +1,9 @@
 import { ChainId } from "sushi";
-import { ArbitrumNodeInterfaceAbi, ArbitrumNodeInterfaceAddress, OrderbookQuoteAbi } from "../abis";
+import { SharedState } from "../state";
+import { AppOptions } from "../config";
 import { BundledOrders, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData, PublicClient } from "viem";
-import { BotConfig } from "../types";
+import { ArbitrumNodeInterfaceAbi, ArbitrumNodeInterfaceAddress, OrderbookQuoteAbi } from "../abis";
 
 /**
  * Quotes a single order
@@ -46,9 +47,13 @@ export async function quoteSingleOrder(
 /**
  * Calculates the gas limit that used for quoting orders
  */
-export async function getQuoteGas(config: BotConfig, orderDetails: BundledOrders): Promise<bigint> {
+export async function getQuoteGas(
+    state: SharedState,
+    orderDetails: BundledOrders,
+    appOptions: AppOptions,
+): Promise<bigint> {
     // currently only arbitrum needs extra calculations for quote gas limit
-    if (config.chain.id === ChainId.ARBITRUM) {
+    if (state.chainConfig.id === ChainId.ARBITRUM) {
         // build the calldata of a quote call
         const calldata = encodeFunctionData({
             abi: OrderbookQuoteAbi,
@@ -57,14 +62,14 @@ export async function getQuoteGas(config: BotConfig, orderDetails: BundledOrders
         });
 
         // call Arbitrum Node Interface for the calldata to get L1 gas
-        const result = await config.viemClient.simulateContract({
+        const result = await state.client.simulateContract({
             abi: ArbitrumNodeInterfaceAbi,
             address: ArbitrumNodeInterfaceAddress,
             functionName: "gasEstimateL1Component",
             args: [orderDetails.orderbook as `0x${string}`, false, calldata],
         });
-        return config.quoteGas + result.result[0];
+        return appOptions.quoteGas + result.result[0];
     } else {
-        return config.quoteGas;
+        return appOptions.quoteGas;
     }
 }

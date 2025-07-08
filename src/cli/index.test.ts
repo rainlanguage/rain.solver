@@ -1,6 +1,6 @@
 import { cmd } from "./cmd";
 import { AppOptions } from "../config";
-import { RainSolver } from "../solver";
+import { RainSolver } from "../core";
 import { OrderManager } from "../order";
 import { RainSolverCli } from "./index";
 import { RainSolverLogger } from "../logger";
@@ -28,7 +28,7 @@ vi.mock("../config", () => ({
     },
 }));
 
-vi.mock("../solver", () => ({
+vi.mock("../core", () => ({
     RainSolver: vi.fn(),
 }));
 

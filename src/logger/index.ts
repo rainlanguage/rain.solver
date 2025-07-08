@@ -1,4 +1,4 @@
-import { sleep } from "./common";
+import { sleep } from "../common";
 import { Resource } from "@opentelemetry/resources";
 import { CompressionAlgorithm } from "@opentelemetry/otlp-exporter-base";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";

@@ -1,5 +1,4 @@
 import { RpcState } from "../rpc";
-import { BigNumber } from "ethers";
 import * as common from "../common";
 import { SharedState } from "../state";
 import { RainSolverSigner } from "./index";
@@ -36,8 +35,6 @@ describe("Test RainSolverSignerActions", () => {
 
         expect(actions.state).toBe(mockSharedState);
         expect(actions.busy).toBe(false);
-        expect(actions.BALANCE).toEqual(BigNumber.from(0));
-        expect(actions.BOUNTY).toEqual(Array.from(mockSharedState.watchedTokens.values()));
         expect(typeof actions.sendTx).toBe("function");
         expect(typeof actions.waitUntilFree).toBe("function");
         expect(typeof actions.getSelfBalance).toBe("function");

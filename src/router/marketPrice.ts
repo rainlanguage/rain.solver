@@ -1,7 +1,7 @@
+import { scale18 } from "../math";
 import { SharedState } from "../state";
 import { Token } from "sushi/currency";
 import { ChainId, Router } from "sushi";
-import { ONE18, scale18 } from "../math";
 import { formatUnits, parseUnits } from "viem";
 import { PoolBlackList, RPoolFilter } from ".";
 
@@ -17,14 +17,15 @@ export async function getMarketPrice(
     toToken: Token,
     blockNumber?: bigint,
 ): Promise<{ price: string; amountOut: string } | undefined> {
+    // return early if from and to tokens are the same
     if (fromToken.address.toLowerCase() === toToken.address.toLowerCase()) {
         return {
             price: "1",
             amountOut: "1",
         };
     }
+
     const amountIn = parseUnits("1", fromToken.decimals);
-    const amountInFixed = parseUnits("1", 18);
     try {
         await this.dataFetcher.fetchPoolsForToken(fromToken, toToken, PoolBlackList, {
             blockNumber,
@@ -43,8 +44,7 @@ export async function getMarketPrice(
         if (route.status == "NoWay") {
             return;
         } else {
-            const ratioFixed18 = scale18(route.amountOutBI, toToken.decimals);
-            const price = (ratioFixed18 * ONE18) / amountInFixed;
+            const price = scale18(route.amountOutBI, toToken.decimals);
             return {
                 price: formatUnits(price, 18),
                 amountOut: formatUnits(route.amountOutBI, toToken.decimals),

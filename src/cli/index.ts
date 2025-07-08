@@ -2,7 +2,7 @@ import { cmd } from "./cmd";
 import { config } from "dotenv";
 import { formatUnits } from "viem";
 import { AppOptions } from "../config";
-import { RainSolver } from "../solver";
+import { RainSolver } from "../core";
 import { OrderManager } from "../order";
 import { WalletManager, WalletType } from "../wallet";
 import { sleep, withBigintSerializer } from "../common";
