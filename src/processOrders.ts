@@ -223,8 +223,8 @@ export const processOrders = async (
                         attrKey.replace("event.", ""),
                         result.spanAttributes[attrKey] as number,
                     );
+                    delete result.spanAttributes[attrKey];
                 }
-                delete result.spanAttributes[attrKey];
             }
             span.setAttributes(result.spanAttributes);
 
@@ -252,8 +252,8 @@ export const processOrders = async (
                         attrKey.replace("event.", ""),
                         e.spanAttributes[attrKey] as number,
                     );
+                    delete e.spanAttributes[attrKey];
                 }
-                delete e.spanAttributes[attrKey];
             }
             span.setAttributes(e.spanAttributes);
 
