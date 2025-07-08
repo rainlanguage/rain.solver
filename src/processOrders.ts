@@ -437,6 +437,7 @@ export async function processPair(args: {
         symbol: orderPairObject.buyTokenSymbol,
     });
 
+    spanAttributes["event.quote"] = Date.now();
     try {
         await quoteSingleOrder(
             orderPairObject,
@@ -475,6 +476,7 @@ export async function processPair(args: {
         return undefined;
     });
 
+    spanAttributes["event.poolUpdate"] = Date.now();
     // update pools by events watching until current block
     try {
         if (isE2eTest && (config as any).testBlockNumberInc) {
@@ -492,6 +494,7 @@ export async function processPair(args: {
         }
     }
 
+    spanAttributes["event.getPools"] = Date.now();
     // get pool details
     try {
         const options: RainDataFetcherOptions = {
@@ -523,6 +526,7 @@ export async function processPair(args: {
         /**/
     }
 
+    spanAttributes["event.ethPrice"] = Date.now();
     // get in/out tokens to eth price
     let inputToEthPrice = "";
     let outputToEthPrice = "";
@@ -582,6 +586,7 @@ export async function processPair(args: {
         spanAttributes["details.gasPriceL1"] = state.l1GasPrice.toString();
     }
 
+    spanAttributes["event.findOpp"] = Date.now();
     // execute process to find opp through different modes
     let rawtx, oppBlockNumber, estimatedProfit;
     try {
@@ -601,6 +606,7 @@ export async function processPair(args: {
             orderbooksOrders,
             l1GasPrice: state.l1GasPrice,
         });
+        spanAttributes["event.findOppSucess"] = Date.now();
         ({ rawtx, oppBlockNumber, estimatedProfit } = findOppResult.value!);
 
         if (!rawtx || !oppBlockNumber) throw "undefined tx/block number";
@@ -615,6 +621,7 @@ export async function processPair(args: {
             }
         }
     } catch (e: any) {
+        spanAttributes["event.findOppHalt"] = Date.now();
         // record all span attributes
         for (const attrKey in e.spanAttributes) {
             spanAttributes["details." + attrKey] = e.spanAttributes[attrKey];
