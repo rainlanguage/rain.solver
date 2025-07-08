@@ -249,6 +249,8 @@ describe("Test find opp", async function () {
                 foundOpp: true,
                 maxInput: vaultBalance.toString(),
                 clearModePick: "inter",
+                inputToEthPrice,
+                outputToEthPrice,
                 "gasEst.final.gasLimit": gasLimitEstimation.toString(),
                 "gasEst.final.totalCost": gasLimitEstimation.mul(gasPrice).toString(),
                 "gasEst.final.gasPrice": gasPrice.toString(),
@@ -362,6 +364,17 @@ describe("Test find opp", async function () {
                 oppBlockNumber,
                 foundOpp: true,
                 clearModePick: "intra",
+                inputToEthPrice,
+                outputToEthPrice,
+                against: opposingOrderPairObject.takeOrders[0].id,
+                opposingOrderQuote: JSON.stringify({
+                    maxOutput: ethers.utils.formatUnits(
+                        opposingOrderPairObject.takeOrders[0].quote.maxOutput,
+                    ),
+                    ratio: ethers.utils.formatUnits(
+                        opposingOrderPairObject.takeOrders[0].quote.ratio,
+                    ),
+                }),
                 "gasEst.final.gasLimit": gasLimitEstimation.toString(),
                 "gasEst.final.totalCost": gasLimitEstimation.mul(gasPrice).toString(),
                 "gasEst.final.gasPrice": gasPrice.toString(),
@@ -516,6 +529,10 @@ describe("Test find opp", async function () {
                     "routeProcessor.full.marketPrice": formatUnits(getCurrentPrice(vaultBalance)),
 
                     // inter-ob span attrs
+                    [`interOrderbook.againstOrderbooks.${opposingOrderbookAddress}.inputToEthPrice`]:
+                        inputToEthPrice,
+                    [`interOrderbook.againstOrderbooks.${opposingOrderbookAddress}.outputToEthPrice`]:
+                        outputToEthPrice,
                     [`interOrderbook.againstOrderbooks.${opposingOrderbookAddress}.stage`]: 1,
                     [`interOrderbook.againstOrderbooks.${opposingOrderbookAddress}.isNodeError`]: false,
                     [`interOrderbook.againstOrderbooks.${opposingOrderbookAddress}.blockNumber`]:
@@ -526,6 +543,9 @@ describe("Test find opp", async function () {
                         vaultBalance.toString(),
                     [`interOrderbook.againstOrderbooks.${opposingOrderbookAddress}.error`]:
                         errorSnapshot("", err),
+
+                    // intra-ob span attrs
+                    "intraOrderbook.error": "No opposing orders found",
                 },
             };
             assert.deepEqual(error, expected);

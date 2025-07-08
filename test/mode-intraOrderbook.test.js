@@ -127,6 +127,17 @@ describe("Test intra-orderbook dryrun", async function () {
             spanAttributes: {
                 oppBlockNumber,
                 foundOpp: true,
+                inputToEthPrice,
+                outputToEthPrice,
+                against: orderbooksOrders[0][0].takeOrders[0].id,
+                opposingOrderQuote: JSON.stringify({
+                    maxOutput: ethers.utils.formatUnits(
+                        orderbooksOrders[0][0].takeOrders[0].quote.maxOutput,
+                    ),
+                    ratio: ethers.utils.formatUnits(
+                        orderbooksOrders[0][0].takeOrders[0].quote.ratio,
+                    ),
+                }),
                 "gasEst.final.gasLimit": gasLimitEstimation.toString(),
                 "gasEst.final.totalCost": gasLimitEstimation.mul(gasPrice).toString(),
                 "gasEst.final.gasPrice": gasPrice.toString(),
@@ -275,6 +286,17 @@ describe("Test intra-orderbook find opp", async function () {
             spanAttributes: {
                 oppBlockNumber,
                 foundOpp: true,
+                inputToEthPrice,
+                outputToEthPrice,
+                against: orderbooksOrders[0][0].takeOrders[0].id,
+                opposingOrderQuote: JSON.stringify({
+                    maxOutput: ethers.utils.formatUnits(
+                        orderbooksOrders[0][0].takeOrders[0].quote.maxOutput,
+                    ),
+                    ratio: ethers.utils.formatUnits(
+                        orderbooksOrders[0][0].takeOrders[0].quote.ratio,
+                    ),
+                }),
                 "gasEst.final.gasLimit": gasLimitEstimation.toString(),
                 "gasEst.final.totalCost": gasLimitEstimation.mul(gasPrice).toString(),
                 "gasEst.final.gasPrice": gasPrice.toString(),
@@ -375,11 +397,22 @@ describe("Test intra-orderbook find opp", async function () {
                 },
                 reason: undefined,
                 spanAttributes: {
-                    "intraOrderbook.0.blockNumber": oppBlockNumber,
-                    "intraOrderbook.0.stage": 1,
-                    "intraOrderbook.0.isNodeError": false,
-                    "intraOrderbook.0.error": errorSnapshot("", err),
-                    "intraOrderbook.0.rawtx": JSON.stringify(rawtx),
+                    "0.blockNumber": oppBlockNumber,
+                    "0.stage": 1,
+                    "0.isNodeError": false,
+                    "0.error": errorSnapshot("", err),
+                    "0.rawtx": JSON.stringify(rawtx),
+                    "0.inputToEthPrice": inputToEthPrice,
+                    "0.outputToEthPrice": outputToEthPrice,
+                    "0.against": orderbooksOrders[0][0].takeOrders[0].id,
+                    "0.opposingOrderQuote": JSON.stringify({
+                        maxOutput: ethers.utils.formatUnits(
+                            orderbooksOrders[0][0].takeOrders[0].quote.maxOutput,
+                        ),
+                        ratio: ethers.utils.formatUnits(
+                            orderbooksOrders[0][0].takeOrders[0].quote.ratio,
+                        ),
+                    }),
                 },
             };
             assert.deepEqual(error, expected);

@@ -124,6 +124,8 @@ describe("Test inter-orderbook dryrun", async function () {
                 oppBlockNumber,
                 foundOpp: true,
                 maxInput: vaultBalance.toString(),
+                inputToEthPrice,
+                outputToEthPrice,
                 "gasEst.final.gasLimit": gasLimitEstimation.toString(),
                 "gasEst.final.totalCost": gasLimitEstimation.mul(gasPrice).toString(),
                 "gasEst.final.gasPrice": gasPrice.toString(),
@@ -275,6 +277,8 @@ describe("Test inter-orderbook find opp", async function () {
                 oppBlockNumber,
                 foundOpp: true,
                 maxInput: vaultBalance.toString(),
+                inputToEthPrice,
+                outputToEthPrice,
                 "gasEst.final.gasLimit": gasLimitEstimation.toString(),
                 "gasEst.final.totalCost": gasLimitEstimation.mul(gasPrice).toString(),
                 "gasEst.final.gasPrice": gasPrice.toString(),
@@ -382,6 +386,10 @@ describe("Test inter-orderbook find opp", async function () {
                     [`againstOrderbooks.${opposingOrderbookAddress}.rawtx`]: JSON.stringify(rawtx),
                     [`againstOrderbooks.${opposingOrderbookAddress}.maxInput`]:
                         vaultBalance.toString(),
+                    [`againstOrderbooks.${opposingOrderbookAddress}.inputToEthPrice`]:
+                        inputToEthPrice,
+                    [`againstOrderbooks.${opposingOrderbookAddress}.outputToEthPrice`]:
+                        outputToEthPrice,
                 },
             };
             assert.deepEqual(error, expected);

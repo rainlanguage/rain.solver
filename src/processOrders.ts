@@ -217,6 +217,15 @@ export const processOrders = async (
             reports.push(result.report);
 
             // set the span attributes with the values gathered at processPair()
+            for (const attrKey in result.spanAttributes) {
+                if (attrKey.startsWith("event.")) {
+                    span.addEvent(
+                        attrKey.replace("event.", ""),
+                        result.spanAttributes[attrKey] as number,
+                    );
+                    delete result.spanAttributes[attrKey];
+                }
+            }
             span.setAttributes(result.spanAttributes);
 
             // set the otel span status based on report status
@@ -237,6 +246,15 @@ export const processOrders = async (
             }
         } catch (e: any) {
             // set the span attributes with the values gathered at processPair()
+            for (const attrKey in e.spanAttributes) {
+                if (attrKey.startsWith("event.")) {
+                    span.addEvent(
+                        attrKey.replace("event.", ""),
+                        e.spanAttributes[attrKey] as number,
+                    );
+                    delete e.spanAttributes[attrKey];
+                }
+            }
             span.setAttributes(e.spanAttributes);
 
             // record otel span status based on reported reason
@@ -437,6 +455,7 @@ export async function processPair(args: {
         symbol: orderPairObject.buyTokenSymbol,
     });
 
+    spanAttributes["event.quote"] = Date.now();
     try {
         await quoteSingleOrder(
             orderPairObject,
@@ -475,6 +494,7 @@ export async function processPair(args: {
         return undefined;
     });
 
+    spanAttributes["event.poolUpdate"] = Date.now();
     // update pools by events watching until current block
     try {
         if (isE2eTest && (config as any).testBlockNumberInc) {
@@ -492,6 +512,7 @@ export async function processPair(args: {
         }
     }
 
+    spanAttributes["event.getPools"] = Date.now();
     // get pool details
     try {
         const options: RainDataFetcherOptions = {
@@ -523,8 +544,10 @@ export async function processPair(args: {
         /**/
     }
 
+    spanAttributes["event.ethPrice"] = Date.now();
     // get in/out tokens to eth price
-    let inputToEthPrice, outputToEthPrice;
+    let inputToEthPrice = "";
+    let outputToEthPrice = "";
     try {
         const options = {
             fetchPoolsTimeout: 30000,
@@ -533,51 +556,46 @@ export async function processPair(args: {
         if (isE2eTest && (config as any).testBlockNumber) {
             (options as any).blockNumber = (config as any).testBlockNumber;
         }
-        inputToEthPrice = await getEthPrice(
-            config,
-            orderPairObject.buyToken,
-            orderPairObject.buyTokenDecimals,
-            gasPrice,
-            dataFetcher,
-            options,
-            false,
-        );
-        outputToEthPrice = await getEthPrice(
-            config,
-            orderPairObject.sellToken,
-            orderPairObject.sellTokenDecimals,
-            gasPrice,
-            dataFetcher,
-            options,
-            false,
-        );
-        if (!inputToEthPrice || !outputToEthPrice) {
-            if (config.gasCoveragePercentage === "0") {
-                inputToEthPrice = "0";
-                outputToEthPrice = "0";
-            } else {
-                result.reason = ProcessPairHaltReason.FailedToGetEthPrice;
-                result.error = "no-route";
-                return async () => {
-                    return Promise.reject(result);
-                };
-            }
-        } else {
-            spanAttributes["details.inputToEthPrice"] = inputToEthPrice;
-            spanAttributes["details.outputToEthPrice"] = outputToEthPrice;
+        inputToEthPrice =
+            (await getEthPrice(
+                config,
+                orderPairObject.buyToken,
+                orderPairObject.buyTokenDecimals,
+                gasPrice,
+                dataFetcher,
+                options,
+                false,
+            )) ?? (config.gasCoveragePercentage === "0" ? "0" : "");
+        outputToEthPrice =
+            (await getEthPrice(
+                config,
+                orderPairObject.sellToken,
+                orderPairObject.sellTokenDecimals,
+                gasPrice,
+                dataFetcher,
+                options,
+                false,
+            )) ?? (config.gasCoveragePercentage === "0" ? "0" : "");
+        if (!inputToEthPrice && !outputToEthPrice) {
+            result.reason = ProcessPairHaltReason.FailedToGetEthPrice;
+            result.error = "no-route for both in/out tokens";
+            return async () => {
+                return Promise.reject(result);
+            };
         }
     } catch (e) {
-        if (config.gasCoveragePercentage === "0") {
-            inputToEthPrice = "0";
-            outputToEthPrice = "0";
-        } else {
+        if (!inputToEthPrice && !outputToEthPrice) {
             result.reason = ProcessPairHaltReason.FailedToGetEthPrice;
             result.error = e;
             return async () => {
-                throw result;
+                return Promise.reject(result);
             };
         }
     }
+
+    // record input/output to eth price in span attributes
+    spanAttributes["details.inputToEthPrice"] = inputToEthPrice || "no-way";
+    spanAttributes["details.outputToEthPrice"] = outputToEthPrice || "no-way";
 
     // record gas price for otel
     await getGasPrice(config, state);
@@ -586,6 +604,7 @@ export async function processPair(args: {
         spanAttributes["details.gasPriceL1"] = state.l1GasPrice.toString();
     }
 
+    spanAttributes["event.findOpp"] = Date.now();
     // execute process to find opp through different modes
     let rawtx, oppBlockNumber, estimatedProfit;
     try {
@@ -605,6 +624,7 @@ export async function processPair(args: {
             orderbooksOrders,
             l1GasPrice: state.l1GasPrice,
         });
+        spanAttributes["event.findOppSucess"] = Date.now();
         ({ rawtx, oppBlockNumber, estimatedProfit } = findOppResult.value!);
 
         if (!rawtx || !oppBlockNumber) throw "undefined tx/block number";
@@ -619,6 +639,7 @@ export async function processPair(args: {
             }
         }
     } catch (e: any) {
+        spanAttributes["event.findOppHalt"] = Date.now();
         // record all span attributes
         for (const attrKey in e.spanAttributes) {
             spanAttributes["details." + attrKey] = e.spanAttributes[attrKey];

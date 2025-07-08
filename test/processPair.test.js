@@ -374,14 +374,16 @@ describe("Test process pair", async function () {
 
     it("should fail to get eth price", async function () {
         await mockServer.forPost("/rpc").thenSendJsonRpcResult(quoteResponse);
-        config.gasCoveragePercentage = "100";
+        const tempConfig = clone(config);
+        tempConfig.gasCoveragePercentage = "100";
+        tempConfig.nativeWrappedToken.address = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
         dataFetcher.getCurrentPoolCodeMap = () => {
             return new Map();
         };
         try {
             await (
                 await processPair({
-                    config,
+                    config: tempConfig,
                     orderPairObject,
                     viemClient,
                     dataFetcher,
@@ -407,7 +409,7 @@ describe("Test process pair", async function () {
                 },
                 gasCost: undefined,
                 reason: ProcessPairHaltReason.FailedToGetEthPrice,
-                error: "no-route",
+                error: "no-route for both in/out tokens",
                 spanAttributes: {
                     "details.pair": pair,
                     "details.orders": [orderPairObject.takeOrders[0].id],

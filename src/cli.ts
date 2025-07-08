@@ -345,7 +345,11 @@ export const main = async (argv: any, version?: string) => {
             try {
                 const bundledOrders = prepareOrdersForRound(orderbooksOwnersProfileMap, true);
                 if (update) {
-                    await getDataFetcher(config.viemClient, state.rpc, config.lps);
+                    config.dataFetcher = await getDataFetcher(
+                        config.viemClient,
+                        state.rpc,
+                        config.lps,
+                    );
                 }
                 roundSpan.setAttribute("details.rpc", state.rpc.urls);
                 await getGasPrice(config, state);

@@ -518,6 +518,12 @@ export async function findOppWithRetries({
         spanAttributes,
     };
 
+    if (!ethPrice) {
+        spanAttributes["error"] = "no route to get price of input token to eth";
+        result.reason = RouteProcessorDryrunHaltReason.NoRoute;
+        throw result;
+    }
+
     const promises: Promise<DryrunResult>[] = [];
     for (let i = 1; i < config.retries + 1; i++) {
         promises.push(

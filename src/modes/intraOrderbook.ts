@@ -4,7 +4,14 @@ import { BigNumber, ethers } from "ethers";
 import { containsNodeError, errorSnapshot } from "../error";
 import { getWithdrawEnsureRainlang, parseRainlang } from "../task";
 import { BaseError, erc20Abi, ExecutionRevertedError, PublicClient } from "viem";
-import { estimateProfit, scale18, withBigintSerializer, extendSpanAttributes } from "../utils";
+import {
+    scale18,
+    estimateProfit,
+    withBigintSerializer,
+    extendSpanAttributes,
+    inputToEthPriceFallback,
+    outputToEthPriceFallback,
+} from "../utils";
 import {
     SpanAttrs,
     BotConfig,
@@ -50,6 +57,13 @@ export async function dryrun({
         reason: undefined,
         spanAttributes,
     };
+    spanAttributes["against"] = opposingOrder.id;
+    spanAttributes["inputToEthPrice"] = inputToEthPrice;
+    spanAttributes["outputToEthPrice"] = outputToEthPrice;
+    spanAttributes["opposingOrderQuote"] = JSON.stringify({
+        maxOutput: ethers.utils.formatUnits(opposingOrder.quote!.maxOutput),
+        ratio: ethers.utils.formatUnits(opposingOrder.quote!.ratio),
+    });
 
     const inputBountyVaultId = "1";
     const outputBountyVaultId = "1";
@@ -345,6 +359,7 @@ export async function findOpp({
         .find((v) => v !== undefined)
         ?.takeOrders.filter(
             (v) =>
+                v.quote &&
                 // not same order
                 v.id !== orderPairObject.takeOrders[0].id &&
                 // not same owner
@@ -356,7 +371,12 @@ export async function findOpp({
         .sort((a, b) =>
             a.quote!.ratio.lt(b.quote!.ratio) ? -1 : a.quote!.ratio.gt(b.quote!.ratio) ? 1 : 0,
         );
-    if (!opposingOrders || !opposingOrders.length) throw undefined;
+
+    // return early if no opposing orders found
+    if (!opposingOrders || !opposingOrders.length) {
+        spanAttributes["error"] = "No opposing orders found";
+        return Promise.reject(result);
+    }
 
     const allNoneNodeErrors: (string | undefined)[] = [];
     const inputBalance = scale18(
@@ -384,8 +404,20 @@ export async function findOpp({
                 opposingOrder: opposingOrders[i],
                 signer,
                 gasPrice,
-                inputToEthPrice,
-                outputToEthPrice,
+                inputToEthPrice:
+                    inputToEthPrice ||
+                    inputToEthPriceFallback(
+                        orderPairObject.takeOrders[0].quote!.ratio,
+                        opposingOrders[i].quote!.ratio,
+                        outputToEthPrice,
+                    ),
+                outputToEthPrice:
+                    outputToEthPrice ||
+                    outputToEthPriceFallback(
+                        orderPairObject.takeOrders[0].quote!.ratio,
+                        opposingOrders[i].quote!.ratio,
+                        inputToEthPrice,
+                    ),
                 config,
                 viemClient,
                 inputBalance,
@@ -394,7 +426,7 @@ export async function findOpp({
             });
         } catch (e: any) {
             allNoneNodeErrors.push(e?.value?.noneNodeError);
-            extendSpanAttributes(spanAttributes, e.spanAttributes, "intraOrderbook." + i);
+            extendSpanAttributes(spanAttributes, e.spanAttributes, i.toString());
         }
     }
     const noneNodeErrors = allNoneNodeErrors.filter((v) => !!v);

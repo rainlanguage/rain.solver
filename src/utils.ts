@@ -852,3 +852,35 @@ export function addWatchedToken(
         }
     }
 }
+
+export function inputToEthPriceFallback(
+    orderRatio: BigNumber,
+    opposingOrderRatio: BigNumber,
+    outputToEthPrice: string,
+): string {
+    const orderRatioInverse = orderRatio.isZero()
+        ? ethers.constants.MaxUint256
+        : BigNumber.from(ONE18 * ONE18).div(orderRatio);
+    const minRatio = orderRatioInverse.lt(opposingOrderRatio)
+        ? orderRatioInverse
+        : opposingOrderRatio;
+    return ethers.utils.formatUnits(
+        minRatio.mul(ethers.utils.parseUnits(outputToEthPrice)).div(ONE18),
+    );
+}
+
+export function outputToEthPriceFallback(
+    orderRatio: BigNumber,
+    opposingOrderRatio: BigNumber,
+    inputToEthPrice: string,
+): string {
+    const opposingOrderRatioInverse = opposingOrderRatio.isZero()
+        ? ethers.constants.MaxUint256
+        : BigNumber.from(ONE18 * ONE18).div(opposingOrderRatio);
+    const minRatio = opposingOrderRatioInverse.lt(orderRatio)
+        ? opposingOrderRatioInverse
+        : orderRatio;
+    return ethers.utils.formatUnits(
+        minRatio.mul(ethers.utils.parseUnits(inputToEthPrice)).div(ONE18),
+    );
+}
