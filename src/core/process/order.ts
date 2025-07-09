@@ -58,6 +58,7 @@ export async function processOrder(
     spanAttributes["details.orders"] = orderDetails.takeOrders.map((v) => v.id);
     spanAttributes["details.pair"] = tokenPair;
 
+    spanAttributes["event.quoteOrder"] = Date.now();
     try {
         await this.orderManager.quoteOrder(orderDetails);
         if (orderDetails.takeOrders[0].quote?.maxOutput === 0n) {
@@ -84,11 +85,13 @@ export async function processOrder(
     });
 
     // get current block number
+    spanAttributes["event.getBlockNumber"] = Date.now();
     const dataFetcherBlockNumber = await this.state.client.getBlockNumber().catch(() => {
         return undefined;
     });
 
     // update pools by events watching until current block
+    spanAttributes["event.updatePoolsData"] = Date.now();
     try {
         await this.state.dataFetcher.updatePools(dataFetcherBlockNumber);
     } catch (e) {
@@ -103,6 +106,7 @@ export async function processOrder(
     }
 
     // get pool details
+    spanAttributes["event.getPoolsData"] = Date.now();
     try {
         const options: RainDataFetcherOptions = {
             fetchPoolsTimeout: 90000,
@@ -119,6 +123,7 @@ export async function processOrder(
     }
 
     // record market price in span attributes
+    spanAttributes["event.getPairMarketPrice"] = Date.now();
     await this.state
         .getMarketPrice(fromToken, toToken, dataFetcherBlockNumber)
         .catch(() => {})
@@ -132,6 +137,7 @@ export async function processOrder(
         });
 
     // get in/out tokens to eth price
+    spanAttributes["event.getEthMarketPrice"] = Date.now();
     let inputToEthPrice, outputToEthPrice;
     try {
         inputToEthPrice = (
@@ -185,6 +191,7 @@ export async function processOrder(
         spanAttributes["details.gasPriceL1"] = this.state.l1GasPrice.toString();
     }
 
+    spanAttributes["event.findBestTrade"] = Date.now();
     const trade = await this.findBestTrade({
         orderDetails,
         signer,
@@ -241,6 +248,7 @@ export async function processOrder(
     }
 
     // process the found transaction opportunity
+    spanAttributes["event.processTransaction"] = Date.now();
     return processTransaction({
         rawtx,
         signer,
