@@ -163,12 +163,16 @@ describe("Test RpcMetrics", async function () {
         assert.equal(result.requestIntervals.length, 1);
         assert.ok(result.lastRequestTimestamp > 0);
         assert.equal(result.timeout, 2);
-        assert.ok(
-            result.requestIntervals[0] >= 1950,
+        assert.closeTo(
+            result.requestIntervals[0],
+            2000,
+            100, // 100 ms delta
             "request intervals should be close to 2 seconds",
         );
-        assert.ok(
-            result.avgRequestIntervals >= 1950,
+        assert.closeTo(
+            result.avgRequestIntervals,
+            2000,
+            100, // 100 ms delta
             "avg request intervals should be close to 2 seconds",
         );
 
