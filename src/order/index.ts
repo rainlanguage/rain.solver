@@ -112,7 +112,10 @@ export class OrderManager {
             const orderDetails = ordersDetails[i];
             const orderHash = orderDetails.orderHash.toLowerCase();
             const orderbook = orderDetails.orderbook.id.toLowerCase();
-            const orderStruct = Order.fromBytes(orderDetails.orderBytes);
+            const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
+            if (orderStructResult.isErr()) return;
+
+            const orderStruct = orderStructResult.value;
 
             const pairs = await this.getOrderPairs(orderHash, orderStruct, orderDetails);
 
@@ -190,8 +193,12 @@ export class OrderManager {
         for (let i = 0; i < ordersDetails.length; i++) {
             const orderDetails = ordersDetails[i];
             const orderbook = orderDetails.orderbook.id.toLowerCase();
-            const orderStruct = Order.fromBytes(orderDetails.orderBytes);
             const orderHash = orderDetails.orderHash.toLowerCase();
+
+            const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
+            if (orderStructResult.isErr()) return;
+
+            const orderStruct = orderStructResult.value;
 
             // delete from the owners map
             const orderbookOwnerProfileItem = this.ownersMap.get(orderbook);

@@ -571,12 +571,16 @@ export class WalletManager {
     > {
         // identify wallets that need to be removed from cisrculation
         // thie criteria is if their current gas balance is below avg tx gas cost
-        const removeList = [];
+        const removeList: RainSolverSigner[] = [];
         for (const [, worker] of this.workers.signers) {
-            const balance = await worker.getSelfBalance();
-            if (balance < this.state.avgGasCost * 4n) {
-                removeList.push(worker);
-            }
+            await worker
+                .getSelfBalance()
+                .then((balance) => {
+                    if (balance < this.state.avgGasCost * 4n) {
+                        removeList.push(worker);
+                    }
+                })
+                .catch(() => {});
         }
 
         // remove the identified wallet and replace them with new ones
