@@ -1,9 +1,23 @@
 import { sleep } from "../common";
-import { describe, it, assert } from "vitest";
 import { RainSolverTransportTimeoutError } from "./transport";
+import { vi, describe, it, assert, Mock, beforeEach, expect } from "vitest";
 import { RpcState, RpcConfig, RpcMetrics, RpcProgress, RpcBufferType } from ".";
 
+vi.mock("../common", async (importOriginal) => ({
+    ...(await importOriginal()),
+    sleep: vi.fn().mockImplementation(
+        () =>
+            new Promise((resolve) => {
+                resolve(null);
+            }),
+    ),
+}));
+
 describe("Test RpcState", async function () {
+    beforeEach(() => {
+        vi.resetAllMocks();
+    });
+
     const configs: RpcConfig[] = [
         { url: "https://example1.com/" },
         { url: "https://example2.com/" },
@@ -97,14 +111,16 @@ describe("Test RpcState", async function () {
         for (const url of urls) {
             state.metrics[url].progress.buffer = Array(100).fill(RpcBufferType.Failure);
         }
+        (sleep as Mock).mockImplementation(
+            (ms: number) =>
+                new Promise((resolve) => {
+                    setTimeout(() => resolve(""), ms);
+                }),
+        );
 
-        try {
-            await state.nextRpc({ pollingInterval: 0, timeout: 0 });
-            throw "expected to fail, but fulfilled";
-        } catch (error) {
-            if (error === "expected to fail, but fulfilled") throw error;
-            assert.deepEqual(error, new RainSolverTransportTimeoutError(0));
-        }
+        await expect(state.nextRpc({ pollingInterval: 0, timeout: 0 })).rejects.toThrow(
+            new RainSolverTransportTimeoutError(0),
+        );
     });
 });
 

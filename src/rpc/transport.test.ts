@@ -1,7 +1,7 @@
 import { randomInt } from "crypto";
 import { getLocal } from "mockttp";
 import { polygon } from "viem/chains";
-import { describe, it, assert } from "vitest";
+import { describe, it, assert, expect } from "vitest";
 import { normalizeUrl, RpcConfig, RpcBufferType, RpcState } from ".";
 import {
     rainSolverTransport,
@@ -109,13 +109,9 @@ describe("Test transport", async function () {
         await mockServer2.forPost().withBodyIncluding("eth_blockNumber").thenTimeout();
 
         // should timeout
-        try {
-            await transport.request({ method: "eth_blockNumber" });
-            throw "expected to fail, but fulfilled";
-        } catch (error) {
-            if (error === "expected to fail, but fulfilled") throw error;
-            assert.deepEqual(error, new RainSolverTransportTimeoutError(0));
-        }
+        await expect(transport.request({ method: "eth_blockNumber" })).rejects.toThrow(
+            new RainSolverTransportTimeoutError(0),
+        );
 
         await mockServer1.stop();
         await mockServer2.stop();
