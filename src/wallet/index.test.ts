@@ -2,7 +2,7 @@ import { parseUnits } from "viem";
 import * as common from "../common";
 import * as sweepFns from "./sweep";
 import { WalletType } from "./config";
-import { MulticallAbi } from "../abis";
+import { MulticallAbi } from "../common";
 import { ErrorSeverity } from "../error";
 import * as fundVault from "./fundVault";
 import { RainSolverSigner } from "../signer";

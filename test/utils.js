@@ -1,7 +1,7 @@
 const { assert } = require("chai");
 const { ethers } = require("hardhat");
-const { OrderV3 } = require("../src/abis");
-const { DefaultArbEvaluable } = require("../src/abis");
+const { OrderV3 } = require("../src/common");
+const { DefaultArbEvaluable } = require("../src/common");
 const OrderbookArtifact = require("./abis/OrderBook.json");
 const RainterpreterNPE2Artifact = require("./abis/RainterpreterNPE2.json");
 const RainterpreterStoreNPE2Artifact = require("./abis/RainterpreterStoreNPE2.json");

@@ -1,12 +1,11 @@
 import { RainSolver } from "../..";
 import { dryrun } from "../dryrun";
-import { Result } from "../../../common";
 import { estimateProfit } from "./utils";
 import { Attributes } from "@opentelemetry/api";
 import { ONE18, scale18To } from "../../../math";
 import { BundledOrders, Pair } from "../../../order";
 import { extendObjectWithHeader } from "../../../logger";
-import { ArbAbi, TakeOrdersV2Abi } from "../../../abis";
+import { ArbAbi, TakeOrdersV2Abi, Result } from "../../../common";
 import { RainSolverSigner, RawTransaction } from "../../../signer";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
 import { encodeAbiParameters, encodeFunctionData, maxUint256, parseUnits } from "viem";

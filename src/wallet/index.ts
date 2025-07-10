@@ -3,10 +3,10 @@ import { formatUnits } from "viem";
 import { fundVault } from "./fundVault";
 import { RainSolverSigner } from "../signer";
 import { PreAssembledSpan } from "../logger";
-import { shuffleArray, sleep } from "../common";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { SharedState, TokenDetails } from "../state";
 import { ErrorSeverity, errorSnapshot } from "../error";
+import { shuffleArray, sleep, MulticallAbi } from "../common";
 import { WalletConfig, WalletType, MainAccountDerivationIndex } from "./config";
 import { transferTokenFrom, transferRemainingGasFrom, convertToGas } from "./sweep";
 import {
@@ -15,7 +15,6 @@ import {
     PrivateKeyAccount,
     privateKeyToAccount,
 } from "viem/accounts";
-import { MulticallAbi } from "../abis";
 
 export * from "./config";
 
