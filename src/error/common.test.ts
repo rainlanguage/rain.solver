@@ -1,5 +1,6 @@
 import { BaseError } from "viem";
 import { AxiosError } from "axios";
+import { RainSolverBaseError } from "./types";
 import { evaluateGasSufficiency, parseRevertError } from ".";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 import { errorSnapshot, getRpcError, containsNodeError, isTimeout, shouldThrow } from "./common";
@@ -26,6 +27,24 @@ describe("Test common error utilities", () => {
     });
 
     describe("Test errorSnapshot", () => {
+        it("should create snapshot from RainSolverError with cause", async () => {
+            const cause = new Error("Cause of the error");
+            const err = new RainSolverBaseError("Test msg", cause);
+            const result = await errorSnapshot("String Error", err);
+
+            expect(result).toContain("String Error");
+            expect(result).toContain("Test msg");
+            expect(result).toContain("Reason: Cause of the error");
+        });
+
+        it("should create snapshot from RainSolverError without cause", async () => {
+            const err = new RainSolverBaseError("Test msg");
+            const result = await errorSnapshot("String Error", err);
+
+            expect(result).toContain("String Error");
+            expect(result).toContain("Reason: Test msg");
+        });
+
         it("should create snapshot from BaseError with decoded revert", async () => {
             const mockError = new BaseError("Test error", {
                 cause: {

@@ -99,7 +99,11 @@ export class RainSolverCli {
             try {
                 // parse cli args and config yaml
                 const cmdOptions = await cmd(argv);
-                const appOptions = AppOptions.fromYaml(cmdOptions.config);
+                const appOptionsResult = AppOptions.tryFromYamlPath(cmdOptions.config);
+                if (appOptionsResult.isErr()) {
+                    throw appOptionsResult.error;
+                }
+                const appOptions = appOptionsResult.value;
 
                 // init state
                 const stateConfig = await SharedStateConfig.tryFromAppOptions(appOptions);

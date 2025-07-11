@@ -5,9 +5,9 @@ import { OrderManager } from "../order";
 import { RainSolverCli } from "./index";
 import { RainSolverLogger } from "../logger";
 import { WalletManager, WalletType } from "../wallet";
-import { sleep, withBigintSerializer } from "../common";
 import { SharedState, SharedStateConfig } from "../state";
 import { SubgraphConfig, SubgraphManager } from "../subgraph";
+import { Result, sleep, withBigintSerializer } from "../common";
 import { SpanStatusCode, trace, context } from "@opentelemetry/api";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 
@@ -24,7 +24,7 @@ vi.mock("../order", () => ({
 
 vi.mock("../config", () => ({
     AppOptions: {
-        fromYaml: vi.fn(),
+        tryFromYamlPath: vi.fn(),
     },
 }));
 
@@ -239,7 +239,7 @@ describe("Test RainSolverCli", () => {
             };
 
             (cmd as Mock).mockResolvedValue(mockCmdOptions);
-            (AppOptions.fromYaml as Mock).mockReturnValue(mockAppOptions);
+            (AppOptions.tryFromYamlPath as Mock).mockReturnValue(Result.ok(mockAppOptions));
             (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(mockStateConfig);
             (SharedState as Mock).mockImplementation(() => mockState);
             (SubgraphConfig.tryFromAppOptions as Mock).mockReturnValue(mockSgManagerConfig);
@@ -253,7 +253,7 @@ describe("Test RainSolverCli", () => {
             const result = await RainSolverCli.init(["--config", "config.yaml"]);
 
             expect(cmd).toHaveBeenCalledWith(["--config", "config.yaml"]);
-            expect(AppOptions.fromYaml).toHaveBeenCalledWith("config.yaml");
+            expect(AppOptions.tryFromYamlPath).toHaveBeenCalledWith("config.yaml");
             expect(SharedStateConfig.tryFromAppOptions).toHaveBeenCalledWith(mockAppOptions);
             expect(SharedState).toHaveBeenCalledWith(mockStateConfig);
             expect(SubgraphConfig.tryFromAppOptions).toHaveBeenCalledWith(mockAppOptions);
@@ -305,7 +305,7 @@ describe("Test RainSolverCli", () => {
             const mockSgManagerConfig = { test: "sg_config" };
 
             (cmd as Mock).mockResolvedValue(mockCmdOptions);
-            (AppOptions.fromYaml as Mock).mockReturnValue(mockAppOptions);
+            (AppOptions.tryFromYamlPath as Mock).mockReturnValue(Result.ok(mockAppOptions));
             (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(mockStateConfig);
             (SharedState as Mock).mockImplementation(() => mockState);
             (SubgraphConfig.tryFromAppOptions as Mock).mockReturnValue(mockSgManagerConfig);
@@ -330,7 +330,7 @@ describe("Test RainSolverCli", () => {
             const mockSgManagerConfig = { test: "sg_config" };
 
             (cmd as Mock).mockResolvedValue(mockCmdOptions);
-            (AppOptions.fromYaml as Mock).mockReturnValue(mockAppOptions);
+            (AppOptions.tryFromYamlPath as Mock).mockReturnValue(Result.ok(mockAppOptions));
             (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(mockStateConfig);
             (SharedState as Mock).mockImplementation(() => mockState);
             (SubgraphConfig.tryFromAppOptions as Mock).mockReturnValue(mockSgManagerConfig);
