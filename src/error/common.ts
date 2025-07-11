@@ -1,4 +1,5 @@
 import { AxiosError } from "axios";
+import { RainSolverError } from "./types";
 import { RawTransaction } from "../signer";
 import { evaluateGasSufficiency, parseRevertError, RawRpcError } from ".";
 import {
@@ -32,7 +33,10 @@ export async function errorSnapshot(
     },
 ): Promise<string> {
     const message = [header];
-    if (err instanceof BaseError) {
+    if (err instanceof RainSolverError) {
+        if (err.cause) message.push(await errorSnapshot(err.message, err.cause));
+        else message.push(`Reason: ${err.message}`);
+    } else if (err instanceof BaseError) {
         const org = getRpcError(err);
         if (err.shortMessage) message.push(`Reason: ${err.shortMessage}`);
         if (err.name) message.push(`Error: ${err.name}`);
