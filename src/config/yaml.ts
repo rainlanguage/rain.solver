@@ -4,7 +4,7 @@ import { readFileSync } from "fs";
 import { RpcConfig } from "../rpc";
 import { Result } from "../common";
 import { SgFilter } from "../subgraph/filter";
-import { RainSolverError, RainSolverErrorType } from "../error";
+import { AppOptionsError, AppOptionsErrorType } from "./error";
 import { FLOAT_PATTERN, INT_PATTERN, Validator } from "./validators";
 
 /** Represents a type for self-funding vaults from config */
@@ -82,15 +82,15 @@ export namespace AppOptions {
      * Instantiates and validates configurations details from the given yaml file path
      * @param path - The path to the yaml config file
      */
-    export function tryFromYamlPath(path: string): Result<AppOptions, RainSolverError> {
+    export function tryFromYamlPath(path: string): Result<AppOptions, AppOptionsError> {
         try {
             const content = readFileSync(path, { encoding: "utf8" });
             return AppOptions.tryFromYamlString(content);
         } catch (error) {
             return Result.err(
-                new RainSolverError(
+                new AppOptionsError(
                     "Failed to read the given yaml file",
-                    RainSolverErrorType.ReadFileError,
+                    AppOptionsErrorType.ReadFileError,
                     error,
                 ),
             );
@@ -101,7 +101,7 @@ export namespace AppOptions {
      * Instantiates and validates configurations details from the given yaml string
      * @param yaml - The yaml config string
      */
-    export function tryFromYamlString(yaml: string): Result<AppOptions, RainSolverError> {
+    export function tryFromYamlString(yaml: string): Result<AppOptions, AppOptionsError> {
         try {
             const obj = parse(yaml, {
                 // parse any number as string for unified validations
@@ -111,9 +111,9 @@ export namespace AppOptions {
             return AppOptions.tryFrom(obj);
         } catch (error: any) {
             return Result.err(
-                new RainSolverError(
+                new AppOptionsError(
                     "Failed to parse the given yaml string",
-                    RainSolverErrorType.YamlParseError,
+                    AppOptionsErrorType.YamlParseError,
                     error,
                 ),
             );
@@ -124,7 +124,7 @@ export namespace AppOptions {
      * Instantiates and validates configurations details from the given input
      * @param input - The configuration object
      */
-    export function tryFrom(input: any): Result<AppOptions, RainSolverError> {
+    export function tryFrom(input: any): Result<AppOptions, AppOptionsError> {
         try {
             return Result.ok({
                 ...Validator.resolveWalletKey(input),
@@ -260,13 +260,13 @@ export namespace AppOptions {
                 ),
             } as AppOptions);
         } catch (error: any) {
-            if (error instanceof RainSolverError) {
+            if (error instanceof AppOptionsError) {
                 return Result.err(error);
             } else {
                 return Result.err(
-                    new RainSolverError(
+                    new AppOptionsError(
                         "Failed to create AppOptions from the given input",
-                        RainSolverErrorType.AppOptionsValidationError,
+                        AppOptionsErrorType.AppOptionsValidationError,
                         error,
                     ),
                 );

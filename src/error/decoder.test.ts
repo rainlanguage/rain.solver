@@ -1,6 +1,6 @@
 import axios from "axios";
 import { decodeErrorResult, isHex } from "viem";
-import { PANIC_REASONS, PANIC_SELECTOR, SELECTOR_REGISTRY } from "./decoder";
+import { PANIC_REASONS, PANIC_SELECTOR, SELECTOR_REGISTRY } from "./types";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { tryDecodeError, tryGetSignature, tryDecodePanic, SelectorCache } from "./decoder";
 

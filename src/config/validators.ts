@@ -4,7 +4,7 @@ import { SelfFundVault } from ".";
 import { RpcConfig } from "../rpc";
 import { isBigNumberish } from "../math";
 import { SgFilter } from "../subgraph/filter";
-import { RainSolverError, RainSolverErrorType } from "../error";
+import { AppOptionsError, AppOptionsErrorType } from "./error";
 
 /** Integer pattern */
 export const INT_PATTERN = /^[0-9]+$/;
@@ -505,6 +505,6 @@ export function validateHash(value?: unknown): string {
     return value.toLowerCase();
 }
 
-function validationError(msg: string): RainSolverError {
-    return new RainSolverError(msg, RainSolverErrorType.AppOptionsValidationError);
+function validationError(msg: string): AppOptionsError {
+    return new AppOptionsError(msg, AppOptionsErrorType.AppOptionsValidationError);
 }

@@ -1,40 +1,56 @@
+import { parseAbiItem } from "viem";
+
+/** Solidity hex string selector pattern */
+export const SELECTOR_PATTERN = /^0x[a-fA-F0-9]{8}$/;
+
+/** openchain.xyz selector registry url */
+export const SELECTOR_REGISTRY = "https://api.openchain.xyz/signature-database/v1/lookup" as const;
+
+/** Solidity panic error selector */
+export const PANIC_SELECTOR = "0x4e487b71" as const;
+
+/** Panic error signature */
+export const PANIC_SIG = "error Panic(uint256)" as const;
+
+/** Solidity panic error ABI */
+export const PANIC_ABI = parseAbiItem(PANIC_SIG);
+
 /**
- * Enumerates the possible error types that can occur within the Rain Solver application.
- * This enum is used to categorize and identify specific error scenarios,
- * enabling more precise error handling and reporting throughout the application.
+ * Solidity panic error code/reasons
+ * https://docs.soliditylang.org/en/latest/control-structures.html#panic-via-assert-and-error-via-require
  */
-export enum RainSolverErrorType {
-    AppOptionsValidationError = "AppOptionsValidationError",
-    YamlParseError = "YamlParseError",
-    ReadFileError = "ReadFileError",
-}
+export const PANIC_REASONS = {
+    0x00: "generic compiler inserted panics",
+    0x01: "asserted with an argument that evaluates to false",
+    0x11: "an arithmetic operation resulted in underflow or overflow outside of an unchecked { ... } block",
+    0x12: "divide or modulo by zero (e.g. 5 / 0 or 23 % 0)",
+    0x21: "converted a value that is too big or negative into an enum type",
+    0x22: "accessed a storage byte array that is incorrectly encoded",
+    0x31: "called .pop() on an empty array",
+    0x32: "accessed an array, bytesN or an array slice at an out-of-bounds or negative index (i.e. x[i] where i >= x.length or i < 0)",
+    0x41: "allocated too much memory or created an array that is too large",
+    0x51: "called a zero-initialized variable of internal function type",
+} as const;
 
 /**
  * Represents a custom error type for the Rain Solver system.
  *
  * This error class extends the native `Error` object, providing additional context
- * through a specific error type and an optional cause. It is intended to be used
- * for all error handling within the Rain Solver domain, allowing for more granular
- * error categorization and debugging.
- *
- * @remarks
- * The `type` property indicates the specific category of the error, as defined by
- * the `RainSolverErrorType` enum. The optional `cause` property can be used
- * to attach the original error or any relevant context that led to this error.
+ * through a specific error type and an optional cause.
+ * The optional `cause` property can be used to attach the original error or any
+ * relevant context that led to this error.
  *
  * @example
  * ```typescript
- * throw new RainSolverError("Invalid input", RainSolverErrorType, originalError);
+ * throw new RainSolverError("msg", originalError);
  * ```
  */
-export class RainSolverError extends Error {
-    type: RainSolverErrorType;
+export class RainSolverBaseError extends Error {
     cause?: any;
-    constructor(message: string, type: RainSolverErrorType, cause?: any) {
+    constructor(message: string, cause?: any) {
         super(message);
-        this.type = type;
         this.cause = cause;
-        this.name = "RainSolverError";
+        this.name = "RainSolverBaseError";
     }
 }
 
