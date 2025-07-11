@@ -1,7 +1,7 @@
-import { OrderV3 } from "../abis";
-import { decodeAbiParameters, parseAbiParameters } from "viem";
+import { Result, OrderV3 } from "../common";
+import { decodeAbiParameters, DecodeAbiParametersErrorType, parseAbiParameters } from "viem";
 
-const OrderV3Abi = parseAbiParameters(OrderV3);
+export const OrderV3Abi = parseAbiParameters(OrderV3);
 
 export type TakeOrderDetails = {
     id: string;
@@ -50,27 +50,31 @@ export type Order = {
 };
 export namespace Order {
     /** Decodes order bytes into OrderV3 struct */
-    export function fromBytes(orderBytes: string): Order {
-        const decoded = decodeAbiParameters(OrderV3Abi, orderBytes as `0x${string}`)[0];
-        return {
-            owner: decoded.owner.toLowerCase() as `0x${string}`,
-            nonce: decoded.nonce.toLowerCase() as `0x${string}`,
-            evaluable: {
-                interpreter: decoded.evaluable.interpreter.toLowerCase() as `0x${string}`,
-                store: decoded.evaluable.store.toLowerCase() as `0x${string}`,
-                bytecode: decoded.evaluable.bytecode.toLowerCase() as `0x${string}`,
-            },
-            validInputs: decoded.validInputs.map((v: any) => ({
-                token: v.token.toLowerCase() as `0x${string}`,
-                decimals: v.decimals,
-                vaultId: v.vaultId,
-            })),
-            validOutputs: decoded.validOutputs.map((v: any) => ({
-                token: v.token.toLowerCase() as `0x${string}`,
-                decimals: v.decimals,
-                vaultId: v.vaultId,
-            })),
-        };
+    export function tryFromBytes(orderBytes: string): Result<Order, DecodeAbiParametersErrorType> {
+        try {
+            const decoded = decodeAbiParameters(OrderV3Abi, orderBytes as `0x${string}`)[0];
+            return Result.ok({
+                owner: decoded.owner.toLowerCase() as `0x${string}`,
+                nonce: decoded.nonce.toLowerCase() as `0x${string}`,
+                evaluable: {
+                    interpreter: decoded.evaluable.interpreter.toLowerCase() as `0x${string}`,
+                    store: decoded.evaluable.store.toLowerCase() as `0x${string}`,
+                    bytecode: decoded.evaluable.bytecode.toLowerCase() as `0x${string}`,
+                },
+                validInputs: decoded.validInputs.map((v) => ({
+                    token: v.token.toLowerCase() as `0x${string}`,
+                    decimals: v.decimals,
+                    vaultId: v.vaultId,
+                })),
+                validOutputs: decoded.validOutputs.map((v) => ({
+                    token: v.token.toLowerCase() as `0x${string}`,
+                    decimals: v.decimals,
+                    vaultId: v.vaultId,
+                })),
+            });
+        } catch (err: any) {
+            return Result.err(err);
+        }
     }
 }
 

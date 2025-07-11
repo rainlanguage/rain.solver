@@ -3,6 +3,7 @@ import { TimeoutError } from "viem";
 import { Result } from "../../common";
 import { ErrorSeverity } from "../../error";
 import { SpanStatusCode } from "@opentelemetry/api";
+import { PreAssembledSpan, RainSolverLogger } from "../../logger";
 import { finalizeRound, initializeRound, Settlement } from "./round";
 import { ProcessOrderStatus, ProcessOrderHaltReason } from "../types";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
@@ -374,6 +375,61 @@ describe("Test initializeRound", () => {
                 expect(report.endTime).toBeGreaterThan(0);
             });
         });
+
+        it("should export checkpoint report if logger is available", async () => {
+            const mockOrders = [
+                [
+                    {
+                        orderbook: "0x3333333333333333333333333333333333333333",
+                        buyTokenSymbol: "ETH",
+                        sellTokenSymbol: "USDC",
+                        takeOrders: [
+                            { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                        ],
+                    },
+                ],
+            ];
+            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
+            mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
+            (mockSolver as any).logger = {
+                exportPreAssembledSpan: vi.fn(),
+            } as any;
+            const mockCtx = { fields: {} } as any;
+            await initializeRound.call(mockSolver, { span: {}, context: mockCtx });
+
+            expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledTimes(1);
+            expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledWith(
+                expect.anything(),
+                mockCtx,
+            );
+
+            (mockSolver as any).logger = undefined; // reset logger
+        });
+
+        it("should NOT export checkpoint report if logger is NOT available", async () => {
+            const mockOrders = [
+                [
+                    {
+                        orderbook: "0x3333333333333333333333333333333333333333",
+                        buyTokenSymbol: "ETH",
+                        sellTokenSymbol: "USDC",
+                        takeOrders: [
+                            { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                        ],
+                    },
+                ],
+            ];
+            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
+            mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
+            const loggerExportReport = vi.spyOn(
+                RainSolverLogger.prototype,
+                "exportPreAssembledSpan",
+            );
+            await initializeRound.call(mockSolver);
+
+            expect(loggerExportReport).not.toHaveBeenCalled();
+            loggerExportReport.mockRestore();
+        });
     });
 
     describe("return value structure", () => {
@@ -613,6 +669,30 @@ describe("Test finalizeRound", () => {
             await finalizeRound.call(mockSolver, settlements);
 
             expect(mockSolver.state.gasCosts).toEqual(initialGasCosts);
+        });
+
+        it("should record events for successful settlement", async () => {
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.ok({
+                    status: ProcessOrderStatus.FoundOpportunity,
+                    spanAttributes: { "event.something": 1234, "event.another": 5678 },
+                }),
+            );
+            settlements = [
+                {
+                    settle: mockSettle,
+                    pair: "ETH/USDC",
+                    owner: "0x123",
+                    orderHash: "0xabc",
+                },
+            ];
+            const addEventSpy = vi.spyOn(PreAssembledSpan.prototype, "addEvent");
+            await finalizeRound.call(mockSolver, settlements);
+
+            expect(addEventSpy).toHaveBeenCalledWith("something", undefined, 1234);
+            expect(addEventSpy).toHaveBeenCalledWith("another", undefined, 5678);
+
+            addEventSpy.mockRestore();
         });
     });
 
@@ -1015,6 +1095,32 @@ describe("Test finalizeRound", () => {
             assert(result1.isErr());
             expect(result1.error.reason).toBe(ProcessOrderHaltReason.UnexpectedError);
         });
+
+        it("should record events for failed settlement", async () => {
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: "unknown_reason",
+                    spanAttributes: { "event.something": 1234, "event.another": 5678 },
+                    status: "failed",
+                    error: new Error("unexpected"),
+                }),
+            );
+            settlements = [
+                {
+                    settle: mockSettle,
+                    pair: "ETH/USDC",
+                    owner: "0x123",
+                    orderHash: "0xabc",
+                },
+            ];
+            const addEventSpy = vi.spyOn(PreAssembledSpan.prototype, "addEvent");
+            await finalizeRound.call(mockSolver, settlements);
+
+            expect(addEventSpy).toHaveBeenCalledWith("something", undefined, 1234);
+            expect(addEventSpy).toHaveBeenCalledWith("another", undefined, 5678);
+
+            addEventSpy.mockRestore();
+        });
     });
 
     describe("multiple settlements", () => {
@@ -1132,6 +1238,61 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].attributes["custom.attr"]).toBe("test");
             expect(result.reports[0].attributes["another.attr"]).toBe(123);
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
+        });
+
+        it("should export settlement report if logger is available", async () => {
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.ok({
+                    status: ProcessOrderStatus.FoundOpportunity,
+                    spanAttributes: { "event.something": 1234, "event.another": 5678 },
+                }),
+            );
+            settlements = [
+                {
+                    settle: mockSettle,
+                    pair: "ETH/USDC",
+                    owner: "0x123",
+                    orderHash: "0xabc",
+                },
+            ];
+            (mockSolver as any).logger = {
+                exportPreAssembledSpan: vi.fn(),
+            } as any;
+            const mockCtx = { fields: {} } as any;
+            await finalizeRound.call(mockSolver, settlements, { span: {}, context: mockCtx });
+
+            expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledTimes(1);
+            expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledWith(
+                expect.anything(),
+                mockCtx,
+            );
+
+            (mockSolver as any).logger = undefined; // reset logger
+        });
+
+        it("should NOT export settlement report if logger is NOT available", async () => {
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.ok({
+                    status: ProcessOrderStatus.FoundOpportunity,
+                    spanAttributes: { "event.something": 1234, "event.another": 5678 },
+                }),
+            );
+            settlements = [
+                {
+                    settle: mockSettle,
+                    pair: "ETH/USDC",
+                    owner: "0x123",
+                    orderHash: "0xabc",
+                },
+            ];
+            const loggerExportReport = vi.spyOn(
+                RainSolverLogger.prototype,
+                "exportPreAssembledSpan",
+            );
+            await finalizeRound.call(mockSolver, settlements);
+
+            expect(loggerExportReport).not.toHaveBeenCalled();
+            loggerExportReport.mockRestore();
         });
     });
 });

@@ -1,9 +1,23 @@
 import { sleep } from "../common";
-import { describe, it, assert } from "vitest";
 import { RainSolverTransportTimeoutError } from "./transport";
+import { vi, describe, it, assert, Mock, beforeEach, expect } from "vitest";
 import { RpcState, RpcConfig, RpcMetrics, RpcProgress, RpcBufferType } from ".";
 
+vi.mock("../common", async (importOriginal) => ({
+    ...(await importOriginal()),
+    sleep: vi.fn().mockImplementation(
+        () =>
+            new Promise((resolve) => {
+                resolve(null);
+            }),
+    ),
+}));
+
 describe("Test RpcState", async function () {
+    beforeEach(() => {
+        vi.resetAllMocks();
+    });
+
     const configs: RpcConfig[] = [
         { url: "https://example1.com/" },
         { url: "https://example2.com/" },
@@ -97,14 +111,16 @@ describe("Test RpcState", async function () {
         for (const url of urls) {
             state.metrics[url].progress.buffer = Array(100).fill(RpcBufferType.Failure);
         }
+        (sleep as Mock).mockImplementation(
+            (ms: number) =>
+                new Promise((resolve) => {
+                    setTimeout(() => resolve(""), ms);
+                }),
+        );
 
-        try {
-            await state.nextRpc({ pollingInterval: 0, timeout: 0 });
-            throw "expected to fail, but fulfilled";
-        } catch (error) {
-            if (error === "expected to fail, but fulfilled") throw error;
-            assert.deepEqual(error, new RainSolverTransportTimeoutError(0));
-        }
+        await expect(state.nextRpc({ pollingInterval: 0, timeout: 0 })).rejects.toThrow(
+            new RainSolverTransportTimeoutError(0),
+        );
     });
 });
 
@@ -147,12 +163,16 @@ describe("Test RpcMetrics", async function () {
         assert.equal(result.requestIntervals.length, 1);
         assert.ok(result.lastRequestTimestamp > 0);
         assert.equal(result.timeout, 2);
-        assert.ok(
-            result.requestIntervals[0] >= 1950,
+        assert.closeTo(
+            result.requestIntervals[0],
+            2000,
+            100, // 100 ms delta
             "request intervals should be close to 2 seconds",
         );
-        assert.ok(
-            result.avgRequestIntervals >= 1950,
+        assert.closeTo(
+            result.avgRequestIntervals,
+            2000,
+            100, // 100 ms delta
             "avg request intervals should be close to 2 seconds",
         );
 
@@ -167,16 +187,22 @@ describe("Test RpcMetrics", async function () {
         assert.equal(result.requestIntervals.length, 2);
         assert.ok(result.lastRequestTimestamp > 0);
         assert.equal(result.timeout, 3);
-        assert.ok(
-            result.requestIntervals[0] >= 1950,
+        assert.closeTo(
+            result.requestIntervals[0],
+            2000,
+            100, // 100 ms delta
             "first request intervals should be close to 2 seconds",
         );
-        assert.ok(
-            result.requestIntervals[1] >= 2950,
+        assert.closeTo(
+            result.requestIntervals[1],
+            3000,
+            100, // 100 ms delta
             "second request intervals should be close to 3 seconds",
         );
-        assert.ok(
-            result.avgRequestIntervals >= 2450,
+        assert.closeTo(
+            result.avgRequestIntervals,
+            2500,
+            100, // 100 ms delta
             "avg request intervals should be close to 2.5 seconds",
         );
     });

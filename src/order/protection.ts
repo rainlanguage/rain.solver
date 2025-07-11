@@ -1,6 +1,6 @@
+import { VaultBalanceAbi } from "../common";
 import { erc20Abi, PublicClient } from "viem";
 import { OrderbooksOwnersProfileMap } from "./types";
-import { VaultBalanceAbi } from "../abis";
 
 export type Vault = { vaultId: bigint; balance: bigint };
 export type OwnerVaults = Map<string, Vault[]>;

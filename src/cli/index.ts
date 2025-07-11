@@ -152,7 +152,7 @@ export class RainSolverCli {
         reports.forEach((statusReport) => logger.exportPreAssembledSpan(statusReport));
 
         // init rain solver
-        const rainSolver = new RainSolver(state, appOptions, orderManager, walletManager);
+        const rainSolver = new RainSolver(state, appOptions, orderManager, walletManager, logger);
 
         return new RainSolverCli(
             state,
@@ -286,12 +286,9 @@ export class RainSolverCli {
      */
     async processOrdersForRound(roundSpan: Span, roundCtx: Context) {
         // process round and export the reports
-        const { results, reports, checkpointReports } = await this.rainSolver.processNextRound();
-        checkpointReports.forEach((report) => {
-            this.logger.exportPreAssembledSpan(report, roundCtx);
-        });
-        reports.forEach((report) => {
-            this.logger.exportPreAssembledSpan(report, roundCtx);
+        const { results } = await this.rainSolver.processNextRound({
+            span: roundSpan,
+            context: roundCtx,
         });
         const txUrls = results
             .map((v) => (v.isOk() ? v.value.txUrl : v.error.txUrl))

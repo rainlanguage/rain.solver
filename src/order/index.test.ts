@@ -3,6 +3,7 @@ import { SharedState } from "../state";
 import { SubgraphManager } from "../subgraph";
 import { OrderManager, DEFAULT_OWNER_LIMIT } from "./index";
 import { describe, it, expect, beforeEach, vi, Mock } from "vitest";
+import { Result } from "../common";
 
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
@@ -33,11 +34,13 @@ vi.mock("./types", async (importOriginal) => {
     return {
         ...(await importOriginal()),
         Order: {
-            fromBytes: vi.fn().mockImplementation((value: any) => ({
-                owner: value === "0xadminBytes" ? "0xadmin" : "0xowner",
-                validInputs: [{ token: "0xinput", decimals: 18 }],
-                validOutputs: [{ token: "0xoutput", decimals: 18 }],
-            })),
+            tryFromBytes: vi.fn().mockImplementation((value: any) =>
+                Result.ok({
+                    owner: value === "0xadminBytes" ? "0xadmin" : "0xowner",
+                    validInputs: [{ token: "0xinput", decimals: 18 }],
+                    validOutputs: [{ token: "0xoutput", decimals: 18 }],
+                }),
+            ),
         },
     };
 });
@@ -524,17 +527,21 @@ describe("Test OrderManager", () => {
             outputs: [{ token: { address: "0xinput", symbol: "IN" } }],
             inputs: [{ token: { address: "0xoutput", symbol: "OUT" } }],
         };
-        (Order.fromBytes as Mock)
-            .mockReturnValueOnce({
-                owner: "0xowner",
-                validInputs: [{ token: "0xinput", decimals: 18 }],
-                validOutputs: [{ token: "0xoutput", decimals: 18 }],
-            })
-            .mockReturnValueOnce({
-                owner: "0xowner",
-                validInputs: [{ token: "0xoutput", decimals: 18 }],
-                validOutputs: [{ token: "0xinput", decimals: 18 }],
-            });
+        (Order.tryFromBytes as Mock)
+            .mockReturnValueOnce(
+                Result.ok({
+                    owner: "0xowner",
+                    validInputs: [{ token: "0xinput", decimals: 18 }],
+                    validOutputs: [{ token: "0xoutput", decimals: 18 }],
+                }),
+            )
+            .mockReturnValueOnce(
+                Result.ok({
+                    owner: "0xowner",
+                    validInputs: [{ token: "0xoutput", decimals: 18 }],
+                    validOutputs: [{ token: "0xinput", decimals: 18 }],
+                }),
+            );
         await orderManager.addOrders([orderA as any, orderB as any]);
 
         // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)
@@ -565,17 +572,21 @@ describe("Test OrderManager", () => {
             outputs: [{ token: { address: "0xinput", symbol: "IN" } }],
             inputs: [{ token: { address: "0xoutput", symbol: "OUT" } }],
         };
-        (Order.fromBytes as Mock)
-            .mockReturnValueOnce({
-                owner: "0xowner",
-                validInputs: [{ token: "0xinput", decimals: 18 }],
-                validOutputs: [{ token: "0xoutput", decimals: 18 }],
-            })
-            .mockReturnValueOnce({
-                owner: "0xowner",
-                validInputs: [{ token: "0xoutput", decimals: 18 }],
-                validOutputs: [{ token: "0xinput", decimals: 18 }],
-            });
+        (Order.tryFromBytes as Mock)
+            .mockReturnValueOnce(
+                Result.ok({
+                    owner: "0xowner",
+                    validInputs: [{ token: "0xinput", decimals: 18 }],
+                    validOutputs: [{ token: "0xoutput", decimals: 18 }],
+                }),
+            )
+            .mockReturnValueOnce(
+                Result.ok({
+                    owner: "0xowner",
+                    validInputs: [{ token: "0xoutput", decimals: 18 }],
+                    validOutputs: [{ token: "0xinput", decimals: 18 }],
+                }),
+            );
         await orderManager.addOrders([orderA as any, orderB as any]);
 
         // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)

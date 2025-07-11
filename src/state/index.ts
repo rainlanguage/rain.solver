@@ -1,8 +1,8 @@
 import { RpcState } from "../rpc";
 import { ChainId } from "sushi/chain";
-import { DeployerAbi } from "../abis";
 import { AppOptions } from "../config";
 import { Token } from "sushi/currency";
+import { DeployerAbi } from "../common";
 import { errorSnapshot } from "../error";
 import { getGasPrice } from "./gasPrice";
 import { WalletConfig } from "../wallet/config";

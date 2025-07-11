@@ -2,7 +2,7 @@ import { parseUnits } from "viem";
 import * as common from "../common";
 import * as sweepFns from "./sweep";
 import { WalletType } from "./config";
-import { MulticallAbi } from "../abis";
+import { MulticallAbi } from "../common";
 import { ErrorSeverity } from "../error";
 import * as fundVault from "./fundVault";
 import { RainSolverSigner } from "../signer";
@@ -1092,8 +1092,13 @@ describe("Test WalletManager", () => {
             (multiWalletState as any).gasCosts = [parseUnits("0.01", 18)];
 
             // mock a worker with low balance
-            const lowBalanceWorker = Array.from(walletManager.workers.signers.values())[0];
+            const workers = Array.from(walletManager.workers.signers.values());
+            const lowBalanceWorker = workers[0];
             vi.spyOn(lowBalanceWorker, "getSelfBalance").mockResolvedValue(parseUnits("0.01", 18));
+
+            // mock a worker with sufficient balance
+            vi.spyOn(workers[1], "getSelfBalance").mockResolvedValue(parseUnits("100", 18));
+            vi.spyOn(workers[2], "getSelfBalance").mockResolvedValue(parseUnits("100", 18));
 
             // mock the worker management methods
             const tryRemoveWorkerSpy = vi

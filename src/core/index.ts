@@ -4,6 +4,7 @@ import { SharedState } from "../state";
 import { OrderManager } from "../order";
 import { WalletManager } from "../wallet";
 import { findBestTrade, FindBestTradeArgs } from "./modes";
+import { RainSolverLogger, SpanWithContext } from "../logger";
 import { finalizeRound, initializeRound } from "./process/round";
 import { processOrder, ProcessOrderArgs } from "./process/order";
 import { FindBestTradeResult, ProcessOrderFailure, ProcessOrderSuccess } from "./types";
@@ -32,17 +33,21 @@ export class RainSolver {
     readonly orderManager: OrderManager;
     /** The wallet manager instance */
     readonly walletManager: WalletManager;
+    /** The logger instance */
+    readonly logger?: RainSolverLogger;
 
     constructor(
         state: SharedState,
         appOptions: AppOptions,
         orderManager: OrderManager,
         walletManager: WalletManager,
+        logger?: RainSolverLogger,
     ) {
         this.state = state;
         this.appOptions = appOptions;
         this.orderManager = orderManager;
         this.walletManager = walletManager;
+        this.logger = logger;
     }
 
     /**
@@ -52,9 +57,9 @@ export class RainSolver {
      * is managed by wallet manager.
      * @returns An object containing results and reports of the processed round
      */
-    async processNextRound() {
-        const { settlements, checkpointReports } = await initializeRound.call(this);
-        const { results, reports } = await finalizeRound.call(this, settlements);
+    async processNextRound(roundSpanCtx?: SpanWithContext) {
+        const { settlements, checkpointReports } = await initializeRound.call(this, roundSpanCtx);
+        const { results, reports } = await finalizeRound.call(this, settlements, roundSpanCtx);
         return {
             results,
             reports,

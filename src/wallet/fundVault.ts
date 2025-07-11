@@ -2,8 +2,8 @@ import { Router } from "sushi";
 import { SelfFundVault } from "../config";
 import { RainSolverSigner } from "../signer";
 import { Native, Token } from "sushi/currency";
-import { Deposit2Abi, VaultBalanceAbi } from "../abis";
 import { erc20Abi, maxUint256, parseUnits } from "viem";
+import { Deposit2Abi, VaultBalanceAbi } from "../common";
 import { findMultiRouteExactOut, RToken } from "sushi/tines";
 
 /**

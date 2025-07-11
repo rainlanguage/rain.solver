@@ -3,10 +3,10 @@ import { formatUnits } from "viem";
 import { fundVault } from "./fundVault";
 import { RainSolverSigner } from "../signer";
 import { PreAssembledSpan } from "../logger";
-import { shuffleArray, sleep } from "../common";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { SharedState, TokenDetails } from "../state";
 import { ErrorSeverity, errorSnapshot } from "../error";
+import { shuffleArray, sleep, MulticallAbi } from "../common";
 import { WalletConfig, WalletType, MainAccountDerivationIndex } from "./config";
 import { transferTokenFrom, transferRemainingGasFrom, convertToGas } from "./sweep";
 import {
@@ -15,7 +15,6 @@ import {
     PrivateKeyAccount,
     privateKeyToAccount,
 } from "viem/accounts";
-import { MulticallAbi } from "../abis";
 
 export * from "./config";
 
@@ -571,12 +570,16 @@ export class WalletManager {
     > {
         // identify wallets that need to be removed from cisrculation
         // thie criteria is if their current gas balance is below avg tx gas cost
-        const removeList = [];
+        const removeList: RainSolverSigner[] = [];
         for (const [, worker] of this.workers.signers) {
-            const balance = await worker.getSelfBalance();
-            if (balance < this.state.avgGasCost * 4n) {
-                removeList.push(worker);
-            }
+            await worker
+                .getSelfBalance()
+                .then((balance) => {
+                    if (balance < this.state.avgGasCost * 4n) {
+                        removeList.push(worker);
+                    }
+                })
+                .catch(() => {});
         }
 
         // remove the identified wallet and replace them with new ones
