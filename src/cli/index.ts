@@ -152,7 +152,7 @@ export class RainSolverCli {
         reports.forEach((statusReport) => logger.exportPreAssembledSpan(statusReport));
 
         // init rain solver
-        const rainSolver = new RainSolver(state, appOptions, orderManager, walletManager);
+        const rainSolver = new RainSolver(state, appOptions, orderManager, walletManager, logger);
 
         return new RainSolverCli(
             state,
