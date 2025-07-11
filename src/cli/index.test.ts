@@ -266,6 +266,7 @@ describe("Test RainSolverCli", () => {
                 mockAppOptions,
                 mockOrderManager,
                 mockWalletManager,
+                mockLogger,
             );
             expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
                 expect.objectContaining({ name: "startup" }),
