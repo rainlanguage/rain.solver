@@ -2,7 +2,7 @@ import { Router } from "sushi";
 import { parseUnits } from "viem";
 import { SharedState } from "../state";
 import { Token } from "sushi/currency";
-import { getMarketPrice } from "./marketPrice";
+import { fallbackEthPrice, getMarketPrice } from "./marketPrice";
 import { PoolBlackList, RPoolFilter } from ".";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 
@@ -150,5 +150,67 @@ describe("Test getMarketPrice", () => {
 
             expect(result).toBeUndefined();
         });
+    });
+});
+
+describe("Test fallbackEthPrice", () => {
+    it("should calculate fallback price when oiRatio is less than ioRatio", () => {
+        const oiRatio = parseUnits("0.5", 18); // 0.5 output per input
+        const ioRatio = parseUnits("3", 18); // 3 input per output
+        const inputPrice = "2000"; // $2000 ETH price for input token
+        const result = fallbackEthPrice(oiRatio, ioRatio, inputPrice);
+
+        // oiRatioInverse = 1e36 / 5e17 = 2e18 (2 input per output)
+        // minRatio = min(2e18, 3e18) = 2e18
+        // result = (2e18 * 2000e18) / 1e18 = 4000
+        expect(result).toBe("4000");
+    });
+
+    it("should calculate fallback price when ioRatio is less than oiRatio", () => {
+        const oiRatio = parseUnits("0.1", 18); // 0.1 output per input
+        const ioRatio = parseUnits("5", 18); // 5 input per output
+        const inputPrice = "1500"; // $1500 ETH price for input token
+        const result = fallbackEthPrice(oiRatio, ioRatio, inputPrice);
+
+        // oiRatioInverse = 1e36 / 1e17 = 1e19 (10 input per output)
+        // minRatio = min(1e19, 5e18) = 5e18
+        // result = (5e18 * 1500e18) / 1e18 = 7500
+        expect(result).toBe("7500");
+    });
+
+    it("should handle zero oiRatio", () => {
+        const oiRatio = 0n;
+        const ioRatio = parseUnits("2", 18);
+        const inputPrice = "3000";
+        const result = fallbackEthPrice(oiRatio, ioRatio, inputPrice);
+
+        // oiRatioInverse = maxUint256 (very large number)
+        // minRatio = min(maxUint256, 2e18) = 2e18
+        // result = (2e18 * 3000e18) / 1e18 = 6000
+        expect(result).toBe("6000");
+    });
+
+    it("should handle equal ratios", () => {
+        const oiRatio = parseUnits("0.5", 18);
+        const ioRatio = parseUnits("2", 18); // Inverse of oiRatio
+        const inputPrice = "2500";
+        const result = fallbackEthPrice(oiRatio, ioRatio, inputPrice);
+
+        // oiRatioInverse = 1e36 / 5e17 = 2e18
+        // minRatio = min(2e18, 2e18) = 2e18
+        // result = (2e18 * 2500e18) / 1e18 = 5000
+        expect(result).toBe("5000");
+    });
+
+    it("should handle decimal input prices", () => {
+        const oiRatio = parseUnits("0.25", 18);
+        const ioRatio = parseUnits("5", 18);
+        const inputPrice = "1234.56789";
+        const result = fallbackEthPrice(oiRatio, ioRatio, inputPrice);
+
+        // oiRatioInverse = 1e36 / 25e16 = 4e18
+        // minRatio = min(4e18, 5e18) = 4e18
+        // result = (4e18 * 1234.56789e18) / 1e18 = 4938.27156
+        expect(result).toBe("4938.27156");
     });
 });

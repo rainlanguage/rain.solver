@@ -22,16 +22,21 @@ export async function quoteSingleOrder(
     blockNumber?: bigint,
     gas?: bigint,
 ) {
-    const { data } = await viemClient.call({
-        to: orderDetails.orderbook as `0x${string}`,
-        data: encodeFunctionData({
-            abi: OrderbookQuoteAbi,
-            functionName: "quote",
-            args: [TakeOrder.getQuoteConfig(orderDetails.takeOrders[0].takeOrder)],
-        }),
-        blockNumber,
-        gas,
-    });
+    const { data } = await viemClient
+        .call({
+            to: orderDetails.orderbook as `0x${string}`,
+            data: encodeFunctionData({
+                abi: OrderbookQuoteAbi,
+                functionName: "quote",
+                args: [TakeOrder.getQuoteConfig(orderDetails.takeOrders[0].takeOrder)],
+            }),
+            blockNumber,
+            gas,
+        })
+        .catch((error) => {
+            orderDetails.takeOrders[0].quote = undefined;
+            throw error;
+        });
     if (typeof data !== "undefined") {
         const quoteResult = decodeFunctionResult({
             abi: OrderbookQuoteAbi,

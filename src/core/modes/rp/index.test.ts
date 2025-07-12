@@ -291,4 +291,21 @@ describe("Test findBestRouteProcessorTrade", () => {
             "full",
         );
     });
+
+    it("should return early if ethPrice is unknown", async () => {
+        const result: SimulationResult = await findBestRouteProcessorTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            "",
+            toToken,
+            fromToken,
+        );
+
+        assert(result.isErr());
+        expect(result.error.type).toBe("routeProcessor");
+        expect(result.error.spanAttributes.error).toBe(
+            "no route to get price of input token to eth",
+        );
+    });
 });

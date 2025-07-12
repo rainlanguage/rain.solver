@@ -47,6 +47,8 @@ function makeOrderDetails(ratio = 1n * ONE18): BundledOrders {
 
 function makeCounterpartyOrder(): TakeOrderDetails {
     return {
+        id: "0xid",
+        quote: { maxOutput: 1n, ratio: 2n },
         takeOrder: {
             order: {},
             inputIOIndex: 1,

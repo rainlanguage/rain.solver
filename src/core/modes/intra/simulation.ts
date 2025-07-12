@@ -5,8 +5,8 @@ import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
 import { BundledOrders, TakeOrderDetails } from "../../../order";
-import { encodeFunctionData, maxUint256, parseUnits } from "viem";
 import { getWithdrawEnsureRainlang, parseRainlang } from "../../../task";
+import { encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
 import { FailedSimulation, SimulationResult, TaskType, TradeType } from "../../types";
 import { Clear2Abi, OrderbookMulticallAbi, Withdraw2Abi, Result } from "../../../common";
 
@@ -53,6 +53,14 @@ export async function trySimulateTrade(
     const spanAttributes: Attributes = {};
     const inputBountyVaultId = 1n;
     const outputBountyVaultId = 1n;
+
+    spanAttributes["against"] = counterpartyOrderDetails.id;
+    spanAttributes["inputToEthPrice"] = inputToEthPrice;
+    spanAttributes["outputToEthPrice"] = outputToEthPrice;
+    spanAttributes["counterpartyOrderQuote"] = JSON.stringify({
+        maxOutput: formatUnits(counterpartyOrderDetails.quote!.maxOutput, 18),
+        ratio: formatUnits(counterpartyOrderDetails.quote!.ratio, 18),
+    });
 
     // build clear2 function call data and withdraw tasks
     const task: TaskType = {

@@ -1,9 +1,14 @@
 import { Result } from "../../../common";
 import { SimulationResult } from "../../types";
 import { trySimulateTrade } from "./simulation";
+import { fallbackEthPrice } from "../../../router";
 import { findBestIntraOrderbookTrade } from "./index";
 import { extendObjectWithHeader } from "../../../logger";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
+
+vi.mock("../../../router", () => ({
+    fallbackEthPrice: vi.fn(),
+}));
 
 vi.mock("./simulation", () => ({
     trySimulateTrade: vi.fn(),
@@ -600,5 +605,44 @@ describe("Test findBestIntraOrderbookTrade", () => {
         expect(result.error.noneNodeError).toBeUndefined();
         expect(trySimulateTrade).not.toHaveBeenCalled();
         expect(result.error.type).toBe("intraOrderbook");
+    });
+
+    it("should call fallbackEthPrice with correct parameters if eth price is unknown", async () => {
+        const mockCounterpartyOrders = [
+            {
+                takeOrder: {
+                    id: "order2",
+                    takeOrder: {
+                        order: {
+                            owner: "0xowner2",
+                        },
+                    },
+                    quote: { ratio: 2n, maxOutput: 1n },
+                },
+            },
+        ];
+        mockRainSolver.orderManager.getCounterpartyOrders.mockReturnValue(mockCounterpartyOrders);
+        (fallbackEthPrice as Mock).mockReturnValueOnce("1").mockReturnValueOnce("2");
+        (trySimulateTrade as Mock).mockResolvedValue(
+            Result.err({
+                spanAttributes: { error: "failed" },
+                noneNodeError: "simulation failed",
+            }),
+        );
+
+        await findBestIntraOrderbookTrade.call(mockRainSolver, orderDetails, signer, "", "");
+
+        expect(trySimulateTrade).toHaveBeenCalledWith({
+            orderDetails,
+            counterpartyOrderDetails: mockCounterpartyOrders[0].takeOrder,
+            signer,
+            inputToEthPrice: "1",
+            outputToEthPrice: "2",
+            blockNumber: 123n,
+            inputBalance: 5000000000000000000n,
+            outputBalance: 3000000000000000000n,
+        });
+        expect(fallbackEthPrice).toHaveBeenCalledWith(1000000000000000000n, 2n, ""); // first call for inputToEthPrice
+        expect(fallbackEthPrice).toHaveBeenCalledWith(2n, 1000000000000000000n, ""); // second call for outputToEthPrice
     });
 });

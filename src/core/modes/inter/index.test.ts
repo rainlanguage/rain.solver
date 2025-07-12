@@ -3,6 +3,7 @@ import { Result } from "../../../common";
 import { trySimulateTrade } from "./simulate";
 import { SimulationResult } from "../../types";
 import { BundledOrders } from "../../../order";
+import { fallbackEthPrice } from "../../../router";
 import { RainSolverSigner } from "../../../signer";
 import { findBestInterOrderbookTrade } from "./index";
 import { extendObjectWithHeader } from "../../../logger";
@@ -14,6 +15,10 @@ vi.mock("./simulate", () => ({
 
 vi.mock("../../../logger", () => ({
     extendObjectWithHeader: vi.fn(),
+}));
+
+vi.mock("../../../router", () => ({
+    fallbackEthPrice: vi.fn(),
 }));
 
 describe("Test findBestInterOrderbookTrade", () => {
@@ -41,7 +46,10 @@ describe("Test findBestInterOrderbookTrade", () => {
         } as any;
 
         orderDetails = {
-            takeOrders: [{ quote: { maxOutput: 1000n } }, { quote: { maxOutput: 2000n } }],
+            takeOrders: [
+                { quote: { maxOutput: 1000n, ratio: 5n } },
+                { quote: { maxOutput: 2000n, ratio: 6n } },
+            ],
         } as any;
 
         signer = { account: { address: "0xsigner" } } as any;
@@ -332,5 +340,41 @@ describe("Test findBestInterOrderbookTrade", () => {
         assert(result.isOk());
         expect(result.value.estimatedProfit).toBe(500n); // should return the highest profit
         expect(result.value.type).toBe("interOrderbook");
+    });
+
+    it("should call fallbackEthPrice with correct parameters if eth price is unknown", async () => {
+        const mockCounterpartyOrders = [
+            [
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order1",
+                    takeOrder: { quote: { maxOutput: 1n, ratio: 2n } },
+                },
+            ],
+        ];
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
+        (fallbackEthPrice as Mock).mockReturnValueOnce("1").mockReturnValueOnce("2");
+        (trySimulateTrade as Mock).mockResolvedValue(
+            Result.err({
+                spanAttributes: { error: "failed" },
+                noneNodeError: "simulation failed",
+            }),
+        );
+
+        await findBestInterOrderbookTrade.call(mockRainSolver, orderDetails, signer, "", "");
+
+        expect(trySimulateTrade).toHaveBeenCalledWith({
+            orderDetails,
+            counterpartyOrderDetails: mockCounterpartyOrders[0][0],
+            signer,
+            maximumInputFixed: 3000n, // 1000 + 2000
+            inputToEthPrice: "1",
+            outputToEthPrice: "2",
+            blockNumber: 123n,
+        });
+        expect(fallbackEthPrice).toHaveBeenCalledWith(5n, 2n, ""); // first call for inputToEthPrice
+        expect(fallbackEthPrice).toHaveBeenCalledWith(2n, 5n, ""); // second call for outputToEthPrice
     });
 });

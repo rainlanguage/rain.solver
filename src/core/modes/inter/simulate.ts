@@ -8,7 +8,7 @@ import { extendObjectWithHeader } from "../../../logger";
 import { ArbAbi, TakeOrdersV2Abi, Result } from "../../../common";
 import { RainSolverSigner, RawTransaction } from "../../../signer";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
-import { encodeAbiParameters, encodeFunctionData, maxUint256, parseUnits } from "viem";
+import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
 import {
     TaskType,
     TradeType,
@@ -55,6 +55,14 @@ export async function trySimulateTrade(
     } = args;
     const spanAttributes: Attributes = {};
     const gasPrice = this.state.gasPrice;
+
+    spanAttributes["against"] = counterpartyOrderDetails.takeOrder.id;
+    spanAttributes["inputToEthPrice"] = inputToEthPrice;
+    spanAttributes["outputToEthPrice"] = outputToEthPrice;
+    spanAttributes["counterpartyOrderQuote"] = JSON.stringify({
+        maxOutput: formatUnits(counterpartyOrderDetails.takeOrder.quote!.maxOutput, 18),
+        ratio: formatUnits(counterpartyOrderDetails.takeOrder.quote!.ratio, 18),
+    });
 
     const maximumInput = scale18To(maximumInputFixed, orderDetails.sellTokenDecimals);
     spanAttributes["maxInput"] = maximumInput.toString();

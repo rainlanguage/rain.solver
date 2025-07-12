@@ -35,6 +35,7 @@ describe("Test processOrder", () => {
     let mockState: SharedState;
 
     beforeEach(() => {
+        vi.clearAllMocks();
         mockOrderManager = {
             quoteOrder: vi.fn(),
         } as any;
@@ -168,8 +169,12 @@ describe("Test processOrder", () => {
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
     });
 
-    it('should return FailedToGetEthPrice if getMarketPrice throws and gasCoveragePercentage is not "0"', async () => {
-        (mockState.getMarketPrice as Mock).mockRejectedValue(new Error("no route"));
+    it('should set outputToEthPrice to "" if getMarketPrice returns undefined for output and gasCoveragePercentage is not "0"', async () => {
+        (mockState.getMarketPrice as Mock)
+            .mockResolvedValueOnce({ price: "100", amountOut: "100" })
+            .mockResolvedValueOnce({ price: "100", amountOut: "100" })
+            .mockResolvedValueOnce(undefined);
+        (findBestTrade as Mock).mockResolvedValue(Result.err({ spanAttributes: {} }));
         mockRainSolver.appOptions.gasCoveragePercentage = "100";
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
@@ -178,21 +183,26 @@ describe("Test processOrder", () => {
         );
         const result = await fn();
 
-        assert(result.isErr());
-        expect(result.error.reason).toBe(ProcessOrderHaltReason.FailedToGetEthPrice);
-        expect(result.error.tokenPair).toBe("BUY/SELL");
-        expect(result.error.buyToken).toBe("0xBUY");
-        expect(result.error.sellToken).toBe("0xSELL");
-        expect(result.error.status).toBe(ProcessOrderStatus.NoOpportunity);
-        expect(result.error.spanAttributes["details.quote"]).toBe(
+        // this will eventually succeed at processTransaction
+        assert(result.isOk());
+        expect(result.value.tokenPair).toBe("BUY/SELL");
+        expect(result.value.buyToken).toBe("0xBUY");
+        expect(result.value.sellToken).toBe("0xSELL");
+        expect(result.value.status).toBe(ProcessOrderStatus.NoOpportunity);
+        expect(result.value.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.error.spanAttributes["details.orders"]).toEqual([1]);
-        expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.value.spanAttributes["details.orders"]).toEqual([1]);
+        expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
+        expect(result.value.spanAttributes["details.outputToEthPrice"]).toBe("no-way");
     });
 
-    it('should set input/outputToEthPrice to "0" if getMarketPrice throws and gasCoveragePercentage is "0"', async () => {
-        (mockState.getMarketPrice as Mock).mockRejectedValue(new Error("no route"));
+    it('should set outputToEthPrice to "0" if getMarketPrice returns undefined for output and gasCoveragePercentage is "0"', async () => {
+        (mockState.getMarketPrice as Mock)
+            .mockResolvedValueOnce({ price: "100", amountOut: "100" })
+            .mockResolvedValueOnce({ price: "100", amountOut: "100" })
+            .mockResolvedValueOnce(undefined);
         (findBestTrade as Mock).mockResolvedValue(Result.err({ spanAttributes: {} }));
         mockRainSolver.appOptions.gasCoveragePercentage = "0";
 
@@ -213,6 +223,8 @@ describe("Test processOrder", () => {
         );
         expect(result.value.spanAttributes["details.orders"]).toEqual([1]);
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
+        expect(result.value.spanAttributes["details.outputToEthPrice"]).toBe("0");
     });
 
     it('should return FailedToGetEthPrice if getMarketPrice returns undefined and gasCoveragePercentage is not "0"', async () => {

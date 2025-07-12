@@ -41,7 +41,10 @@ function makeOrderDetails(ratio = 1n * ONE18): BundledOrders {
 function makeCounterpartyOrder(): Pair {
     return {
         orderbook: "0xcounterpartyorderbook",
-        takeOrder: {},
+        takeOrder: {
+            id: "0xid",
+            quote: { maxOutput: 1n, ratio: 2n },
+        },
     } as Pair;
 }
 
