@@ -1,4 +1,4 @@
-import { ONE18, scale18 } from "../../math";
+import { ONE18, scaleTo18 } from "../../math";
 import { AfterClearAbi } from "../../common";
 import { erc20Abi, formatUnits, parseEventLogs, parseUnits, TransactionReceipt } from "viem";
 
@@ -109,7 +109,7 @@ export function getActualPrice(
                 log.args.from.toLowerCase() !== orderbook.toLowerCase()
             ) {
                 return formatUnits(
-                    (scale18(log.args.value, tokenDecimals) * ONE18) / BigInt(clearAmount),
+                    (scaleTo18(log.args.value, tokenDecimals) * ONE18) / BigInt(clearAmount),
                     18,
                 );
             }
@@ -133,7 +133,8 @@ export function getTotalIncome(
     const inputTokenIncomeInEth = (() => {
         if (inputTokenIncome) {
             return (
-                (parseUnits(inputTokenPrice, 18) * scale18(inputTokenIncome, inputTokenDecimals)) /
+                (parseUnits(inputTokenPrice, 18) *
+                    scaleTo18(inputTokenIncome, inputTokenDecimals)) /
                 ONE18
             );
         } else {
@@ -144,7 +145,7 @@ export function getTotalIncome(
         if (outputTokenIncome) {
             return (
                 (parseUnits(outputTokenPrice, 18) *
-                    scale18(outputTokenIncome, outputTokenDecimals)) /
+                    scaleTo18(outputTokenIncome, outputTokenDecimals)) /
                 ONE18
             );
         } else {

@@ -38,6 +38,8 @@ describe("Test processOrder", () => {
         vi.clearAllMocks();
         mockOrderManager = {
             quoteOrder: vi.fn(),
+            addToPairMap: vi.fn(),
+            deleteFromPairMap: vi.fn(),
         } as any;
         mockState = {
             chainConfig: {
@@ -62,13 +64,12 @@ describe("Test processOrder", () => {
                 buyToken: "0xBUY",
                 sellTokenSymbol: "SELL",
                 buyTokenSymbol: "BUY",
-                takeOrders: [
-                    {
-                        id: 1,
-                        quote: { maxOutput: 1000000000000000000n, ratio: 2000000000000000000n },
-                        takeOrder: {},
-                    },
-                ],
+                orderbook: "0xorderbook",
+                takeOrder: {
+                    id: "0xid",
+                    quote: { maxOutput: 1000000000000000000n, ratio: 2000000000000000000n },
+                    takeOrder: {},
+                },
             },
             signer: {},
         } as any;
@@ -82,7 +83,7 @@ describe("Test processOrder", () => {
 
     it("should return ZeroOutput if quoted maxOutput is 0", async () => {
         (mockOrderManager.quoteOrder as Mock).mockResolvedValue(undefined);
-        mockArgs.orderDetails.takeOrders[0].quote = { maxOutput: 0n, ratio: 0n };
+        mockArgs.orderDetails.takeOrder.quote = { maxOutput: 0n, ratio: 0n };
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
             mockRainSolver,
@@ -96,8 +97,12 @@ describe("Test processOrder", () => {
         expect(result.value.tokenPair).toBe("BUY/SELL");
         expect(result.value.buyToken).toBe("0xBUY");
         expect(result.value.sellToken).toBe("0xSELL");
-        expect(result.value.spanAttributes["details.orders"]).toEqual([1]);
+        expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
+
+        // ensure pair maps are updated success quote
+        expect(mockOrderManager.addToPairMap).toHaveBeenCalledWith(mockArgs.orderDetails, false);
+        expect(mockOrderManager.addToPairMap).toHaveBeenCalledWith(mockArgs.orderDetails, true);
     });
 
     it("should return FailedToQuote if quoteOrder throws", async () => {
@@ -117,8 +122,24 @@ describe("Test processOrder", () => {
         expect(result.error.buyToken).toBe("0xBUY");
         expect(result.error.sellToken).toBe("0xSELL");
         expect(result.error.status).toBe(ProcessOrderStatus.NoOpportunity);
-        expect(result.error.spanAttributes["details.orders"]).toEqual([1]);
+        expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+
+        // ensure pair maps are updated on quote failure
+        expect(mockOrderManager.deleteFromPairMap).toHaveBeenCalledWith(
+            mockArgs.orderDetails.orderbook.toLowerCase(),
+            mockArgs.orderDetails.takeOrder.id.toLowerCase(),
+            mockArgs.orderDetails.sellToken.toLowerCase(),
+            mockArgs.orderDetails.buyToken.toLowerCase(),
+            false,
+        );
+        expect(mockOrderManager.deleteFromPairMap).toHaveBeenCalledWith(
+            mockArgs.orderDetails.orderbook.toLowerCase(),
+            mockArgs.orderDetails.takeOrder.id.toLowerCase(),
+            mockArgs.orderDetails.sellToken.toLowerCase(),
+            mockArgs.orderDetails.buyToken.toLowerCase(),
+            true,
+        );
     });
 
     it("should return FailedToUpdatePools if updatePools throws (not fetchPoolsForToken)", async () => {
@@ -141,7 +162,7 @@ describe("Test processOrder", () => {
         expect(result.error.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.error.spanAttributes["details.orders"]).toEqual([1]);
+        expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
     });
 
@@ -165,7 +186,7 @@ describe("Test processOrder", () => {
         expect(result.error.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.error.spanAttributes["details.orders"]).toEqual([1]);
+        expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
     });
 
@@ -192,7 +213,7 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.value.spanAttributes["details.orders"]).toEqual([1]);
+        expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
         expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.outputToEthPrice"]).toBe("no-way");
@@ -221,7 +242,7 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.value.spanAttributes["details.orders"]).toEqual([1]);
+        expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
         expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.outputToEthPrice"]).toBe("0");
@@ -246,7 +267,7 @@ describe("Test processOrder", () => {
         expect(result.error.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.error.spanAttributes["details.orders"]).toEqual([1]);
+        expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
     });
 
@@ -271,7 +292,7 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.value.spanAttributes["details.orders"]).toEqual([1]);
+        expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
     });
 
@@ -294,7 +315,7 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.value.spanAttributes["details.orders"]).toEqual([1]);
+        expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
         expect(result.value.spanAttributes["details.marketQuote.str"]).toBe("100");
         expect(result.value.spanAttributes["details.marketQuote.num"]).toBe(100);
@@ -324,7 +345,7 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.value.spanAttributes["details.orders"]).toEqual([1]);
+        expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
         expect(result.value.spanAttributes["details.marketQuote.str"]).toBe("100");
         expect(result.value.spanAttributes["details.marketQuote.num"]).toBe(100);

@@ -46,10 +46,7 @@ describe("Test findBestInterOrderbookTrade", () => {
         } as any;
 
         orderDetails = {
-            takeOrders: [
-                { quote: { maxOutput: 1000n, ratio: 5n } },
-                { quote: { maxOutput: 2000n, ratio: 6n } },
-            ],
+            takeOrder: { quote: { maxOutput: 1000n, ratio: 5n } },
         } as any;
 
         signer = { account: { address: "0xsigner" } } as any;
@@ -285,7 +282,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             orderDetails,
             counterpartyOrderDetails: { orderbook: "0xorderbook1", id: "order1" },
             signer,
-            maximumInputFixed: 3000n, // 1000 + 2000
+            maximumInputFixed: 1000n,
             inputToEthPrice,
             outputToEthPrice,
             blockNumber: 123n,
@@ -369,7 +366,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             orderDetails,
             counterpartyOrderDetails: mockCounterpartyOrders[0][0],
             signer,
-            maximumInputFixed: 3000n, // 1000 + 2000
+            maximumInputFixed: 1000n,
             inputToEthPrice: "1",
             outputToEthPrice: "2",
             blockNumber: 123n,

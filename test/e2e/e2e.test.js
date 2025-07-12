@@ -604,22 +604,18 @@ for (let i = 0; i < testData.length; i++) {
                 orders = orderManager.getNextRoundOrders(false);
 
                 // mock init quotes
-                orders.forEach((ob) => {
-                    ob.forEach((pair) => {
-                        pair.takeOrders.forEach((takeOrder) => {
-                            takeOrder.quote = {
-                                ratio: ethers.constants.Zero.toBigInt(),
-                                maxOutput: tokens
-                                    .find(
-                                        (t) =>
-                                            t.contract.address.toLowerCase() ===
-                                            pair.sellToken.toLowerCase(),
-                                    )
-                                    ?.depositAmount.mul("1" + "0".repeat(18 - ob.decimals))
-                                    .toBigInt(),
-                            };
-                        });
-                    });
+                orders.forEach((pair) => {
+                    pair.takeOrder.quote = {
+                        ratio: ethers.constants.Zero.toBigInt(),
+                        maxOutput: tokens
+                            .find(
+                                (t) =>
+                                    t.contract.address.toLowerCase() ===
+                                    pair.sellToken.toLowerCase(),
+                            )
+                            ?.depositAmount.mul("1" + "0".repeat(18 - pair.sellTokenDecimals))
+                            .toBigInt(),
+                    };
                 });
                 state.gasPrice = await bot.getGasPrice();
                 orderManager.getNextRoundOrders = () => orders;
@@ -961,22 +957,18 @@ for (let i = 0; i < testData.length; i++) {
                 orders = orderManager.getNextRoundOrders(false);
 
                 // mock init quotes
-                orders.forEach((ob) => {
-                    ob.forEach((pair) => {
-                        pair.takeOrders.forEach((takeOrder) => {
-                            takeOrder.quote = {
-                                ratio: ethers.constants.Zero.toBigInt(),
-                                maxOutput: tokens
-                                    .find(
-                                        (t) =>
-                                            t.contract.address.toLowerCase() ===
-                                            pair.sellToken.toLowerCase(),
-                                    )
-                                    ?.depositAmount.mul("1" + "0".repeat(18 - ob.decimals))
-                                    .toBigInt(),
-                            };
-                        });
-                    });
+                orders.forEach((pair) => {
+                    pair.takeOrder.quote = {
+                        ratio: ethers.constants.Zero.toBigInt(),
+                        maxOutput: tokens
+                            .find(
+                                (t) =>
+                                    t.contract.address.toLowerCase() ===
+                                    pair.sellToken.toLowerCase(),
+                            )
+                            ?.depositAmount.mul("1" + "0".repeat(18 - pair.sellTokenDecimals))
+                            .toBigInt(),
+                    };
                 });
                 state.gasPrice = await bot.getGasPrice();
                 orderManager.getNextRoundOrders = () => orders;

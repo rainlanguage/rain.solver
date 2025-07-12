@@ -25,53 +25,38 @@ export async function initializeRound(this: RainSolver, roundSpanCtx?: SpanWithC
     const orders = this.orderManager.getNextRoundOrders(true);
     const settlements: Settlement[] = [];
     const checkpointReports: PreAssembledSpan[] = [];
-    for (const orderbookOrders of orders) {
-        for (const pairOrders of orderbookOrders) {
-            for (let i = 0; i < pairOrders.takeOrders.length; i++) {
-                const orderDetails = {
-                    orderbook: pairOrders.orderbook,
-                    buyToken: pairOrders.buyToken,
-                    buyTokenSymbol: pairOrders.buyTokenSymbol,
-                    buyTokenDecimals: pairOrders.buyTokenDecimals,
-                    sellToken: pairOrders.sellToken,
-                    sellTokenSymbol: pairOrders.sellTokenSymbol,
-                    sellTokenDecimals: pairOrders.sellTokenDecimals,
-                    takeOrders: [pairOrders.takeOrders[i]],
-                };
+    for (const orderDetails of orders) {
+        // await for first available random free signer
+        const signer = await this.walletManager.getRandomSigner(true);
 
-                // await for first available random free signer
-                const signer = await this.walletManager.getRandomSigner(true);
+        const pair = `${orderDetails.buyTokenSymbol}/${orderDetails.sellTokenSymbol}`;
+        const report = new PreAssembledSpan(`checkpoint_${pair}`);
+        report.extendAttrs({
+            "details.pair": pair,
+            "details.orderHash": orderDetails.takeOrder.id,
+            "details.orderbook": orderDetails.orderbook,
+            "details.sender": signer.account.address,
+            "details.owner": orderDetails.takeOrder.takeOrder.order.owner,
+        });
 
-                const pair = `${pairOrders.buyTokenSymbol}/${pairOrders.sellTokenSymbol}`;
-                const report = new PreAssembledSpan(`checkpoint_${pair}`);
-                report.extendAttrs({
-                    "details.pair": pair,
-                    "details.orderHash": orderDetails.takeOrders[0].id,
-                    "details.orderbook": orderDetails.orderbook,
-                    "details.sender": signer.account.address,
-                    "details.owner": orderDetails.takeOrders[0].takeOrder.order.owner,
-                });
+        // call process pair and save the settlement fn
+        // to later settle without needing to pause if
+        // there are more signers available
+        const settle = await this.processOrder({
+            orderDetails,
+            signer,
+        });
+        settlements.push({
+            settle,
+            pair,
+            orderHash: orderDetails.takeOrder.id,
+            owner: orderDetails.takeOrder.takeOrder.order.owner,
+        });
+        report.end();
+        checkpointReports.push(report);
 
-                // call process pair and save the settlement fn
-                // to later settle without needing to pause if
-                // there are more signers available
-                const settle = await this.processOrder({
-                    orderDetails,
-                    signer,
-                });
-                settlements.push({
-                    settle,
-                    pair,
-                    orderHash: orderDetails.takeOrders[0].id,
-                    owner: orderDetails.takeOrders[0].takeOrder.order.owner,
-                });
-                report.end();
-                checkpointReports.push(report);
-
-                // export the report to logger if logger is available
-                this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
-            }
-        }
+        // export the report to logger if logger is available
+        this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
     }
 
     return {

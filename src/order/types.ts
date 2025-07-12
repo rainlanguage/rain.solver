@@ -120,4 +120,4 @@ export type OrderbooksOwnersProfileMap = Map<string, OwnersProfileMap>;
 
 export type OrderbooksPairMap = Map<string, PairMap>;
 
-export type PairMap = Map<string, Pair[]>;
+export type PairMap = Map<string, Map<string, Pair[]>>;

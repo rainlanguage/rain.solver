@@ -4,7 +4,7 @@ import { estimateProfit } from "./utils";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
-import { BundledOrders, TakeOrderDetails } from "../../../order";
+import { Pair, TakeOrderDetails } from "../../../order";
 import { getWithdrawEnsureRainlang, parseRainlang } from "../../../task";
 import { encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
 import { FailedSimulation, SimulationResult, TaskType, TradeType } from "../../types";
@@ -13,7 +13,7 @@ import { Clear2Abi, OrderbookMulticallAbi, Withdraw2Abi, Result } from "../../..
 /** Arguments for simulating inter-orderbook trade */
 export type SimulateIntraOrderbookTradeArgs = {
     /** The bundled order details including tokens, decimals, and take orders */
-    orderDetails: BundledOrders;
+    orderDetails: Pair;
     /** The counterparty order to trade against */
     counterpartyOrderDetails: TakeOrderDetails;
     /** The RainSolverSigner instance used for signing transactions */
@@ -104,11 +104,11 @@ export async function trySimulateTrade(
         abi: Clear2Abi,
         functionName: "clear2",
         args: [
-            orderDetails.takeOrders[0].takeOrder.order,
+            orderDetails.takeOrder.takeOrder.order,
             counterpartyOrderDetails.takeOrder.order,
             {
-                aliceInputIOIndex: BigInt(orderDetails.takeOrders[0].takeOrder.inputIOIndex),
-                aliceOutputIOIndex: BigInt(orderDetails.takeOrders[0].takeOrder.outputIOIndex),
+                aliceInputIOIndex: BigInt(orderDetails.takeOrder.takeOrder.inputIOIndex),
+                aliceOutputIOIndex: BigInt(orderDetails.takeOrder.takeOrder.outputIOIndex),
                 bobInputIOIndex: BigInt(counterpartyOrderDetails.takeOrder.inputIOIndex),
                 bobOutputIOIndex: BigInt(counterpartyOrderDetails.takeOrder.outputIOIndex),
                 aliceBountyVaultId: inputBountyVaultId,

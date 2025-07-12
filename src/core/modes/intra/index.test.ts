@@ -49,17 +49,15 @@ describe("Test findBestIntraOrderbookTrade", () => {
         };
 
         orderDetails = {
-            takeOrders: [
-                {
-                    id: "order1",
-                    takeOrder: {
-                        order: {
-                            owner: "0xowner1",
-                        },
+            takeOrder: {
+                id: "order1",
+                takeOrder: {
+                    order: {
+                        owner: "0xowner1",
                     },
-                    quote: { ratio: 1000000000000000000n }, // 1.0
                 },
-            ],
+                quote: { ratio: 1000000000000000000n }, // 1.0
+            },
             buyToken: "0xbuytoken",
             sellToken: "0xselltoken",
             buyTokenDecimals: 18,

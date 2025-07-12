@@ -1,11 +1,11 @@
 import assert from "assert";
 import { RainSolver } from "../..";
+import { Pair } from "../../../order";
 import { Result } from "../../../common";
 import { trySimulateTrade } from "./simulate";
 import { Attributes } from "@opentelemetry/api";
 import { fallbackEthPrice } from "../../../router";
 import { RainSolverSigner } from "../../../signer";
-import { BundledOrders, Pair } from "../../../order";
 import { extendObjectWithHeader } from "../../../logger";
 import { SimulationResult, TradeType } from "../../types";
 
@@ -21,7 +21,7 @@ import { SimulationResult, TradeType } from "../../types";
  */
 export async function findBestInterOrderbookTrade(
     this: RainSolver,
-    orderDetails: BundledOrders,
+    orderDetails: Pair,
     signer: RainSolverSigner,
     inputToEthPrice: string,
     outputToEthPrice: string,
@@ -39,7 +39,7 @@ export async function findBestInterOrderbookTrade(
     const spanAttributes: Attributes = {};
     const blockNumber = await this.state.client.getBlockNumber();
     const counterpartyOrders = this.orderManager.getCounterpartyOrders(orderDetails, false);
-    const maximumInputFixed = orderDetails.takeOrders.reduce((a, b) => a + b.quote!.maxOutput, 0n);
+    const maximumInputFixed = orderDetails.takeOrder.quote!.maxOutput;
     const counterparties: Pair[] = [];
 
     // run simulations for top 3 counterparty orders of each orderbook
@@ -55,7 +55,7 @@ export async function findBestInterOrderbookTrade(
                 inputToEthPrice:
                     inputToEthPrice ||
                     fallbackEthPrice(
-                        orderDetails.takeOrders[0].quote!.ratio,
+                        orderDetails.takeOrder.quote!.ratio,
                         counterpartyOrderDetails.takeOrder.quote!.ratio,
                         outputToEthPrice,
                     ),
@@ -63,7 +63,7 @@ export async function findBestInterOrderbookTrade(
                     outputToEthPrice ||
                     fallbackEthPrice(
                         counterpartyOrderDetails.takeOrder.quote!.ratio,
-                        orderDetails.takeOrders[0].quote!.ratio,
+                        orderDetails.takeOrder.quote!.ratio,
                         inputToEthPrice,
                     ),
                 blockNumber,

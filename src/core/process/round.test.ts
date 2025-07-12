@@ -55,19 +55,15 @@ describe("Test initializeRound", () => {
     describe("successful initialization", () => {
         it("should return settlements with correct structure for single order", async () => {
             const mockOrders = [
-                [
-                    {
-                        orderbook: "0x3333333333333333333333333333333333333333",
-                        buyTokenSymbol: "ETH",
-                        sellTokenSymbol: "USDC",
-                        takeOrders: [
-                            {
-                                id: "0xOrder123",
-                                takeOrder: { order: { owner: "0xOwner123" } },
-                            },
-                        ],
+                {
+                    orderbook: "0x3333333333333333333333333333333333333333",
+                    buyTokenSymbol: "ETH",
+                    sellTokenSymbol: "USDC",
+                    takeOrder: {
+                        id: "0xOrder123",
+                        takeOrder: { order: { owner: "0xOwner123" } },
                     },
-                ],
+                },
             ];
 
             const mockSettleFn = vi.fn();
@@ -98,27 +94,24 @@ describe("Test initializeRound", () => {
 
         it("should handle multiple orders from multiple orderbooks", async () => {
             const mockOrders = [
-                [
-                    {
-                        orderbook: "0x5555555555555555555555555555555555555555",
-                        buyTokenSymbol: "ETH",
-                        sellTokenSymbol: "USDC",
-                        takeOrders: [
-                            { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
-                            { id: "0xOrder2", takeOrder: { order: { owner: "0xOwner2" } } },
-                        ],
-                    },
-                ],
-                [
-                    {
-                        orderbook: "0x6666666666666666666666666666666666666666",
-                        buyTokenSymbol: "BTC",
-                        sellTokenSymbol: "USDT",
-                        takeOrders: [
-                            { id: "0xOrder3", takeOrder: { order: { owner: "0xOwner3" } } },
-                        ],
-                    },
-                ],
+                {
+                    orderbook: "0x5555555555555555555555555555555555555555",
+                    buyTokenSymbol: "ETH",
+                    sellTokenSymbol: "USDC",
+                    takeOrder: { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                },
+                {
+                    orderbook: "0x5555555555555555555555555555555555555555",
+                    buyTokenSymbol: "ETH",
+                    sellTokenSymbol: "USDC",
+                    takeOrder: { id: "0xOrder2", takeOrder: { order: { owner: "0xOwner2" } } },
+                },
+                {
+                    orderbook: "0x6666666666666666666666666666666666666666",
+                    buyTokenSymbol: "BTC",
+                    sellTokenSymbol: "USDT",
+                    takeOrder: { id: "0xOrder3", takeOrder: { order: { owner: "0xOwner3" } } },
+                },
             ];
 
             mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
@@ -157,16 +150,15 @@ describe("Test initializeRound", () => {
             mockSolver.appOptions.genericArbAddress = undefined;
 
             const mockOrders = [
-                [
-                    {
-                        orderbook: "0x3333333333333333333333333333333333333333",
-                        buyTokenSymbol: "ETH",
-                        sellTokenSymbol: "USDC",
-                        takeOrders: [
-                            { id: "0xOrder123", takeOrder: { order: { owner: "0xOwner123" } } },
-                        ],
+                {
+                    orderbook: "0x3333333333333333333333333333333333333333",
+                    buyTokenSymbol: "ETH",
+                    sellTokenSymbol: "USDC",
+                    takeOrder: {
+                        id: "0xOrder123",
+                        takeOrder: { order: { owner: "0xOwner123" } },
                     },
-                ],
+                },
             ];
 
             mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
@@ -177,7 +169,7 @@ describe("Test initializeRound", () => {
             expect(result.settlements).toHaveLength(1);
             expect(result.checkpointReports).toHaveLength(1);
             expect(mockSolver.processOrder).toHaveBeenCalledWith({
-                orderDetails: expect.objectContaining(mockOrders[0][0]),
+                orderDetails: expect.objectContaining(mockOrders[0]),
                 signer: mockSigner,
             });
         });
@@ -186,28 +178,6 @@ describe("Test initializeRound", () => {
     describe("empty orders handling", () => {
         it("should return empty settlements and checkpointReports for empty orders", async () => {
             mockOrderManager.getNextRoundOrders.mockReturnValue([]);
-
-            const result: initializeRoundType = await initializeRound.call(mockSolver);
-
-            expect(result.settlements).toHaveLength(0);
-            expect(result.checkpointReports).toHaveLength(0);
-            expect(mockWalletManager.getRandomSigner).not.toHaveBeenCalled();
-            expect(mockSolver.processOrder).not.toHaveBeenCalled();
-        });
-
-        it("should skip orderbooks with empty takeOrders", async () => {
-            const mockOrders = [
-                [
-                    {
-                        orderbook: "0x3333333333333333333333333333333333333333",
-                        buyTokenSymbol: "ETH",
-                        sellTokenSymbol: "USDC",
-                        takeOrders: [],
-                    },
-                ],
-            ];
-
-            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
 
             const result: initializeRoundType = await initializeRound.call(mockSolver);
 
@@ -230,17 +200,18 @@ describe("Test initializeRound", () => {
 
         it("should call getRandomSigner for each order", async () => {
             const mockOrders = [
-                [
-                    {
-                        orderbook: "0x3333333333333333333333333333333333333333",
-                        buyTokenSymbol: "ETH",
-                        sellTokenSymbol: "USDC",
-                        takeOrders: [
-                            { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
-                            { id: "0xOrder2", takeOrder: { order: { owner: "0xOwner2" } } },
-                        ],
-                    },
-                ],
+                {
+                    orderbook: "0x3333333333333333333333333333333333333333",
+                    buyTokenSymbol: "ETH",
+                    sellTokenSymbol: "USDC",
+                    takeOrder: { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                },
+                {
+                    orderbook: "0x3333333333333333333333333333333333333333",
+                    buyTokenSymbol: "ETH",
+                    sellTokenSymbol: "USDC",
+                    takeOrder: { id: "0xOrder2", takeOrder: { order: { owner: "0xOwner2" } } },
+                },
             ];
 
             mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
@@ -261,9 +232,9 @@ describe("Test initializeRound", () => {
                 sellToken: "0xUSDC",
                 sellTokenSymbol: "USDC",
                 sellTokenDecimals: 6,
-                takeOrders: [{ id: "0xOrder123", takeOrder: { order: { owner: "0xOwner123" } } }],
+                takeOrder: { id: "0xOrder123", takeOrder: { order: { owner: "0xOwner123" } } },
             };
-            const mockOrders = [[orderDetails]];
+            const mockOrders = [orderDetails];
 
             mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
             mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
@@ -280,16 +251,12 @@ describe("Test initializeRound", () => {
     describe("checkpoint reports verification", () => {
         it("should create checkpoint reports with correct attributes", async () => {
             const mockOrders = [
-                [
-                    {
-                        orderbook: "0x3333333333333333333333333333333333333333",
-                        buyTokenSymbol: "WETH",
-                        sellTokenSymbol: "DAI",
-                        takeOrders: [
-                            { id: "0xOrderABC", takeOrder: { order: { owner: "0xOwnerXYZ" } } },
-                        ],
-                    },
-                ],
+                {
+                    orderbook: "0x3333333333333333333333333333333333333333",
+                    buyTokenSymbol: "WETH",
+                    sellTokenSymbol: "DAI",
+                    takeOrder: { id: "0xOrderABC", takeOrder: { order: { owner: "0xOwnerXYZ" } } },
+                },
             ];
 
             mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
@@ -310,25 +277,24 @@ describe("Test initializeRound", () => {
 
         it("should create one checkpoint report per order", async () => {
             const mockOrders = [
-                [
-                    {
-                        orderbook: "0x1111111111111111111111111111111111111111",
-                        buyTokenSymbol: "ETH",
-                        sellTokenSymbol: "USDC",
-                        takeOrders: [
-                            { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
-                            { id: "0xOrder2", takeOrder: { order: { owner: "0xOwner2" } } },
-                        ],
-                    },
-                    {
-                        orderbook: "0x1111111111111111111111111111111111111111",
-                        buyTokenSymbol: "BTC",
-                        sellTokenSymbol: "USDT",
-                        takeOrders: [
-                            { id: "0xOrder3", takeOrder: { order: { owner: "0xOwner3" } } },
-                        ],
-                    },
-                ],
+                {
+                    orderbook: "0x1111111111111111111111111111111111111111",
+                    buyTokenSymbol: "ETH",
+                    sellTokenSymbol: "USDC",
+                    takeOrder: { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                },
+                {
+                    orderbook: "0x1111111111111111111111111111111111111111",
+                    buyTokenSymbol: "ETH",
+                    sellTokenSymbol: "USDC",
+                    takeOrder: { id: "0xOrder2", takeOrder: { order: { owner: "0xOwner2" } } },
+                },
+                {
+                    orderbook: "0x1111111111111111111111111111111111111111",
+                    buyTokenSymbol: "BTC",
+                    sellTokenSymbol: "USDT",
+                    takeOrder: { id: "0xOrder3", takeOrder: { order: { owner: "0xOwner3" } } },
+                },
             ];
 
             mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
@@ -351,17 +317,18 @@ describe("Test initializeRound", () => {
 
         it("should end all checkpoint reports", async () => {
             const mockOrders = [
-                [
-                    {
-                        orderbook: "0x3333333333333333333333333333333333333333",
-                        buyTokenSymbol: "ETH",
-                        sellTokenSymbol: "USDC",
-                        takeOrders: [
-                            { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
-                            { id: "0xOrder2", takeOrder: { order: { owner: "0xOwner2" } } },
-                        ],
-                    },
-                ],
+                {
+                    orderbook: "0x3333333333333333333333333333333333333333",
+                    buyTokenSymbol: "ETH",
+                    sellTokenSymbol: "USDC",
+                    takeOrder: { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                },
+                {
+                    orderbook: "0x3333333333333333333333333333333333333333",
+                    buyTokenSymbol: "ETH",
+                    sellTokenSymbol: "USDC",
+                    takeOrder: { id: "0xOrder2", takeOrder: { order: { owner: "0xOwner2" } } },
+                },
             ];
 
             mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
@@ -378,16 +345,12 @@ describe("Test initializeRound", () => {
 
         it("should export checkpoint report if logger is available", async () => {
             const mockOrders = [
-                [
-                    {
-                        orderbook: "0x3333333333333333333333333333333333333333",
-                        buyTokenSymbol: "ETH",
-                        sellTokenSymbol: "USDC",
-                        takeOrders: [
-                            { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
-                        ],
-                    },
-                ],
+                {
+                    orderbook: "0x3333333333333333333333333333333333333333",
+                    buyTokenSymbol: "ETH",
+                    sellTokenSymbol: "USDC",
+                    takeOrder: { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                },
             ];
             mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
             mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
@@ -408,16 +371,12 @@ describe("Test initializeRound", () => {
 
         it("should NOT export checkpoint report if logger is NOT available", async () => {
             const mockOrders = [
-                [
-                    {
-                        orderbook: "0x3333333333333333333333333333333333333333",
-                        buyTokenSymbol: "ETH",
-                        sellTokenSymbol: "USDC",
-                        takeOrders: [
-                            { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
-                        ],
-                    },
-                ],
+                {
+                    orderbook: "0x3333333333333333333333333333333333333333",
+                    buyTokenSymbol: "ETH",
+                    sellTokenSymbol: "USDC",
+                    takeOrder: { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                },
             ];
             mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
             mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
@@ -448,16 +407,12 @@ describe("Test initializeRound", () => {
 
         it("should return checkpointReports matching settlements count", async () => {
             const mockOrders = [
-                [
-                    {
-                        orderbook: "0x3333333333333333333333333333333333333333",
-                        buyTokenSymbol: "ETH",
-                        sellTokenSymbol: "USDC",
-                        takeOrders: [
-                            { id: "0xOrder123", takeOrder: { order: { owner: "0xOwner123" } } },
-                        ],
-                    },
-                ],
+                {
+                    orderbook: "0x3333333333333333333333333333333333333333",
+                    buyTokenSymbol: "ETH",
+                    sellTokenSymbol: "USDC",
+                    takeOrder: { id: "0xOrder123", takeOrder: { order: { owner: "0xOwner123" } } },
+                },
             ];
 
             mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);

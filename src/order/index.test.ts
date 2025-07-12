@@ -1,9 +1,9 @@
 import { Order } from "./types";
+import { Result } from "../common";
 import { SharedState } from "../state";
 import { SubgraphManager } from "../subgraph";
-import { OrderManager, DEFAULT_OWNER_LIMIT } from "./index";
+import { OrderManager, DEFAULT_OWNER_LIMIT, sortPairList } from "./index";
 import { describe, it, expect, beforeEach, vi, Mock } from "vitest";
-import { Result } from "../common";
 
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
@@ -46,9 +46,27 @@ vi.mock("./types", async (importOriginal) => {
 });
 
 describe("Test OrderManager", () => {
+    const orderbook1 = "0xorderbook1";
+    const orderbook2 = "0xorderbook2";
+    const tkn1 = "0xtoken1";
+    const tkn2 = "0xtoken2";
+    const tkn3 = "0xtoken3";
+    const tkn4 = "0xtoken4";
+    const hash1 = "0xhash1";
+    const hash2 = "0xhash2";
+    const hash3 = "0xhash3";
+
     let orderManager: OrderManager;
     let state: SharedState;
     let subgraphManager: SubgraphManager;
+
+    const getPair = (orderbook: string, hash: string, output: string, input: string) =>
+        ({
+            orderbook,
+            buyToken: input,
+            sellToken: output,
+            takeOrder: { id: hash },
+        }) as any;
 
     beforeEach(async () => {
         state = new (SharedState as Mock)();
@@ -190,9 +208,9 @@ describe("Test OrderManager", () => {
         expect(orderProfile1?.takeOrders.length).toBeGreaterThan(0);
 
         // check pairMap for first order
-        const pairMap1 = orderManager.pairMap.get("0xorderbook1");
+        const pairMap1 = orderManager.oiPairMap.get("0xorderbook1");
         expect(pairMap1).toBeDefined();
-        const pairArr1 = pairMap1?.get("0xinput/0xoutput");
+        const pairArr1 = pairMap1?.get("0xoutput")?.get("0xinput");
         expect(Array.isArray(pairArr1)).toBe(true);
         expect(pairArr1?.length).toBeGreaterThan(0);
         expect(pairArr1?.[0].buyToken).toBe("0xinput");
@@ -213,9 +231,9 @@ describe("Test OrderManager", () => {
         expect(orderProfile2?.takeOrders.length).toBeGreaterThan(0);
 
         // check pairMap for second order
-        const pairMap2 = orderManager.pairMap.get("0xorderbook2");
+        const pairMap2 = orderManager.oiPairMap.get("0xorderbook2");
         expect(pairMap2).toBeDefined();
-        const pairArr2 = pairMap2?.get("0xinput/0xoutput");
+        const pairArr2 = pairMap2?.get("0xoutput")?.get("0xinput");
         expect(Array.isArray(pairArr2)).toBe(true);
         expect(pairArr2?.length).toBeGreaterThan(0);
         expect(pairArr2?.[0].buyToken).toBe("0xinput");
@@ -235,9 +253,9 @@ describe("Test OrderManager", () => {
         expect(orderManager.ownersMap.size).toBe(1);
 
         // check pairMap before removal
-        const pairMapBefore = orderManager.pairMap.get("0xorderbook");
+        const pairMapBefore = orderManager.oiPairMap.get("0xorderbook");
         expect(pairMapBefore).toBeDefined();
-        const pairArrBefore = pairMapBefore?.get("0xinput/0xoutput");
+        const pairArrBefore = pairMapBefore?.get("0xoutput")?.get("0xinput");
         expect(Array.isArray(pairArrBefore)).toBe(true);
         expect(pairArrBefore?.length).toBeGreaterThan(0);
         expect(pairArrBefore?.[0].takeOrder.id).toBe("0xhash");
@@ -247,7 +265,7 @@ describe("Test OrderManager", () => {
         expect(ownerProfileMap?.get("0xowner")?.orders.size).toBe(0);
 
         // check pairMap after removal
-        const pairMapAfter = orderManager.pairMap.get("0xorderbook");
+        const pairMapAfter = orderManager.oiPairMap.get("0xorderbook");
         // the pair should be deleted from the map after removal
         expect(pairMapAfter?.get("0xinput/0xoutput")).toBeUndefined();
     });
@@ -266,7 +284,7 @@ describe("Test OrderManager", () => {
         expect(result.length).toBeGreaterThan(0);
 
         // Check the structure of the first orderbook's bundled orders
-        const bundledOrders = result[0];
+        const bundledOrders = result;
         expect(Array.isArray(bundledOrders)).toBe(true);
         expect(bundledOrders.length).toBeGreaterThan(0);
 
@@ -278,10 +296,10 @@ describe("Test OrderManager", () => {
         expect(bundle).toHaveProperty("sellToken", "0xoutput");
         expect(bundle).toHaveProperty("sellTokenDecimals", 18);
         expect(bundle).toHaveProperty("sellTokenSymbol", "OUT");
-        expect(Array.isArray(bundle.takeOrders)).toBe(true);
-        expect(bundle.takeOrders.length).toBeGreaterThan(0);
+        // expect(Array.isArray(bundle.takeOrders)).toBe(true);
+        // expect(bundle.takeOrders.length).toBeGreaterThan(0);
 
-        const takeOrder = bundle.takeOrders[0];
+        const takeOrder = bundle.takeOrder;
         expect(takeOrder).toHaveProperty("id", "0xhash");
         expect(takeOrder).toHaveProperty("takeOrder");
         expect(takeOrder.takeOrder).toHaveProperty("order");
@@ -392,24 +410,22 @@ describe("Test OrderManager", () => {
             sellToken: "0xoutput",
             sellTokenDecimals: 18,
             sellTokenSymbol: "OUT",
-            takeOrders: [
-                {
-                    id: "0xhash",
-                    takeOrder: {
-                        order: {
-                            owner: "0xowner",
-                            validInputs: [{ token: "0xinput", decimals: 18 }],
-                            validOutputs: [{ token: "0xoutput", decimals: 18 }],
-                        },
-                        inputIOIndex: 0,
-                        outputIOIndex: 0,
-                        signedContext: [],
+            takeOrder: {
+                id: "0xhash",
+                takeOrder: {
+                    order: {
+                        owner: "0xowner",
+                        validInputs: [{ token: "0xinput", decimals: 18 }],
+                        validOutputs: [{ token: "0xoutput", decimals: 18 }],
                     },
+                    inputIOIndex: 0,
+                    outputIOIndex: 0,
+                    signedContext: [],
                 },
-            ],
+            },
         } as any;
         await orderManager.quoteOrder(bundledOrder as any);
-        expect(bundledOrder.takeOrders[0].quote).toEqual({
+        expect(bundledOrder.takeOrder.quote).toEqual({
             maxOutput: 100n,
             ratio: 2n,
         });
@@ -456,7 +472,7 @@ describe("Test OrderManager", () => {
         // helper to get the order hashes returned in the round
         const getRoundHashes = () => {
             const roundOrders = orderManager.getNextRoundOrders(false);
-            return roundOrders[0][0].takeOrders.map((t) => t.id);
+            return roundOrders.map((o) => o.takeOrder.id);
         };
 
         // first call: should return the first 3 orders
@@ -484,15 +500,14 @@ describe("Test OrderManager", () => {
 
         // get the takeOrder object from getNextRoundOrders
         const roundOrders = orderManager.getNextRoundOrders(false);
-        const orderDetails = roundOrders[0][0];
+        const orderDetails = roundOrders[0];
 
         // update the quote field via the object from getNextRoundOrders
-        orderDetails.takeOrders[0].quote = { maxOutput: 999n, ratio: 888n };
+        orderDetails.takeOrder.quote = { maxOutput: 999n, ratio: 888n };
 
         // now check that the update is reflected in both ownersMap and pairMap
         const orderbookKey = "0xorderbook";
         const ownerKey = "0xowner";
-        const pairKey = "0xinput/0xoutput";
         const orderHash = "0xhash";
 
         const ownersMap = orderManager.ownersMap.get(orderbookKey);
@@ -500,15 +515,15 @@ describe("Test OrderManager", () => {
         const orderEntry = ownerProfile?.orders.get(orderHash);
         const takeOrderFromOwnersMap = orderEntry?.takeOrders[0];
 
-        const pairMap = orderManager.pairMap.get(orderbookKey);
-        const pairArr = pairMap?.get(pairKey);
+        const pairMap = orderManager.oiPairMap.get(orderbookKey);
+        const pairArr = pairMap?.get("0xoutput")?.get("0xinput");
         const takeOrderFromPairMap = pairArr?.[0];
 
         expect(takeOrderFromOwnersMap?.takeOrder.quote).toEqual({ maxOutput: 999n, ratio: 888n });
         expect(takeOrderFromPairMap?.takeOrder.quote).toEqual({ maxOutput: 999n, ratio: 888n });
         // and all references are the same object
-        expect(orderDetails.takeOrders[0]).toBe(takeOrderFromOwnersMap?.takeOrder);
-        expect(orderDetails.takeOrders[0]).toBe(takeOrderFromPairMap?.takeOrder);
+        expect(orderDetails.takeOrder).toBe(takeOrderFromOwnersMap?.takeOrder);
+        expect(orderDetails.takeOrder).toBe(takeOrderFromPairMap?.takeOrder);
     });
 
     it("should get opposing orders in the same orderbook", async () => {
@@ -548,7 +563,7 @@ describe("Test OrderManager", () => {
         const roundOrders = orderManager.getNextRoundOrders(false);
 
         // should find orderB as opposing order for orderA in the same orderbook
-        const opposing = orderManager.getCounterpartyOrders(roundOrders[0][0], true);
+        const opposing = orderManager.getCounterpartyOrders(roundOrders[0], true);
         expect(Array.isArray(opposing)).toBe(true);
         expect(opposing.length).toBe(1);
         expect(opposing[0].buyToken).toBe("0xoutput");
@@ -593,7 +608,7 @@ describe("Test OrderManager", () => {
         const roundOrders = orderManager.getNextRoundOrders(false);
 
         // should find orderB as opposing order for orderA across orderbooks
-        const opposing = orderManager.getCounterpartyOrders(roundOrders[0][0], false);
+        const opposing = orderManager.getCounterpartyOrders(roundOrders[0], false);
         for (const counteryparties of opposing) {
             expect(Array.isArray(counteryparties)).toBe(true);
             expect(counteryparties.length).toBe(1);
@@ -601,5 +616,392 @@ describe("Test OrderManager", () => {
             expect(counteryparties[0].sellToken).toBe("0xinput");
             expect(counteryparties[0].takeOrder.id).toBe("0xhashb");
         }
+    });
+
+    describe("Test addToPairMap method", () => {
+        it("should add pair to empty pair map", async () => {
+            const pair = getPair(orderbook1, hash1, tkn1, tkn2);
+
+            // OI map
+            orderManager.addToPairMap(pair, false);
+            const oiMap = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMap).toBeDefined();
+
+            const outputMap = oiMap!.get(tkn1);
+            expect(outputMap).toBeDefined();
+
+            const oiPairList = outputMap!.get(tkn2);
+            expect(oiPairList).toBeDefined();
+            expect(oiPairList).toHaveLength(1);
+            expect(oiPairList![0]).toBe(pair);
+
+            // IO map
+            orderManager.addToPairMap(pair, true);
+            const ioMap = orderManager.ioPairMap.get(orderbook1);
+            expect(ioMap).toBeDefined();
+
+            const inputMap = ioMap!.get(tkn2);
+            expect(inputMap).toBeDefined();
+
+            const ioPairList = inputMap!.get(tkn1);
+            expect(ioPairList).toBeDefined();
+            expect(ioPairList).toHaveLength(1);
+            expect(ioPairList![0]).toBe(pair);
+        });
+
+        it("should add pair to existing orderbook map", async () => {
+            const existingPair = getPair(orderbook1, hash1, tkn1, tkn2);
+            const newPair = getPair(orderbook1, hash2, tkn3, tkn4);
+
+            // add first pair
+            orderManager.addToPairMap(existingPair, false);
+            orderManager.addToPairMap(existingPair, true);
+
+            // OI map
+            orderManager.addToPairMap(existingPair, false);
+            const oiMap = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMap).toBeDefined();
+
+            const outputMap = oiMap!.get(tkn1);
+            expect(outputMap).toBeDefined();
+
+            const oiPairList = outputMap!.get(tkn2);
+            expect(oiPairList).toBeDefined();
+            expect(oiPairList).toHaveLength(1);
+            expect(oiPairList![0]).toBe(existingPair);
+
+            // IO map
+            orderManager.addToPairMap(existingPair, true);
+            const ioMap = orderManager.ioPairMap.get(orderbook1);
+            expect(ioMap).toBeDefined();
+
+            const inputMap = ioMap!.get(tkn2);
+            expect(inputMap).toBeDefined();
+
+            const ioPairList = inputMap!.get(tkn1);
+            expect(ioPairList).toBeDefined();
+            expect(ioPairList).toHaveLength(1);
+            expect(ioPairList![0]).toBe(existingPair);
+
+            // add second pair
+            orderManager.addToPairMap(newPair, false);
+            orderManager.addToPairMap(newPair, true);
+
+            // OI map
+            orderManager.addToPairMap(newPair, false);
+            const oiMap2 = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMap2).toBeDefined();
+
+            const outputMap2 = oiMap2!.get(tkn3);
+            expect(outputMap2).toBeDefined();
+
+            const oiPairList2 = outputMap2!.get(tkn4);
+            expect(oiPairList2).toBeDefined();
+            expect(oiPairList2).toHaveLength(1);
+            expect(oiPairList2![0]).toBe(newPair);
+
+            // IO map
+            orderManager.addToPairMap(newPair, true);
+            const ioMap2 = orderManager.ioPairMap.get(orderbook1);
+            expect(ioMap2).toBeDefined();
+
+            const inputMap2 = ioMap2!.get(tkn4);
+            expect(inputMap2).toBeDefined();
+
+            const ioPairList2 = inputMap2!.get(tkn3);
+            expect(ioPairList2).toBeDefined();
+            expect(ioPairList2).toHaveLength(1);
+            expect(ioPairList2![0]).toBe(newPair);
+        });
+
+        it("should add pair to existing output token map", async () => {
+            const existingPair = getPair(orderbook1, hash1, tkn1, tkn2);
+            const newPair = getPair(orderbook1, hash2, tkn1, tkn3);
+
+            orderManager.addToPairMap(existingPair, false);
+            orderManager.addToPairMap(existingPair, true);
+
+            // OI map
+            orderManager.addToPairMap(newPair, false);
+            const oiMap = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMap).toBeDefined();
+
+            const outputMap = oiMap!.get(tkn1);
+            expect(outputMap).toBeDefined();
+            expect(outputMap!.size).toBe(2);
+
+            orderManager.addToPairMap(existingPair, false);
+            orderManager.addToPairMap(existingPair, true);
+
+            // OI map
+            const newPair2 = getPair(orderbook1, hash2, tkn3, tkn2);
+            orderManager.addToPairMap(newPair2, true);
+            const ioMap = orderManager.ioPairMap.get(orderbook1);
+            expect(ioMap).toBeDefined();
+
+            const outputMap2 = ioMap!.get(tkn2);
+            expect(outputMap2).toBeDefined();
+            expect(outputMap2!.size).toBe(2);
+        });
+
+        it("should add pair to existing buy token list", async () => {
+            const existingPair = getPair(orderbook1, hash1, tkn1, tkn2);
+            const newPair = getPair(orderbook1, hash2, tkn1, tkn2);
+
+            // OI map
+            orderManager.addToPairMap(existingPair, false);
+            orderManager.addToPairMap(newPair, false);
+            const oiMap = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMap).toBeDefined();
+
+            const outputMap = oiMap!.get(tkn1);
+            expect(outputMap).toBeDefined();
+            expect(outputMap!.size).toBe(1);
+            const oiPairList = outputMap!.get(tkn2);
+            expect(oiPairList).toBeDefined();
+            expect(oiPairList).toHaveLength(2);
+
+            // OI map
+            orderManager.addToPairMap(existingPair, true);
+            orderManager.addToPairMap(newPair, true);
+            const ioMap = orderManager.ioPairMap.get(orderbook1);
+            expect(ioMap).toBeDefined();
+
+            const outputMap2 = ioMap!.get(tkn2);
+            expect(outputMap2).toBeDefined();
+            expect(outputMap2!.size).toBe(1);
+            const ioPairList = outputMap2!.get(tkn1);
+            expect(ioPairList).toBeDefined();
+            expect(ioPairList).toHaveLength(2);
+        });
+
+        it("should not duplicate pairs with same takeOrder id", async () => {
+            const existingPair = getPair(orderbook1, hash1, tkn1, tkn2);
+            const newPair = getPair(orderbook1, hash1, tkn1, tkn2);
+            orderManager.addToPairMap(existingPair, false);
+
+            orderManager.addToPairMap(newPair, false);
+            const oiMap = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMap).toBeDefined();
+
+            const outputMap = oiMap!.get(tkn1);
+            expect(outputMap).toBeDefined();
+            expect(outputMap!.size).toBe(1);
+        });
+
+        it("should handle different orderbooks independently", async () => {
+            const pairs1 = getPair(orderbook1, hash1, tkn1, tkn2);
+            const pairs2 = getPair(orderbook2, hash1, tkn1, tkn2);
+            orderManager.addToPairMap(pairs1, false);
+            orderManager.addToPairMap(pairs2, false);
+
+            expect(orderManager.oiPairMap.size).toBe(2);
+            expect(orderManager.oiPairMap.get(orderbook1)).toBeDefined();
+            expect(orderManager.oiPairMap.get(orderbook2)).toBeDefined();
+
+            // check that each orderbook has its own pairs
+            expect(orderManager.oiPairMap.get(orderbook1)!.get(tkn1)).toBeDefined();
+            expect(orderManager.oiPairMap.get(orderbook2)!.get(tkn1)).toBeDefined();
+        });
+    });
+
+    describe("Test deleteFromPairMap method", () => {
+        it("should delete pair from io and oi pair maps when order is removed", async () => {
+            const pairs = getPair(orderbook1, hash1, tkn1, tkn2);
+
+            // add pair first
+            orderManager.addToPairMap(pairs, false);
+            orderManager.addToPairMap(pairs, true);
+
+            // verify pair exists
+            const oiMapBefore = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMapBefore?.get(tkn1)?.get(tkn2)).toHaveLength(1);
+
+            const ioMapBefore = orderManager.ioPairMap.get(orderbook1);
+            expect(ioMapBefore?.get(tkn2)?.get(tkn1)).toHaveLength(1);
+
+            // delete pair
+            orderManager.deleteFromPairMap(orderbook1, hash1, tkn1, tkn2, false);
+            orderManager.deleteFromPairMap(orderbook1, hash1, tkn1, tkn2, true);
+
+            // verify pair is deleted
+            const oiMapAfter = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMapAfter?.get(tkn1)?.get(tkn2)).toBeUndefined();
+            expect(oiMapAfter?.get(tkn1)).toBeUndefined();
+            expect(oiMapAfter?.size).toBe(0);
+
+            const ioMapAfter = orderManager.ioPairMap.get(orderbook1);
+            expect(ioMapAfter?.get(tkn2)?.get(tkn1)).toBeUndefined();
+            expect(ioMapAfter?.get(tkn2)).toBeUndefined();
+            expect(ioMapAfter?.size).toBe(0);
+        });
+
+        it("should only remove specific order from list when multiple orders exist for same pair", async () => {
+            const pairs1 = getPair(orderbook1, hash1, tkn1, tkn2);
+            const pairs2 = getPair(orderbook1, hash2, tkn1, tkn2);
+
+            // add two pairs with same tokens but different order hashes
+            orderManager.addToPairMap(pairs1, false);
+            orderManager.addToPairMap(pairs2, false);
+
+            // verify both pairs exist
+            const oiMapBefore = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMapBefore?.get(tkn1)?.get(tkn2)).toHaveLength(2);
+
+            // delete only the first order
+            orderManager.deleteFromPairMap(orderbook1, hash1, tkn1, tkn2, false);
+
+            // verify only one pair remains
+            const oiMapAfter = orderManager.oiPairMap.get(orderbook1);
+            const remainingPairs = oiMapAfter?.get(tkn1)?.get(tkn2);
+            expect(remainingPairs).toHaveLength(1);
+            expect(remainingPairs![0].takeOrder.id).toBe(hash2);
+        });
+
+        it("should skip same token pairs during deletion", async () => {
+            const pairs = [
+                getPair(orderbook1, hash1, tkn1, tkn2), // different tokens
+                getPair(orderbook1, hash1, tkn1, tkn1), // same tokens (should be skipped)
+            ];
+
+            // add pairs
+            orderManager.addToPairMap(pairs[0], false);
+            orderManager.addToPairMap(pairs[1], false);
+
+            // verify only the different token pair exists (same token pairs are skipped in addToPairMap)
+            const oiMapBefore = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMapBefore?.get(tkn1)?.get(tkn2)).toHaveLength(1);
+            expect(oiMapBefore?.get(tkn1)?.get(tkn1)).toHaveLength(1);
+
+            // delete the order
+            orderManager.deleteFromPairMap(orderbook1, hash1, tkn1, tkn2, false);
+
+            // verify the different token pair is deleted and tkn1/tkn1 still exists
+            const oiMapAfter = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMapAfter?.size).toBe(1);
+            expect(oiMapAfter?.get(tkn1)?.get(tkn1)).toBeDefined();
+        });
+
+        it("should not affect other orderbooks when deleting from one", async () => {
+            const pairs1 = getPair(orderbook1, hash1, tkn1, tkn2);
+            const pairs2 = getPair(orderbook2, hash2, tkn1, tkn2);
+
+            // add pairs to both orderbooks
+            orderManager.addToPairMap(pairs1, false);
+            orderManager.addToPairMap(pairs2, false);
+
+            // verify both orderbooks have pairs
+            expect(orderManager.oiPairMap.get(orderbook1)?.get(tkn1)?.get(tkn2)).toHaveLength(1);
+            expect(orderManager.oiPairMap.get(orderbook2)?.get(tkn1)?.get(tkn2)).toHaveLength(1);
+
+            // delete from orderbook1 only
+            orderManager.deleteFromPairMap(orderbook1, hash1, tkn1, tkn2, false);
+
+            // verify orderbook1 is empty but orderbook2 still has pairs
+            expect(orderManager.oiPairMap.get(orderbook1)?.size).toBe(0);
+            expect(orderManager.oiPairMap.get(orderbook2)?.get(tkn1)?.get(tkn2)).toHaveLength(1);
+        });
+
+        it("should handle deletion from non-existent orderbook gracefully", async () => {
+            // Should not throw error when deleting from non-existent orderbook
+            expect(() => {
+                orderManager.deleteFromPairMap("0xnonexistent", hash1, tkn1, tkn2, false);
+            }).not.toThrow();
+        });
+
+        it("should handle deletion of non-existent order gracefully", async () => {
+            const pairs = getPair(orderbook1, hash1, tkn1, tkn2);
+
+            // add pair
+            orderManager.addToPairMap(pairs, false);
+
+            // Try to delete non-existent order
+            orderManager.deleteFromPairMap(orderbook1, hash2, tkn1, tkn2, false);
+
+            // verify original pair still exists
+            const oiMap = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMap?.get(tkn1)?.get(tkn2)).toHaveLength(1);
+            expect(oiMap?.get(tkn1)?.get(tkn2)![0].takeOrder.id).toBe(hash1);
+        });
+
+        it("should handle complex deletion scenario with mixed pairs", async () => {
+            const pairs = [
+                getPair(orderbook1, hash1, tkn1, tkn2),
+                getPair(orderbook1, hash2, tkn1, tkn2), // Same pair, different order
+                getPair(orderbook1, hash1, tkn1, tkn3), // Same output, different input
+                getPair(orderbook1, hash3, tkn2, tkn1), // different output-input combination
+            ];
+
+            // add all pairs
+            for (const pair of pairs) {
+                orderManager.addToPairMap(pair, false);
+            }
+
+            // verify initial state
+            const oiMapBefore = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMapBefore?.get(tkn1)?.get(tkn2)).toHaveLength(2); // hash1 and hash2
+            expect(oiMapBefore?.get(tkn1)?.get(tkn3)).toHaveLength(1); // hash1
+            expect(oiMapBefore?.get(tkn2)?.get(tkn1)).toHaveLength(1); // hash3
+
+            // delete hash1 order (should affect tkn1->tkn2 and tkn1->tkn3)
+            orderManager.deleteFromPairMap(orderbook1, hash1, tkn1, tkn2, false);
+            orderManager.deleteFromPairMap(orderbook1, hash1, tkn1, tkn3, false);
+
+            // verify final state
+            const oiMapAfter = orderManager.oiPairMap.get(orderbook1);
+            expect(oiMapAfter?.get(tkn1)?.get(tkn2)).toHaveLength(1); // Only hash2 remains
+            expect(oiMapAfter?.get(tkn1)?.get(tkn2)![0].takeOrder.id).toBe(hash2);
+            expect(oiMapAfter?.get(tkn1)?.get(tkn3)).toBeUndefined(); // hash1 removed, list deleted
+            expect(oiMapAfter?.get(tkn2)?.get(tkn1)).toHaveLength(1); // hash3 unaffected
+            expect(oiMapAfter?.get(tkn2)?.get(tkn1)![0].takeOrder.id).toBe(hash3);
+        });
+    });
+
+    describe("Test sortPairList function", () => {
+        it("should sort pairs correctly in descending order by ratio then by maxOutput", () => {
+            const createPair = (quote?: { ratio: bigint; maxOutput: bigint }): any => ({
+                takeOrder: { quote },
+            });
+
+            // create pairs with different combinations of quotes
+            const pairs: any[] = [
+                createPair(undefined), // no quote - should be last
+                createPair({ ratio: 5n, maxOutput: 500n }), // lower ratio, lower maxOutput
+                createPair({ ratio: 5n, maxOutput: 1000n }), // lower ratio, higher maxOutput
+                createPair({ ratio: 10n, maxOutput: 200n }), // higher ratio, lower maxOutput
+                createPair({ ratio: 10n, maxOutput: 800n }), // higher ratio, higher maxOutput
+                createPair({ ratio: 20n, maxOutput: 300n }), // highest ratio, medium maxOutput
+                createPair(undefined), // another no quote - should be last
+            ];
+            const sorted = [...pairs].sort(sortPairList);
+
+            // expected order (descending by ratio, then descending by maxOutput for same ratios):
+            // 1. ratio: 20n, maxOutput: 300n
+            // 2. ratio: 10n, maxOutput: 800n
+            // 3. ratio: 10n, maxOutput: 200n
+            // 4. ratio: 5n, maxOutput: 1000n
+            // 5. ratio: 5n, maxOutput: 500n
+            // 6. undefined quote
+            // 7. undefined quote
+
+            expect(sorted[0].takeOrder.quote?.ratio).toBe(20n);
+            expect(sorted[0].takeOrder.quote?.maxOutput).toBe(300n);
+
+            expect(sorted[1].takeOrder.quote?.ratio).toBe(10n);
+            expect(sorted[1].takeOrder.quote?.maxOutput).toBe(800n);
+
+            expect(sorted[2].takeOrder.quote?.ratio).toBe(10n);
+            expect(sorted[2].takeOrder.quote?.maxOutput).toBe(200n);
+
+            expect(sorted[3].takeOrder.quote?.ratio).toBe(5n);
+            expect(sorted[3].takeOrder.quote?.maxOutput).toBe(1000n);
+
+            expect(sorted[4].takeOrder.quote?.ratio).toBe(5n);
+            expect(sorted[4].takeOrder.quote?.maxOutput).toBe(500n);
+
+            // Last two should have no quotes
+            expect(sorted[5].takeOrder.quote).toBeUndefined();
+            expect(sorted[6].takeOrder.quote).toBeUndefined();
+        });
     });
 });

@@ -9,7 +9,6 @@ import { buildOrderbookTokenOwnerVaultsMap, downscaleProtection } from "./protec
 import {
     Pair,
     Order,
-    BundledOrders,
     OrdersProfileMap,
     OwnersProfileMap,
     OrderbooksPairMap,
@@ -46,8 +45,13 @@ export class OrderManager {
      * opposing orders list needs to be fetched, the data in this map points
      * to the same data in ownerMap, so it is not a copy (which would increase
      * overhead and memory usage), but rather a quick access map to the same data
+     * output -> input -> Pair[]
      */
-    pairMap: OrderbooksPairMap;
+    oiPairMap: OrderbooksPairMap;
+    /**
+     * Same as oiPairMap but inverted, ie input -> output -> Pair[]
+     */
+    ioPairMap: OrderbooksPairMap;
 
     /**
      * Creates a new OrderManager instance
@@ -56,8 +60,9 @@ export class OrderManager {
      */
     constructor(state: SharedState, subgraphManager?: SubgraphManager) {
         this.state = state;
-        this.pairMap = new Map();
+        this.oiPairMap = new Map();
         this.ownersMap = new Map();
+        this.ioPairMap = new Map();
         this.quoteGas = state.orderManagerConfig.quoteGas;
         this.ownerLimits = state.orderManagerConfig.ownerLimits;
         this.subgraphManager = subgraphManager ?? new SubgraphManager(state.subgraphConfig);
@@ -163,25 +168,45 @@ export class OrderManager {
                 this.ownersMap.set(orderbook, ownerProfileMap);
             }
 
-            // add to the pair map
+            // add to the pair maps
             for (let j = 0; j < pairs.length; j++) {
-                const pairKey = `${pairs[j].buyToken.toLowerCase()}/${pairs[j].sellToken.toLowerCase()}`;
-                const ob = this.pairMap.get(orderbook);
-                if (ob) {
-                    const existingPairMap = ob.get(pairKey);
-                    if (!existingPairMap) {
-                        ob.set(pairKey, [pairs[j]]);
-                    } else {
-                        // make sure to not duplicate pairs
-                        const hash = pairs[j].takeOrder.id.toLowerCase();
-                        if (!existingPairMap.find((v) => v.takeOrder.id.toLowerCase() === hash)) {
-                            existingPairMap.push(pairs[j]);
-                        }
-                    }
+                this.addToPairMap(pairs[j], false);
+                this.addToPairMap(pairs[j], true);
+            }
+        }
+    }
+
+    /**
+     * Adds the given order pairs to the pair map
+     * @param pair - The order pair object
+     * @param inverse - Whether to add the pairs in inverse order to ioPairMap
+     */
+    addToPairMap(pair: Pair, inverse: boolean) {
+        const orderbook = pair.orderbook.toLowerCase();
+        const outputKey = !inverse ? pair.sellToken.toLowerCase() : pair.buyToken.toLowerCase();
+        const inputKey = !inverse ? pair.buyToken.toLowerCase() : pair.sellToken.toLowerCase();
+        const ob = !inverse ? this.oiPairMap.get(orderbook) : this.ioPairMap.get(orderbook);
+        if (ob) {
+            const innerMap = ob.get(outputKey);
+            if (!innerMap) {
+                ob.set(outputKey, new Map([[inputKey, [pair]]]));
+            } else {
+                const list = innerMap.get(inputKey);
+                if (!list) {
+                    innerMap.set(inputKey, [pair]);
                 } else {
-                    this.pairMap.set(orderbook, new Map([[pairKey, [pairs[j]]]]));
+                    // make sure to not duplicate pairs
+                    const hash = pair.takeOrder.id.toLowerCase();
+                    if (!list.find((v) => v.takeOrder.id.toLowerCase() === hash)) {
+                        list.push(pair);
+                    }
                 }
             }
+        } else {
+            (!inverse ? this.oiPairMap : this.ioPairMap).set(
+                orderbook,
+                new Map([[outputKey, new Map([[inputKey, [pair]]])]]),
+            );
         }
     }
 
@@ -209,30 +234,55 @@ export class OrderManager {
                 }
             }
 
-            // delete from the pair map
-            const pairMap = this.pairMap.get(orderbook);
-            if (pairMap) {
-                for (let j = 0; j < orderDetails.outputs.length; j++) {
-                    for (let k = 0; k < orderDetails.inputs.length; k++) {
-                        // skip same token pairs
-                        const output = orderDetails.outputs[j].token.address;
-                        const input = orderDetails.inputs[k].token.address;
-                        if (input === output) continue;
+            // delete from the pair maps
+            for (let j = 0; j < orderDetails.outputs.length; j++) {
+                for (let k = 0; k < orderDetails.inputs.length; k++) {
+                    // skip same token pairs
+                    const output = orderDetails.outputs[j].token.address;
+                    const input = orderDetails.inputs[k].token.address;
+                    if (input === output) continue;
 
-                        const pairKey = `${input}/${output}`;
-                        const existingPair = pairMap.get(pairKey);
-                        if (existingPair) {
-                            // remove the order from the list
-                            const index = existingPair.findIndex(
-                                (v) => v.takeOrder.id.toLowerCase() === orderHash,
-                            );
-                            if (index !== -1) {
-                                existingPair.splice(index, 1);
-                                if (existingPair.length === 0) {
-                                    pairMap.delete(pairKey);
-                                }
-                            }
-                        }
+                    this.deleteFromPairMap(orderbook, orderHash, output, input, false);
+                    this.deleteFromPairMap(orderbook, orderHash, output, input, true);
+                }
+            }
+        }
+    }
+
+    /**
+     * Removes orders from the pair maps
+     * @param orderbook - The orderbook address
+     * @param orderHash - The hash of the order
+     * @param output - The output token address
+     * @param input - The input token address
+     * @param inverse - Whether to remove the pairs in inverse order from ioPairMap
+     */
+    deleteFromPairMap(
+        orderbook: string,
+        orderHash: string,
+        output: string,
+        input: string,
+        inverse: boolean,
+    ) {
+        const hash = orderHash.toLowerCase();
+        const oKey = !inverse ? output.toLowerCase() : input.toLowerCase();
+        const iKey = !inverse ? input.toLowerCase() : output.toLowerCase();
+        const map = (!inverse ? this.oiPairMap : this.ioPairMap).get(orderbook.toLowerCase());
+        if (map) {
+            const innerMap = map.get(oKey);
+            if (innerMap) {
+                const list = innerMap.get(iKey);
+                if (list) {
+                    // remove the order from the list
+                    const index = list.findIndex((v) => v.takeOrder.id.toLowerCase() === hash);
+                    if (index !== -1) {
+                        list.splice(index, 1);
+                    }
+                    if (list.length === 0) {
+                        innerMap.delete(iKey);
+                    }
+                    if (innerMap.size === 0) {
+                        map.delete(oKey);
                     }
                 }
             }
@@ -329,10 +379,9 @@ export class OrderManager {
      * @param shuffle - Whether to randomize the order of items (default: true)
      * @returns Array of bundled orders grouped by orderbook
      */
-    getNextRoundOrders(shuffle = true): BundledOrders[][] {
-        const result: BundledOrders[][] = [];
-        this.ownersMap.forEach((ownersProfileMap, orderbook) => {
-            const bundledOrders: BundledOrders[] = [];
+    getNextRoundOrders(shuffle = true): Pair[] {
+        const result: Pair[] = [];
+        this.ownersMap.forEach((ownersProfileMap) => {
             ownersProfileMap.forEach((ownerProfile) => {
                 let remainingLimit = ownerProfile.limit;
 
@@ -348,40 +397,8 @@ export class OrderManager {
                     ownerProfile.lastIndex += remainingConsumingOrders.length;
                     consumingOrders.push(...remainingConsumingOrders);
                 }
-                for (const order of consumingOrders) {
-                    const bundleOrder = bundledOrders.find(
-                        (v) =>
-                            v.buyToken.toLowerCase() === order.buyToken.toLowerCase() &&
-                            v.sellToken.toLowerCase() === order.sellToken.toLowerCase(),
-                    );
-                    if (bundleOrder) {
-                        // make sure to not duplicate
-                        if (!bundleOrder.takeOrders.find((v) => v.id === order.takeOrder.id)) {
-                            bundleOrder.takeOrders.push(order.takeOrder);
-                        }
-                    } else {
-                        bundledOrders.push({
-                            orderbook,
-                            buyToken: order.buyToken,
-                            buyTokenDecimals: order.buyTokenDecimals,
-                            buyTokenSymbol: order.buyTokenSymbol,
-                            sellToken: order.sellToken,
-                            sellTokenDecimals: order.sellTokenDecimals,
-                            sellTokenSymbol: order.sellTokenSymbol,
-                            takeOrders: [order.takeOrder],
-                        });
-                    }
-                }
+                result.push(...consumingOrders);
             });
-            if (shuffle) {
-                // shuffle orders
-                for (const b of bundledOrders) {
-                    shuffleArray(b.takeOrders);
-                }
-                // shuffle pairs
-                shuffleArray(bundledOrders);
-            }
-            result.push(bundledOrders);
         });
         if (shuffle) {
             // shuffle orderbooks
@@ -395,7 +412,7 @@ export class OrderManager {
      * @param orderDetails - Order details to quote
      * @param blockNumber - Optional block number for the quote
      */
-    async quoteOrder(orderDetails: BundledOrders, blockNumber?: bigint) {
+    async quoteOrder(orderDetails: Pair, blockNumber?: bigint) {
         return await quoteSingleOrder(orderDetails, this.state.client, blockNumber, this.quoteGas);
     }
 
@@ -436,49 +453,58 @@ export class OrderManager {
     }
 
     /**
-     * Gets opposing orders for a given order
-     * @param orderDetails - Details of the order to find opposing orders for
-     * @param sameOb - Whether opposing orders should be in the same orderbook or
+     * Gets descending sorted list of counterparty orders by their ratios for a given order
+     * @param orderDetails - Details of the order to find counterparty orders for
+     * @param sameOb - Whether should return counterparty orders of the same orderbook or not
      */
-    getCounterpartyOrders(orderDetails: BundledOrders, sameOb: true): Pair[];
-    getCounterpartyOrders(orderDetails: BundledOrders, sameOb: false): Pair[][];
-    getCounterpartyOrders(orderDetails: BundledOrders, sameOb: boolean): Pair[] | Pair[][] {
-        const opposingPairKey = `${orderDetails.sellToken.toLowerCase()}/${orderDetails.buyToken.toLowerCase()}`;
+    getCounterpartyOrders(orderDetails: Pair, sameOb: true): Pair[];
+    getCounterpartyOrders(orderDetails: Pair, sameOb: false): Pair[][];
+    getCounterpartyOrders(orderDetails: Pair, sameOb: boolean): Pair[] | Pair[][] {
+        const sellToken = orderDetails.sellToken.toLowerCase();
+        const buyToken = orderDetails.buyToken.toLowerCase();
         if (sameOb) {
             return (
-                this.pairMap
+                this.oiPairMap
                     .get(orderDetails.orderbook)
-                    ?.get(opposingPairKey)
-                    ?.sort((a, b) => {
-                        if (!a.takeOrder.quote && !b.takeOrder.quote) return 0;
-                        if (!a.takeOrder.quote) return 1;
-                        if (!b.takeOrder.quote) return -1;
-                        return a.takeOrder.quote.ratio < b.takeOrder.quote.ratio
-                            ? 1
-                            : a.takeOrder.quote.ratio > b.takeOrder.quote.ratio
-                              ? -1
-                              : 0;
-                    }) ?? []
+                    ?.get(buyToken)
+                    ?.get(sellToken)
+                    ?.sort(sortPairList) ?? []
             );
         } else {
             const counterpartyOrders: Pair[][] = [];
-            this.pairMap.forEach((pairMap, orderbook) => {
+            this.oiPairMap.forEach((pairMap, orderbook) => {
                 // skip same orderbook
                 if (orderbook === orderDetails.orderbook) return;
                 counterpartyOrders.push(
-                    pairMap.get(opposingPairKey)?.sort((a, b) => {
-                        if (!a.takeOrder.quote && !b.takeOrder.quote) return 0;
-                        if (!a.takeOrder.quote) return 1;
-                        if (!b.takeOrder.quote) return -1;
-                        return a.takeOrder.quote.ratio < b.takeOrder.quote.ratio
-                            ? 1
-                            : a.takeOrder.quote.ratio > b.takeOrder.quote.ratio
-                              ? -1
-                              : 0;
-                    }) ?? [],
+                    pairMap.get(buyToken)?.get(sellToken)?.sort(sortPairList) ?? [],
                 );
             });
             return counterpartyOrders;
+        }
+    }
+}
+
+/**
+ * Sorts a pair list in descending order by their quotes ratio and maxoutput
+ * @param a - The first pair to compare
+ * @param b - The second pair to compare
+ */
+export function sortPairList(a: Pair, b: Pair): number {
+    if (!a.takeOrder.quote && !b.takeOrder.quote) return 0;
+    if (!a.takeOrder.quote) return 1;
+    if (!b.takeOrder.quote) return -1;
+    if (a.takeOrder.quote.ratio < b.takeOrder.quote.ratio) {
+        return 1;
+    } else if (a.takeOrder.quote.ratio > b.takeOrder.quote.ratio) {
+        return -1;
+    } else {
+        // if ratios are equal, sort by maxoutput
+        if (a.takeOrder.quote.maxOutput < b.takeOrder.quote.maxOutput) {
+            return 1;
+        } else if (a.takeOrder.quote.maxOutput > b.takeOrder.quote.maxOutput) {
+            return -1;
+        } else {
+            return 0;
         }
     }
 }
