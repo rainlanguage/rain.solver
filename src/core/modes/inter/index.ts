@@ -3,6 +3,7 @@ import { RainSolver } from "../..";
 import { Result } from "../../../common";
 import { trySimulateTrade } from "./simulate";
 import { Attributes } from "@opentelemetry/api";
+import { fallbackEthPrice } from "../../../router";
 import { RainSolverSigner } from "../../../signer";
 import { BundledOrders, Pair } from "../../../order";
 import { extendObjectWithHeader } from "../../../logger";
@@ -51,8 +52,20 @@ export async function findBestInterOrderbookTrade(
                 counterpartyOrderDetails,
                 signer,
                 maximumInputFixed,
-                inputToEthPrice,
-                outputToEthPrice,
+                inputToEthPrice:
+                    inputToEthPrice ||
+                    fallbackEthPrice(
+                        orderDetails.takeOrders[0].quote!.ratio,
+                        counterpartyOrderDetails.takeOrder.quote!.ratio,
+                        outputToEthPrice,
+                    ),
+                outputToEthPrice:
+                    outputToEthPrice ||
+                    fallbackEthPrice(
+                        counterpartyOrderDetails.takeOrder.quote!.ratio,
+                        orderDetails.takeOrders[0].quote!.ratio,
+                        inputToEthPrice,
+                    ),
                 blockNumber,
             });
         });
