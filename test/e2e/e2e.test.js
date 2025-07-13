@@ -132,13 +132,13 @@ for (let i = 0; i < testData.length; i++) {
                           .extend(publicActions)
                           .extend(walletActions);
                 bot.sendTx = async (tx) => {
-                    return await sendTx.call(bot, tx);
+                    return await sendTx(bot, tx);
                 };
                 bot.waitUntilFree = async () => {
-                    return await waitUntilFree.call(bot);
+                    return await waitUntilFree(bot);
                 };
                 bot.estimateGasCost = async (tx) => {
-                    return await estimateGasCost.call(bot, tx);
+                    return await estimateGasCost(bot, tx);
                 };
                 bot.asWriteSigner = () => bot;
                 bot.state = state;
@@ -384,13 +384,13 @@ for (let i = 0; i < testData.length; i++) {
                           .extend(publicActions)
                           .extend(walletActions);
                 bot.sendTx = async (tx) => {
-                    return await sendTx.call(bot, tx);
+                    return await sendTx(bot, tx);
                 };
                 bot.waitUntilFree = async () => {
-                    return await waitUntilFree.call(bot);
+                    return await waitUntilFree(bot);
                 };
                 bot.estimateGasCost = async (tx) => {
-                    return await estimateGasCost.call(bot, tx);
+                    return await estimateGasCost(bot, tx);
                 };
                 bot.asWriteSigner = () => bot;
                 bot.state = state;
@@ -727,13 +727,13 @@ for (let i = 0; i < testData.length; i++) {
                           .extend(publicActions)
                           .extend(walletActions);
                 bot.sendTx = async (tx) => {
-                    return await sendTx.call(bot, tx);
+                    return await sendTx(bot, tx);
                 };
                 bot.waitUntilFree = async () => {
-                    return await waitUntilFree.call(bot);
+                    return await waitUntilFree(bot);
                 };
                 bot.estimateGasCost = async (tx) => {
-                    return await estimateGasCost.call(bot, tx);
+                    return await estimateGasCost(bot, tx);
                 };
                 bot.asWriteSigner = () => bot;
                 bot.state = state;
