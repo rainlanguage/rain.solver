@@ -78,19 +78,19 @@ export function removeFromPairMap(
  * @param orderbook - The orderbook address to get pairs from
  * @param output - The output token address to get pairs from
  * @param input - The input token address to get pairs from
- * @param counterpartyType - Determines the type of counterparty orders source to return
+ * @param counterpartySource - Determines the type of counterparty orders source to return
  */
 export function getSortedPairList<
-    counterpartyType extends CounterpartySource = CounterpartySource.IntraOrderbook,
+    counterpartySource extends CounterpartySource = CounterpartySource.IntraOrderbook,
 >(
     pairMap: OrderbooksPairMap,
     orderbook: string,
     output: string,
     input: string,
-    counterpartyType: CounterpartySource,
-): counterpartyType extends CounterpartySource.IntraOrderbook ? Pair[] : Pair[][] {
+    counterpartySource: CounterpartySource,
+): counterpartySource extends CounterpartySource.IntraOrderbook ? Pair[] : Pair[][] {
     const empty = new Map<string, Pair>();
-    if (counterpartyType === CounterpartySource.IntraOrderbook) {
+    if (counterpartySource === CounterpartySource.IntraOrderbook) {
         // get orders as array and set them back as new sorted map
         const arr = Array.from(pairMap.get(orderbook)?.get(output)?.get(input) ?? empty).sort(
             sortPairList,
@@ -100,7 +100,7 @@ export function getSortedPairList<
         // return the sorted orders
         return Array.from(
             pairMap.get(orderbook)?.get(output)?.get(input)?.values() ?? empty.values(),
-        ) as counterpartyType extends CounterpartySource.IntraOrderbook ? Pair[] : Pair[][];
+        ) as counterpartySource extends CounterpartySource.IntraOrderbook ? Pair[] : Pair[][];
     } else {
         const counterpartyOrders: Pair[][] = [];
         pairMap.forEach((innerMap, ob) => {
@@ -116,7 +116,7 @@ export function getSortedPairList<
                 Array.from(innerMap.get(output)?.get(input)?.values() ?? empty.values()),
             );
         });
-        return counterpartyOrders as counterpartyType extends CounterpartySource.IntraOrderbook
+        return counterpartyOrders as counterpartySource extends CounterpartySource.IntraOrderbook
             ? Pair[]
             : Pair[][];
     }

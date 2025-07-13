@@ -413,17 +413,17 @@ export class OrderManager {
     /**
      * Gets descending sorted list of counterparty orders by their ratios for a given order
      * @param orderDetails - Details of the order to find counterparty orders for
-     * @param counterpartyType - Determines the type of counterparty orders source to return
+     * @param counterpartySource - Determines the type of counterparty orders source to return
      */
     getCounterpartyOrders<
-        counterpartyType extends CounterpartySource = CounterpartySource.IntraOrderbook,
+        counterpartySource extends CounterpartySource = CounterpartySource.IntraOrderbook,
     >(
         orderDetails: Pair,
-        counterpartyType: counterpartyType,
-    ): counterpartyType extends CounterpartySource.IntraOrderbook ? Pair[] : Pair[][] {
+        counterpartySource: counterpartySource,
+    ): counterpartySource extends CounterpartySource.IntraOrderbook ? Pair[] : Pair[][] {
         const sellToken = orderDetails.sellToken.toLowerCase();
         const buyToken = orderDetails.buyToken.toLowerCase();
         const ob = orderDetails.orderbook.toLowerCase();
-        return getSortedPairList(this.oiPairMap, ob, buyToken, sellToken, counterpartyType);
+        return getSortedPairList(this.oiPairMap, ob, buyToken, sellToken, counterpartySource);
     }
 }
