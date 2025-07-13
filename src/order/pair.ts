@@ -72,21 +72,6 @@ export function removeFromPairMap(
     }
 }
 
-// export function getSortedPairList(
-//     pairMap: OrderbooksPairMap,
-//     orderbook: string,
-//     output: string,
-//     input: string,
-//     counterpartyType: CounterpartyType.IntraOrderbook,
-// ): Pair[];
-// export function getSortedPairList(
-//     pairMap: OrderbooksPairMap,
-//     orderbook: string,
-//     output: string,
-//     input: string,
-//     counterpartyType: CounterpartyType.IntraOrderbook,
-// ): Pair[][];
-
 /**
  * Gets descending sorted list of pairs from the given pairMap by their ratios
  * @param pairMap - The pair map to get pairs from
