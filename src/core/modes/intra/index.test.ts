@@ -5,6 +5,7 @@ import { fallbackEthPrice } from "../../../router";
 import { findBestIntraOrderbookTrade } from "./index";
 import { extendObjectWithHeader } from "../../../logger";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
+import { CounterpartySource } from "../../../order";
 
 vi.mock("../../../router", () => ({
     fallbackEthPrice: vi.fn(),
@@ -146,7 +147,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
         expect(result.value.oppBlockNumber).toBe(123);
         expect(mockRainSolver.orderManager.getCounterpartyOrders).toHaveBeenCalledWith(
             orderDetails,
-            true,
+            CounterpartySource.IntraOrderbook,
         );
         expect(trySimulateTrade).toHaveBeenCalledTimes(3);
         expect(result.value.type).toBe("intraOrderbook");

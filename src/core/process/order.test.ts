@@ -38,8 +38,8 @@ describe("Test processOrder", () => {
         vi.clearAllMocks();
         mockOrderManager = {
             quoteOrder: vi.fn(),
-            addToPairMap: vi.fn(),
-            deleteFromPairMap: vi.fn(),
+            addToPairMaps: vi.fn(),
+            removeFromPairMaps: vi.fn(),
         } as any;
         mockState = {
             chainConfig: {
@@ -100,9 +100,8 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
 
-        // ensure pair maps are updated success quote
-        expect(mockOrderManager.addToPairMap).toHaveBeenCalledWith(mockArgs.orderDetails, false);
-        expect(mockOrderManager.addToPairMap).toHaveBeenCalledWith(mockArgs.orderDetails, true);
+        // ensure pair maps are updated on quote 0
+        expect(mockOrderManager.removeFromPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
     });
 
     it("should return FailedToQuote if quoteOrder throws", async () => {
@@ -126,20 +125,7 @@ describe("Test processOrder", () => {
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
 
         // ensure pair maps are updated on quote failure
-        expect(mockOrderManager.deleteFromPairMap).toHaveBeenCalledWith(
-            mockArgs.orderDetails.orderbook.toLowerCase(),
-            mockArgs.orderDetails.takeOrder.id.toLowerCase(),
-            mockArgs.orderDetails.sellToken.toLowerCase(),
-            mockArgs.orderDetails.buyToken.toLowerCase(),
-            false,
-        );
-        expect(mockOrderManager.deleteFromPairMap).toHaveBeenCalledWith(
-            mockArgs.orderDetails.orderbook.toLowerCase(),
-            mockArgs.orderDetails.takeOrder.id.toLowerCase(),
-            mockArgs.orderDetails.sellToken.toLowerCase(),
-            mockArgs.orderDetails.buyToken.toLowerCase(),
-            true,
-        );
+        expect(mockOrderManager.removeFromPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
     });
 
     it("should return FailedToUpdatePools if updatePools throws (not fetchPoolsForToken)", async () => {
@@ -164,6 +150,9 @@ describe("Test processOrder", () => {
         );
         expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+
+        // ensure pair maps are updated success quote
+        expect(mockOrderManager.addToPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
     });
 
     it("should return FailedToGetPools if fetchPoolsForToken throws", async () => {

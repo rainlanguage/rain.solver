@@ -1,11 +1,11 @@
 import assert from "assert";
 import { RainSolver } from "../..";
-import { Pair } from "../../../order";
 import { Result } from "../../../common";
 import { trySimulateTrade } from "./simulate";
 import { Attributes } from "@opentelemetry/api";
 import { fallbackEthPrice } from "../../../router";
 import { RainSolverSigner } from "../../../signer";
+import { CounterpartySource, Pair } from "../../../order";
 import { extendObjectWithHeader } from "../../../logger";
 import { SimulationResult, TradeType } from "../../types";
 
@@ -38,7 +38,10 @@ export async function findBestInterOrderbookTrade(
 
     const spanAttributes: Attributes = {};
     const blockNumber = await this.state.client.getBlockNumber();
-    const counterpartyOrders = this.orderManager.getCounterpartyOrders(orderDetails, false);
+    const counterpartyOrders = this.orderManager.getCounterpartyOrders(
+        orderDetails,
+        CounterpartySource.InterOrderbook,
+    );
     const maximumInputFixed = orderDetails.takeOrder.quote!.maxOutput;
     const counterparties: Pair[] = [];
 

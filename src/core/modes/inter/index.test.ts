@@ -2,7 +2,7 @@ import { RainSolver } from "../..";
 import { Result } from "../../../common";
 import { trySimulateTrade } from "./simulate";
 import { SimulationResult } from "../../types";
-import { BundledOrders } from "../../../order";
+import { BundledOrders, CounterpartySource } from "../../../order";
 import { fallbackEthPrice } from "../../../router";
 import { RainSolverSigner } from "../../../signer";
 import { findBestInterOrderbookTrade } from "./index";
@@ -105,7 +105,7 @@ describe("Test findBestInterOrderbookTrade", () => {
         expect(result.value.oppBlockNumber).toBe(123);
         expect(mockRainSolver.orderManager.getCounterpartyOrders as Mock).toHaveBeenCalledWith(
             orderDetails,
-            false,
+            CounterpartySource.InterOrderbook,
         );
         expect(trySimulateTrade).toHaveBeenCalledTimes(3);
         expect(result.value.type).toBe("interOrderbook");

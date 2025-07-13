@@ -1,13 +1,13 @@
 import assert from "assert";
 import { erc20Abi } from "viem";
 import { RainSolver } from "../..";
-import { Pair } from "../../../order";
 import { Result } from "../../../common";
 import { ONE18, scaleTo18 } from "../../../math";
 import { Attributes } from "@opentelemetry/api";
 import { trySimulateTrade } from "./simulation";
 import { RainSolverSigner } from "../../../signer";
 import { fallbackEthPrice } from "../../../router";
+import { CounterpartySource, Pair } from "../../../order";
 import { extendObjectWithHeader } from "../../../logger";
 import { SimulationResult, TradeType } from "../../types";
 
@@ -30,17 +30,19 @@ export async function findBestIntraOrderbookTrade(
     const spanAttributes: Attributes = {};
 
     // get counterparties and perform a general filter on them
-    const counterpartyOrders = this.orderManager.getCounterpartyOrders(orderDetails, true).filter(
-        (v) =>
-            v.takeOrder.quote &&
-            // not same order
-            v.takeOrder.id !== orderDetails.takeOrder.id &&
-            // not same owner
-            v.takeOrder.takeOrder.order.owner.toLowerCase() !==
-                orderDetails.takeOrder.takeOrder.order.owner.toLowerCase() &&
-            // only orders that (priceA x priceB < 1) can be profitbale
-            (v.takeOrder.quote.ratio * orderDetails.takeOrder.quote!.ratio) / ONE18 < ONE18,
-    );
+    const counterpartyOrders = this.orderManager
+        .getCounterpartyOrders(orderDetails, CounterpartySource.IntraOrderbook)
+        .filter(
+            (v) =>
+                v.takeOrder.quote &&
+                // not same order
+                v.takeOrder.id !== orderDetails.takeOrder.id &&
+                // not same owner
+                v.takeOrder.takeOrder.order.owner.toLowerCase() !==
+                    orderDetails.takeOrder.takeOrder.order.owner.toLowerCase() &&
+                // only orders that (priceA x priceB < 1) can be profitbale
+                (v.takeOrder.quote.ratio * orderDetails.takeOrder.quote!.ratio) / ONE18 < ONE18,
+        );
 
     const blockNumber = await this.state.client.getBlockNumber();
     const inputBalance = scaleTo18(

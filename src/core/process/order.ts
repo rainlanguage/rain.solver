@@ -61,11 +61,10 @@ export async function processOrder(
     spanAttributes["event.quoteOrder"] = Date.now();
     try {
         await this.orderManager.quoteOrder(orderDetails);
-        // include in pair maps if quote passes to keep the list of orders with quote clean
-        // addToPairMap already avoid dups, so it safe to add to the list again
-        this.orderManager.addToPairMap(orderDetails, false); // oi pair map
-        this.orderManager.addToPairMap(orderDetails, true); // io pair map
         if (orderDetails.takeOrder.quote?.maxOutput === 0n) {
+            // remove from pair maps if quote fails, to keep the pair map list free
+            // of orders with 0 maxoutput this will make counterparty lookups faster
+            this.orderManager.removeFromPairMaps(orderDetails);
             return async () => {
                 return Result.ok({
                     ...baseResult,
@@ -73,14 +72,10 @@ export async function processOrder(
                 });
             };
         }
+        // include in pair maps if quote passes to keep the list of orders with quote clean,
+        this.orderManager.addToPairMaps(orderDetails);
     } catch (e) {
-        // remove from pair maps if qoute fails, to keep the pair map list free of orders without quote
-        const ob = orderDetails.orderbook.toLowerCase();
-        const hash = orderDetails.takeOrder.id.toLowerCase();
-        const output = orderDetails.sellToken.toLowerCase();
-        const input = orderDetails.buyToken.toLowerCase();
-        this.orderManager.deleteFromPairMap(ob, hash, output, input, false); // oi pair map
-        this.orderManager.deleteFromPairMap(ob, hash, output, input, true); // io pair map
+        this.orderManager.removeFromPairMaps(orderDetails);
         return async () =>
             Result.err({
                 ...baseResult,

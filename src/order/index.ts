@@ -13,7 +13,9 @@ import {
     OwnersProfileMap,
     OrderbooksPairMap,
     OrderbooksOwnersProfileMap,
+    CounterpartySource,
 } from "./types";
+import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
 
 export * from "./types";
 export * from "./quote";
@@ -45,11 +47,11 @@ export class OrderManager {
      * opposing orders list needs to be fetched, the data in this map points
      * to the same data in ownerMap, so it is not a copy (which would increase
      * overhead and memory usage), but rather a quick access map to the same data
-     * output -> input -> Pair[]
+     * output -> input -> orderhash -> Pair
      */
     oiPairMap: OrderbooksPairMap;
     /**
-     * Same as oiPairMap but inverted, ie input -> output -> Pair[]
+     * Same as oiPairMap but inverted, ie input -> output -> orderhash -> Pair
      */
     ioPairMap: OrderbooksPairMap;
 
@@ -170,8 +172,7 @@ export class OrderManager {
 
             // add to the pair maps
             for (let j = 0; j < pairs.length; j++) {
-                this.addToPairMap(pairs[j], false);
-                this.addToPairMap(pairs[j], true);
+                this.addToPairMaps(pairs[j]);
             }
         }
     }
@@ -181,33 +182,13 @@ export class OrderManager {
      * @param pair - The order pair object
      * @param inverse - Whether to add the pairs in inverse order to ioPairMap
      */
-    addToPairMap(pair: Pair, inverse: boolean) {
+    addToPairMaps(pair: Pair) {
         const orderbook = pair.orderbook.toLowerCase();
-        const outputKey = !inverse ? pair.sellToken.toLowerCase() : pair.buyToken.toLowerCase();
-        const inputKey = !inverse ? pair.buyToken.toLowerCase() : pair.sellToken.toLowerCase();
-        const ob = !inverse ? this.oiPairMap.get(orderbook) : this.ioPairMap.get(orderbook);
-        if (ob) {
-            const innerMap = ob.get(outputKey);
-            if (!innerMap) {
-                ob.set(outputKey, new Map([[inputKey, [pair]]]));
-            } else {
-                const list = innerMap.get(inputKey);
-                if (!list) {
-                    innerMap.set(inputKey, [pair]);
-                } else {
-                    // make sure to not duplicate pairs
-                    const hash = pair.takeOrder.id.toLowerCase();
-                    if (!list.find((v) => v.takeOrder.id.toLowerCase() === hash)) {
-                        list.push(pair);
-                    }
-                }
-            }
-        } else {
-            (!inverse ? this.oiPairMap : this.ioPairMap).set(
-                orderbook,
-                new Map([[outputKey, new Map([[inputKey, [pair]]])]]),
-            );
-        }
+        const hash = pair.takeOrder.id.toLowerCase();
+        const outputKey = pair.sellToken.toLowerCase();
+        const inputKey = pair.buyToken.toLowerCase();
+        addToPairMap(this.oiPairMap, orderbook, hash, outputKey, inputKey, pair);
+        addToPairMap(this.ioPairMap, orderbook, hash, inputKey, outputKey, pair);
     }
 
     /**
@@ -242,8 +223,8 @@ export class OrderManager {
                     const input = orderDetails.inputs[k].token.address;
                     if (input === output) continue;
 
-                    this.deleteFromPairMap(orderbook, orderHash, output, input, false);
-                    this.deleteFromPairMap(orderbook, orderHash, output, input, true);
+                    removeFromPairMap(this.oiPairMap, orderbook, orderHash, output, input); // from oi map
+                    removeFromPairMap(this.ioPairMap, orderbook, orderHash, input, output); // from io map
                 }
             }
         }
@@ -257,36 +238,13 @@ export class OrderManager {
      * @param input - The input token address
      * @param inverse - Whether to remove the pairs in inverse order from ioPairMap
      */
-    deleteFromPairMap(
-        orderbook: string,
-        orderHash: string,
-        output: string,
-        input: string,
-        inverse: boolean,
-    ) {
-        const hash = orderHash.toLowerCase();
-        const oKey = !inverse ? output.toLowerCase() : input.toLowerCase();
-        const iKey = !inverse ? input.toLowerCase() : output.toLowerCase();
-        const map = (!inverse ? this.oiPairMap : this.ioPairMap).get(orderbook.toLowerCase());
-        if (map) {
-            const innerMap = map.get(oKey);
-            if (innerMap) {
-                const list = innerMap.get(iKey);
-                if (list) {
-                    // remove the order from the list
-                    const index = list.findIndex((v) => v.takeOrder.id.toLowerCase() === hash);
-                    if (index !== -1) {
-                        list.splice(index, 1);
-                    }
-                    if (list.length === 0) {
-                        innerMap.delete(iKey);
-                    }
-                    if (innerMap.size === 0) {
-                        map.delete(oKey);
-                    }
-                }
-            }
-        }
+    removeFromPairMaps(pair: Pair) {
+        const orderbook = pair.orderbook.toLowerCase();
+        const hash = pair.takeOrder.id.toLowerCase();
+        const outputKey = pair.sellToken.toLowerCase();
+        const inputKey = pair.buyToken.toLowerCase();
+        removeFromPairMap(this.oiPairMap, orderbook, hash, outputKey, inputKey); // from oi map
+        removeFromPairMap(this.ioPairMap, orderbook, hash, inputKey, outputKey); // from io map
     }
 
     /**
@@ -455,56 +413,17 @@ export class OrderManager {
     /**
      * Gets descending sorted list of counterparty orders by their ratios for a given order
      * @param orderDetails - Details of the order to find counterparty orders for
-     * @param sameOb - Whether should return counterparty orders of the same orderbook or not
+     * @param counterpartyType - Determines the type of counterparty orders source to return
      */
-    getCounterpartyOrders(orderDetails: Pair, sameOb: true): Pair[];
-    getCounterpartyOrders(orderDetails: Pair, sameOb: false): Pair[][];
-    getCounterpartyOrders(orderDetails: Pair, sameOb: boolean): Pair[] | Pair[][] {
+    getCounterpartyOrders<
+        counterpartyType extends CounterpartySource = CounterpartySource.IntraOrderbook,
+    >(
+        orderDetails: Pair,
+        counterpartyType: counterpartyType,
+    ): counterpartyType extends CounterpartySource.IntraOrderbook ? Pair[] : Pair[][] {
         const sellToken = orderDetails.sellToken.toLowerCase();
         const buyToken = orderDetails.buyToken.toLowerCase();
-        if (sameOb) {
-            return (
-                this.oiPairMap
-                    .get(orderDetails.orderbook)
-                    ?.get(buyToken)
-                    ?.get(sellToken)
-                    ?.sort(sortPairList) ?? []
-            );
-        } else {
-            const counterpartyOrders: Pair[][] = [];
-            this.oiPairMap.forEach((pairMap, orderbook) => {
-                // skip same orderbook
-                if (orderbook === orderDetails.orderbook) return;
-                counterpartyOrders.push(
-                    pairMap.get(buyToken)?.get(sellToken)?.sort(sortPairList) ?? [],
-                );
-            });
-            return counterpartyOrders;
-        }
-    }
-}
-
-/**
- * Sorts a pair list in descending order by their quotes ratio and maxoutput
- * @param a - The first pair to compare
- * @param b - The second pair to compare
- */
-export function sortPairList(a: Pair, b: Pair): number {
-    if (!a.takeOrder.quote && !b.takeOrder.quote) return 0;
-    if (!a.takeOrder.quote) return 1;
-    if (!b.takeOrder.quote) return -1;
-    if (a.takeOrder.quote.ratio < b.takeOrder.quote.ratio) {
-        return 1;
-    } else if (a.takeOrder.quote.ratio > b.takeOrder.quote.ratio) {
-        return -1;
-    } else {
-        // if ratios are equal, sort by maxoutput
-        if (a.takeOrder.quote.maxOutput < b.takeOrder.quote.maxOutput) {
-            return 1;
-        } else if (a.takeOrder.quote.maxOutput > b.takeOrder.quote.maxOutput) {
-            return -1;
-        } else {
-            return 0;
-        }
+        const ob = orderDetails.orderbook.toLowerCase();
+        return getSortedPairList(this.oiPairMap, ob, buyToken, sellToken, counterpartyType);
     }
 }
