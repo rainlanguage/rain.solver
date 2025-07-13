@@ -287,8 +287,6 @@ describe("Test OrderManager", () => {
         expect(bundle).toHaveProperty("sellToken", "0xoutput");
         expect(bundle).toHaveProperty("sellTokenDecimals", 18);
         expect(bundle).toHaveProperty("sellTokenSymbol", "OUT");
-        // expect(Array.isArray(bundle.takeOrders)).toBe(true);
-        // expect(bundle.takeOrders.length).toBeGreaterThan(0);
 
         const takeOrder = bundle.takeOrder;
         expect(takeOrder).toHaveProperty("id", "0xhash");
