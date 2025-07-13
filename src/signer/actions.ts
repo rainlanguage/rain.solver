@@ -69,17 +69,25 @@ export type RainSolverSignerActions<
 };
 
 export namespace RainSolverSignerActions {
-    export function fromSharedState(
-        state: SharedState,
-    ): (client: RainSolverSigner) => RainSolverSignerActions {
-        return (client) => ({
+    export function fromSharedState(state: SharedState): () => RainSolverSignerActions {
+        return () => ({
             state,
             busy: false,
-            sendTx: (tx) => sendTx(client, tx),
-            waitUntilFree: () => waitUntilFree(client),
-            getSelfBalance: () => getSelfBalance(client),
-            estimateGasCost: (tx) => estimateGasCost(client, tx),
-            asWriteSigner: () => getWriteSignerFrom(client, state),
+            sendTx(tx) {
+                return sendTx.call(this as RainSolverSigner, tx);
+            },
+            waitUntilFree() {
+                return waitUntilFree.call(this as RainSolverSigner);
+            },
+            getSelfBalance() {
+                return getSelfBalance.call(this as RainSolverSigner);
+            },
+            estimateGasCost(tx) {
+                return estimateGasCost.call(this as RainSolverSigner, tx);
+            },
+            asWriteSigner() {
+                return getWriteSignerFrom.call(this as RainSolverSigner);
+            },
         });
     }
 }
@@ -88,33 +96,33 @@ export namespace RainSolverSignerActions {
  * A wrapper for viem sendTransactions that handles nonce and manages signer busy
  * state while the transaction is being sent ensuring proper busy state management
  *
- * @param signer - The RainSolverSigner instance to use for sending the transaction
+ * @param this - The RainSolverSigner instance to use for sending the transaction
  * @param tx - The transaction parameters to send
  * @returns A Promise that resolves to the transaction hash
  * @throws Will throw if the transaction fails to send
  */
 export async function sendTx(
-    signer: RainSolverSigner,
+    this: RainSolverSigner,
     tx: SendTransactionParameters<Chain, HDAccount | PrivateKeyAccount>,
 ): Promise<`0x${string}`> {
     // make sure signer is free
-    await signer.waitUntilFree();
+    await this.waitUntilFree();
 
     // start sending tranaction process
-    signer.busy = true;
+    this.busy = true;
     try {
-        const nonce = await signer.getTransactionCount({
-            address: signer.account.address,
+        const nonce = await this.getTransactionCount({
+            address: this.account.address,
             blockTag: "latest",
         });
         if (typeof tx.gas === "bigint") {
-            tx.gas = getTxGas(signer, tx.gas);
+            tx.gas = getTxGas(this.state, tx.gas);
         }
-        const result = await signer.sendTransaction({ ...(tx as any), nonce });
-        signer.busy = false;
+        const result = await this.sendTransaction({ ...(tx as any), nonce });
+        this.busy = false;
         return result;
     } catch (error) {
-        signer.busy = false;
+        this.busy = false;
         throw error;
     }
 }
@@ -126,15 +134,15 @@ export async function sendTx(
  * - L2 gas estimation for the transaction
  * - L1 gas fees if on an L2 chain like Arbitrum (gets L1 base fee and estimates L1 calldata cost)
  *
- * @param signer - The RainSolverSigner instance to use for estimation
+ * @param this - The RainSolverSigner instance to use for estimation
  * @param tx - Transaction parameters to estimate gas for
  */
 export async function estimateGasCost(
-    signer: RainSolverSigner,
+    this: RainSolverSigner,
     tx: EstimateGasParameters<Chain>,
 ): Promise<EstimateGasCostResult> {
-    const gasPrice = (signer.state.gasPrice * BigInt(signer.state.gasPriceMultiplier)) / 100n;
-    const gas = await signer.estimateGas(tx);
+    const gasPrice = (this.state.gasPrice * BigInt(this.state.gasPriceMultiplier)) / 100n;
+    const gas = await this.estimateGas(tx);
     const result = {
         gas,
         gasPrice,
@@ -142,11 +150,11 @@ export async function estimateGasCost(
         l1Cost: 0n,
         totalGasCost: gasPrice * gas,
     };
-    if (signer.state.chainConfig.isSpecialL2) {
+    if (this.state.chainConfig.isSpecialL2) {
         try {
             let l1GasPrice;
-            const l1Signer_ = signer.extend(publicActionsL2());
-            if (typeof signer.state.l1GasPrice !== "bigint") {
+            const l1Signer_ = this.extend(publicActionsL2());
+            if (typeof this.state.l1GasPrice !== "bigint") {
                 l1GasPrice = await l1Signer_.getL1BaseFee();
             }
             const l1Cost = await l1Signer_.estimateL1Fee({
@@ -163,19 +171,19 @@ export async function estimateGasCost(
 
 /**
  * Applies the configured gas multiplier to a transaction's gas limit
- * @param signer - The RainSolverSigner instance containing the gas configuration
+ * @param state - The sharedstate instance
  * @param gas - The original gas limit to apply the multiplier to
  * @returns The adjusted gas limit after applying any configured multiplier
  */
-export function getTxGas(signer: RainSolverSigner, gas: bigint): bigint {
-    if (signer.state.transactionGas) {
-        if (signer.state.transactionGas.endsWith("%")) {
+export function getTxGas(state: SharedState, gas: bigint): bigint {
+    if (state.transactionGas) {
+        if (state.transactionGas.endsWith("%")) {
             const multiplier = BigInt(
-                signer.state.transactionGas.substring(0, signer.state.transactionGas.length - 1),
+                state.transactionGas.substring(0, state.transactionGas.length - 1),
             );
             return (gas * multiplier) / 100n;
         } else {
-            return BigInt(signer.state.transactionGas);
+            return BigInt(state.transactionGas);
         }
     } else {
         return gas;
@@ -187,31 +195,30 @@ export function getTxGas(signer: RainSolverSigner, gas: bigint): bigint {
  * This function polls the signer until it is no longer in a busy state, which typically
  * means it is not in the middle of sending a transaction or performing other operations.
  *
- * @param signer - The RainSolverSigner instance to wait for
+ * @param this - The RainSolverSigner instance to wait for
  * @returns A Promise that resolves when the signer is free to use
  */
-export async function waitUntilFree(signer: RainSolverSigner) {
-    while (signer.busy) {
+export async function waitUntilFree(this: RainSolverSigner) {
+    while (this.busy) {
         await sleep(30);
     }
 }
 
 /**
  * A wrapper for viem client `getBalance()` that gets native token balance of the signer's account.
- * @param signer - The RainSolverSigner instance to check the balance for
+ * @param this - The RainSolverSigner instance to check the balance for
  */
-export async function getSelfBalance(signer: RainSolverSigner) {
-    return await signer.getBalance({ address: signer.account.address });
+export async function getSelfBalance(this: RainSolverSigner) {
+    return await this.getBalance({ address: this.account.address });
 }
 
 /**
  * Get the associated write signer from the given signer and state, that is
  * basically the same signer wallet but configured with app's write rpc
- * @param signber - A RainSolverSigner instance
- * @param state - Sharedstate instance
+ * @param this - A RainSolverSigner instance
  * */
-export function getWriteSignerFrom(signer: RainSolverSigner, state: SharedState): RainSolverSigner {
+export function getWriteSignerFrom(this: RainSolverSigner): RainSolverSigner {
     // if state doesnt have write rpc configured, return the signer as is
-    if (!state.writeRpc) return signer;
-    return RainSolverSigner.create(signer.account, state, true);
+    if (!this.state.writeRpc) return this;
+    return RainSolverSigner.create(this.account, this.state, true);
 }

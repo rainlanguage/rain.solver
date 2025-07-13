@@ -27,11 +27,8 @@ describe("Test RainSolverSignerActions", () => {
                 ["0xtoken2", { address: "0xtoken2", symbol: "TKN2", decimals: 6 }],
             ]),
         } as SharedState;
-        const mockSigner = {
-            state: mockSharedState,
-        } as RainSolverSigner;
 
-        const actions = RainSolverSignerActions.fromSharedState(mockSharedState)(mockSigner);
+        const actions = RainSolverSignerActions.fromSharedState(mockSharedState)();
 
         expect(actions.state).toBe(mockSharedState);
         expect(actions.busy).toBe(false);
@@ -75,7 +72,7 @@ describe("Test sendTx", () => {
     });
 
     it("should successfully send a transaction", async () => {
-        const txHash = await sendTx(mockSigner, mockTx);
+        const txHash = await sendTx.call(mockSigner, mockTx);
 
         expect(mockSigner.waitUntilFree).toHaveBeenCalled();
         expect(mockSigner.getTransactionCount).toHaveBeenCalledWith({
@@ -97,7 +94,7 @@ describe("Test sendTx", () => {
             return Promise.resolve();
         });
 
-        await sendTx(mockSigner, mockTx);
+        await sendTx.call(mockSigner, mockTx);
 
         expect(busyResolved).toBe(true);
         expect(mockSigner.sendTransaction).toHaveBeenCalled();
@@ -111,7 +108,7 @@ describe("Test sendTx", () => {
         });
 
         expect(mockSigner.busy).toBe(false);
-        await sendTx(mockSigner, mockTx);
+        await sendTx.call(mockSigner, mockTx);
         expect(mockSigner.busy).toBe(false);
         expect(states).toContain(true); // Was busy during transaction
     });
@@ -121,7 +118,7 @@ describe("Test sendTx", () => {
         mockSigner.sendTransaction = vi.fn().mockRejectedValue(error);
 
         expect(mockSigner.busy).toBe(false);
-        await expect(sendTx(mockSigner, mockTx)).rejects.toThrow(error);
+        await expect(sendTx.call(mockSigner, mockTx)).rejects.toThrow(error);
         expect(mockSigner.busy).toBe(false);
     });
 
@@ -129,7 +126,7 @@ describe("Test sendTx", () => {
         const error = new Error("Wait until free failed");
         mockSigner.waitUntilFree = vi.fn().mockRejectedValue(error);
 
-        await expect(sendTx(mockSigner, mockTx)).rejects.toThrow(error);
+        await expect(sendTx.call(mockSigner, mockTx)).rejects.toThrow(error);
         expect(mockSigner.busy).toBe(false);
         expect(mockSigner.sendTransaction).not.toHaveBeenCalled();
     });
@@ -138,7 +135,7 @@ describe("Test sendTx", () => {
         const error = new Error("Failed to get nonce");
         mockSigner.getTransactionCount = vi.fn().mockRejectedValue(error);
 
-        await expect(sendTx(mockSigner, mockTx)).rejects.toThrow(error);
+        await expect(sendTx.call(mockSigner, mockTx)).rejects.toThrow(error);
         expect(mockSigner.busy).toBe(false);
         expect(mockSigner.sendTransaction).not.toHaveBeenCalled();
     });
@@ -149,7 +146,7 @@ describe("Test sendTx", () => {
             gas: 200000n,
         };
 
-        await sendTx(mockSigner, txWithGas);
+        await sendTx.call(mockSigner, txWithGas);
 
         expect(mockSigner.sendTransaction).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -182,7 +179,7 @@ describe("Test estimateGasCost", () => {
     });
 
     it("should calculate basic gas cost non-L2 chains", async () => {
-        const result = await estimateGasCost(mockSigner, mockTx);
+        const result = await estimateGasCost.call(mockSigner, mockTx);
 
         expect(mockSigner.estimateGas).toHaveBeenCalledWith(mockTx);
         expect(result).toEqual({
@@ -202,7 +199,7 @@ describe("Test estimateGasCost", () => {
         mockSigner.state.chainConfig.isSpecialL2 = true;
         (mockSigner.extend as Mock).mockReturnValue(mockL2Client);
 
-        const result = await estimateGasCost(mockSigner, mockTx);
+        const result = await estimateGasCost.call(mockSigner, mockTx);
 
         expect(mockSigner.extend).toHaveBeenCalledWith(publicActionsL2());
         expect(mockL2Client.getL1BaseFee).toHaveBeenCalled();
@@ -228,7 +225,7 @@ describe("Test estimateGasCost", () => {
         mockSigner.state.l1GasPrice = 40000000000n; // 40 gwei
         (mockSigner.extend as Mock).mockReturnValue(mockL2Client);
 
-        const result = await estimateGasCost(mockSigner, mockTx);
+        const result = await estimateGasCost.call(mockSigner, mockTx);
 
         expect(mockL2Client.getL1BaseFee).not.toHaveBeenCalled();
         expect(result.l1GasPrice).toBe(0n);
@@ -242,7 +239,7 @@ describe("Test estimateGasCost", () => {
         mockSigner.state.chainConfig.isSpecialL2 = true;
         (mockSigner.extend as Mock).mockReturnValue(mockL2Client);
 
-        const result = await estimateGasCost(mockSigner, mockTx);
+        const result = await estimateGasCost.call(mockSigner, mockTx);
 
         expect(result).toEqual({
             gas: 100000n,
@@ -258,34 +255,28 @@ describe("Test getTxGas", () => {
     const originalGas = 100000n;
 
     it("should return original gas when no transactionGas is set", () => {
-        const mockSigner = {
-            state: {
-                transactionGas: undefined,
-            },
-        } as RainSolverSigner;
-        const result = getTxGas(mockSigner, originalGas);
+        const state = {
+            transactionGas: undefined,
+        } as SharedState;
+        const result = getTxGas(state, originalGas);
 
         expect(result).toBe(originalGas);
     });
 
     it("should apply percentage multiplier when transactionGas ends with %", () => {
-        const mockSigner = {
-            state: {
-                transactionGas: "150%", // 150% of original gas
-            },
-        } as RainSolverSigner;
-        const result = getTxGas(mockSigner, originalGas);
+        const state = {
+            transactionGas: "150%", // 150% of original gas
+        } as SharedState;
+        const result = getTxGas(state, originalGas);
 
         expect(result).toBe(150000n); // 100000 * 150 / 100
     });
 
     it("should use fixed gas value when transactionGas is a number string", () => {
-        const mockSigner = {
-            state: {
-                transactionGas: "200000",
-            },
-        } as RainSolverSigner;
-        const result = getTxGas(mockSigner, originalGas);
+        const state = {
+            transactionGas: "200000",
+        } as SharedState;
+        const result = getTxGas(state, originalGas);
 
         expect(result).toBe(200000n);
     });
@@ -306,7 +297,7 @@ describe("Test waitUntilFree", () => {
 
     it("should call sleep once and resolve after 30 ms", async () => {
         setTimeout(() => (mockSigner.busy = false), 10); // set busy to false after 10 ms
-        await waitUntilFree(mockSigner);
+        await waitUntilFree.call(mockSigner);
 
         expect(sleepSpy).toHaveBeenCalledTimes(1);
         expect(sleepSpy).toHaveBeenCalledWith(30);
@@ -314,7 +305,7 @@ describe("Test waitUntilFree", () => {
 
     it("should call sleep ywice and resolve after 60 ms", async () => {
         setTimeout(() => (mockSigner.busy = false), 40); // set busy to false after 40 ms
-        await waitUntilFree(mockSigner);
+        await waitUntilFree.call(mockSigner);
 
         expect(sleepSpy).toHaveBeenCalledTimes(2);
         expect(sleepSpy).toHaveBeenCalledWith(30);
@@ -331,7 +322,7 @@ describe("Test getSelfBalance", () => {
         } as unknown as RainSolverSigner;
         const expectedBalance = 1000000n;
         (mockSigner.getBalance as any).mockResolvedValue(expectedBalance);
-        const balance = await getSelfBalance(mockSigner);
+        const balance = await getSelfBalance.call(mockSigner);
 
         expect(mockSigner.getBalance).toHaveBeenCalledWith({
             address: "0xuser",
@@ -356,7 +347,7 @@ describe("Test getWriteSignerFrom", () => {
 
         const signer = RainSolverSigner.create(account, mockState);
         const spySigner = vi.spyOn(RainSolverSigner, "create");
-        getWriteSignerFrom(signer, mockState);
+        getWriteSignerFrom.call(signer, mockState);
 
         expect(spySigner).toHaveBeenCalledTimes(0);
 
@@ -375,7 +366,7 @@ describe("Test getWriteSignerFrom", () => {
 
         const signer: any = RainSolverSigner.create(account, mockState);
         const spySigner = vi.spyOn(RainSolverSigner, "create");
-        getWriteSignerFrom(signer, mockState);
+        getWriteSignerFrom.call(signer, mockState);
 
         expect(spySigner).toHaveBeenCalledTimes(1);
         expect(spySigner).toHaveBeenCalledWith(account, mockState, true);
