@@ -2,7 +2,7 @@ import { RainSolver } from "../..";
 import { Result } from "../../../common";
 import { trySimulateTrade } from "./simulate";
 import { SimulationResult } from "../../types";
-import { BundledOrders } from "../../../order";
+import { BundledOrders, CounterpartySource } from "../../../order";
 import { fallbackEthPrice } from "../../../router";
 import { RainSolverSigner } from "../../../signer";
 import { findBestInterOrderbookTrade } from "./index";
@@ -46,10 +46,7 @@ describe("Test findBestInterOrderbookTrade", () => {
         } as any;
 
         orderDetails = {
-            takeOrders: [
-                { quote: { maxOutput: 1000n, ratio: 5n } },
-                { quote: { maxOutput: 2000n, ratio: 6n } },
-            ],
+            takeOrder: { quote: { maxOutput: 1000n, ratio: 5n } },
         } as any;
 
         signer = { account: { address: "0xsigner" } } as any;
@@ -108,7 +105,7 @@ describe("Test findBestInterOrderbookTrade", () => {
         expect(result.value.oppBlockNumber).toBe(123);
         expect(mockRainSolver.orderManager.getCounterpartyOrders as Mock).toHaveBeenCalledWith(
             orderDetails,
-            false,
+            CounterpartySource.InterOrderbook,
         );
         expect(trySimulateTrade).toHaveBeenCalledTimes(3);
         expect(result.value.type).toBe("interOrderbook");
@@ -285,7 +282,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             orderDetails,
             counterpartyOrderDetails: { orderbook: "0xorderbook1", id: "order1" },
             signer,
-            maximumInputFixed: 3000n, // 1000 + 2000
+            maximumInputFixed: 1000n,
             inputToEthPrice,
             outputToEthPrice,
             blockNumber: 123n,
@@ -369,7 +366,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             orderDetails,
             counterpartyOrderDetails: mockCounterpartyOrders[0][0],
             signer,
-            maximumInputFixed: 3000n, // 1000 + 2000
+            maximumInputFixed: 1000n,
             inputToEthPrice: "1",
             outputToEthPrice: "2",
             blockNumber: 123n,

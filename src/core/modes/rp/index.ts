@@ -1,7 +1,7 @@
 import { RainSolver } from "../..";
+import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
 import { Result } from "../../../common";
-import { BundledOrders } from "../../../order";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
@@ -25,7 +25,7 @@ import {
  */
 export async function findBestRouteProcessorTrade(
     this: RainSolver,
-    orderDetails: BundledOrders,
+    orderDetails: Pair,
     signer: RainSolverSigner,
     ethPrice: string,
     toToken: Token,
@@ -42,7 +42,7 @@ export async function findBestRouteProcessorTrade(
         });
     }
 
-    const maximumInput = orderDetails.takeOrders.reduce((a, b) => a + b.quote!.maxOutput, 0n);
+    const maximumInput = orderDetails.takeOrder.quote!.maxOutput;
     const blockNumber = await this.state.client.getBlockNumber();
 
     // try simulation for full trade size and return if succeeds

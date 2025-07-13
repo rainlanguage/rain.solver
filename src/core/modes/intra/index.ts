@@ -2,12 +2,12 @@ import assert from "assert";
 import { erc20Abi } from "viem";
 import { RainSolver } from "../..";
 import { Result } from "../../../common";
-import { BundledOrders } from "../../../order";
-import { ONE18, scale18 } from "../../../math";
+import { ONE18, scaleTo18 } from "../../../math";
 import { Attributes } from "@opentelemetry/api";
 import { trySimulateTrade } from "./simulation";
 import { RainSolverSigner } from "../../../signer";
 import { fallbackEthPrice } from "../../../router";
+import { CounterpartySource, Pair } from "../../../order";
 import { extendObjectWithHeader } from "../../../logger";
 import { SimulationResult, TradeType } from "../../types";
 
@@ -22,7 +22,7 @@ import { SimulationResult, TradeType } from "../../types";
  */
 export async function findBestIntraOrderbookTrade(
     this: RainSolver,
-    orderDetails: BundledOrders,
+    orderDetails: Pair,
     signer: RainSolverSigner,
     inputToEthPrice: string,
     outputToEthPrice: string,
@@ -30,20 +30,22 @@ export async function findBestIntraOrderbookTrade(
     const spanAttributes: Attributes = {};
 
     // get counterparties and perform a general filter on them
-    const counterpartyOrders = this.orderManager.getCounterpartyOrders(orderDetails, true).filter(
-        (v) =>
-            v.takeOrder.quote &&
-            // not same order
-            v.takeOrder.id !== orderDetails.takeOrders[0].id &&
-            // not same owner
-            v.takeOrder.takeOrder.order.owner.toLowerCase() !==
-                orderDetails.takeOrders[0].takeOrder.order.owner.toLowerCase() &&
-            // only orders that (priceA x priceB < 1) can be profitbale
-            (v.takeOrder.quote.ratio * orderDetails.takeOrders[0].quote!.ratio) / ONE18 < ONE18,
-    );
+    const counterpartyOrders = this.orderManager
+        .getCounterpartyOrders(orderDetails, CounterpartySource.IntraOrderbook)
+        .filter(
+            (v) =>
+                v.takeOrder.quote &&
+                // not same order
+                v.takeOrder.id !== orderDetails.takeOrder.id &&
+                // not same owner
+                v.takeOrder.takeOrder.order.owner.toLowerCase() !==
+                    orderDetails.takeOrder.takeOrder.order.owner.toLowerCase() &&
+                // only orders that (priceA x priceB < 1) can be profitbale
+                (v.takeOrder.quote.ratio * orderDetails.takeOrder.quote!.ratio) / ONE18 < ONE18,
+        );
 
     const blockNumber = await this.state.client.getBlockNumber();
-    const inputBalance = scale18(
+    const inputBalance = scaleTo18(
         await this.state.client.readContract({
             address: orderDetails.buyToken as `0x${string}`,
             abi: erc20Abi,
@@ -52,7 +54,7 @@ export async function findBestIntraOrderbookTrade(
         }),
         orderDetails.buyTokenDecimals,
     );
-    const outputBalance = scale18(
+    const outputBalance = scaleTo18(
         await this.state.client.readContract({
             address: orderDetails.sellToken as `0x${string}`,
             abi: erc20Abi,
@@ -71,7 +73,7 @@ export async function findBestIntraOrderbookTrade(
             inputToEthPrice:
                 inputToEthPrice ||
                 fallbackEthPrice(
-                    orderDetails.takeOrders[0].quote!.ratio,
+                    orderDetails.takeOrder.quote!.ratio,
                     counterparty.takeOrder.quote!.ratio,
                     outputToEthPrice,
                 ),
@@ -79,7 +81,7 @@ export async function findBestIntraOrderbookTrade(
                 outputToEthPrice ||
                 fallbackEthPrice(
                     counterparty.takeOrder.quote!.ratio,
-                    orderDetails.takeOrders[0].quote!.ratio,
+                    orderDetails.takeOrder.quote!.ratio,
                     inputToEthPrice,
                 ),
             blockNumber,

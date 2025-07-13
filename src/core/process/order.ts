@@ -1,8 +1,8 @@
 import { RainSolver } from "..";
+import { Pair } from "../../order";
 import { Result } from "../../common";
 import { toNumber } from "../../math";
 import { Token } from "sushi/currency";
-import { BundledOrders } from "../../order";
 import { errorSnapshot } from "../../error";
 import { PoolBlackList } from "../../router";
 import { formatUnits, parseUnits } from "viem";
@@ -20,7 +20,7 @@ import {
 
 /** Arguments for processing an order */
 export type ProcessOrderArgs = {
-    orderDetails: BundledOrders;
+    orderDetails: Pair;
     signer: RainSolverSigner;
 };
 
@@ -52,16 +52,19 @@ export async function processOrder(
         tokenPair,
         buyToken: orderDetails.buyToken,
         sellToken: orderDetails.sellToken,
-        status: ProcessOrderStatus.NoOpportunity, // set default result to no opp
+        status: ProcessOrderStatus.NoOpportunity, // set default status to no opp
         spanAttributes,
     };
-    spanAttributes["details.orders"] = orderDetails.takeOrders.map((v) => v.id);
+    spanAttributes["details.orders"] = orderDetails.takeOrder.id;
     spanAttributes["details.pair"] = tokenPair;
 
     spanAttributes["event.quoteOrder"] = Date.now();
     try {
         await this.orderManager.quoteOrder(orderDetails);
-        if (orderDetails.takeOrders[0].quote?.maxOutput === 0n) {
+        if (orderDetails.takeOrder.quote?.maxOutput === 0n) {
+            // remove from pair maps if quote fails, to keep the pair map list free
+            // of orders with 0 maxoutput this will make counterparty lookups faster
+            this.orderManager.removeFromPairMaps(orderDetails);
             return async () => {
                 return Result.ok({
                     ...baseResult,
@@ -69,7 +72,10 @@ export async function processOrder(
                 });
             };
         }
+        // include in pair maps if quote passes to keep the list of orders with quote clean,
+        this.orderManager.addToPairMaps(orderDetails);
     } catch (e) {
+        this.orderManager.removeFromPairMaps(orderDetails);
         return async () =>
             Result.err({
                 ...baseResult,
@@ -80,8 +86,8 @@ export async function processOrder(
 
     // record order quote details in span attributes
     spanAttributes["details.quote"] = JSON.stringify({
-        maxOutput: formatUnits(orderDetails.takeOrders[0].quote!.maxOutput, 18),
-        ratio: formatUnits(orderDetails.takeOrders[0].quote!.ratio, 18),
+        maxOutput: formatUnits(orderDetails.takeOrder.quote!.maxOutput, 18),
+        ratio: formatUnits(orderDetails.takeOrder.quote!.ratio, 18),
     });
 
     // get current block number

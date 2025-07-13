@@ -1,5 +1,5 @@
 import { ONE18 } from "../../../math";
-import { BundledOrders, TakeOrderDetails } from "../../../order";
+import { Pair, TakeOrderDetails } from "../../../order";
 
 /**
  * Estimates profit for a arb/clear2 tx
@@ -11,24 +11,23 @@ import { BundledOrders, TakeOrderDetails } from "../../../order";
  * @param maxInput
  */
 export function estimateProfit(
-    orderDetails: BundledOrders,
+    orderDetails: Pair,
     inputToEthPrice: bigint,
     outputToEthPrice: bigint,
     counterpartyOrder: TakeOrderDetails,
 ): bigint {
     const orderMaxInput =
-        (orderDetails.takeOrders[0].quote!.maxOutput * orderDetails.takeOrders[0].quote!.ratio) /
-        ONE18;
+        (orderDetails.takeOrder.quote!.maxOutput * orderDetails.takeOrder.quote!.ratio) / ONE18;
     const opposingMaxInput =
         (counterpartyOrder.quote!.maxOutput * counterpartyOrder.quote!.ratio) / ONE18;
 
     const orderOutput =
         counterpartyOrder.quote!.ratio === 0n
-            ? orderDetails.takeOrders[0].quote!.maxOutput
-            : orderDetails.takeOrders[0].quote!.maxOutput <= opposingMaxInput
-              ? orderDetails.takeOrders[0].quote!.maxOutput
+            ? orderDetails.takeOrder.quote!.maxOutput
+            : orderDetails.takeOrder.quote!.maxOutput <= opposingMaxInput
+              ? orderDetails.takeOrder.quote!.maxOutput
               : opposingMaxInput;
-    const orderInput = (orderOutput * orderDetails.takeOrders[0].quote!.ratio) / ONE18;
+    const orderInput = (orderOutput * orderDetails.takeOrder.quote!.ratio) / ONE18;
 
     const opposingOutput =
         counterpartyOrder.quote!.ratio === 0n

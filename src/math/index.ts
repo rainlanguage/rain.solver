@@ -7,8 +7,10 @@ export const ONE18 = 1_000_000_000_000_000_000n as const;
 
 /**
  * Scales a given value and its decimals to 18 fixed point decimals
+ * @param value - The value to scale to 18
+ * @param decimals - The decimals of the value to scale to 18
  */
-export function scale18(value: bigint, decimals: number): bigint {
+export function scaleTo18(value: bigint, decimals: number): bigint {
     if (decimals > 18) {
         return value / BigInt("1" + "0".repeat(decimals - 18));
     } else {
@@ -18,8 +20,10 @@ export function scale18(value: bigint, decimals: number): bigint {
 
 /**
  * Scales a given 18 fixed point decimals value to the given decimals point value
+ * @param value - The value to scale from 18 to target decimals
+ * @param targetDecimals - The target decimals to scale from 18 to
  */
-export function scale18To(value: bigint, targetDecimals: number): bigint {
+export function scaleFrom18(value: bigint, targetDecimals: number): bigint {
     if (targetDecimals > 18) {
         return value * BigInt("1" + "0".repeat(targetDecimals - 18));
     } else {

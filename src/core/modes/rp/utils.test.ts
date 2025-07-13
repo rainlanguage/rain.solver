@@ -5,10 +5,8 @@ import { describe, it, expect } from "vitest";
 describe("Test estimateProfit", () => {
     it("should estimate profit correctly for typical values", () => {
         const orderDetails = {
-            takeOrders: [
-                { quote: { ratio: 2n * ONE18 } }, // ratio = 2.0
-            ],
-        };
+            takeOrder: { quote: { ratio: 2n * ONE18 } }, // ratio = 2.0
+        } as any;
         const ethPrice = 3n * ONE18; // 3 ETH
         const marketPrice = 4n * ONE18; // 4.0
         const maxInput = 10n * ONE18; // 10 units
@@ -23,8 +21,8 @@ describe("Test estimateProfit", () => {
 
     it("should return 0 if marketPrice equals order ratio", () => {
         const orderDetails = {
-            takeOrders: [{ quote: { ratio: 5n * ONE18 } }],
-        };
+            takeOrder: { quote: { ratio: 5n * ONE18 } },
+        } as any;
         const ethPrice = 1n * ONE18;
         const marketPrice = 5n * ONE18;
         const maxInput = 2n * ONE18;
@@ -39,8 +37,8 @@ describe("Test estimateProfit", () => {
 
     it("should return negative profit if order ratio > marketPrice", () => {
         const orderDetails = {
-            takeOrders: [{ quote: { ratio: 8n * ONE18 } }],
-        };
+            takeOrder: { quote: { ratio: 8n * ONE18 } },
+        } as any;
         const ethPrice = 2n * ONE18;
         const marketPrice = 5n * ONE18;
         const maxInput = 1n * ONE18;

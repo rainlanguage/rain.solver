@@ -55,7 +55,7 @@ describe("Test findBestRouteProcessorTrade", () => {
         };
 
         orderDetails = {
-            takeOrders: [{ quote: { maxOutput: 1000n } }, { quote: { maxOutput: 2000n } }],
+            takeOrder: { quote: { maxOutput: 1000n } },
         };
 
         signer = { account: { address: "0xsigner" } };
@@ -92,7 +92,7 @@ describe("Test findBestRouteProcessorTrade", () => {
             fromToken,
             toToken,
             signer,
-            maximumInputFixed: 3000n, // 1000 + 2000
+            maximumInputFixed: 1000n,
             ethPrice,
             isPartial: false,
             blockNumber: 123n,
@@ -157,14 +157,14 @@ describe("Test findBestRouteProcessorTrade", () => {
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.estimatedProfit).toBe(50n);
         expect(result.value.type).toBe("routeProcessor");
-        expect(findLargestTradeSize).toHaveBeenCalledWith(orderDetails, toToken, fromToken, 3000n);
+        expect(findLargestTradeSize).toHaveBeenCalledWith(orderDetails, toToken, fromToken, 1000n);
         expect(trySimulateTrade).toHaveBeenCalledTimes(2);
         expect(trySimulateTrade).toHaveBeenLastCalledWith({
             orderDetails,
             fromToken,
             toToken,
             signer,
-            maximumInputFixed: 3000n, // still uses original maximumInput
+            maximumInputFixed: 1000n,
             ethPrice,
             isPartial: true,
             blockNumber: 123n,
@@ -273,14 +273,14 @@ describe("Test findBestRouteProcessorTrade", () => {
         expect(result.value.estimatedProfit).toBe(75n);
         expect(result.value.oppBlockNumber).toBe(123);
         expect(result.value.type).toBe("routeProcessor");
-        expect(findLargestTradeSize).toHaveBeenCalledWith(orderDetails, toToken, fromToken, 3000n);
+        expect(findLargestTradeSize).toHaveBeenCalledWith(orderDetails, toToken, fromToken, 1000n);
         expect(trySimulateTrade).toHaveBeenCalledTimes(2);
         expect(trySimulateTrade).toHaveBeenLastCalledWith({
             orderDetails,
             fromToken,
             toToken,
             signer,
-            maximumInputFixed: 3000n,
+            maximumInputFixed: 1000n,
             ethPrice,
             isPartial: true,
             blockNumber: 123n,

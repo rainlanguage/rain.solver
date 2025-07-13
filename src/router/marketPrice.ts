@@ -1,7 +1,7 @@
 import { SharedState } from "../state";
 import { Token } from "sushi/currency";
 import { ChainId, Router } from "sushi";
-import { scale18, ONE18 } from "../math";
+import { scaleTo18, ONE18 } from "../math";
 import { PoolBlackList, RPoolFilter } from ".";
 import { formatUnits, parseUnits, maxUint256 } from "viem";
 
@@ -44,7 +44,7 @@ export async function getMarketPrice(
         if (route.status == "NoWay") {
             return;
         } else {
-            const price = scale18(route.amountOutBI, toToken.decimals);
+            const price = scaleTo18(route.amountOutBI, toToken.decimals);
             return {
                 price: formatUnits(price, 18),
                 amountOut: formatUnits(route.amountOutBI, toToken.decimals),

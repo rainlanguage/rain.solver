@@ -1,8 +1,8 @@
 import assert from "assert";
 import { RainSolver } from "..";
+import { Pair } from "../../order";
 import { Result } from "../../common";
 import { Token } from "sushi/currency";
-import { BundledOrders } from "../../order";
 import { FindBestTradeResult } from "../types";
 import { RainSolverSigner } from "../../signer";
 import { Attributes } from "@opentelemetry/api";
@@ -14,7 +14,7 @@ import { extendObjectWithHeader } from "../../logger";
 /** Arguments for finding the best trade */
 export type FindBestTradeArgs = {
     /** The order details to find the best trade for */
-    orderDetails: BundledOrders;
+    orderDetails: Pair;
     /** The signer that performs the trade simulation */
     signer: RainSolverSigner;
     /** The input token price to ETH */

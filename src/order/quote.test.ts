@@ -25,18 +25,16 @@ describe("Test quoteSingleOrder", () => {
     beforeEach(() => {
         orderDetails = {
             orderbook: "0xorderbook",
-            takeOrders: [
-                {
-                    takeOrder: {},
-                },
-            ],
+            takeOrder: {
+                takeOrder: {},
+            },
         };
     });
 
     it("should set quote on the takeOrder when data is returned", async () => {
         await quoteSingleOrder(orderDetails, client);
 
-        expect(orderDetails.takeOrders[0].quote).toEqual({
+        expect(orderDetails.takeOrder.quote).toEqual({
             maxOutput: 100n,
             ratio: 2n,
         });

@@ -3,7 +3,7 @@ import { RainSolver } from "../..";
 import { ONE18 } from "../../../math";
 import { Result } from "../../../common";
 import { encodeFunctionData } from "viem";
-import { BundledOrders, TakeOrderDetails } from "../../../order";
+import { Pair, TakeOrderDetails } from "../../../order";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { trySimulateTrade, SimulateIntraOrderbookTradeArgs } from "./simulation";
 
@@ -25,24 +25,22 @@ vi.mock("../dryrun", () => ({
     dryrun: vi.fn(),
 }));
 
-function makeOrderDetails(ratio = 1n * ONE18): BundledOrders {
+function makeOrderDetails(ratio = 1n * ONE18): Pair {
     return {
         orderbook: "0xorderbook",
         sellToken: "0xselltoken",
         buyToken: "0xbuytoken",
         sellTokenDecimals: 18,
         buyTokenDecimals: 18,
-        takeOrders: [
-            {
-                takeOrder: {
-                    order: {},
-                    inputIOIndex: 0,
-                    outputIOIndex: 1,
-                },
-                quote: { ratio },
+        takeOrder: {
+            takeOrder: {
+                order: {},
+                inputIOIndex: 0,
+                outputIOIndex: 1,
             },
-        ],
-    } as BundledOrders;
+            quote: { ratio },
+        },
+    } as Pair;
 }
 
 function makeCounterpartyOrder(): TakeOrderDetails {
@@ -264,8 +262,8 @@ describe("Test trySimulateTrade", () => {
             }),
         );
         args.orderDetails = makeOrderDetails(1n * ONE18);
-        args.orderDetails.takeOrders[0].takeOrder.inputIOIndex = 2;
-        args.orderDetails.takeOrders[0].takeOrder.outputIOIndex = 3;
+        args.orderDetails.takeOrder.takeOrder.inputIOIndex = 2;
+        args.orderDetails.takeOrder.takeOrder.outputIOIndex = 3;
         args.counterpartyOrderDetails.takeOrder.inputIOIndex = 4;
         args.counterpartyOrderDetails.takeOrder.outputIOIndex = 5;
 

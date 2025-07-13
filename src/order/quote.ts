@@ -1,7 +1,7 @@
 import { ChainId } from "sushi";
 import { SharedState } from "../state";
 import { AppOptions } from "../config";
-import { BundledOrders, TakeOrder } from "./types";
+import { BundledOrders, Pair, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData, PublicClient } from "viem";
 import {
     OrderbookQuoteAbi,
@@ -17,7 +17,7 @@ import {
  * @param gas - Optional read gas
  */
 export async function quoteSingleOrder(
-    orderDetails: BundledOrders,
+    orderDetails: Pair,
     viemClient: PublicClient,
     blockNumber?: bigint,
     gas?: bigint,
@@ -28,13 +28,13 @@ export async function quoteSingleOrder(
             data: encodeFunctionData({
                 abi: OrderbookQuoteAbi,
                 functionName: "quote",
-                args: [TakeOrder.getQuoteConfig(orderDetails.takeOrders[0].takeOrder)],
+                args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.takeOrder)],
             }),
             blockNumber,
             gas,
         })
         .catch((error) => {
-            orderDetails.takeOrders[0].quote = undefined;
+            orderDetails.takeOrder.quote = undefined;
             throw error;
         });
     if (typeof data !== "undefined") {
@@ -43,7 +43,7 @@ export async function quoteSingleOrder(
             functionName: "quote",
             data,
         });
-        orderDetails.takeOrders[0].quote = {
+        orderDetails.takeOrder.quote = {
             maxOutput: quoteResult[1],
             ratio: quoteResult[2],
         };

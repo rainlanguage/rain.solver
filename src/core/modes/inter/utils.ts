@@ -4,23 +4,23 @@ import { Pair } from "../../../order";
 
 /** Estimates profit for a inter-orderbook trade */
 export function estimateProfit(
-    orderDetails: any,
+    orderDetails: Pair,
     inputToEthPrice: bigint,
     outputToEthPrice: bigint,
     counterpartyOrder: Pair,
     maxInput: bigint,
 ): bigint {
     const orderOutput = maxInput;
-    const orderInput = (maxInput * orderDetails.takeOrders[0].quote.ratio) / ONE18;
+    const orderInput = (maxInput * orderDetails.takeOrder.quote!.ratio) / ONE18;
 
     let opposingMaxInput =
-        orderDetails.takeOrders[0].quote.ratio === 0n
+        orderDetails.takeOrder.quote!.ratio === 0n
             ? maxUint256
-            : (maxInput * orderDetails.takeOrders[0].quote.ratio) / ONE18;
+            : (maxInput * orderDetails.takeOrder.quote!.ratio) / ONE18;
     const opposingMaxIORatio =
-        orderDetails.takeOrders[0].quote.ratio === 0n
+        orderDetails.takeOrder.quote!.ratio === 0n
             ? maxUint256
-            : ONE18 ** 2n / orderDetails.takeOrders[0].quote.ratio;
+            : ONE18 ** 2n / orderDetails.takeOrder.quote!.ratio;
 
     let counterpartyInput = 0n;
     let counterpartyOutput = 0n;
