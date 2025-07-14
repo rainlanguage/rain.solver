@@ -155,7 +155,7 @@ export class SubgraphManager {
                 throw "Received invalid response";
             }
         }
-        this.syncState[url].lastFetchTimestamp = timestamp;
+        this.syncState[url].lastFetchTimestamp = Math.floor(timestamp / 1000);
         return result;
     }
 

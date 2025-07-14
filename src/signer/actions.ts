@@ -69,17 +69,25 @@ export type RainSolverSignerActions<
 };
 
 export namespace RainSolverSignerActions {
-    export function fromSharedState(
-        state: SharedState,
-    ): (client: RainSolverSigner) => RainSolverSignerActions {
-        return (client) => ({
+    export function fromSharedState(state: SharedState): () => RainSolverSignerActions {
+        return () => ({
             state,
             busy: false,
-            sendTx: (tx) => sendTx(client, tx),
-            waitUntilFree: () => waitUntilFree(client),
-            getSelfBalance: () => getSelfBalance(client),
-            estimateGasCost: (tx) => estimateGasCost(client, tx),
-            asWriteSigner: () => getWriteSignerFrom(client, state),
+            sendTx(tx) {
+                return sendTx(this as RainSolverSigner, tx);
+            },
+            waitUntilFree() {
+                return waitUntilFree(this as RainSolverSigner);
+            },
+            getSelfBalance() {
+                return getSelfBalance(this as RainSolverSigner);
+            },
+            estimateGasCost(tx) {
+                return estimateGasCost(this as RainSolverSigner, tx);
+            },
+            asWriteSigner() {
+                return getWriteSignerFrom(this as RainSolverSigner);
+            },
         });
     }
 }
@@ -108,7 +116,7 @@ export async function sendTx(
             blockTag: "latest",
         });
         if (typeof tx.gas === "bigint") {
-            tx.gas = getTxGas(signer, tx.gas);
+            tx.gas = getTxGas(signer.state, tx.gas);
         }
         const result = await signer.sendTransaction({ ...(tx as any), nonce });
         signer.busy = false;
@@ -163,19 +171,19 @@ export async function estimateGasCost(
 
 /**
  * Applies the configured gas multiplier to a transaction's gas limit
- * @param signer - The RainSolverSigner instance containing the gas configuration
+ * @param state - The sharedstate instance
  * @param gas - The original gas limit to apply the multiplier to
  * @returns The adjusted gas limit after applying any configured multiplier
  */
-export function getTxGas(signer: RainSolverSigner, gas: bigint): bigint {
-    if (signer.state.transactionGas) {
-        if (signer.state.transactionGas.endsWith("%")) {
+export function getTxGas(state: SharedState, gas: bigint): bigint {
+    if (state.transactionGas) {
+        if (state.transactionGas.endsWith("%")) {
             const multiplier = BigInt(
-                signer.state.transactionGas.substring(0, signer.state.transactionGas.length - 1),
+                state.transactionGas.substring(0, state.transactionGas.length - 1),
             );
             return (gas * multiplier) / 100n;
         } else {
-            return BigInt(signer.state.transactionGas);
+            return BigInt(state.transactionGas);
         }
     } else {
         return gas;
@@ -207,11 +215,10 @@ export async function getSelfBalance(signer: RainSolverSigner) {
 /**
  * Get the associated write signer from the given signer and state, that is
  * basically the same signer wallet but configured with app's write rpc
- * @param signber - A RainSolverSigner instance
- * @param state - Sharedstate instance
+ * @param signer - A RainSolverSigner instance
  * */
-export function getWriteSignerFrom(signer: RainSolverSigner, state: SharedState): RainSolverSigner {
+export function getWriteSignerFrom(signer: RainSolverSigner): RainSolverSigner {
     // if state doesnt have write rpc configured, return the signer as is
-    if (!state.writeRpc) return signer;
-    return RainSolverSigner.create(signer.account, state, true);
+    if (!signer.state.writeRpc) return signer;
+    return RainSolverSigner.create(signer.account, signer.state, true);
 }
