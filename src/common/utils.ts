@@ -68,7 +68,7 @@ export function shuffleArray(array: any[]) {
  * @param array - Array to iterate over
  * @returns A generator that yields each order
  */
-export function* iterRandom(array: any[]) {
+export function* iterRandom(array: Array<any>) {
     while (array.length) {
         // pick randomly for processing until all are processed
         // swap picked element with last element to avoid doing splice operation to achieve O(1) time complexity
