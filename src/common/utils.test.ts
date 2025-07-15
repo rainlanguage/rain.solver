@@ -290,8 +290,7 @@ describe("Test iterRandom function", () => {
         const iterShuffleArrayTime = measureTime(() => {
             for (let i = 0; i < iterations; i++) {
                 for (const _e of shuffleArray(shuffleArr)) {
-                    _e;
-                    // iterate to ensure the array is fully processed
+                    _e; // iterate to ensure the array is fully processed
                 }
             }
         });
@@ -301,8 +300,7 @@ describe("Test iterRandom function", () => {
         const iterRandomTime = measureTime(() => {
             for (let i = 0; i < iterations; i++) {
                 for (const _e of iterRandom(randArr)) {
-                    _e;
-                    // iterate to ensure the array is fully processed
+                    _e; // iterate to ensure the array is fully processed
                 }
             }
         });
