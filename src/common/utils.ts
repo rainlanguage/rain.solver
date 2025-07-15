@@ -62,3 +62,18 @@ export function shuffleArray(array: any[]) {
 
     return array;
 }
+
+/**
+ * Iterates over an array elements in random order with O(1) time complexity of randomness
+ * @param array - Array to iterate over
+ * @returns A generator that yields each order
+ */
+export function* iterRandom(array: Array<any>) {
+    while (array.length) {
+        // pick randomly for processing until all are processed
+        // swap picked element with last element to avoid doing splice operation to achieve O(1) time complexity
+        const pick = Math.floor(Math.random() * array.length);
+        [array[pick], array[array.length - 1]] = [array[array.length - 1], array[pick]];
+        yield array.pop()!; // array pop is also O(1)
+    }
+}

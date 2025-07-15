@@ -306,7 +306,7 @@ for (let i = 0; i < testData.length; i++) {
                     },
                     // config,
                 );
-                const { results: reports } = await rainSolver.processNextRound();
+                const { results: reports } = await rainSolver.processNextRound(undefined, false);
 
                 // should have cleared correct number of orders
                 assert.ok(reports.length == tokens.length - 1, "Failed to clear all given orders");
@@ -629,7 +629,7 @@ for (let i = 0; i < testData.length; i++) {
                     },
                     // config,
                 );
-                const { results: reports } = await rainSolver.processNextRound();
+                const { results: reports } = await rainSolver.processNextRound(undefined, false);
 
                 // should have cleared correct number of orders
                 assert.ok(
@@ -982,7 +982,7 @@ for (let i = 0; i < testData.length; i++) {
                     },
                     // config,
                 );
-                const { results: reports } = await rainSolver.processNextRound();
+                const { results: reports } = await rainSolver.processNextRound(undefined, false);
 
                 // should have cleared correct number of orders
                 assert.ok(

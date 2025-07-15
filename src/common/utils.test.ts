@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
-import { withBigintSerializer, sleep, promiseTimeout, shuffleArray } from "./utils";
+import { withBigintSerializer, sleep, promiseTimeout, shuffleArray, iterRandom } from "./utils";
 
 describe("Test withBigIntSerializer function", async function () {
     it("should test withBigIntSerializer", async function () {
@@ -230,5 +230,81 @@ describe("Test shuffleArray function", () => {
         // with 10 shuffles of 5 elements, we should get at least some different results
         const uniqueResults = new Set(results);
         expect(uniqueResults.size).toBeGreaterThan(1);
+    });
+});
+
+describe("Test iterRandom function", () => {
+    let arr: any[];
+
+    beforeEach(() => {
+        arr = [{ id: "id1" }, { id: "id2" }, { id: "id3" }];
+    });
+
+    it("should iterate randomly", () => {
+        const iteratedItems: any[] = [];
+
+        // mock Math.random to control randomness for predictable testing
+        const mockMathRandom = vi.spyOn(Math, "random");
+        mockMathRandom
+            .mockReturnValueOnce(0.8) // pick index 2 (0.8 * 3 = 2.4 -> floor = 2)
+            .mockReturnValueOnce(0.3) // pick index 0 (0.3 * 2 = 0.6 -> floor = 0)
+            .mockReturnValueOnce(0.0); // pick index 0 (0.0 * 1 = 0.0 -> floor = 0)
+
+        // collect all elements from the generator
+        for (const item of iterRandom(arr)) {
+            iteratedItems.push(item);
+        }
+
+        // should return all elements but potentially in different order
+        expect(iteratedItems).toHaveLength(3);
+
+        // with our mocked random values, expected order should be:
+        // 1st iteration: pick index 2 (id3), swap with last (id3), pop id3
+        // 2nd iteration: pick index 0 (id1), swap with last (id2), pop id1
+        // 3rd iteration: pick index 0 (id2), pop id2
+        expect(iteratedItems[0].id).toBe("id3");
+        expect(iteratedItems[1].id).toBe("id1");
+        expect(iteratedItems[2].id).toBe("id2");
+
+        // verify Math.random was called the expected number of times
+        expect(mockMathRandom).toHaveBeenCalledTimes(3);
+
+        mockMathRandom.mockRestore();
+    });
+
+    it("iterRandom O(1) should be faster than iterating shuffleArray O(n)", () => {
+        // build an array with 10k elemnts to iterate over
+        let counter = 0;
+        const arr = Array(10000).fill({ id: counter++ });
+        const iterations = 1000; //run each test 1000 times to get a good average
+
+        // a helper fn that measures the time
+        const measureTime = (callback: () => void) => {
+            const start = performance.now();
+            callback();
+            return performance.now() - start;
+        };
+
+        // measure shuffleArray time for 1k times
+        const shuffleArr = [...arr];
+        const iterShuffleArrayTime = measureTime(() => {
+            for (let i = 0; i < iterations; i++) {
+                for (const _e of shuffleArray(shuffleArr)) {
+                    _e; // iterate to ensure the array is fully processed
+                }
+            }
+        });
+
+        // measure iterRandom time for 1k times
+        const randArr = [...arr];
+        const iterRandomTime = measureTime(() => {
+            for (let i = 0; i < iterations; i++) {
+                for (const _e of iterRandom(randArr)) {
+                    _e; // iterate to ensure the array is fully processed
+                }
+            }
+        });
+
+        expect(iterRandomTime).toBeLessThan(iterShuffleArrayTime);
     });
 });
