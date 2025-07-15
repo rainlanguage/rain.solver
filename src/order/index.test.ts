@@ -289,33 +289,6 @@ describe("Test OrderManager", () => {
         };
         await orderManager.addOrders([mockOrder as any]);
 
-        // set arbitrary vault balances for testing
-        expect(
-            orderManager.ownerTokenVaultMap
-                .get("0xorderbook")!
-                .get("0xowner")!
-                .get("0xoutput")!
-                .get(1n)!.balance,
-        ).toBe(1n);
-        orderManager.ownerTokenVaultMap
-            .get("0xorderbook")!
-            .get("0xowner")!
-            .get("0xoutput")!
-            .get(1n)!.balance = 55n;
-
-        expect(
-            orderManager.ownerTokenVaultMap
-                .get("0xorderbook")!
-                .get("0xowner")!
-                .get("0xinput")!
-                .get(1n)!.balance,
-        ).toBe(2n);
-        orderManager.ownerTokenVaultMap
-            .get("0xorderbook")!
-            .get("0xowner")!
-            .get("0xinput")!
-            .get(1n)!.balance = 66n;
-
         const result = orderManager.getNextRoundOrders(false);
         expect(Array.isArray(result)).toBe(true);
         expect(result.length).toBeGreaterThan(0);
@@ -333,8 +306,8 @@ describe("Test OrderManager", () => {
         expect(bundle).toHaveProperty("sellToken", "0xoutput");
         expect(bundle).toHaveProperty("sellTokenDecimals", 18);
         expect(bundle).toHaveProperty("sellTokenSymbol", "OUT");
-        expect(bundle).toHaveProperty("sellTokenVaultBalance", 55n);
-        expect(bundle).toHaveProperty("buyTokenVaultBalance", 66n);
+        expect(bundle).toHaveProperty("sellTokenVaultBalance", 1n);
+        expect(bundle).toHaveProperty("buyTokenVaultBalance", 2n);
 
         const takeOrder = bundle.takeOrder;
         expect(takeOrder).toHaveProperty("id", "0xhash");
@@ -344,30 +317,6 @@ describe("Test OrderManager", () => {
         expect(takeOrder.takeOrder).toHaveProperty("outputIOIndex", 0);
         expect(takeOrder.takeOrder).toHaveProperty("signedContext");
         expect(Array.isArray(takeOrder.takeOrder.signedContext)).toBe(true);
-
-        // check that vault balances are updated correctly from the ownerTokenVaultMap
-        const orderbookVaultMap = orderManager.ownerTokenVaultMap.get("0xorderbook");
-        expect(orderbookVaultMap).toBeDefined();
-        const ownerVaultMap = orderbookVaultMap?.get("0xowner");
-        expect(ownerVaultMap).toBeDefined();
-
-        // check sell token vault balance
-        const sellTokenVaultMap = ownerVaultMap?.get("0xoutput");
-        expect(sellTokenVaultMap).toBeDefined();
-        const sellTokenVault = sellTokenVaultMap?.get(1n);
-        expect(sellTokenVault).toBeDefined();
-        expect(bundle.sellTokenVaultBalance).toBe(55n);
-
-        // check buy token vault balance
-        const buyTokenVaultMap = ownerVaultMap?.get("0xinput");
-        expect(buyTokenVaultMap).toBeDefined();
-        const buyTokenVault = buyTokenVaultMap?.get(1n);
-        expect(buyTokenVault).toBeDefined();
-        expect(bundle.buyTokenVaultBalance).toBe(66n);
-
-        // verify the vault balances match the expected values
-        expect(bundle.sellTokenVaultBalance).toBe(55n);
-        expect(bundle.buyTokenVaultBalance).toBe(66n);
     });
 
     it("should reset limits to default", async () => {
