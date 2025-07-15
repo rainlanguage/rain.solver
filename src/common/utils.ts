@@ -64,7 +64,7 @@ export function shuffleArray(array: any[]) {
 }
 
 /**
- * Iterates over an array elements in random order with O(1) time complexity
+ * Iterates over an array elements in random order with O(1) time complexity of randomness
  * @param array - Array to iterate over
  * @returns A generator that yields each order
  */
