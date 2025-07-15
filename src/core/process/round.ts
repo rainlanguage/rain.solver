@@ -34,12 +34,35 @@ export async function initializeRound(
     for (const orderDetails of iterOrders(orders, shuffle)) {
         const pair = `${orderDetails.buyTokenSymbol}/${orderDetails.sellTokenSymbol}`;
         const report = new PreAssembledSpan(`checkpoint_${pair}`);
+        const owner = orderDetails.takeOrder.takeOrder.order.owner.toLowerCase();
         report.extendAttrs({
             "details.pair": pair,
             "details.orderHash": orderDetails.takeOrder.id,
             "details.orderbook": orderDetails.orderbook,
             "details.owner": orderDetails.takeOrder.takeOrder.order.owner,
         });
+
+        // update the orderDetails vault balances from owner vaults map
+        orderDetails.sellTokenVaultBalance =
+            this.orderManager.ownerTokenVaultMap
+                .get(orderDetails.orderbook)
+                ?.get(owner)
+                ?.get(orderDetails.sellToken)
+                ?.get(
+                    orderDetails.takeOrder.takeOrder.order.validOutputs[
+                        orderDetails.takeOrder.takeOrder.outputIOIndex
+                    ].vaultId,
+                )?.balance ?? orderDetails.sellTokenVaultBalance;
+        orderDetails.buyTokenVaultBalance =
+            this.orderManager.ownerTokenVaultMap
+                .get(orderDetails.orderbook)
+                ?.get(owner)
+                ?.get(orderDetails.buyToken)
+                ?.get(
+                    orderDetails.takeOrder.takeOrder.order.validInputs[
+                        orderDetails.takeOrder.takeOrder.inputIOIndex
+                    ].vaultId,
+                )?.balance ?? orderDetails.buyTokenVaultBalance;
 
         // skip if the output vault is empty
         if (orderDetails.sellTokenVaultBalance <= 0n) {

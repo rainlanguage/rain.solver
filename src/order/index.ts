@@ -424,7 +424,7 @@ export class OrderManager {
     getNextRoundOrders(): Pair[] {
         const result: Pair[] = [];
         this.ownersMap.forEach((ownersProfileMap) => {
-            ownersProfileMap.forEach((ownerProfile, owner) => {
+            ownersProfileMap.forEach((ownerProfile) => {
                 let remainingLimit = ownerProfile.limit;
 
                 // consume orders limits
@@ -440,30 +440,6 @@ export class OrderManager {
                     ownerProfile.lastIndex += remainingConsumingOrders.length;
                     consumingOrders.push(...remainingConsumingOrders);
                 }
-
-                // update vault balance of each Pair object from ownerTokenVault map
-                consumingOrders.forEach((pair) => {
-                    pair.sellTokenVaultBalance =
-                        this.ownerTokenVaultMap
-                            .get(pair.orderbook)
-                            ?.get(owner)
-                            ?.get(pair.sellToken)
-                            ?.get(
-                                pair.takeOrder.takeOrder.order.validOutputs[
-                                    pair.takeOrder.takeOrder.outputIOIndex
-                                ].vaultId,
-                            )?.balance ?? pair.sellTokenVaultBalance;
-                    pair.buyTokenVaultBalance =
-                        this.ownerTokenVaultMap
-                            .get(pair.orderbook)
-                            ?.get(owner)
-                            ?.get(pair.buyToken)
-                            ?.get(
-                                pair.takeOrder.takeOrder.order.validInputs[
-                                    pair.takeOrder.takeOrder.inputIOIndex
-                                ].vaultId,
-                            )?.balance ?? pair.buyTokenVaultBalance;
-                });
                 result.push(...consumingOrders);
             });
         });

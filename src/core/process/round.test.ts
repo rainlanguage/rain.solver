@@ -23,6 +23,7 @@ describe("Test initializeRound", () => {
         // mock order manager
         mockOrderManager = {
             getNextRoundOrders: vi.fn(),
+            ownerTokenVaultMap: new Map(),
         };
 
         // mock wallet manager
