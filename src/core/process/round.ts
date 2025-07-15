@@ -1,4 +1,5 @@
 import { RainSolver } from "..";
+import { Pair } from "../../order";
 import { Result } from "../../common";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { PreAssembledSpan, SpanWithContext } from "../../logger";
@@ -21,11 +22,16 @@ export type Settlement = {
 /**
  * Initializes a new round of processing orders
  */
-export async function initializeRound(this: RainSolver, roundSpanCtx?: SpanWithContext) {
-    const orders = this.orderManager.getNextRoundOrders(true);
+export async function initializeRound(
+    this: RainSolver,
+    roundSpanCtx?: SpanWithContext,
+    shuffle = true,
+) {
+    const orders = [...this.orderManager.getNextRoundOrders()];
     const settlements: Settlement[] = [];
     const checkpointReports: PreAssembledSpan[] = [];
-    for (const orderDetails of orders) {
+
+    for (const orderDetails of iterOrders(orders, shuffle)) {
         const pair = `${orderDetails.buyTokenSymbol}/${orderDetails.sellTokenSymbol}`;
         const report = new PreAssembledSpan(`checkpoint_${pair}`);
         report.extendAttrs({
@@ -307,4 +313,25 @@ export async function finalizeRound(
     }
 
     return { results, reports };
+}
+
+/**
+ * Iterates over orders, optionally shuffling them.
+ * @param orders - Array of orders to iterate over
+ * @param shuffle - Whether to shuffle the orders (default: true)
+ * @returns A generator that yields each order
+ */
+export function* iterOrders(orders: Pair[], shuffle = true) {
+    if (shuffle) {
+        while (orders.length) {
+            // pick randomly for processing until all are processed
+            // swap picked element with last element to avoid doing splice operation to achieve O(1) time complexity
+            const pick = Math.floor(Math.random() * orders.length);
+            [orders[pick], orders[orders.length - 1]] = [orders[orders.length - 1], orders[pick]];
+            yield orders.pop()!; // array pop is also O(1)
+        }
+    } else {
+        // iterate orders in the same order as they if no shuffle
+        for (const orderDetails of orders) yield orderDetails;
+    }
 }

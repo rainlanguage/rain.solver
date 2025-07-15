@@ -4,9 +4,9 @@ import { Result } from "../../common";
 import { ErrorSeverity } from "../../error";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { PreAssembledSpan, RainSolverLogger } from "../../logger";
-import { finalizeRound, initializeRound, Settlement } from "./round";
 import { ProcessOrderStatus, ProcessOrderHaltReason } from "../types";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
+import { finalizeRound, initializeRound, iterOrders, Settlement } from "./round";
 
 describe("Test initializeRound", () => {
     type initializeRoundType = Awaited<ReturnType<typeof initializeRound>>;
@@ -119,7 +119,11 @@ describe("Test initializeRound", () => {
                 account: { address: "0xSigner" },
             });
 
-            const result: initializeRoundType = await initializeRound.call(mockSolver);
+            const result: initializeRoundType = await initializeRound.call(
+                mockSolver,
+                undefined,
+                false,
+            );
 
             expect(result.settlements).toHaveLength(3);
             expect(result.checkpointReports).toHaveLength(3);
@@ -192,10 +196,9 @@ describe("Test initializeRound", () => {
         it("should call getNextRoundOrders with correct parameter", async () => {
             mockOrderManager.getNextRoundOrders.mockReturnValue([]);
 
-            await initializeRound.call(mockSolver);
+            await initializeRound.call(mockSolver, undefined, false);
 
-            expect(mockOrderManager.getNextRoundOrders).toHaveBeenCalledWith(true);
-            expect(mockOrderManager.getNextRoundOrders).toHaveBeenCalledTimes(1);
+            expect(mockOrderManager.getNextRoundOrders).toHaveBeenCalledOnce();
         });
 
         it("should call getRandomSigner for each order", async () => {
@@ -300,7 +303,11 @@ describe("Test initializeRound", () => {
             mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
             mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
 
-            const result: initializeRoundType = await initializeRound.call(mockSolver);
+            const result: initializeRoundType = await initializeRound.call(
+                mockSolver,
+                undefined,
+                false,
+            );
 
             expect(result.checkpointReports).toHaveLength(3);
             expect(result.settlements).toHaveLength(3);
@@ -452,7 +459,11 @@ describe("Test initializeRound", () => {
         mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
         (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
 
-        const result: initializeRoundType = await initializeRound.call(mockSolver);
+        const result: initializeRoundType = await initializeRound.call(
+            mockSolver,
+            undefined,
+            false,
+        );
 
         // should have 2 settlements total
         expect(result.settlements).toHaveLength(2);
@@ -1343,5 +1354,60 @@ describe("Test finalizeRound", () => {
             expect(loggerExportReport).not.toHaveBeenCalled();
             loggerExportReport.mockRestore();
         });
+    });
+});
+
+describe("Test iterOrders", () => {
+    let mockOrders: any[];
+
+    beforeEach(() => {
+        mockOrders = [{ id: "0xOrder1" }, { id: "0xOrder2" }, { id: "0xOrder3" }];
+    });
+
+    it("should iterate orders without shuffle", () => {
+        const iteratedOrders: any[] = [];
+
+        // collect all orders from the generator
+        for (const order of iterOrders(mockOrders, false)) {
+            iteratedOrders.push(order);
+        }
+
+        // should return orders in the same order as input
+        expect(iteratedOrders).toHaveLength(3);
+        expect(iteratedOrders[0].id).toBe("0xOrder1");
+        expect(iteratedOrders[1].id).toBe("0xOrder2");
+        expect(iteratedOrders[2].id).toBe("0xOrder3");
+    });
+
+    it("should iterate orders with shuffle", () => {
+        const iteratedOrders: any[] = [];
+
+        // mock Math.random to control randomness for predictable testing
+        const mockMathRandom = vi.spyOn(Math, "random");
+        mockMathRandom
+            .mockReturnValueOnce(0.8) // pick index 2 (0.8 * 3 = 2.4 -> floor = 2)
+            .mockReturnValueOnce(0.3) // pick index 0 (0.3 * 2 = 0.6 -> floor = 0)
+            .mockReturnValueOnce(0.0); // pick index 0 (0.0 * 1 = 0.0 -> floor = 0)
+
+        // collect all orders from the generator
+        for (const order of iterOrders(mockOrders, true)) {
+            iteratedOrders.push(order);
+        }
+
+        // should return all orders but potentially in different order
+        expect(iteratedOrders).toHaveLength(3);
+
+        // with our mocked random values, expected order should be:
+        // 1st iteration: pick index 2 (Order3), swap with last (Order3), pop Order3
+        // 2nd iteration: pick index 0 (Order1), swap with last (Order2), pop Order1
+        // 3rd iteration: pick index 0 (Order2), pop Order2
+        expect(iteratedOrders[0].id).toBe("0xOrder3");
+        expect(iteratedOrders[1].id).toBe("0xOrder1");
+        expect(iteratedOrders[2].id).toBe("0xOrder2");
+
+        // verify Math.random was called the expected number of times
+        expect(mockMathRandom).toHaveBeenCalledTimes(3);
+
+        mockMathRandom.mockRestore();
     });
 });

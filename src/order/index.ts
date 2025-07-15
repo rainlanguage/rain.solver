@@ -1,7 +1,6 @@
 import { erc20Abi } from "viem";
 import { syncOrders } from "./sync";
 import { SgOrder } from "../subgraph";
-import { shuffleArray } from "../common";
 import { quoteSingleOrder } from "./quote";
 import { PreAssembledSpan } from "../logger";
 import { SubgraphManager } from "../subgraph";
@@ -420,10 +419,9 @@ export class OrderManager {
 
     /**
      * Prepares orders for the next round
-     * @param shuffle - Whether to randomize the order of items (default: true)
      * @returns Array of bundled orders grouped by orderbook
      */
-    getNextRoundOrders(shuffle = true): Pair[] {
+    getNextRoundOrders(): Pair[] {
         const result: Pair[] = [];
         this.ownersMap.forEach((ownersProfileMap) => {
             ownersProfileMap.forEach((ownerProfile, owner) => {
@@ -469,10 +467,6 @@ export class OrderManager {
                 result.push(...consumingOrders);
             });
         });
-        if (shuffle) {
-            // shuffle orderbooks
-            shuffleArray(result);
-        }
         return result;
     }
 

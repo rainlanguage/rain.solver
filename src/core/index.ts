@@ -57,8 +57,12 @@ export class RainSolver {
      * is managed by wallet manager.
      * @returns An object containing results and reports of the processed round
      */
-    async processNextRound(roundSpanCtx?: SpanWithContext) {
-        const { settlements, checkpointReports } = await initializeRound.call(this, roundSpanCtx);
+    async processNextRound(roundSpanCtx?: SpanWithContext, shuffle = true) {
+        const { settlements, checkpointReports } = await initializeRound.call(
+            this,
+            roundSpanCtx,
+            shuffle,
+        );
         const { results, reports } = await finalizeRound.call(this, settlements, roundSpanCtx);
         return {
             results,
