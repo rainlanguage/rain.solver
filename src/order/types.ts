@@ -1,3 +1,4 @@
+import { TokenDetails } from "../state";
 import { Result, OrderV3 } from "../common";
 import { decodeAbiParameters, DecodeAbiParametersErrorType, parseAbiParameters } from "viem";
 
@@ -101,9 +102,11 @@ export type Pair = {
     buyToken: string;
     buyTokenDecimals: number;
     buyTokenSymbol: string;
+    buyTokenVaultBalance: bigint;
     sellToken: string;
     sellTokenDecimals: number;
     sellTokenSymbol: string;
+    sellTokenVaultBalance: bigint;
     takeOrder: TakeOrderDetails;
 };
 
@@ -128,3 +131,16 @@ export type OrderbooksOwnersProfileMap = Map<string, OwnersProfileMap>;
 export type OrderbooksPairMap = Map<string, PairMap>;
 
 export type PairMap = Map<string, Map<string, Map<string, Pair>>>;
+
+/** Represents the details of a token vault */
+export type VaultDetails = {
+    id: bigint;
+    token: TokenDetails;
+    balance: bigint;
+};
+/** token -> vault id -> vault details map */
+export type TokenVaultMap = Map<string, Map<bigint, VaultDetails>>;
+/** owner -> TokenVaultMap */
+export type OwnerTokenVaultsMap = Map<string, TokenVaultMap>;
+/** orderbook -> OwnerTokenVaultsMap */
+export type OrderbookOwnerTokenVaultsMap = Map<string, OwnerTokenVaultsMap>;

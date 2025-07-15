@@ -164,6 +164,78 @@ export const getTxsQuery = (startTimestamp: number, skip: number) => {
                 }
             }
         }
+        ... on Deposit {
+            newVaultBalance
+            oldVaultBalance
+            vault {
+                owner
+                vaultId
+                balance
+                token {
+                    address
+                    decimals
+                    symbol
+                }
+            }
+            orderbook {
+                id
+            }
+        }
+        ... on Withdrawal {
+            newVaultBalance
+            oldVaultBalance
+            vault {
+                owner
+                vaultId
+                balance
+                token {
+                    address
+                    decimals
+                    symbol
+                }
+            }
+            orderbook {
+                id
+            }
+        }
+        ... on TradeEvent {
+            trades {
+                inputVaultBalanceChange {
+                    newVaultBalance
+                    oldVaultBalance
+                    vault {
+                        owner
+                        balance
+                        vaultId
+                        token {
+                            address
+                            decimals
+                            symbol
+                        }
+                    }
+                    orderbook {
+                        id
+                    }
+                }
+                outputVaultBalanceChange {
+                    newVaultBalance
+                    oldVaultBalance
+                    vault {
+                        owner
+                        balance
+                        vaultId
+                        token {
+                            address
+                            decimals
+                            symbol
+                        }
+                    }
+                    orderbook {
+                        id
+                    }
+                }
+            }
+        }
     }
     timestamp
 }}`;

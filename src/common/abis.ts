@@ -82,10 +82,12 @@ export const arbAbis = [
 ] as const;
 
 export const Call3 = "(address target, bool allowFailure, bytes callData)" as const;
+export const Call = "(address target, bytes callData)" as const;
 export const MulticallResult = "(bool success, bytes returnData)" as const;
 export const multicall3Abi = [
     "function getEthBalance(address addr) external view returns (uint256 balance)",
     `function aggregate3(${Call3}[] calldata calls) external payable returns (${MulticallResult}[] memory returnData)`,
+    `function aggregate(${Call}[] calldata calls) external payable returns (uint256 blockNumber, bytes[] memory returnData)`,
 ] as const;
 
 // an empty evaluable mainly used as default evaluable for arb contracts

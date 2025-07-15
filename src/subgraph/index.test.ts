@@ -1,8 +1,8 @@
 import axios from "axios";
 import { SgOrder } from "./types";
 import { ErrorSeverity } from "../error";
-import { SpanStatusCode } from "@opentelemetry/api";
 import { SubgraphManager } from "./index";
+import { SpanStatusCode } from "@opentelemetry/api";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 
 vi.mock("axios");
@@ -19,12 +19,6 @@ describe("Test SubgraphManager", () => {
         orderHash: "0xabc",
         active: true,
         orderbook: { id: "0xob1" },
-    } as any as SgOrder;
-    const mockRemoveOrder = {
-        id: "3",
-        orderHash: "0xdef",
-        active: false,
-        orderbook: { id: "0xob2" },
     } as any as SgOrder;
     let manager: SubgraphManager;
 
@@ -133,20 +127,12 @@ describe("Test SubgraphManager", () => {
         ]);
     });
 
-    it("test syncOrders: should sync add and remove orders", async () => {
+    it("test getUpstreamEvents: should sync add and remove orders", async () => {
         (axios.post as Mock)
             .mockResolvedValueOnce({
                 data: {
                     data: {
-                        transactions: [
-                            {
-                                timestamp: 123,
-                                events: [
-                                    { __typename: "AddOrder", order: mockOrder },
-                                    { __typename: "RemoveOrder", order: mockRemoveOrder },
-                                ],
-                            },
-                        ],
+                        transactions: [{}, {}, {}],
                     },
                 },
             })
@@ -157,41 +143,25 @@ describe("Test SubgraphManager", () => {
                     },
                 },
             });
-        const { report, result } = await manager.syncOrders();
-        const reportStatus = JSON.parse(report.attributes.syncStatus as string)[subgraphUrl];
-        expect(report.name).toBe("sync-orders");
-        expect(reportStatus.status).toMatch("Fully synced");
-        expect(reportStatus[mockOrder.orderbook.id].added.length).toBe(1);
-        expect(reportStatus[mockRemoveOrder.orderbook.id].removed.length).toBe(1);
-        expect(report.endTime).toBeGreaterThan(0);
-        expect(result[subgraphUrl].addOrders.length).toBe(1);
-        expect(result[subgraphUrl].removeOrders.length).toBe(1);
+        const { status, result } = await manager.getUpstreamEvents();
+        expect(status[subgraphUrl].status).toMatch("Fully fetched");
+        expect(result[subgraphUrl].length).toBe(3);
     });
 
-    it("test syncOrders: should handle errors and partial sync", async () => {
+    it("test getUpstreamEvents: should handle errors and partial sync", async () => {
         (axios.post as Mock)
             .mockResolvedValueOnce({
                 data: {
                     data: {
-                        transactions: [
-                            {
-                                timestamp: 123,
-                                events: [{ __typename: "AddOrder", order: mockOrder }],
-                            },
-                        ],
+                        transactions: [{}],
                     },
                 },
             })
             .mockRejectedValueOnce("some error");
 
-        const { report, result } = await manager.syncOrders();
-        const reportStatus = JSON.parse(report.attributes.syncStatus as string)[subgraphUrl];
-        expect(report.name).toBe("sync-orders");
-        expect(reportStatus.status).toMatch("Partially synced");
-        expect(reportStatus.status).toMatch("some error");
-        expect(reportStatus[mockOrder.orderbook.id].added.length).toBe(1);
-        expect(reportStatus[mockOrder.orderbook.id].removed).toBeUndefined();
-        expect(report.endTime).toBeGreaterThan(0);
-        expect(result[subgraphUrl].addOrders.length).toBe(1);
+        const { status, result } = await manager.getUpstreamEvents();
+        expect(status[subgraphUrl].status).toMatch("Partially fetched");
+        expect(status[subgraphUrl].status).toMatch("some error");
+        expect(result[subgraphUrl].length).toBe(1);
     });
 });

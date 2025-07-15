@@ -42,7 +42,7 @@ export type SgTransaction = {
 };
 
 /** Type of a RainOrderbook subgraph event */
-export type SgEvent = SgAddRemoveEvent | SgOtherEvents;
+export type SgEvent = SgAddRemoveEvent | SgVaultOperationEvent | SgTradeEvent;
 
 /** Represents Add/Remove Order event */
 export type SgAddRemoveEvent = {
@@ -50,9 +50,40 @@ export type SgAddRemoveEvent = {
     order: SgOrder;
 };
 
-/** Other event types */
-export type SgOtherEvents = {
+/** Vault operation event types, deposit and withdraw */
+export type SgVaultOperationEvent = {
     __typename: "Withdrawal" | "Deposit";
+} & VaultChangeEvent;
+
+/** Represents trade events */
+export type SgTradeEvent = {
+    __typename: "TakeOrder" | "Clear";
+    trades: SgTrade[];
+};
+
+/** Represents vault balance change event */
+export type VaultChangeEvent = {
+    newVaultBalance: string;
+    oldVaultBalance: string;
+    vault: {
+        owner: string;
+        vaultId: string;
+        balance: string;
+        token: {
+            address: string;
+            symbol: string;
+            decimals: string | number;
+        };
+    };
+    orderbook: {
+        id: string;
+    };
+};
+
+/** Represents trade event details */
+export type SgTrade = {
+    inputVaultBalanceChange: VaultChangeEvent;
+    outputVaultBalanceChange: VaultChangeEvent;
 };
 
 /** Represents subgraph sync result that include added and removed orders */
