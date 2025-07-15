@@ -1,7 +1,7 @@
 import axios from "axios";
 import assert from "assert";
 import { Result } from "../common";
-import { decodeErrorResult, isHex } from "viem";
+import { decodeErrorResult, isHex, parseAbiItem } from "viem";
 import {
     PANIC_ABI,
     PANIC_SELECTOR,
@@ -37,7 +37,7 @@ export async function tryDecodeError(data: any): Promise<Result<DecodedErrorType
     }
     for (const sig of signatures.value) {
         try {
-            const result = decodeErrorResult({ abi: [sig], data });
+            const result = decodeErrorResult({ abi: [parseAbiItem("error " + sig)], data });
             return Result.ok({
                 name: result.errorName,
                 args: result.args as any[],

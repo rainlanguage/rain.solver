@@ -1,5 +1,5 @@
 import axios from "axios";
-import { decodeErrorResult, isHex } from "viem";
+import { decodeErrorResult, isHex, parseAbiItem } from "viem";
 import { PANIC_REASONS, PANIC_SELECTOR, SELECTOR_REGISTRY } from "./types";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { tryDecodeError, tryGetSignature, tryDecodePanic, SelectorCache } from "./decoder";
@@ -66,7 +66,7 @@ describe("Test decoder functions", () => {
                 args: ["Test error message"],
             });
             expect(decodeErrorResult).toHaveBeenCalledWith({
-                abi: [cachedSignatures[0]],
+                abi: [parseAbiItem("error " + cachedSignatures[0])],
                 data: errorData,
             });
         });

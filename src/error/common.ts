@@ -15,6 +15,7 @@ import {
     TransactionReceiptNotFoundError,
     WaitForTransactionReceiptTimeoutError,
 } from "viem";
+import { withBigintSerializer } from "../common";
 
 /**
  * Constructs a snapshot from the given error which is mainly used for reporting
@@ -48,7 +49,9 @@ export async function errorSnapshot(
             if (decoded) {
                 message.push("Error Name: " + decoded.name);
                 if (decoded.args.length) {
-                    message.push("Error Args: " + JSON.stringify(decoded.args));
+                    message.push(
+                        "Error Args: " + JSON.stringify(decoded.args, withBigintSerializer),
+                    );
                 }
             } else if (raw.data) {
                 message.push("Error Raw Data: " + raw.data);
