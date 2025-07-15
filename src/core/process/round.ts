@@ -321,7 +321,7 @@ export async function finalizeRound(
  * @param shuffle - Whether to shuffle the orders (default: true)
  * @returns A generator that yields each order
  */
-export function* iterOrders(orders: Pair[], shuffle = true) {
+export function* iterOrders(orders: Pair[], shuffle = true): Generator<Pair> {
     if (shuffle) {
         // iterate randomly
         for (const orderDetails of iterRandom(orders)) yield orderDetails;
