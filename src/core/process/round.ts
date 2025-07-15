@@ -26,18 +26,45 @@ export async function initializeRound(this: RainSolver, roundSpanCtx?: SpanWithC
     const settlements: Settlement[] = [];
     const checkpointReports: PreAssembledSpan[] = [];
     for (const orderDetails of orders) {
-        // await for first available random free signer
-        const signer = await this.walletManager.getRandomSigner(true);
-
         const pair = `${orderDetails.buyTokenSymbol}/${orderDetails.sellTokenSymbol}`;
         const report = new PreAssembledSpan(`checkpoint_${pair}`);
         report.extendAttrs({
             "details.pair": pair,
             "details.orderHash": orderDetails.takeOrder.id,
             "details.orderbook": orderDetails.orderbook,
-            "details.sender": signer.account.address,
             "details.owner": orderDetails.takeOrder.takeOrder.order.owner,
         });
+
+        // skip if the output vault is empty
+        if (orderDetails.sellTokenVaultBalance <= 0n) {
+            settlements.push({
+                pair,
+                orderHash: orderDetails.takeOrder.id,
+                owner: orderDetails.takeOrder.takeOrder.order.owner,
+                settle: async () => {
+                    return Result.ok({
+                        tokenPair: pair,
+                        buyToken: orderDetails.buyToken,
+                        sellToken: orderDetails.sellToken,
+                        status: ProcessOrderStatus.ZeroOutput,
+                        spanAttributes: {
+                            "details.pair": pair,
+                            "details.orders": orderDetails.takeOrder.id,
+                        },
+                    });
+                },
+            });
+            report.end();
+            checkpointReports.push(report);
+
+            // export the report to logger if logger is available
+            this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
+            continue;
+        }
+
+        // await for first available random free signer
+        const signer = await this.walletManager.getRandomSigner(true);
+        report.setAttr("details.sender", signer.account.address);
 
         // call process pair and save the settlement fn
         // to later settle without needing to pause if

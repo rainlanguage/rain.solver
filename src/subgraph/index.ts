@@ -1,18 +1,12 @@
 import axios from "axios";
+import { SgFilter } from "./filter";
+import { SubgraphConfig } from "./config";
 import { statusCheckQuery } from "./query";
 import { PreAssembledSpan } from "../logger";
-import { applyFilters, SgFilter } from "./filter";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { ErrorSeverity, errorSnapshot } from "../error";
+import { SgOrder, SgTransaction, SubgraphSyncState } from "./types";
 import { getTxsQuery, orderbooksQuery, DEFAULT_PAGE_SIZE, getQueryPaginated } from "./query";
-import {
-    SgOrder,
-    SgOrderUpdate,
-    SgTransaction,
-    SubgraphSyncState,
-    SubgraphSyncResult,
-} from "./types";
-import { SubgraphConfig } from "./config";
 
 // re-export
 export * from "./types";
@@ -196,19 +190,17 @@ export class SubgraphManager {
     }
 
     /**
-     * Syncs orders to upstream changes (add or removal) since the last fetch
-     * @returns A Promise that resolves with the sync status report and added and removed order details
+     * Fetches the upstream events from subgraphs since the last fetch,
+     * events include order additions, removals, vault operations, and trades.
+     * @returns A Promise that resolves with the status report and the list of fetched events
      */
-    async syncOrders() {
-        const report = new PreAssembledSpan("sync-orders");
-        const syncStatus: any = {};
+    async getUpstreamEvents() {
+        const status: any = {};
         const promises = this.subgraphs.map(async (url) => {
-            syncStatus[url] = {};
+            status[url] = {};
             const allResults: SgTransaction[] = [];
-            const addOrders: SgOrderUpdate[] = [];
-            const removeOrders: SgOrderUpdate[] = [];
             const startTimestamp = this.syncState[url].lastFetchTimestamp;
-            let partiallySynced = false;
+            let partiallyFetched = false;
             for (;;) {
                 try {
                     const res = await axios.post(
@@ -217,91 +209,33 @@ export class SubgraphManager {
                         { headers, timeout: this.requestTimeout },
                     );
                     if (typeof res?.data?.data?.transactions !== "undefined") {
-                        partiallySynced = true;
+                        partiallyFetched = true;
                         const txs = res.data.data.transactions;
                         this.syncState[url].skip += txs.length;
                         allResults.push(...txs);
                         if (txs.length < DEFAULT_PAGE_SIZE) {
+                            status[url].status = "Fully fetched";
                             break;
                         }
                     } else {
                         throw "Received invalid response";
                     }
-                    syncStatus[url].status = "Fully synced";
                 } catch (error) {
-                    syncStatus[url].status = await errorSnapshot(
-                        partiallySynced ? "Partially synced" : "Failed to sync",
+                    status[url].status = await errorSnapshot(
+                        partiallyFetched ? "Partially fetched" : "Failed to fetch",
                         error,
                     );
                     break;
                 }
             }
-
-            // handle results by applying filters and recording the order changes for report
-            allResults.forEach((res) => {
-                if (res?.events?.length) {
-                    res.events.forEach((event) => {
-                        if (event.__typename === "AddOrder") {
-                            if (typeof event?.order?.active === "boolean" && event.order.active) {
-                                if (!addOrders.find((e) => e.order.id === event.order.id)) {
-                                    const newOrder: SgOrderUpdate = {
-                                        order: event.order,
-                                        timestamp: Number(res.timestamp),
-                                    };
-
-                                    // include if the order passes the filters
-                                    if (applyFilters(newOrder.order, this.filters)) {
-                                        if (!syncStatus[url][event.order.orderbook.id]) {
-                                            syncStatus[url][event.order.orderbook.id] = {};
-                                        }
-                                        if (!syncStatus[url][event.order.orderbook.id].added) {
-                                            syncStatus[url][event.order.orderbook.id].added = [];
-                                        }
-                                        syncStatus[url][event.order.orderbook.id].added.push(
-                                            event.order.orderHash,
-                                        );
-
-                                        addOrders.push(newOrder);
-                                    }
-                                }
-                            }
-                        }
-                        if (event.__typename === "RemoveOrder") {
-                            if (typeof event?.order?.active === "boolean" && !event.order.active) {
-                                if (!removeOrders.find((e) => e.order.id === event.order.id)) {
-                                    if (!syncStatus[url][event.order.orderbook.id]) {
-                                        syncStatus[url][event.order.orderbook.id] = {};
-                                    }
-                                    if (!syncStatus[url][event.order.orderbook.id].removed) {
-                                        syncStatus[url][event.order.orderbook.id].removed = [];
-                                    }
-                                    syncStatus[url][event.order.orderbook.id].removed.push(
-                                        event.order.orderHash,
-                                    );
-                                    removeOrders.push({
-                                        order: event.order,
-                                        timestamp: Number(res.timestamp),
-                                    });
-                                }
-                            }
-                        }
-                    });
-                }
-            });
-            return { addOrders, removeOrders };
+            return allResults;
         });
 
-        const syncResults = await Promise.allSettled(promises);
+        const results = await Promise.all(promises);
 
-        // conclude the report
-        report.setAttr("syncStatus", JSON.stringify(syncStatus));
-        report.end();
+        const result: Record<string, SgTransaction[]> = {};
+        results.forEach((v, i) => (result[this.subgraphs[i]] = v));
 
-        const result: Record<string, SubgraphSyncResult> = {};
-        syncResults.forEach((v, i) => {
-            if (v.status === "fulfilled") result[this.subgraphs[i]] = v.value;
-        });
-
-        return { report, result };
+        return { status, result };
     }
 }

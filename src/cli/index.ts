@@ -335,6 +335,9 @@ export class RainSolverCli {
             // try to sweep main wallet's tokens back to gas
             const convertHoldingsToGasReport = await this.walletManager.convertHoldingsToGas();
             this.logger.exportPreAssembledSpan(convertHoldingsToGasReport, roundCtx);
+
+            // re-evaluate owner limits
+            await this.orderManager.downscaleProtection();
         }
     }
 
