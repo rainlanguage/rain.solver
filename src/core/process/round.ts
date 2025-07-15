@@ -1,6 +1,6 @@
 import { RainSolver } from "..";
 import { Pair } from "../../order";
-import { Result } from "../../common";
+import { iterRandom, Result } from "../../common";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { PreAssembledSpan, SpanWithContext } from "../../logger";
 import { ErrorSeverity, errorSnapshot, isTimeout, KnownErrors } from "../../error";
@@ -323,13 +323,8 @@ export async function finalizeRound(
  */
 export function* iterOrders(orders: Pair[], shuffle = true) {
     if (shuffle) {
-        while (orders.length) {
-            // pick randomly for processing until all are processed
-            // swap picked element with last element to avoid doing splice operation to achieve O(1) time complexity
-            const pick = Math.floor(Math.random() * orders.length);
-            [orders[pick], orders[orders.length - 1]] = [orders[orders.length - 1], orders[pick]];
-            yield orders.pop()!; // array pop is also O(1)
-        }
+        // iterate randomly
+        for (const orderDetails of iterRandom(orders)) yield orderDetails;
     } else {
         // iterate orders in the same order as they if no shuffle
         for (const orderDetails of orders) yield orderDetails;
