@@ -1,5 +1,5 @@
+import { ABI } from "../../common";
 import { ONE18, scaleTo18 } from "../../math";
-import { AfterClearAbi } from "../../common";
 import { erc20Abi, formatUnits, parseEventLogs, parseUnits, TransactionReceipt } from "viem";
 
 /**
@@ -66,7 +66,7 @@ export function getActualClearAmount(
     } else {
         try {
             const logs = parseEventLogs({
-                abi: AfterClearAbi,
+                abi: [ABI.Orderbook.Primary.Orderbook[2]],
                 eventName: "AfterClear",
                 logs: receipt.logs,
             });

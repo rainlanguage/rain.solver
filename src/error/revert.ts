@@ -1,7 +1,7 @@
+import { ABI } from "../common";
 import { isDeepStrictEqual } from "util";
 import { RainSolverSigner, RawTransaction } from "../signer";
 import { BaseError, decodeFunctionData, isHex, TransactionReceipt } from "viem";
-import { Arb3Abi, Clear2Abi, Clear2EventAbi, TakeOrderV2EventAbi } from "../common";
 import {
     getRpcError,
     TxRevertError,
@@ -146,14 +146,14 @@ export async function tryDetectFrontrun(
                 if (rawtx.data!.toLowerCase().startsWith("0x7ea0b76a")) {
                     // arb3 trade
                     const result = decodeFunctionData({
-                        abi: Arb3Abi,
+                        abi: [ABI.Orderbook.Primary.Arb[1]],
                         data: rawtx.data!,
                     });
                     return (result?.args?.[1] as any)?.orders?.[0];
                 } else {
                     // clear2 trade
                     const result = decodeFunctionData({
-                        abi: Clear2Abi,
+                        abi: [ABI.Orderbook.Primary.Orderbook[12]],
                         data: rawtx.data!,
                     });
                     return result?.args?.[1];
@@ -168,7 +168,10 @@ export async function tryDetectFrontrun(
             const txHash = receipt.transactionHash.toLowerCase();
             const logs = (
                 await viemClient.getLogs({
-                    events: [TakeOrderV2EventAbi[0], Clear2EventAbi[0]],
+                    events: [
+                        ABI.Orderbook.Primary.Orderbook[13],
+                        ABI.Orderbook.Primary.Orderbook[15],
+                    ],
                     address: orderbook,
                     blockHash: receipt.blockHash,
                 })

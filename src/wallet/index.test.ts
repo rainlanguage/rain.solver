@@ -1,8 +1,8 @@
+import { ABI } from "../common";
 import { parseUnits } from "viem";
 import * as common from "../common";
 import * as sweepFns from "./sweep";
 import { WalletType } from "./config";
-import { MulticallAbi } from "../common";
 import { ErrorSeverity } from "../error";
 import * as fundVault from "./fundVault";
 import { RainSolverSigner } from "../signer";
@@ -1499,21 +1499,21 @@ describe("Test WalletManager", () => {
                     {
                         address: "0xmulticall",
                         allowFailure: false,
-                        abi: MulticallAbi,
+                        abi: ABI.Multicall3.Primary.Multicall,
                         functionName: "getEthBalance",
                         args: [workers[0][1].account.address],
                     },
                     {
                         address: "0xmulticall",
                         allowFailure: false,
-                        abi: MulticallAbi,
+                        abi: ABI.Multicall3.Primary.Multicall,
                         functionName: "getEthBalance",
                         args: [workers[1][1].account.address],
                     },
                     {
                         address: "0xmulticall",
                         allowFailure: false,
-                        abi: MulticallAbi,
+                        abi: ABI.Multicall3.Primary.Multicall,
                         functionName: "getEthBalance",
                         args: [workers[2][1].account.address],
                     },

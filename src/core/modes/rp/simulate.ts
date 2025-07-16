@@ -5,7 +5,7 @@ import { Token } from "sushi/currency";
 import { ChainId, Router } from "sushi";
 import { estimateProfit } from "./utils";
 import { Attributes } from "@opentelemetry/api";
-import { Result, ArbAbi } from "../../../common";
+import { Result, ABI } from "../../../common";
 import { extendObjectWithHeader } from "../../../logger";
 import { ONE18, scaleTo18, scaleFrom18 } from "../../../math";
 import { RPoolFilter, visualizeRoute } from "../../../router";
@@ -157,7 +157,7 @@ export async function trySimulateTrade(
     };
     const rawtx: RawTransaction = {
         data: encodeFunctionData({
-            abi: ArbAbi,
+            abi: ABI.Orderbook.Primary.Arb,
             functionName: "arb3",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         }),
@@ -220,7 +220,7 @@ export async function trySimulateTrade(
             this.state.dispair,
         )) as `0x${string}`;
         rawtx.data = encodeFunctionData({
-            abi: ArbAbi,
+            abi: ABI.Orderbook.Primary.Arb,
             functionName: "arb3",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
@@ -269,7 +269,7 @@ export async function trySimulateTrade(
             this.state.dispair,
         )) as `0x${string}`;
         rawtx.data = encodeFunctionData({
-            abi: ArbAbi,
+            abi: ABI.Orderbook.Primary.Arb,
             functionName: "arb3",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });

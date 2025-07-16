@@ -2,10 +2,10 @@ import { RainSolver } from "../..";
 import { dryrun } from "../dryrun";
 import { Pair } from "../../../order";
 import { estimateProfit } from "./utils";
+import { ABI, Result } from "../../../common";
 import { Attributes } from "@opentelemetry/api";
 import { ONE18, scaleFrom18 } from "../../../math";
 import { extendObjectWithHeader } from "../../../logger";
-import { ArbAbi, TakeOrdersV2Abi, Result } from "../../../common";
 import { RainSolverSigner, RawTransaction } from "../../../signer";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
 import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
@@ -82,7 +82,7 @@ export async function trySimulateTrade(
 
     // encode takeOrders2() and build tx fields
     const encodedFN = encodeFunctionData({
-        abi: TakeOrdersV2Abi,
+        abi: ABI.Orderbook.Primary.Orderbook,
         functionName: "takeOrders2",
         args: [
             {
@@ -130,7 +130,7 @@ export async function trySimulateTrade(
     };
     const rawtx: RawTransaction = {
         data: encodeFunctionData({
-            abi: ArbAbi,
+            abi: ABI.Orderbook.Primary.Arb,
             functionName: "arb3",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         }),
@@ -193,7 +193,7 @@ export async function trySimulateTrade(
             this.state.dispair,
         )) as `0x${string}`;
         rawtx.data = encodeFunctionData({
-            abi: ArbAbi,
+            abi: ABI.Orderbook.Primary.Arb,
             functionName: "arb3",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
@@ -241,7 +241,7 @@ export async function trySimulateTrade(
             this.state.dispair,
         )) as `0x${string}`;
         rawtx.data = encodeFunctionData({
-            abi: ArbAbi,
+            abi: ABI.Orderbook.Primary.Arb,
             functionName: "arb3",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });

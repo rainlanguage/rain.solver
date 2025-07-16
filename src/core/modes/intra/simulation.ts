@@ -1,6 +1,7 @@
 import { RainSolver } from "../..";
 import { dryrun } from "../dryrun";
 import { estimateProfit } from "./utils";
+import { ABI, Result } from "../../../common";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
@@ -8,7 +9,6 @@ import { Pair, TakeOrderDetails } from "../../../order";
 import { getWithdrawEnsureRainlang, parseRainlang } from "../../../task";
 import { encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
 import { FailedSimulation, SimulationResult, TaskType, TradeType } from "../../types";
-import { Clear2Abi, OrderbookMulticallAbi, Withdraw2Abi, Result } from "../../../common";
 
 /** Arguments for simulating inter-orderbook trade */
 export type SimulateIntraOrderbookTradeArgs = {
@@ -86,12 +86,12 @@ export async function trySimulateTrade(
         signedContext: [],
     };
     const withdrawInputCalldata = encodeFunctionData({
-        abi: Withdraw2Abi,
+        abi: ABI.Orderbook.Primary.Orderbook,
         functionName: "withdraw2",
         args: [orderDetails.buyToken, inputBountyVaultId, maxUint256, []],
     });
     let withdrawOutputCalldata = encodeFunctionData({
-        abi: Withdraw2Abi,
+        abi: ABI.Orderbook.Primary.Orderbook,
         functionName: "withdraw2",
         args: [
             orderDetails.sellToken,
@@ -101,7 +101,7 @@ export async function trySimulateTrade(
         ],
     });
     const clear2Calldata = encodeFunctionData({
-        abi: Clear2Abi,
+        abi: ABI.Orderbook.Primary.Orderbook,
         functionName: "clear2",
         args: [
             orderDetails.takeOrder.takeOrder.order,
@@ -120,7 +120,7 @@ export async function trySimulateTrade(
     });
     const rawtx: any = {
         data: encodeFunctionData({
-            abi: OrderbookMulticallAbi,
+            abi: ABI.Orderbook.Primary.Orderbook,
             functionName: "multicall",
             args: [[clear2Calldata, withdrawInputCalldata, withdrawOutputCalldata]],
         }),
@@ -190,12 +190,12 @@ export async function trySimulateTrade(
             this.state.dispair,
         )) as `0x${string}`;
         withdrawOutputCalldata = encodeFunctionData({
-            abi: Withdraw2Abi,
+            abi: ABI.Orderbook.Primary.Orderbook,
             functionName: "withdraw2",
             args: [orderDetails.sellToken, outputBountyVaultId, maxUint256, [task]],
         });
         rawtx.data = encodeFunctionData({
-            abi: OrderbookMulticallAbi,
+            abi: ABI.Orderbook.Primary.Orderbook,
             functionName: "multicall",
             args: [[clear2Calldata, withdrawInputCalldata, withdrawOutputCalldata]],
         });
@@ -248,12 +248,12 @@ export async function trySimulateTrade(
             this.state.dispair,
         )) as `0x${string}`;
         withdrawOutputCalldata = encodeFunctionData({
-            abi: Withdraw2Abi,
+            abi: ABI.Orderbook.Primary.Orderbook,
             functionName: "withdraw2",
             args: [orderDetails.sellToken, outputBountyVaultId, maxUint256, [task]],
         });
         rawtx.data = encodeFunctionData({
-            abi: OrderbookMulticallAbi,
+            abi: ABI.Orderbook.Primary.Orderbook,
             functionName: "multicall",
             args: [[clear2Calldata, withdrawInputCalldata, withdrawOutputCalldata]],
         });

@@ -1,8 +1,8 @@
+import { ABI, Result } from "../common";
 import { TokenDetails } from "../state";
-import { Result, OrderV3 } from "../common";
 import { decodeAbiParameters, DecodeAbiParametersErrorType, parseAbiParameters } from "viem";
 
-export const OrderV3Abi = parseAbiParameters(OrderV3);
+export const OrderV3Abi = parseAbiParameters(ABI.Orderbook.Structs.OrderV3);
 
 export type TakeOrderDetails = {
     id: string;

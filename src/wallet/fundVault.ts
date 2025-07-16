@@ -1,9 +1,9 @@
 import { Router } from "sushi";
+import { ABI } from "../common";
 import { SelfFundVault } from "../config";
 import { RainSolverSigner } from "../signer";
 import { Native, Token } from "sushi/currency";
 import { erc20Abi, maxUint256, parseUnits } from "viem";
-import { Deposit2Abi, VaultBalanceAbi } from "../common";
 import { findMultiRouteExactOut, RToken } from "sushi/tines";
 
 /**
@@ -19,7 +19,7 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
     // get cuirrent vault balance
     const balance = await signer.readContract({
         address: details.orderbook as `0x${string}`,
-        abi: VaultBalanceAbi,
+        abi: [ABI.Orderbook.Primary.Orderbook[3]],
         functionName: "vaultBalance",
         args: [
             signer.account.address as `0x${string}`, // owner
@@ -159,7 +159,7 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
         // deposit the topup amount into the vault
         const hash = await signer.writeContract({
             address: details.orderbook as `0x${string}`,
-            abi: Deposit2Abi,
+            abi: [ABI.Orderbook.Primary.Orderbook[4]],
             functionName: "deposite2",
             args: [vaultToken.address, BigInt(details.vaultId), topupAmount, []],
         });
