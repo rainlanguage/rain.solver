@@ -1,8 +1,8 @@
+import { ABI } from "../common";
 import { isDeepStrictEqual } from "util";
 import { RawTransaction } from "../signer";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 import { getRpcError, errorSnapshot, tryDecodeError, containsNodeError } from ".";
-import { Arb3Abi, Clear2Abi, Clear2EventAbi, TakeOrderV2EventAbi } from "../common";
 import { BaseError, decodeFunctionData, Hex, isHex, TransactionReceipt } from "viem";
 import {
     handleRevert,
@@ -389,11 +389,11 @@ describe("Test revert error handling functions", () => {
 
             expect(result).toBe(frontrunHash);
             expect(decodeFunctionData).toHaveBeenCalledWith({
-                abi: Arb3Abi,
+                abi: [ABI.Orderbook.Primary.Arb[1]],
                 data: mockRawTx.data,
             });
             expect(mockViemClient.getLogs).toHaveBeenCalledWith({
-                events: [TakeOrderV2EventAbi[0], Clear2EventAbi[0]],
+                events: [ABI.Orderbook.Primary.Orderbook[13], ABI.Orderbook.Primary.Orderbook[15]],
                 address: "0xOrderbook",
                 blockHash: mockReceipt.blockHash,
             });
@@ -424,7 +424,7 @@ describe("Test revert error handling functions", () => {
 
             expect(result).toBe(frontrunHash);
             expect(decodeFunctionData).toHaveBeenCalledWith({
-                abi: Clear2Abi,
+                abi: [ABI.Orderbook.Primary.Orderbook[12]],
                 data: mockRawTx.data,
             });
         });
