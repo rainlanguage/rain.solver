@@ -1,11 +1,13 @@
+import { RainSolver } from "../..";
 import { Result } from "../../../common";
 import { SimulationResult } from "../../types";
 import { trySimulateTrade } from "./simulation";
+import { RainSolverSigner } from "../../../signer";
 import { fallbackEthPrice } from "../../../router";
 import { findBestIntraOrderbookTrade } from "./index";
 import { extendObjectWithHeader } from "../../../logger";
+import { CounterpartySource, Pair } from "../../../order";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import { CounterpartySource } from "../../../order";
 
 vi.mock("../../../router", () => ({
     fallbackEthPrice: vi.fn(),
@@ -25,9 +27,9 @@ vi.mock("viem", async (importOriginal) => ({
 }));
 
 describe("Test findBestIntraOrderbookTrade", () => {
-    let mockRainSolver: any;
-    let orderDetails: any;
-    let signer: any;
+    let mockRainSolver: RainSolver;
+    let orderDetails: Pair;
+    let signer: RainSolverSigner;
     let inputToEthPrice: string;
     let outputToEthPrice: string;
 
@@ -47,12 +49,12 @@ describe("Test findBestIntraOrderbookTrade", () => {
             orderManager: {
                 getCounterpartyOrders: vi.fn(),
             },
-        };
+        } as any;
 
         orderDetails = {
             takeOrder: {
                 id: "order1",
-                takeOrder: {
+                struct: {
                     order: {
                         owner: "0xowner1",
                     },
@@ -63,19 +65,19 @@ describe("Test findBestIntraOrderbookTrade", () => {
             sellToken: "0xselltoken",
             buyTokenDecimals: 18,
             sellTokenDecimals: 18,
-        };
+        } as any;
 
-        signer = { account: { address: "0xsigner" } };
+        signer = { account: { address: "0xsigner" } } as any;
         inputToEthPrice = "0.5";
         outputToEthPrice = "2.0";
     });
 
     it("should return success result with highest profit when simulations succeed", async () => {
-        const mockCounterpartyOrders = [
+        const mockCounterpartyOrders: Pair[] = [
             {
                 takeOrder: {
                     id: "order2",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner2",
                         },
@@ -86,7 +88,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order3",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner3",
                         },
@@ -97,7 +99,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order4",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner4",
                         },
@@ -105,8 +107,10 @@ describe("Test findBestIntraOrderbookTrade", () => {
                     quote: { ratio: 600000000000000000n }, // 0.6
                 },
             },
-        ];
-        mockRainSolver.orderManager.getCounterpartyOrders.mockReturnValue(mockCounterpartyOrders);
+        ] as any;
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
 
         const mockResults = [
             Result.ok({
@@ -158,7 +162,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order2",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner2",
                         },
@@ -169,7 +173,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order3",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner3",
                         },
@@ -178,7 +182,9 @@ describe("Test findBestIntraOrderbookTrade", () => {
                 },
             },
         ];
-        mockRainSolver.orderManager.getCounterpartyOrders.mockReturnValue(mockCounterpartyOrders);
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
 
         const mockResults = [
             Result.err({
@@ -218,7 +224,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order2",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner2",
                         },
@@ -229,7 +235,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order3",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner3",
                         },
@@ -238,7 +244,9 @@ describe("Test findBestIntraOrderbookTrade", () => {
                 },
             },
         ];
-        mockRainSolver.orderManager.getCounterpartyOrders.mockReturnValue(mockCounterpartyOrders);
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
 
         const mockResults = [
             Result.err({
@@ -282,7 +290,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order1", // same as main order
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner2",
                         },
@@ -293,7 +301,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order3",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner3",
                         },
@@ -302,7 +310,9 @@ describe("Test findBestIntraOrderbookTrade", () => {
                 },
             },
         ];
-        mockRainSolver.orderManager.getCounterpartyOrders.mockReturnValue(mockCounterpartyOrders);
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
 
         (trySimulateTrade as Mock).mockResolvedValue(
             Result.ok({
@@ -329,7 +339,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order2",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner1", // same as main order owner
                         },
@@ -340,7 +350,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order3",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner3",
                         },
@@ -349,7 +359,9 @@ describe("Test findBestIntraOrderbookTrade", () => {
                 },
             },
         ];
-        mockRainSolver.orderManager.getCounterpartyOrders.mockReturnValue(mockCounterpartyOrders);
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
 
         (trySimulateTrade as Mock).mockResolvedValue(
             Result.ok({
@@ -376,7 +388,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order2",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner2",
                         },
@@ -387,7 +399,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order3",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner3",
                         },
@@ -396,7 +408,9 @@ describe("Test findBestIntraOrderbookTrade", () => {
                 },
             },
         ];
-        mockRainSolver.orderManager.getCounterpartyOrders.mockReturnValue(mockCounterpartyOrders);
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
 
         (trySimulateTrade as Mock).mockResolvedValue(
             Result.ok({
@@ -423,7 +437,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order2",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner2",
                         },
@@ -434,7 +448,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order3",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner3",
                         },
@@ -443,7 +457,9 @@ describe("Test findBestIntraOrderbookTrade", () => {
                 },
             },
         ];
-        mockRainSolver.orderManager.getCounterpartyOrders.mockReturnValue(mockCounterpartyOrders);
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
 
         (trySimulateTrade as Mock).mockResolvedValue(
             Result.ok({
@@ -470,7 +486,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order2",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner2",
                         },
@@ -481,7 +497,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order3",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner3",
                         },
@@ -492,7 +508,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order4",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner4",
                         },
@@ -503,7 +519,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order5", // should be ignored
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner5",
                         },
@@ -512,7 +528,9 @@ describe("Test findBestIntraOrderbookTrade", () => {
                 },
             },
         ];
-        mockRainSolver.orderManager.getCounterpartyOrders.mockReturnValue(mockCounterpartyOrders);
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
 
         (trySimulateTrade as Mock).mockResolvedValue(
             Result.err({
@@ -538,7 +556,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order2",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner2",
                         },
@@ -547,7 +565,9 @@ describe("Test findBestIntraOrderbookTrade", () => {
                 },
             },
         ];
-        mockRainSolver.orderManager.getCounterpartyOrders.mockReturnValue(mockCounterpartyOrders);
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
 
         (trySimulateTrade as Mock).mockResolvedValue(
             Result.err({
@@ -581,7 +601,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order1", // same ID as main order
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner2",
                         },
@@ -590,7 +610,9 @@ describe("Test findBestIntraOrderbookTrade", () => {
                 },
             },
         ];
-        mockRainSolver.orderManager.getCounterpartyOrders.mockReturnValue(mockCounterpartyOrders);
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
 
         const result: SimulationResult = await findBestIntraOrderbookTrade.call(
             mockRainSolver,
@@ -611,7 +633,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             {
                 takeOrder: {
                     id: "order2",
-                    takeOrder: {
+                    struct: {
                         order: {
                             owner: "0xowner2",
                         },
@@ -620,7 +642,9 @@ describe("Test findBestIntraOrderbookTrade", () => {
                 },
             },
         ];
-        mockRainSolver.orderManager.getCounterpartyOrders.mockReturnValue(mockCounterpartyOrders);
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
         (fallbackEthPrice as Mock).mockReturnValueOnce("1").mockReturnValueOnce("2");
         (trySimulateTrade as Mock).mockResolvedValue(
             Result.err({

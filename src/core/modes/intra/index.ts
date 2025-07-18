@@ -38,8 +38,8 @@ export async function findBestIntraOrderbookTrade(
                 // not same order
                 v.takeOrder.id !== orderDetails.takeOrder.id &&
                 // not same owner
-                v.takeOrder.takeOrder.order.owner.toLowerCase() !==
-                    orderDetails.takeOrder.takeOrder.order.owner.toLowerCase() &&
+                v.takeOrder.struct.order.owner.toLowerCase() !==
+                    orderDetails.takeOrder.struct.order.owner.toLowerCase() &&
                 // only orders that (priceA x priceB < 1) can be profitbale
                 (v.takeOrder.quote.ratio * orderDetails.takeOrder.quote!.ratio) / ONE18 < ONE18,
         );

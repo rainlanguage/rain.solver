@@ -61,7 +61,7 @@ describe("Test OrderManager", () => {
     let state: SharedState;
     let subgraphManager: SubgraphManager;
 
-    const getPair = (orderbook: string, hash: string, output: string, input: string) =>
+    const getPair = (orderbook: string, hash: string, output: string, input: string): Pair =>
         ({
             orderbook,
             buyToken: input,
@@ -311,12 +311,12 @@ describe("Test OrderManager", () => {
 
         const takeOrder = bundle.takeOrder;
         expect(takeOrder).toHaveProperty("id", "0xhash");
-        expect(takeOrder).toHaveProperty("takeOrder");
-        expect(takeOrder.takeOrder).toHaveProperty("order");
-        expect(takeOrder.takeOrder).toHaveProperty("inputIOIndex", 0);
-        expect(takeOrder.takeOrder).toHaveProperty("outputIOIndex", 0);
-        expect(takeOrder.takeOrder).toHaveProperty("signedContext");
-        expect(Array.isArray(takeOrder.takeOrder.signedContext)).toBe(true);
+        expect(takeOrder).toHaveProperty("struct");
+        expect(takeOrder.struct).toHaveProperty("order");
+        expect(takeOrder.struct).toHaveProperty("inputIOIndex", 0);
+        expect(takeOrder.struct).toHaveProperty("outputIOIndex", 0);
+        expect(takeOrder.struct).toHaveProperty("signedContext");
+        expect(Array.isArray(takeOrder.struct.signedContext)).toBe(true);
     });
 
     it("should reset limits to default", async () => {
@@ -430,7 +430,7 @@ describe("Test OrderManager", () => {
             sellTokenSymbol: "OUT",
             takeOrder: {
                 id: "0xhash",
-                takeOrder: {
+                struct: {
                     order: {
                         owner: "0xowner",
                         validInputs: [{ token: "0xinput", decimals: 18 }],
@@ -833,7 +833,7 @@ describe("Test OrderManager", () => {
             sellTokenVaultBalance: 2000n,
             takeOrder: {
                 id: "0xHash",
-                takeOrder: {
+                struct: {
                     order: {
                         owner: "0xOwner",
                         validOutputs: [
