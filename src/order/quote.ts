@@ -24,7 +24,7 @@ export async function quoteSingleOrder(
             data: encodeFunctionData({
                 abi: ABI.Orderbook.Primary.Orderbook,
                 functionName: "quote",
-                args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.takeOrder)],
+                args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.struct)],
             }),
             blockNumber,
             gas,
@@ -63,7 +63,7 @@ export async function getQuoteGas(
         const calldata = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Orderbook,
             functionName: "quote",
-            args: [TakeOrder.getQuoteConfig(orderDetails.takeOrders[0].takeOrder)],
+            args: [TakeOrder.getQuoteConfig(orderDetails.takeOrders[0].struct)],
         });
 
         // call Arbitrum Node Interface for the calldata to get L1 gas

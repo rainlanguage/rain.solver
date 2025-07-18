@@ -33,7 +33,7 @@ function makeOrderDetails(ratio = 1n * ONE18): Pair {
         sellTokenDecimals: 18,
         buyTokenDecimals: 18,
         takeOrder: {
-            takeOrder: {
+            struct: {
                 order: {},
                 inputIOIndex: 0,
                 outputIOIndex: 1,
@@ -47,7 +47,7 @@ function makeCounterpartyOrder(): TakeOrderDetails {
     return {
         id: "0xid",
         quote: { maxOutput: 1n, ratio: 2n },
-        takeOrder: {
+        struct: {
             order: {},
             inputIOIndex: 1,
             outputIOIndex: 0,
@@ -262,10 +262,10 @@ describe("Test trySimulateTrade", () => {
             }),
         );
         args.orderDetails = makeOrderDetails(1n * ONE18);
-        args.orderDetails.takeOrder.takeOrder.inputIOIndex = 2;
-        args.orderDetails.takeOrder.takeOrder.outputIOIndex = 3;
-        args.counterpartyOrderDetails.takeOrder.inputIOIndex = 4;
-        args.counterpartyOrderDetails.takeOrder.outputIOIndex = 5;
+        args.orderDetails.takeOrder.struct.inputIOIndex = 2;
+        args.orderDetails.takeOrder.struct.outputIOIndex = 3;
+        args.counterpartyOrderDetails.struct.inputIOIndex = 4;
+        args.counterpartyOrderDetails.struct.outputIOIndex = 5;
 
         const result = await trySimulateTrade.call(solver, args);
 
