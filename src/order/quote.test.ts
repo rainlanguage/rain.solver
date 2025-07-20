@@ -1,6 +1,6 @@
 import { ChainId } from "sushi";
 import { PublicClient } from "viem";
-import { BundledOrders } from "./types";
+import { BundledOrders, Pair } from "./types";
 import { getQuoteGas, quoteSingleOrder } from "./quote";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 
@@ -17,7 +17,7 @@ vi.mock("./types", () => ({
 }));
 
 describe("Test quoteSingleOrder", () => {
-    let orderDetails: any;
+    let orderDetails: Pair;
     const client = {
         call: vi.fn().mockResolvedValueOnce({ data: "0x" }),
     } as any as PublicClient;
@@ -26,9 +26,9 @@ describe("Test quoteSingleOrder", () => {
         orderDetails = {
             orderbook: "0xorderbook",
             takeOrder: {
-                takeOrder: {},
+                struct: {},
             },
-        };
+        } as any;
     });
 
     it("should set quote on the takeOrder when data is returned", async () => {
@@ -56,7 +56,7 @@ describe("Test getQuoteGas", () => {
 
         // mock order and bot config and viem client
         const orderDetails = {
-            takeOrders: [{ takeOrder: {} }],
+            takeOrders: [{ struct: {} }],
         } as any as BundledOrders;
         const config = {
             chainConfig: {
