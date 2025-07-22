@@ -34,12 +34,12 @@ export async function initializeRound(
     for (const orderDetails of iterOrders(orders, shuffle)) {
         const pair = `${orderDetails.buyTokenSymbol}/${orderDetails.sellTokenSymbol}`;
         const report = new PreAssembledSpan(`checkpoint_${pair}`);
-        const owner = orderDetails.takeOrder.takeOrder.order.owner.toLowerCase();
+        const owner = orderDetails.takeOrder.struct.order.owner.toLowerCase();
         report.extendAttrs({
             "details.pair": pair,
             "details.orderHash": orderDetails.takeOrder.id,
             "details.orderbook": orderDetails.orderbook,
-            "details.owner": orderDetails.takeOrder.takeOrder.order.owner,
+            "details.owner": orderDetails.takeOrder.struct.order.owner,
         });
 
         // update the orderDetails vault balances from owner vaults map
@@ -49,8 +49,8 @@ export async function initializeRound(
                 ?.get(owner)
                 ?.get(orderDetails.sellToken)
                 ?.get(
-                    orderDetails.takeOrder.takeOrder.order.validOutputs[
-                        orderDetails.takeOrder.takeOrder.outputIOIndex
+                    orderDetails.takeOrder.struct.order.validOutputs[
+                        orderDetails.takeOrder.struct.outputIOIndex
                     ].vaultId,
                 )?.balance ?? orderDetails.sellTokenVaultBalance;
         orderDetails.buyTokenVaultBalance =
@@ -59,8 +59,8 @@ export async function initializeRound(
                 ?.get(owner)
                 ?.get(orderDetails.buyToken)
                 ?.get(
-                    orderDetails.takeOrder.takeOrder.order.validInputs[
-                        orderDetails.takeOrder.takeOrder.inputIOIndex
+                    orderDetails.takeOrder.struct.order.validInputs[
+                        orderDetails.takeOrder.struct.inputIOIndex
                     ].vaultId,
                 )?.balance ?? orderDetails.buyTokenVaultBalance;
 
@@ -69,7 +69,7 @@ export async function initializeRound(
             settlements.push({
                 pair,
                 orderHash: orderDetails.takeOrder.id,
-                owner: orderDetails.takeOrder.takeOrder.order.owner,
+                owner: orderDetails.takeOrder.struct.order.owner,
                 settle: async () => {
                     return Result.ok({
                         tokenPair: pair,
@@ -106,7 +106,7 @@ export async function initializeRound(
             settle,
             pair,
             orderHash: orderDetails.takeOrder.id,
-            owner: orderDetails.takeOrder.takeOrder.order.owner,
+            owner: orderDetails.takeOrder.struct.order.owner,
         });
         report.end();
         checkpointReports.push(report);

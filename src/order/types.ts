@@ -10,7 +10,7 @@ export type TakeOrderDetails = {
         maxOutput: bigint;
         ratio: bigint;
     };
-    takeOrder: TakeOrder;
+    struct: TakeOrder;
 };
 
 export type TakeOrder = {
