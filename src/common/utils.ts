@@ -1,3 +1,6 @@
+import { Float, WasmEncodedError } from "@rainlanguage/float";
+import { Result } from "./result";
+
 /**
  * Waits for provided miliseconds
  * @param ms - Miliseconds to wait
@@ -76,4 +79,38 @@ export function* iterRandom(array: Array<any>) {
         [array[pick], array[array.length - 1]] = [array[array.length - 1], array[pick]];
         yield array.pop()!; // array pop is also O(1)
     }
+}
+
+/**
+ * Normalizes a float value to a fixed number of decimal places
+ * @param rawFloat - The float value in hex format
+ * @param decimals - The number of decimal places to normalize to
+ */
+export function normalizeFloat(
+    rawFloat: string,
+    decimals: number,
+): Result<bigint, WasmEncodedError> {
+    const result = Float.fromHex(rawFloat as `0x${string}`);
+    if (result.error) {
+        return Result.err(result.error);
+    }
+    const fixedResult = result.value.toFixedDecimal(decimals);
+    if (fixedResult.error) {
+        return Result.err(fixedResult.error);
+    }
+    return Result.ok(fixedResult.value);
+}
+
+/**
+ * Converts a bigint value to a float representation with the specified decimal places
+ * @param value - The bigint value to convert
+ * @param decimals - The number of decimal places for the float representation
+ * @returns The float representation in raw hex string format
+ */
+export function toFloat(value: bigint, decimals: number): Result<`0x${string}`, WasmEncodedError> {
+    const result = Float.fromFixedDecimal(value, decimals);
+    if (result.error) {
+        return Result.err(result.error);
+    }
+    return Result.ok(result.value.asHex());
 }

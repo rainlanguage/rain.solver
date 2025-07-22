@@ -5,14 +5,14 @@ import { Token } from "sushi/currency";
 import { ChainId, Router } from "sushi";
 import { estimateProfit } from "./utils";
 import { Attributes } from "@opentelemetry/api";
-import { Result, ABI } from "../../../common";
+import { Result, ABI, toFloat } from "../../../common";
 import { extendObjectWithHeader } from "../../../logger";
-import { ONE18, scaleTo18, scaleFrom18 } from "../../../math";
 import { RPoolFilter, visualizeRoute } from "../../../router";
 import { RainSolverSigner, RawTransaction } from "../../../signer";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
+import { ONE18, scaleTo18, scaleFrom18, ONE_FLOAT, MAX_FLOAT } from "../../../math";
+import { encodeAbiParameters, encodeFunctionData, formatUnits, parseUnits } from "viem";
 import { TakeOrdersConfigType, SimulationResult, TradeType, FailedSimulation } from "../../types";
-import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
 
 /** Specifies the reason that route processor simulation failed */
 export enum RouteProcessorSimulationHaltReason {
@@ -128,11 +128,41 @@ export async function trySimulateTrade(
         this.state.chainConfig.routeProcessors["4"],
     );
 
+    let maximumInputFloat: `0x${string}` = MAX_FLOAT;
+    if (isPartial) {
+        const valueResult = toFloat(maximumInput, orderDetails.sellTokenDecimals);
+        if (valueResult.isErr()) {
+            spanAttributes["error"] = valueResult.error.readableMsg;
+            const result: FailedSimulation = {
+                spanAttributes,
+                type: TradeType.RouteProcessor,
+                noneNodeError: valueResult.error.readableMsg,
+            };
+            return Result.err(result);
+        }
+        maximumInputFloat = valueResult.value;
+    }
+
+    let maximumIORatioFloat: `0x${string}` = MAX_FLOAT;
+    if (!this.appOptions.maxRatio) {
+        const valueResult = toFloat(price, 18);
+        if (valueResult.isErr()) {
+            spanAttributes["error"] = valueResult.error.readableMsg;
+            const result: FailedSimulation = {
+                spanAttributes,
+                type: TradeType.RouteProcessor,
+                noneNodeError: valueResult.error.readableMsg,
+            };
+            return Result.err(result);
+        }
+        maximumIORatioFloat = valueResult.value;
+    }
+
     const orders = [orderDetails.takeOrder.struct];
     const takeOrdersConfigStruct: TakeOrdersConfigType = {
-        minimumInput: 1n,
-        maximumInput: isPartial ? maximumInput : maxUint256,
-        maximumIORatio: this.appOptions.maxRatio ? maxUint256 : price,
+        minimumInput: ONE_FLOAT,
+        maximumInput: maximumInputFloat,
+        maximumIORatio: maximumIORatioFloat,
         orders,
         data: encodeAbiParameters([{ type: "bytes" }], [rpParams.routeCode]),
     };
@@ -158,7 +188,7 @@ export async function trySimulateTrade(
     const rawtx: RawTransaction = {
         data: encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         }),
         to: this.appOptions.arbAddress as `0x${string}`,
@@ -221,7 +251,7 @@ export async function trySimulateTrade(
         )) as `0x${string}`;
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
 
@@ -270,7 +300,7 @@ export async function trySimulateTrade(
         )) as `0x${string}`;
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
         spanAttributes["gasEst.final.minBountyExpected"] = (

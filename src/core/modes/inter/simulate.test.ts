@@ -1,9 +1,9 @@
 import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
-import { ONE18 } from "../../../math";
 import { Pair } from "../../../order";
 import { Result } from "../../../common";
 import { SimulationResult } from "../../types";
+import { ONE18, ONE_FLOAT } from "../../../math";
 import { encodeFunctionData, encodeAbiParameters } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { trySimulateTrade, SimulateInterOrderbookTradeArgs } from "./simulate";
@@ -132,14 +132,14 @@ describe("Test trySimulateTrade", () => {
         // Assert encodeFunctionData was called correctly
         expect(encodeFunctionData).toHaveBeenCalledWith({
             abi: expect.any(Array), // ArbAbi
-            functionName: "arb3",
+            functionName: "arb4",
             args: [
                 "0xorderbook",
                 {
                     data: "0xparams",
-                    maximumIORatio: expect.any(BigInt),
-                    maximumInput: expect.any(BigInt),
-                    minimumInput: 1n,
+                    maximumIORatio: expect.any(String),
+                    maximumInput: expect.any(String),
+                    minimumInput: ONE_FLOAT,
                     orders: [{}],
                 },
                 {
@@ -226,12 +226,12 @@ describe("Test trySimulateTrade", () => {
         // Verify that maxUint256 is used for zero ratio
         expect(encodeFunctionData).toHaveBeenCalledWith({
             abi: expect.any(Array),
-            functionName: "arb3",
+            functionName: "arb4",
             args: [
                 "0xorderbook",
                 expect.objectContaining({
-                    maximumInput: expect.any(BigInt),
-                    maximumIORatio: expect.any(BigInt),
+                    maximumInput: expect.any(String),
+                    maximumIORatio: expect.any(String),
                 }),
                 expect.any(Object),
             ],

@@ -24,7 +24,7 @@ total-bounty-eth: add(
     mul(output-bounty output-to-eth-price)
 ),
 :ensure(
-    greater-than-or-equal-to(
+    greater-than(
         total-bounty-eth
         minimum-expected
     )

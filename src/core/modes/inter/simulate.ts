@@ -2,13 +2,13 @@ import { RainSolver } from "../..";
 import { dryrun } from "../dryrun";
 import { Pair } from "../../../order";
 import { estimateProfit } from "./utils";
-import { ABI, Result } from "../../../common";
 import { Attributes } from "@opentelemetry/api";
-import { ONE18, scaleFrom18 } from "../../../math";
+import { ABI, Result, toFloat } from "../../../common";
 import { extendObjectWithHeader } from "../../../logger";
 import { RainSolverSigner, RawTransaction } from "../../../signer";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
-import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
+import { MAX_FLOAT, ONE18, ONE_FLOAT, scaleFrom18 } from "../../../math";
+import { encodeAbiParameters, encodeFunctionData, formatUnits, parseUnits } from "viem";
 import {
     TaskType,
     TradeType,
@@ -67,26 +67,47 @@ export async function trySimulateTrade(
     const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
     spanAttributes["maxInput"] = maximumInput.toString();
 
-    const opposingMaxInput =
-        orderDetails.takeOrder.quote!.ratio === 0n
-            ? maxUint256
-            : scaleFrom18(
-                  (maximumInputFixed * orderDetails.takeOrder.quote!.ratio) / ONE18,
-                  orderDetails.buyTokenDecimals,
-              );
+    let opposingMaxInput: `0x${string}` = MAX_FLOAT;
+    let opposingMaxIORatio: `0x${string}` = MAX_FLOAT;
+    if (orderDetails.takeOrder.quote!.ratio !== 0n) {
+        const maxInputResult = toFloat(
+            scaleFrom18(
+                (maximumInputFixed * orderDetails.takeOrder.quote!.ratio) / ONE18,
+                orderDetails.buyTokenDecimals,
+            ),
+            orderDetails.buyTokenDecimals,
+        );
+        if (maxInputResult.isErr()) {
+            spanAttributes["error"] = maxInputResult.error.readableMsg;
+            const result: FailedSimulation = {
+                spanAttributes,
+                type: TradeType.InterOrderbook,
+                noneNodeError: maxInputResult.error.readableMsg,
+            };
+            return Result.err(result);
+        }
+        opposingMaxInput = maxInputResult.value;
 
-    const opposingMaxIORatio =
-        orderDetails.takeOrder.quote!.ratio === 0n
-            ? maxUint256
-            : ONE18 ** 2n / orderDetails.takeOrder.quote!.ratio;
+        const maxIoRatioResult = toFloat(ONE18 ** 2n / orderDetails.takeOrder.quote!.ratio, 18);
+        if (maxIoRatioResult.isErr()) {
+            spanAttributes["error"] = maxIoRatioResult.error.readableMsg;
+            const result: FailedSimulation = {
+                spanAttributes,
+                type: TradeType.InterOrderbook,
+                noneNodeError: maxIoRatioResult.error.readableMsg,
+            };
+            return Result.err(result);
+        }
+        opposingMaxIORatio = maxIoRatioResult.value;
+    }
 
-    // encode takeOrders2() and build tx fields
+    // encode takeOrders3() and build tx fields
     const encodedFN = encodeFunctionData({
         abi: ABI.Orderbook.Primary.Orderbook,
-        functionName: "takeOrders2",
+        functionName: "takeOrders3",
         args: [
             {
-                minimumInput: 1n,
+                minimumInput: ONE_FLOAT,
                 maximumInput: opposingMaxInput, // main maxout * main ratio
                 maximumIORatio: opposingMaxIORatio, // inverse of main ratio (1 / ratio)
                 orders: [counterpartyOrderDetails.takeOrder.struct], // opposing orders
@@ -95,9 +116,9 @@ export async function trySimulateTrade(
         ],
     });
     const takeOrdersConfigStruct: TakeOrdersConfigType = {
-        minimumInput: 1n,
-        maximumInput: maxUint256,
-        maximumIORatio: maxUint256,
+        minimumInput: ONE_FLOAT,
+        maximumInput: MAX_FLOAT,
+        maximumIORatio: MAX_FLOAT,
         orders: [orderDetails.takeOrder.struct],
         data: encodeAbiParameters(
             [{ type: "address" }, { type: "address" }, { type: "bytes" }],
@@ -131,7 +152,7 @@ export async function trySimulateTrade(
     const rawtx: RawTransaction = {
         data: encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         }),
         to: this.appOptions.genericArbAddress as `0x${string}`,
@@ -194,7 +215,7 @@ export async function trySimulateTrade(
         )) as `0x${string}`;
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
 
@@ -242,7 +263,7 @@ export async function trySimulateTrade(
         )) as `0x${string}`;
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
         spanAttributes["gasEst.final.minBountyExpected"] = (

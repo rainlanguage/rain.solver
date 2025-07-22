@@ -65,19 +65,19 @@ jobs:
           echo "IS_PREVIEW=true" >> .env
           echo "PREVIEW_ROUNDS=${{ vars.PREVIEW_ROUNDS }}" >> .env
           echo "TRACER_SERVICE_NAME=github-preview-${{ github.sha }}" >> .env
-          echo "RPC_URL=${{ secrets.PREVIEW_RPC_URL }}" >> .env
+          echo "RPC_URL=${{ secrets.PREVIEW_RPC_URL_V5 }}" >> .env
           echo "HYPERDX_API_KEY=${{ secrets.PREVIEW_HYPERDX_API_KEY }}" >> .env
           echo "BOT_WALLET_PRIVATEKEY=${{ secrets.PREVIEW_BOT_WALLET_PRIVATEKEY }}" >> .env
           echo "MAX_RATIO=${{ vars.PREVIEW_MAX_RATIO }}" >> .env
-          echo "SUBGRAPH=${{ vars.PREVIEW_SUBGRAPH }}" >> .env
+          echo "SUBGRAPH=${{ vars.PREVIEW_SUBGRAPH_V5 }}" >> .env
           echo "LIQUIDITY_PROVIDERS=${{ vars.PREVIEW_LIQUIDITY_PROVIDERS }}" >> .env
-          echo "ARB_ADDRESS=${{ vars.PREVIEW_ARB_ADDRESS }}" >> .env
-          echo "GENERIC_ARB_ADDRESS=${{ vars.PREVIEW_GENERIC_ARB_ADDRESS }}" >> .env
+          echo "ARB_ADDRESS=${{ vars.PREVIEW_ARB_ADDRESS_V5 }}" >> .env
+          echo "GENERIC_ARB_ADDRESS=${{ vars.PREVIEW_GENERIC_ARB_ADDRESS_V5 }}" >> .env
           echo "BOT_MIN_BALANCE=${{ vars.PREVIEW_BOT_MIN_BALANCE }}" >> .env
           echo "GAS_PRICE_MULTIPLIER=${{ vars.PREVIEW_GAS_PRICE_MULTIPLIER }}" >> .env
           echo "RP_ONLY=${{ vars.PREVIEW_RP_ONLY }}" >> .env
           echo "TX_GAS=${{ vars.PREVIEW_TX_GAS }}" >> .env
-          echo "DISPAIR=${{ vars.PREVIEW_DISPAIR }}" >> .env
+          echo "DISPAIR=${{ vars.PREVIEW_DISPAIR_V5 }}" >> .env
           echo "CONFIG=.env.config.yaml" >> .env
 
       - name: Run Rain Solver Docker Image

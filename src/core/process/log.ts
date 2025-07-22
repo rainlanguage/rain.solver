@@ -1,4 +1,4 @@
-import { ABI } from "../../common";
+import { ABI, normalizeFloat } from "../../common";
 import { ONE18, scaleTo18 } from "../../math";
 import { erc20Abi, formatUnits, parseEventLogs, parseUnits, TransactionReceipt } from "viem";
 
@@ -44,6 +44,7 @@ export function getActualClearAmount(
     toAddress: string,
     obAddress: string,
     receipt: TransactionReceipt,
+    outputTokenDecimals: number,
 ): bigint | undefined {
     if (toAddress.toLowerCase() !== obAddress.toLowerCase()) {
         try {
@@ -66,13 +67,20 @@ export function getActualClearAmount(
     } else {
         try {
             const logs = parseEventLogs({
-                abi: [ABI.Orderbook.Primary.Orderbook[2]],
-                eventName: "AfterClear",
+                abi: [ABI.Orderbook.Primary.Orderbook[4]],
+                eventName: "AfterClearV2",
                 logs: receipt.logs,
             });
             for (const log of logs) {
-                if (log.eventName === "AfterClear") {
-                    return log.args.clearStateChange.aliceOutput;
+                if (log.eventName === "AfterClearV2") {
+                    const outputResult = normalizeFloat(
+                        log.args.clearStateChange.aliceOutput,
+                        outputTokenDecimals,
+                    );
+                    if (outputResult.isErr()) {
+                        return undefined;
+                    }
+                    return outputResult.value;
                 }
             }
         } catch {}

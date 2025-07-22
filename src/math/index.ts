@@ -5,6 +5,12 @@ import { formatUnits, isBytes, isHex } from "viem";
  */
 export const ONE18 = 1_000_000_000_000_000_000n as const;
 
+export const ONE_FLOAT =
+    "0x0000000000000000000000000000000000000000000000000000000000000001" as const;
+
+export const MAX_FLOAT =
+    "0x000000007fffffffffffffffffffffffffffffffffffffffffffffffffffffff" as const;
+
 /**
  * Scales a given value and its decimals to 18 fixed point decimals
  * @param value - The value to scale to 18

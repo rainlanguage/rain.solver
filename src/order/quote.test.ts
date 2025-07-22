@@ -1,13 +1,13 @@
 import { ChainId } from "sushi";
-import { PublicClient } from "viem";
 import { BundledOrders, Pair } from "./types";
 import { getQuoteGas, quoteSingleOrder } from "./quote";
+import { decodeFunctionResult, PublicClient } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
     encodeFunctionData: vi.fn().mockReturnValue("0xencoded"),
-    decodeFunctionResult: vi.fn().mockReturnValue([null, 100n, 2n]),
+    decodeFunctionResult: vi.fn(),
 }));
 
 vi.mock("./types", () => ({
@@ -19,10 +19,11 @@ vi.mock("./types", () => ({
 describe("Test quoteSingleOrder", () => {
     let orderDetails: Pair;
     const client = {
-        call: vi.fn().mockResolvedValueOnce({ data: "0x" }),
+        call: vi.fn().mockResolvedValue({ data: "0x" }),
     } as any as PublicClient;
 
     beforeEach(() => {
+        vi.clearAllMocks();
         orderDetails = {
             orderbook: "0xorderbook",
             takeOrder: {
@@ -32,6 +33,11 @@ describe("Test quoteSingleOrder", () => {
     });
 
     it("should set quote on the takeOrder when data is returned", async () => {
+        (decodeFunctionResult as Mock).mockReturnValueOnce([
+            true,
+            "0xffffffee00000000000000000000000000000000000000000000000000000064",
+            "0xffffffee00000000000000000000000000000000000000000000000000000002",
+        ]);
         await quoteSingleOrder(orderDetails, client);
 
         expect(orderDetails.takeOrder.quote).toEqual({
@@ -45,6 +51,28 @@ describe("Test quoteSingleOrder", () => {
         (client.call as Mock).mockResolvedValueOnce({ data: undefined });
         await expect(quoteSingleOrder(orderDetails, client)).rejects.toMatch(
             /Failed to quote order/,
+        );
+    });
+
+    it("should reject if fails to parse maxoutput float", async () => {
+        (decodeFunctionResult as Mock).mockReturnValueOnce([
+            true,
+            "0xinvalid",
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+        ]);
+        await expect(quoteSingleOrder(orderDetails, client)).rejects.toContain(
+            "Invalid hex string",
+        );
+    });
+
+    it("should reject if fails to parse ratio float", async () => {
+        (decodeFunctionResult as Mock).mockReturnValueOnce([
+            true,
+            "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "0xinvalid",
+        ]);
+        await expect(quoteSingleOrder(orderDetails, client)).rejects.toContain(
+            "Invalid hex string",
         );
     });
 });

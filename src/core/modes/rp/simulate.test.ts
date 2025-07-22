@@ -1,12 +1,12 @@
 import { Router } from "sushi";
 import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
-import { ONE18 } from "../../../math";
-import { Token } from "sushi/currency";
-import { Result } from "../../../common";
 import { Pair } from "../../../order";
+import { Token } from "sushi/currency";
 import { SimulationResult } from "../../types";
-import { encodeFunctionData, encodeAbiParameters, maxUint256 } from "viem";
+import { Result, toFloat } from "../../../common";
+import { MAX_FLOAT, ONE18, ONE_FLOAT } from "../../../math";
+import { encodeFunctionData, encodeAbiParameters } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
     trySimulateTrade,
@@ -195,14 +195,14 @@ describe("Test trySimulateTrade", () => {
         // Assert encodeFunctionData was called correctly
         expect(encodeFunctionData).toHaveBeenCalledWith({
             abi: expect.any(Array), // ArbAbi
-            functionName: "arb3",
+            functionName: "arb4",
             args: [
                 "0xorderbook",
                 {
                     data: "0xparams",
-                    maximumIORatio: 2000000000000000000n,
-                    maximumInput: maxUint256,
-                    minimumInput: 1n,
+                    maximumIORatio: (toFloat(2000000000000000000n, 18) as any).value,
+                    maximumInput: MAX_FLOAT,
+                    minimumInput: ONE_FLOAT,
                     orders: [{}],
                 },
                 {

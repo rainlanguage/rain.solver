@@ -59,9 +59,9 @@ export type ProcessOrderFailure = ProcessOrderResultBase & {
 };
 
 export type TakeOrdersConfigType = {
-    minimumInput: bigint;
-    maximumInput: bigint;
-    maximumIORatio: bigint;
+    minimumInput: `0x${string}`;
+    maximumInput: `0x${string}`;
+    maximumIORatio: `0x${string}`;
     orders: TakeOrder[];
     data: `0x${string}`;
 };

@@ -143,10 +143,10 @@ describe("Test trySimulateTrade", () => {
             args: [expect.any(Array)],
         });
 
-        // assert encodeFunctionData was called for clear2
+        // assert encodeFunctionData was called for clear3
         expect(encodeFunctionData).toHaveBeenCalledWith({
-            abi: expect.any(Array), // Clear2Abi
-            functionName: "clear2",
+            abi: expect.any(Array), // Clear3Abi
+            functionName: "clear3",
             args: [
                 {},
                 {},
@@ -155,26 +155,26 @@ describe("Test trySimulateTrade", () => {
                     aliceOutputIOIndex: 1n,
                     bobInputIOIndex: 1n,
                     bobOutputIOIndex: 0n,
-                    aliceBountyVaultId: 1n,
-                    bobBountyVaultId: 1n,
+                    aliceBountyVaultId: `0x${"0".repeat(63)}1`,
+                    bobBountyVaultId: `0x${"0".repeat(63)}1`,
                 },
                 [],
                 [],
             ],
         });
 
-        // assert encodeFunctionData was called for withdraw2 (input)
+        // assert encodeFunctionData was called for withdraw3 (input)
         expect(encodeFunctionData).toHaveBeenCalledWith({
-            abi: expect.any(Array), // Withdraw2Abi
-            functionName: "withdraw2",
-            args: ["0xbuytoken", 1n, expect.any(BigInt), []],
+            abi: expect.any(Array), // withdraw3Abi
+            functionName: "withdraw3",
+            args: ["0xbuytoken", `0x${"0".repeat(63)}1`, expect.any(String), []],
         });
 
-        // assert encodeFunctionData was called for withdraw2 (output)
+        // assert encodeFunctionData was called for withdraw3 (output)
         expect(encodeFunctionData).toHaveBeenCalledWith({
-            abi: expect.any(Array), // Withdraw2Abi
-            functionName: "withdraw2",
-            args: ["0xselltoken", 1n, expect.any(BigInt), []],
+            abi: expect.any(Array), // withdraw3Abi
+            functionName: "withdraw3",
+            args: ["0xselltoken", `0x${"0".repeat(63)}1`, expect.any(String), []],
         });
     });
 
@@ -272,10 +272,10 @@ describe("Test trySimulateTrade", () => {
         assert(result.isOk());
         expect(result.value.spanAttributes.foundOpp).toBe(true);
 
-        // verify clear2 was called with correct IO indices
+        // verify clear3 was called with correct IO indices
         expect(encodeFunctionData).toHaveBeenCalledWith({
             abi: expect.any(Array),
-            functionName: "clear2",
+            functionName: "clear3",
             args: [
                 {},
                 {},
@@ -284,8 +284,8 @@ describe("Test trySimulateTrade", () => {
                     aliceOutputIOIndex: 3n,
                     bobInputIOIndex: 4n,
                     bobOutputIOIndex: 5n,
-                    aliceBountyVaultId: 1n,
-                    bobBountyVaultId: 1n,
+                    aliceBountyVaultId: `0x${"0".repeat(63)}1`,
+                    bobBountyVaultId: `0x${"0".repeat(63)}1`,
                 },
                 [],
                 [],

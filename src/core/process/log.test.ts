@@ -66,7 +66,7 @@ describe("Test log functions", () => {
                     },
                 } as any,
             ]);
-            const result = getActualClearAmount("0xTo", "0xOb", { logs: [] } as any);
+            const result = getActualClearAmount("0xTo", "0xOb", { logs: [] } as any, 18);
             expect(result).toBe(555n);
         });
 
@@ -81,22 +81,23 @@ describe("Test log functions", () => {
                     },
                 } as any,
             ]);
-            const result = getActualClearAmount("0xTo", "0xOb", { logs: [] } as any);
+            const result = getActualClearAmount("0xTo", "0xOb", { logs: [] } as any, 18);
             expect(result).toBeUndefined();
         });
 
-        it("should return value from AfterClear log when to == ob", () => {
+        it("should return value from AfterClearV2 log when to == ob", () => {
             vi.mocked(parseEventLogs).mockReturnValue([
                 {
-                    eventName: "AfterClear",
+                    eventName: "AfterClearV2",
                     args: {
                         clearStateChange: {
-                            aliceOutput: 999n,
+                            aliceOutput:
+                                "0xffffffee000000000000000000000000000000000000000000000000000003e7",
                         },
                     },
                 } as any,
             ]);
-            const result = getActualClearAmount("0xOb", "0xOb", { logs: [] } as any);
+            const result = getActualClearAmount("0xOb", "0xOb", { logs: [] } as any, 18);
             expect(result).toBe(999n);
         });
 
@@ -104,7 +105,7 @@ describe("Test log functions", () => {
             vi.mocked(parseEventLogs).mockImplementation(() => {
                 throw new Error("fail");
             });
-            const result = getActualClearAmount("0xTo", "0xOb", { logs: [] } as any);
+            const result = getActualClearAmount("0xTo", "0xOb", { logs: [] } as any, 18);
             expect(result).toBeUndefined();
         });
     });

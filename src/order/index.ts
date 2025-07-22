@@ -1,11 +1,14 @@
-import { erc20Abi } from "viem";
 import { syncOrders } from "./sync";
 import { SgOrder } from "../subgraph";
+import { errorSnapshot } from "../error";
 import { quoteSingleOrder } from "./quote";
 import { PreAssembledSpan } from "../logger";
 import { SubgraphManager } from "../subgraph";
 import { downscaleProtection } from "./protection";
+import { normalizeFloat, Result } from "../common";
 import { SharedState, TokenDetails } from "../state";
+import { WasmEncodedError } from "@rainlanguage/float";
+import { DecodeAbiParametersErrorType, erc20Abi } from "viem";
 import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
 import {
     IO,
@@ -100,7 +103,15 @@ export class OrderManager {
     /** Fetches all active orders from upstream subgraphs */
     async fetch(): Promise<PreAssembledSpan> {
         const { orders, report } = await this.subgraphManager.fetchAll();
-        await this.addOrders(orders);
+        for (const order of orders) {
+            const result = await this.addOrder(order);
+            if (result.isErr()) {
+                report.setAttr(
+                    `fetchstatus.orders.${order.orderHash}`,
+                    await errorSnapshot("Failed to handle order", result.error),
+                );
+            }
+        }
         return report;
     }
 
@@ -110,57 +121,60 @@ export class OrderManager {
     }
 
     /**
-     * Adds new orders to the order map
-     * @param ordersDetails - Array of order details from subgraph
+     * Adds a new order to the order map
+     * @param orderDetails - Order details from subgraph
      */
-    async addOrders(ordersDetails: SgOrder[]) {
-        for (let i = 0; i < ordersDetails.length; i++) {
-            const orderDetails = ordersDetails[i];
-            const orderHash = orderDetails.orderHash.toLowerCase();
-            const orderbook = orderDetails.orderbook.id.toLowerCase();
+    async addOrder(
+        orderDetails: SgOrder,
+    ): Promise<Result<void, WasmEncodedError | DecodeAbiParametersErrorType>> {
+        const orderHash = orderDetails.orderHash.toLowerCase();
+        const orderbook = orderDetails.orderbook.id.toLowerCase();
 
-            const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
-            if (orderStructResult.isErr()) continue;
-            const orderStruct = orderStructResult.value;
+        const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
+        if (orderStructResult.isErr()) return Result.err(orderStructResult.error);
+        const orderStruct = orderStructResult.value;
 
-            const pairs = await this.getOrderPairs(orderHash, orderStruct, orderDetails);
+        const pairsResult = await this.getOrderPairs(orderHash, orderStruct, orderDetails);
+        if (pairsResult.isErr()) return Result.err(pairsResult.error);
+        const pairs = pairsResult.value;
 
-            // add to the owners map
-            if (!this.ownersMap.has(orderbook)) {
-                this.ownersMap.set(orderbook, new Map());
-            }
-            const orderbookOwnerProfileItem = this.ownersMap.get(orderbook)!;
-
-            if (!orderbookOwnerProfileItem.has(orderStruct.owner)) {
-                const order = {
-                    active: true,
-                    order: orderStruct,
-                    takeOrders: pairs,
-                };
-                orderbookOwnerProfileItem.set(orderStruct.owner, {
-                    limit: this.ownerLimits[orderStruct.owner] ?? DEFAULT_OWNER_LIMIT,
-                    orders: new Map([[orderHash, order]]),
-                    lastIndex: 0,
-                });
-            }
-            const ownerProfile = orderbookOwnerProfileItem.get(orderStruct.owner)!;
-            const order = ownerProfile.orders.get(orderHash);
-            if (!order) {
-                ownerProfile.orders.set(orderHash, {
-                    active: true,
-                    order: orderStruct,
-                    takeOrders: pairs,
-                });
-            } else {
-                if (!order.active) order.active = true;
-            }
-
-            // add to the pair maps
-            for (let j = 0; j < pairs.length; j++) {
-                this.addToPairMaps(pairs[j]);
-                this.addToTokenVaultsMap(pairs[j]);
-            }
+        // add to the owners map
+        if (!this.ownersMap.has(orderbook)) {
+            this.ownersMap.set(orderbook, new Map());
         }
+        const orderbookOwnerProfileItem = this.ownersMap.get(orderbook)!;
+
+        if (!orderbookOwnerProfileItem.has(orderStruct.owner)) {
+            const order = {
+                active: true,
+                order: orderStruct,
+                takeOrders: pairs,
+            };
+            orderbookOwnerProfileItem.set(orderStruct.owner, {
+                limit: this.ownerLimits[orderStruct.owner] ?? DEFAULT_OWNER_LIMIT,
+                orders: new Map([[orderHash, order]]),
+                lastIndex: 0,
+            });
+        }
+        const ownerProfile = orderbookOwnerProfileItem.get(orderStruct.owner)!;
+        const order = ownerProfile.orders.get(orderHash);
+        if (!order) {
+            ownerProfile.orders.set(orderHash, {
+                active: true,
+                order: orderStruct,
+                takeOrders: pairs,
+            });
+        } else {
+            if (!order.active) order.active = true;
+        }
+
+        // add to the pair maps
+        for (let j = 0; j < pairs.length; j++) {
+            this.addToPairMaps(pairs[j]);
+            this.addToTokenVaultsMap(pairs[j]);
+        }
+
+        return Result.ok(undefined);
     }
 
     /**
@@ -196,10 +210,10 @@ export class OrderManager {
             owner,
             {
                 address: outputVault.token.toLowerCase(),
-                decimals: outputVault.decimals,
+                decimals: pair.sellTokenDecimals,
                 symbol: pair.sellTokenSymbol,
             },
-            outputVault.vaultId,
+            BigInt(outputVault.vaultId),
             pair.sellTokenVaultBalance,
         );
         this.updateVault(
@@ -207,10 +221,10 @@ export class OrderManager {
             owner,
             {
                 address: inputVault.token.toLowerCase(),
-                decimals: inputVault.decimals,
+                decimals: pair.buyTokenDecimals,
                 symbol: pair.buyTokenSymbol,
             },
-            inputVault.vaultId,
+            BigInt(inputVault.vaultId),
             pair.buyTokenVaultBalance,
         );
     }
@@ -320,13 +334,13 @@ export class OrderManager {
      * @param orderHash - The hash of the order
      * @param orderStruct - The order struct
      * @param orderDetails - The order details from subgraph
-     * @returns Array of valid trading pairs
+     * @returns Array of valid trading pairs if successful, or an WasmEncoded if error
      */
     async getOrderPairs(
         orderHash: string,
         orderStruct: Order,
         orderDetails: SgOrder,
-    ): Promise<Pair[]> {
+    ): Promise<Result<Pair[], WasmEncodedError>> {
         const pairs: Pair[] = [];
         // helper iterator function
         function* iterIO() {
@@ -345,9 +359,11 @@ export class OrderManager {
         // helper function to handle token details
         const handleToken = async (io: IO, tokensList: SgOrder["outputs"]) => {
             const address = io.token.toLowerCase() as `0x${string}`;
+            const cached = this.state.watchedTokens.get(address);
+            const sgOrderIO = tokensList.find((v) => v.token.address.toLowerCase() === address)!;
             const symbol =
-                this.state.watchedTokens.get(address)?.symbol ?? // from cache
-                tokensList.find((v) => v.token.address === address)?.token.symbol ?? // from sg tokens list
+                cached?.symbol ?? // from cache
+                sgOrderIO?.token.symbol ?? // from sg tokens list
                 (await this.state.client // from contract call
                     .readContract({
                         address,
@@ -355,30 +371,57 @@ export class OrderManager {
                         functionName: "symbol",
                     })
                     .catch(() => "UnknownSymbol")); // fallback to unknown symbol if all fail
+            const decimals =
+                cached?.decimals ??
+                Number(sgOrderIO?.token.decimals) ??
+                (await this.state.client
+                    .readContract({
+                        address,
+                        abi: erc20Abi,
+                        functionName: "decimals",
+                    })
+                    .catch(() => undefined))!;
             // add to watched tokens
             this.state.watchToken({
                 symbol,
                 address,
-                decimals: io.decimals,
+                decimals,
             });
-            return symbol;
+            return { symbol, decimals, balance: sgOrderIO.balance };
         };
 
         for (const { output, input, outputIOIndex, inputIOIndex } of iterIO()) {
-            const inputSymbol = await handleToken(input, orderDetails.inputs);
-            const outputSymbol = await handleToken(output, orderDetails.outputs);
+            const {
+                symbol: inputSymbol,
+                decimals: inputDecimals,
+                balance: inputBalanceHex,
+            } = await handleToken(input, orderDetails.inputs);
+            const {
+                symbol: outputSymbol,
+                decimals: outputDecimals,
+                balance: outputBalanceHex,
+            } = await handleToken(output, orderDetails.outputs);
+
+            const inputBalanceRes = normalizeFloat(inputBalanceHex, inputDecimals);
+            if (inputBalanceRes.isErr()) {
+                return Result.err(inputBalanceRes.error);
+            }
+            const outputBalanceRes = normalizeFloat(outputBalanceHex, outputDecimals);
+            if (outputBalanceRes.isErr()) {
+                return Result.err(outputBalanceRes.error);
+            }
 
             if (input.token.toLowerCase() !== output.token.toLowerCase()) {
                 pairs.push({
                     orderbook: orderDetails.orderbook.id.toLowerCase(),
                     buyToken: input.token.toLowerCase(),
                     buyTokenSymbol: inputSymbol,
-                    buyTokenDecimals: input.decimals,
-                    buyTokenVaultBalance: BigInt(orderDetails.inputs[inputIOIndex].balance),
+                    buyTokenDecimals: inputDecimals,
+                    buyTokenVaultBalance: inputBalanceRes.value,
                     sellToken: output.token.toLowerCase(),
                     sellTokenSymbol: outputSymbol,
-                    sellTokenDecimals: output.decimals,
-                    sellTokenVaultBalance: BigInt(orderDetails.outputs[outputIOIndex].balance),
+                    sellTokenDecimals: outputDecimals,
+                    sellTokenVaultBalance: outputBalanceRes.value,
                     takeOrder: {
                         id: orderHash,
                         struct: {
@@ -392,7 +435,7 @@ export class OrderManager {
             }
         }
 
-        return pairs;
+        return Result.ok(pairs);
     }
 
     /**
