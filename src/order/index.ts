@@ -345,9 +345,11 @@ export class OrderManager {
         // helper function to handle token details
         const handleToken = async (io: IO, tokensList: SgOrder["outputs"]) => {
             const address = io.token.toLowerCase() as `0x${string}`;
+            const cached = this.state.watchedTokens.get(address);
+            const sgOrderIO = tokensList.find((v) => v.token.address.toLowerCase() === address)!;
             const symbol =
-                this.state.watchedTokens.get(address)?.symbol ?? // from cache
-                tokensList.find((v) => v.token.address === address)?.token.symbol ?? // from sg tokens list
+                cached?.symbol ?? // from cache
+                sgOrderIO?.token.symbol ?? // from sg tokens list
                 (await this.state.client // from contract call
                     .readContract({
                         address,
@@ -361,12 +363,18 @@ export class OrderManager {
                 address,
                 decimals: io.decimals,
             });
-            return symbol;
+            return { symbol, balance: sgOrderIO.balance };
         };
 
         for (const { output, input, outputIOIndex, inputIOIndex } of iterIO()) {
-            const inputSymbol = await handleToken(input, orderDetails.inputs);
-            const outputSymbol = await handleToken(output, orderDetails.outputs);
+            const { symbol: inputSymbol, balance: inputBalance } = await handleToken(
+                input,
+                orderDetails.inputs,
+            );
+            const { symbol: outputSymbol, balance: outputBalance } = await handleToken(
+                output,
+                orderDetails.outputs,
+            );
 
             if (input.token.toLowerCase() !== output.token.toLowerCase()) {
                 pairs.push({
@@ -374,11 +382,11 @@ export class OrderManager {
                     buyToken: input.token.toLowerCase(),
                     buyTokenSymbol: inputSymbol,
                     buyTokenDecimals: input.decimals,
-                    buyTokenVaultBalance: BigInt(orderDetails.inputs[inputIOIndex].balance),
+                    buyTokenVaultBalance: BigInt(inputBalance),
                     sellToken: output.token.toLowerCase(),
                     sellTokenSymbol: outputSymbol,
                     sellTokenDecimals: output.decimals,
-                    sellTokenVaultBalance: BigInt(orderDetails.outputs[outputIOIndex].balance),
+                    sellTokenVaultBalance: BigInt(outputBalance),
                     takeOrder: {
                         id: orderHash,
                         struct: {
