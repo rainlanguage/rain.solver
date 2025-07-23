@@ -373,7 +373,9 @@ export class OrderManager {
                     .catch(() => "UnknownSymbol")); // fallback to unknown symbol if all fail
             const decimals =
                 cached?.decimals ??
-                Number(sgOrderIO?.token.decimals) ??
+                (sgOrderIO?.token.decimals === undefined
+                    ? undefined
+                    : Number(sgOrderIO?.token.decimals)) ??
                 (await this.state.client
                     .readContract({
                         address,

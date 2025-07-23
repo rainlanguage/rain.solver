@@ -1,3 +1,4 @@
+import { maxUint256 } from "viem";
 import { vi, describe, it, expect, beforeEach, afterEach, assert } from "vitest";
 import {
     sleep,
@@ -6,6 +7,7 @@ import {
     normalizeFloat,
     promiseTimeout,
     withBigintSerializer,
+    toFloat,
 } from "./utils";
 
 describe("Test withBigIntSerializer function", async function () {
@@ -332,5 +334,23 @@ describe("Test normalizeFloat", () => {
 
         assert(result.isErr());
         expect(result.error.readableMsg).toContain("Invalid hex string");
+    });
+});
+
+describe("Test toFloat", () => {
+    it("should convert bigint to hex float successfully", () => {
+        const result = toFloat(1000000000000000000n, 18);
+
+        assert(result.isOk());
+        expect(result.value).toBe(
+            "0xffffffee00000000000000000000000000000000000000000de0b6b3a7640000",
+        );
+    });
+
+    it("should return error when fromFixedDecimal fails", () => {
+        const result = toFloat(maxUint256, 18);
+
+        assert(result.isErr());
+        expect(result.error.readableMsg).toContain("Decimal Float error: LossyConversionToFloat");
     });
 });
