@@ -94,7 +94,7 @@ export function normalizeFloat(
     if (result.error) {
         return Result.err(result.error);
     }
-    const fixedResult = result.value.toFixedDecimal(decimals);
+    const fixedResult = result.value.toFixedDecimalLossy(decimals);
     if (fixedResult.error) {
         return Result.err(fixedResult.error);
     }
@@ -108,7 +108,7 @@ export function normalizeFloat(
  * @returns The float representation in raw hex string format
  */
 export function toFloat(value: bigint, decimals: number): Result<`0x${string}`, WasmEncodedError> {
-    const result = Float.fromFixedDecimal(value, decimals);
+    const result = Float.fromFixedDecimalLossy(value, decimals);
     if (result.error) {
         return Result.err(result.error);
     }

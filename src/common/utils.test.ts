@@ -1,4 +1,3 @@
-import { maxUint256 } from "viem";
 import { vi, describe, it, expect, beforeEach, afterEach, assert } from "vitest";
 import {
     sleep,
@@ -345,12 +344,5 @@ describe("Test toFloat", () => {
         expect(result.value).toBe(
             "0xffffffee00000000000000000000000000000000000000000de0b6b3a7640000",
         );
-    });
-
-    it("should return error when fromFixedDecimal fails", () => {
-        const result = toFloat(maxUint256, 18);
-
-        assert(result.isErr());
-        expect(result.error.readableMsg).toContain("Decimal Float error: LossyConversionToFloat");
     });
 });
