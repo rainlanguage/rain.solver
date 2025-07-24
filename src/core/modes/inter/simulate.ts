@@ -7,7 +7,7 @@ import { ABI, Result, toFloat } from "../../../common";
 import { extendObjectWithHeader } from "../../../logger";
 import { RainSolverSigner, RawTransaction } from "../../../signer";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
-import { MAX_FLOAT, ONE18, ONE_FLOAT, scaleFrom18 } from "../../../math";
+import { ONE18, minFloat, maxFloat, scaleFrom18 } from "../../../math";
 import { encodeAbiParameters, encodeFunctionData, formatUnits, parseUnits } from "viem";
 import {
     TaskType,
@@ -67,8 +67,8 @@ export async function trySimulateTrade(
     const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
     spanAttributes["maxInput"] = maximumInput.toString();
 
-    let opposingMaxInput: `0x${string}` = MAX_FLOAT;
-    let opposingMaxIORatio: `0x${string}` = MAX_FLOAT;
+    let opposingMaxInput: `0x${string}` = maxFloat(orderDetails.buyTokenDecimals);
+    let opposingMaxIORatio: `0x${string}` = maxFloat(18);
     if (orderDetails.takeOrder.quote!.ratio !== 0n) {
         const maxInputResult = toFloat(
             scaleFrom18(
@@ -107,7 +107,7 @@ export async function trySimulateTrade(
         functionName: "takeOrders3",
         args: [
             {
-                minimumInput: ONE_FLOAT,
+                minimumInput: minFloat(orderDetails.sellTokenDecimals),
                 maximumInput: opposingMaxInput, // main maxout * main ratio
                 maximumIORatio: opposingMaxIORatio, // inverse of main ratio (1 / ratio)
                 orders: [counterpartyOrderDetails.takeOrder.struct], // opposing orders
@@ -116,9 +116,9 @@ export async function trySimulateTrade(
         ],
     });
     const takeOrdersConfigStruct: TakeOrdersConfigType = {
-        minimumInput: ONE_FLOAT,
-        maximumInput: MAX_FLOAT,
-        maximumIORatio: MAX_FLOAT,
+        minimumInput: minFloat(orderDetails.sellTokenDecimals),
+        maximumInput: maxFloat(orderDetails.sellTokenDecimals),
+        maximumIORatio: maxFloat(18),
         orders: [orderDetails.takeOrder.struct],
         data: encodeAbiParameters(
             [{ type: "address" }, { type: "address" }, { type: "bytes" }],

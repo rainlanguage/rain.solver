@@ -1,7 +1,7 @@
 import { RainSolver } from "../..";
 import { dryrun } from "../dryrun";
 import { estimateProfit } from "./utils";
-import { MAX_FLOAT } from "../../../math";
+import { maxFloat } from "../../../math";
 import { ABI, Result } from "../../../common";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
@@ -89,7 +89,12 @@ export async function trySimulateTrade(
     const withdrawInputCalldata = encodeFunctionData({
         abi: ABI.Orderbook.Primary.Orderbook,
         functionName: "withdraw3",
-        args: [orderDetails.buyToken, inputBountyVaultId, MAX_FLOAT, []],
+        args: [
+            orderDetails.buyToken,
+            inputBountyVaultId,
+            maxFloat(orderDetails.buyTokenDecimals),
+            [],
+        ],
     });
     let withdrawOutputCalldata = encodeFunctionData({
         abi: ABI.Orderbook.Primary.Orderbook,
@@ -97,7 +102,7 @@ export async function trySimulateTrade(
         args: [
             orderDetails.sellToken,
             outputBountyVaultId,
-            MAX_FLOAT,
+            maxFloat(orderDetails.sellTokenDecimals),
             this.appOptions.gasCoveragePercentage === "0" ? [] : [task],
         ],
     });
@@ -193,7 +198,12 @@ export async function trySimulateTrade(
         withdrawOutputCalldata = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Orderbook,
             functionName: "withdraw3",
-            args: [orderDetails.sellToken, outputBountyVaultId, MAX_FLOAT, [task]],
+            args: [
+                orderDetails.sellToken,
+                outputBountyVaultId,
+                maxFloat(orderDetails.sellTokenDecimals),
+                [task],
+            ],
         });
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Orderbook,
@@ -251,7 +261,12 @@ export async function trySimulateTrade(
         withdrawOutputCalldata = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Orderbook,
             functionName: "withdraw3",
-            args: [orderDetails.sellToken, outputBountyVaultId, MAX_FLOAT, [task]],
+            args: [
+                orderDetails.sellToken,
+                outputBountyVaultId,
+                maxFloat(orderDetails.sellTokenDecimals),
+                [task],
+            ],
         });
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Orderbook,

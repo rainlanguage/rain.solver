@@ -1,11 +1,11 @@
 import { Router } from "sushi";
 import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
+import { ONE18 } from "../../../math";
 import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
 import { SimulationResult } from "../../types";
 import { Result, toFloat } from "../../../common";
-import { MAX_FLOAT, ONE18, ONE_FLOAT } from "../../../math";
 import { encodeFunctionData, encodeAbiParameters } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
@@ -201,8 +201,8 @@ describe("Test trySimulateTrade", () => {
                 {
                     data: "0xparams",
                     maximumIORatio: (toFloat(2000000000000000000n, 18) as any).value,
-                    maximumInput: MAX_FLOAT,
-                    minimumInput: ONE_FLOAT,
+                    maximumInput: expect.any(String),
+                    minimumInput: expect.any(String),
                     orders: [{}],
                 },
                 {

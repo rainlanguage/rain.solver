@@ -10,7 +10,7 @@ import { extendObjectWithHeader } from "../../../logger";
 import { RPoolFilter, visualizeRoute } from "../../../router";
 import { RainSolverSigner, RawTransaction } from "../../../signer";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
-import { ONE18, scaleTo18, scaleFrom18, ONE_FLOAT, MAX_FLOAT } from "../../../math";
+import { ONE18, scaleTo18, scaleFrom18, minFloat, maxFloat } from "../../../math";
 import { encodeAbiParameters, encodeFunctionData, formatUnits, parseUnits } from "viem";
 import { TakeOrdersConfigType, SimulationResult, TradeType, FailedSimulation } from "../../types";
 
@@ -128,7 +128,7 @@ export async function trySimulateTrade(
         this.state.chainConfig.routeProcessors["4"],
     );
 
-    let maximumInputFloat: `0x${string}` = MAX_FLOAT;
+    let maximumInputFloat: `0x${string}` = maxFloat(orderDetails.sellTokenDecimals);
     if (isPartial) {
         const valueResult = toFloat(maximumInput, orderDetails.sellTokenDecimals);
         if (valueResult.isErr()) {
@@ -143,7 +143,7 @@ export async function trySimulateTrade(
         maximumInputFloat = valueResult.value;
     }
 
-    let maximumIORatioFloat: `0x${string}` = MAX_FLOAT;
+    let maximumIORatioFloat: `0x${string}` = maxFloat(18);
     if (!this.appOptions.maxRatio) {
         const valueResult = toFloat(price, 18);
         if (valueResult.isErr()) {
@@ -160,7 +160,7 @@ export async function trySimulateTrade(
 
     const orders = [orderDetails.takeOrder.struct];
     const takeOrdersConfigStruct: TakeOrdersConfigType = {
-        minimumInput: ONE_FLOAT,
+        minimumInput: minFloat(orderDetails.sellTokenDecimals),
         maximumInput: maximumInputFloat,
         maximumIORatio: maximumIORatioFloat,
         orders,

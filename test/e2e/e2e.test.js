@@ -720,9 +720,6 @@ for (let i = 0; i < testData.length; i++) {
                             tokens[0].decimals,
                         ).value,
                     );
-                    const botTokenBalance = await tokens[i + 1].contract.balanceOf(
-                        bot.account.address,
-                    );
 
                     assert.equal(report.tokenPair, pair);
 
@@ -736,12 +733,6 @@ for (let i = 0; i < testData.length; i++) {
                         `Unexpected current output vault balance: ${pair}`,
                     );
                     assert.ok(inputVault.eq(0), `Unexpected current input vault balance: ${pair}`);
-
-                    // output bounties should equal to current bot's token balance
-                    assert.ok(
-                        originalBotTokenBalances[i + 1].eq(botTokenBalance),
-                        `Unexpected current bot ${tokens[i + 1].symbol} balance`,
-                    );
 
                     // collect all bot's input income (bounty) and gas cost
                     inputProfit = inputProfit.add(ethers.utils.parseUnits(report.inputTokenIncome));

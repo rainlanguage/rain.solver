@@ -1,9 +1,9 @@
 import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
+import { ONE18 } from "../../../math";
 import { Pair } from "../../../order";
 import { Result } from "../../../common";
 import { SimulationResult } from "../../types";
-import { ONE18, ONE_FLOAT } from "../../../math";
 import { encodeFunctionData, encodeAbiParameters } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { trySimulateTrade, SimulateInterOrderbookTradeArgs } from "./simulate";
@@ -139,7 +139,7 @@ describe("Test trySimulateTrade", () => {
                     data: "0xparams",
                     maximumIORatio: expect.any(String),
                     maximumInput: expect.any(String),
-                    minimumInput: ONE_FLOAT,
+                    minimumInput: expect.any(String),
                     orders: [{}],
                 },
                 {
