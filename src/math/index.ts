@@ -6,12 +6,6 @@ import { formatUnits, isBytes, isHex, maxUint256 } from "viem";
  */
 export const ONE18 = 1_000_000_000_000_000_000n as const;
 
-export const ONE_FLOAT =
-    "0x0000000000000000000000000000000000000000000000000000000000000001" as const;
-
-export const MAX_FLOAT =
-    "0x000000007fffffffffffffffffffffffffffffffffffffffffffffffffffffff" as const;
-
 export function minFloat(decimals: number): `0x${string}` {
     return Float.fromFixedDecimal(1n, decimals).value!.asHex();
 }
