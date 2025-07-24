@@ -50,7 +50,7 @@
         "@opentelemetry/sdk-trace-base": "^1.22.0",
         "@opentelemetry/semantic-conventions": "^1.22.0",
         "@rainlanguage/dotrain": "^6.0.1-alpha.24",
-        "@rainlanguage/float": "file:rainlanguage-float-0.0.0-alpha.5.tgz",
+        "@rainlanguage/float": "^0.0.0-alpha.6",
         "axios": "^1.3.4",
         "commander": "^11.0.0",
         "dotenv": "^16.0.3",
