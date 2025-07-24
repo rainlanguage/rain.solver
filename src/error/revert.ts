@@ -143,17 +143,17 @@ export async function tryDetectFrontrun(
         // get the order from the function data
         const orderConfig = (() => {
             try {
-                if (rawtx.data!.toLowerCase().startsWith("0x7ea0b76a")) {
-                    // arb3 trade
+                if (rawtx.data!.toLowerCase().startsWith("0x4ed39461")) {
+                    // arb4 trade
                     const result = decodeFunctionData({
                         abi: [ABI.Orderbook.Primary.Arb[1]],
                         data: rawtx.data!,
                     });
                     return (result?.args?.[1] as any)?.orders?.[0];
                 } else {
-                    // clear2 trade
+                    // clear3 trade
                     const result = decodeFunctionData({
-                        abi: [ABI.Orderbook.Primary.Orderbook[12]],
+                        abi: [ABI.Orderbook.Primary.Orderbook[19]],
                         data: rawtx.data!,
                     });
                     return result?.args?.[1];
@@ -169,8 +169,8 @@ export async function tryDetectFrontrun(
             const logs = (
                 await viemClient.getLogs({
                     events: [
-                        ABI.Orderbook.Primary.Orderbook[13],
-                        ABI.Orderbook.Primary.Orderbook[15],
+                        ABI.Orderbook.Primary.Orderbook[7],
+                        ABI.Orderbook.Primary.Orderbook[8],
                     ],
                     address: orderbook,
                     blockHash: receipt.blockHash,

@@ -1,9 +1,18 @@
-import { formatUnits, isBytes, isHex } from "viem";
+import { Float } from "@rainlanguage/float";
+import { formatUnits, isBytes, isHex, maxUint256 } from "viem";
 
 /**
  * One ether which equals to 1e18
  */
 export const ONE18 = 1_000_000_000_000_000_000n as const;
+
+export function minFloat(decimals: number): `0x${string}` {
+    return Float.fromFixedDecimal(1n, decimals).value!.asHex();
+}
+
+export function maxFloat(decimals: number): `0x${string}` {
+    return Float.fromFixedDecimalLossy(maxUint256, decimals).value!.asHex();
+}
 
 /**
  * Scales a given value and its decimals to 18 fixed point decimals

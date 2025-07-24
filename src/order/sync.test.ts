@@ -1,4 +1,5 @@
 import { OrderManager } from ".";
+import { Result } from "../common";
 import { syncOrders } from "./sync";
 import { PreAssembledSpan } from "../logger";
 import { applyFilters } from "../subgraph/filter";
@@ -20,14 +21,14 @@ describe("Test syncOrders", () => {
     let mockOrderManager: OrderManager;
     let mockSubgraphManager: any;
     let mockUpdateVault: Mock;
-    let mockAddOrders: Mock;
+    let mockAddOrder: Mock;
     let mockRemoveOrders: Mock;
 
     beforeEach(() => {
         vi.clearAllMocks();
 
         mockUpdateVault = vi.fn();
-        mockAddOrders = vi.fn();
+        mockAddOrder = vi.fn();
         mockRemoveOrders = vi.fn();
 
         mockSubgraphManager = {
@@ -38,7 +39,7 @@ describe("Test syncOrders", () => {
         mockOrderManager = {
             subgraphManager: mockSubgraphManager,
             updateVault: mockUpdateVault,
-            addOrders: mockAddOrders,
+            addOrder: mockAddOrder,
             removeOrders: mockRemoveOrders,
         } as any;
     });
@@ -60,7 +61,8 @@ describe("Test syncOrders", () => {
                                     decimals: "18",
                                 },
                                 vaultId: "123",
-                                balance: "1000000000000000000",
+                                balance:
+                                    "0xffffffee00000000000000000000000000000000000000000de0b6b3a7640000",
                             },
                         },
                     ],
@@ -104,7 +106,8 @@ describe("Test syncOrders", () => {
                                     decimals: "6",
                                 },
                                 vaultId: "456",
-                                balance: "500000000",
+                                balance:
+                                    "0xfffffffa0000000000000000000000000000000000000000000000001dcd6500",
                             },
                         },
                     ],
@@ -151,7 +154,8 @@ describe("Test syncOrders", () => {
                                                 decimals: "18",
                                             },
                                             vaultId: "100",
-                                            balance: "2000000000000000000",
+                                            balance:
+                                                "0xffffffee00000000000000000000000000000000000000001bc16d674ec80000",
                                         },
                                     },
                                     outputVaultBalanceChange: {
@@ -164,7 +168,8 @@ describe("Test syncOrders", () => {
                                                 decimals: "6",
                                             },
                                             vaultId: "200",
-                                            balance: "1000000000",
+                                            balance:
+                                                "0xfffffffa0000000000000000000000000000000000000000000000003b9aca00",
                                         },
                                     },
                                 },
@@ -227,7 +232,8 @@ describe("Test syncOrders", () => {
                                                 decimals: "8",
                                             },
                                             vaultId: "789",
-                                            balance: "50000000",
+                                            balance:
+                                                "0xfffffff800000000000000000000000000000000000000000000000002faf080",
                                         },
                                     },
                                     outputVaultBalanceChange: {
@@ -240,7 +246,8 @@ describe("Test syncOrders", () => {
                                                 decimals: "18",
                                             },
                                             vaultId: "101112",
-                                            balance: "3000000000000000000",
+                                            balance:
+                                                "0xffffffee000000000000000000000000000000000000000029a2241af62c0000",
                                         },
                                     },
                                 },
@@ -310,13 +317,61 @@ describe("Test syncOrders", () => {
             status: mockSyncStatus,
             result: mockResult,
         });
+        mockAddOrder.mockResolvedValue(Result.ok(undefined));
 
         await syncOrders.call(mockOrderManager);
         expect(applyFilters).toHaveBeenCalledWith(mockOrder, mockSubgraphManager.filters);
-        expect(mockAddOrders).toHaveBeenCalledWith([mockOrder]);
+        expect(mockAddOrder).toHaveBeenCalledWith(mockOrder);
         expect(mockSyncStatus["https://subgraph1.com"]["0xorderbook1"]).toEqual({
             added: ["0xorderhash1"],
             removed: [],
+            failedAdds: {},
+        });
+    });
+
+    it("should handle AddOrder events with failed addOrder and record error in syncStatus", async () => {
+        const mockOrder = {
+            orderHash: "0xorderhash1",
+            orderbook: { id: "0xorderbook1" },
+            active: true,
+        };
+
+        const mockResult = {
+            "https://subgraph1.com": [
+                {
+                    timestamp: "1640995200",
+                    events: [
+                        {
+                            __typename: "AddOrder",
+                            order: mockOrder,
+                        },
+                    ],
+                },
+            ],
+        };
+
+        const mockSyncStatus = {
+            "https://subgraph1.com": {},
+        };
+        const mockError = new Error("Failed to add order to database");
+
+        (applyFilters as Mock).mockReturnValue(true);
+        mockSubgraphManager.getUpstreamEvents.mockResolvedValue({
+            status: mockSyncStatus,
+            result: mockResult,
+        });
+        mockAddOrder.mockResolvedValue(Result.err(mockError));
+
+        await syncOrders.call(mockOrderManager);
+
+        expect(applyFilters).toHaveBeenCalledWith(mockOrder, mockSubgraphManager.filters);
+        expect(mockAddOrder).toHaveBeenCalledWith(mockOrder);
+        expect(mockSyncStatus["https://subgraph1.com"]["0xorderbook1"]).toEqual({
+            added: [],
+            removed: [],
+            failedAdds: {
+                "0xorderhash1": expect.stringContaining(mockError.message),
+            },
         });
     });
 
@@ -375,7 +430,7 @@ describe("Test syncOrders", () => {
 
         await syncOrders.call(mockOrderManager);
         expect(mockUpdateVault).not.toHaveBeenCalled();
-        expect(mockAddOrders).not.toHaveBeenCalled();
+        expect(mockAddOrder).not.toHaveBeenCalled();
         expect(mockRemoveOrders).not.toHaveBeenCalled();
     });
 
@@ -390,6 +445,7 @@ describe("Test syncOrders", () => {
         mockSubgraphManager.getUpstreamEvents.mockResolvedValue({
             status: mockSyncStatus,
             result: {},
+            failedAdds: {},
         });
 
         const result = await syncOrders.call(mockOrderManager);
