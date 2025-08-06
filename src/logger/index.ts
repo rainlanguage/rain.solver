@@ -153,7 +153,6 @@ export class RainSolverLogger {
             span.setStatus(status);
         }
         // end the span with the given end time
-        span.setAttribute("duration", (endTime as number) - (startTime as number));
         span.end(endTime);
     }
 
@@ -223,7 +222,7 @@ export class PreAssembledSpan {
     constructor(name: string, startTime?: TimeInput, options?: Omit<SpanOptions, "startTime">) {
         this.name = name;
         this.options = options;
-        this.startTime = startTime;
+        this.startTime = startTime ?? Date.now();
     }
 
     /**
