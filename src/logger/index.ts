@@ -153,6 +153,7 @@ export class RainSolverLogger {
             span.setStatus(status);
         }
         // end the span with the given end time
+        span.setAttribute("duration", (endTime as number) - (startTime as number));
         span.end(endTime);
     }
 
