@@ -85,14 +85,17 @@ export const statusCheckQuery = `{
  * Get query for transactions
  * @param startTimestamp - The timestamp to start query from
  * @param skip - Skips the first number of results
+ * @param endTimestamp - (optional) The timestamp to end query at
  */
-export const getTxsQuery = (startTimestamp: number, skip: number) => {
+export const getTxsQuery = (startTimestamp: number, skip: number, endTimestamp?: number) => {
+    const endTimestampClause =
+        typeof endTimestamp === "number" ? `timestamp_lte: "${endTimestamp}"` : "";
     return `{transactions(
     orderBy: timestamp
     orderDirection: asc
     first: ${DEFAULT_PAGE_SIZE}
     skip: ${skip}
-    where: { timestamp_gt: "${startTimestamp}" }
+    where: { timestamp_gt: "${startTimestamp}" ${endTimestampClause} }
   ) {
     events {
         __typename

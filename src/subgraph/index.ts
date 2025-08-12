@@ -13,7 +13,7 @@ export * from "./types";
 export * from "./config";
 
 // default headers for axios subgraph queries
-const headers = { "Content-Type": "application/json" } as const;
+export const headers = { "Content-Type": "application/json" } as const;
 
 /**
  * Manages multiple subgraph endpoints, providing methods to fetch, sync, and monitor order edtails.
