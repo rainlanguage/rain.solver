@@ -8,7 +8,7 @@ import { DEFAULT_PAGE_SIZE, getTxsQuery } from "../src/subgraph/query";
 
 config();
 
-const DURATION = process.env.DURATION ? parseInt(process.env.DURATION) : 7; // 7 days default
+const DURATION = process.env.DURATION ? parseInt(process.env.DURATION) : 30; // 7 days default
 const THRESHOLD = (process.env.THRESHOLD ? parseInt(process.env.THRESHOLD) : 60) * 60 * 1000; // 60 minutes default
 
 const subgraphs = JSON.parse(process.env.SUBGRAPHS ?? "{}") as Record<string, string>;
@@ -83,7 +83,8 @@ function captureDowntime(subgraphEvents: SgTransaction[]) {
         }
     };
 
-    // process trade events into cycles
+    // process trade events into threshold cycles by their timestamps
+    // as each trade can only go into an specific cycle period
     for (const { event, timestamp } of iterEvents()) {
         if (event.__typename === "Clear" || event.__typename === "TakeOrder") {
             event?.trades?.forEach((trade) => {
@@ -103,10 +104,12 @@ function captureDowntime(subgraphEvents: SgTransaction[]) {
         const followingCycles = cycles.slice(i + 1);
         const nextCycleWithTradeIndex = followingCycles.findIndex((cycle) => cycle.length > 0);
         if (nextCycleWithTradeIndex > -1) {
-            const cycleGapTime = nextCycleWithTradeIndex * THRESHOLD;
+            const fullCycleGapTime = nextCycleWithTradeIndex * THRESHOLD;
             const offsetTime =
                 (cycles[nextCycleWithTradeIndex + i + 1][0].timestamp - startTimestamp) % THRESHOLD;
-            totalDowntime += cycleGapTime + offsetTime;
+            totalDowntime += fullCycleGapTime + offsetTime;
+            downtimeOccurrences += nextCycleWithTradeIndex; // count all cycles until the next trade as downtime occurrences
+            i += nextCycleWithTradeIndex; // skip to the next cycle with trades
         } else {
             // if there are no trades after this cycle, assume full downtime from start of the next cycle to the end of the period
             totalDowntime += endTimestamp - ((i + 1) * THRESHOLD + startTimestamp);
