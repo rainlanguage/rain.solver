@@ -6,10 +6,11 @@ import { Token } from "sushi/currency";
 import { FindBestTradeResult } from "../types";
 import { RainSolverSigner } from "../../signer";
 import { Attributes } from "@opentelemetry/api";
-import { findBestRouteProcessorTrade } from "./rp";
+// import { findBestRouteProcessorTrade } from "./rp";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
 import { extendObjectWithHeader } from "../../logger";
+import { findBestBalancerTrade } from "./balancer";
 
 /** Arguments for finding the best trade */
 export type FindBestTradeArgs = {
@@ -44,33 +45,34 @@ export async function findBestTrade(
 ): Promise<FindBestTradeResult> {
     const { orderDetails, signer, inputToEthPrice, outputToEthPrice, toToken, fromToken } = args;
     const promises = [
-        findBestRouteProcessorTrade.call(
-            this,
-            orderDetails,
-            signer,
-            inputToEthPrice,
-            toToken,
-            fromToken,
-        ),
+        // findBestRouteProcessorTrade.call(
+        //     this,
+        //     orderDetails,
+        //     signer,
+        //     inputToEthPrice,
+        //     toToken,
+        //     fromToken,
+        // ),
+        findBestBalancerTrade.call(this, orderDetails, signer, inputToEthPrice, toToken, fromToken),
         // include intra and inter orderbook trades types only if rpOnly is false
-        ...(!this.appOptions.rpOnly
-            ? [
-                  findBestIntraOrderbookTrade.call(
-                      this,
-                      orderDetails,
-                      signer,
-                      inputToEthPrice,
-                      outputToEthPrice,
-                  ),
-                  findBestInterOrderbookTrade.call(
-                      this,
-                      orderDetails,
-                      signer,
-                      inputToEthPrice,
-                      outputToEthPrice,
-                  ),
-              ]
-            : []),
+        // ...(!this.appOptions.rpOnly
+        //     ? [
+        //           findBestIntraOrderbookTrade.call(
+        //               this,
+        //               orderDetails,
+        //               signer,
+        //               inputToEthPrice,
+        //               outputToEthPrice,
+        //           ),
+        //           findBestInterOrderbookTrade.call(
+        //               this,
+        //               orderDetails,
+        //               signer,
+        //               inputToEthPrice,
+        //               outputToEthPrice,
+        //           ),
+        //       ]
+        //     : []),
     ];
     const results = await Promise.all(promises);
 
