@@ -7,8 +7,8 @@ import { FindBestTradeResult } from "../types";
 import { RainSolverSigner } from "../../signer";
 import { Attributes } from "@opentelemetry/api";
 // import { findBestRouteProcessorTrade } from "./rp";
-import { findBestIntraOrderbookTrade } from "./intra";
-import { findBestInterOrderbookTrade } from "./inter";
+// import { findBestIntraOrderbookTrade } from "./intra";
+// import { findBestInterOrderbookTrade } from "./inter";
 import { extendObjectWithHeader } from "../../logger";
 import { findBestBalancerTrade } from "./balancer";
 
@@ -43,7 +43,7 @@ export async function findBestTrade(
     this: RainSolver,
     args: FindBestTradeArgs,
 ): Promise<FindBestTradeResult> {
-    const { orderDetails, signer, inputToEthPrice, outputToEthPrice, toToken, fromToken } = args;
+    const { orderDetails, signer, inputToEthPrice, toToken, fromToken } = args;
     const promises = [
         // findBestRouteProcessorTrade.call(
         //     this,
