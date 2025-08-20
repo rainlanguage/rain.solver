@@ -54,7 +54,7 @@ export async function findBestTrade(
             fromToken,
         ),
         // include balancer trade only if balancer router is available for the operating chain
-        ...(this.state.balancerRouter
+        ...(this.state.balancerRouter && this.appOptions.balancerArbAddress
             ? [
                   findBestBalancerTrade.call(
                       this,

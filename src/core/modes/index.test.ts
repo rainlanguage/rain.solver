@@ -33,6 +33,7 @@ describe("Test findBestTrade", () => {
         mockRainSolver = {
             appOptions: {
                 rpOnly: false,
+                balancerArbAddress: "0xBalancerArb",
             },
             state: {},
         } as any;
