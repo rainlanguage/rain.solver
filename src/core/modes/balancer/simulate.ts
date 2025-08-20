@@ -2,28 +2,28 @@ import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
 import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
-// import { ChainId, Router } from "sushi";
-import { Attributes } from "@opentelemetry/api";
+import { scaleFrom18 } from "../../../math";
+import { estimateProfit } from "../rp/utils";
 import { Result, ABI } from "../../../common";
+import { Attributes } from "@opentelemetry/api";
 import { extendObjectWithHeader } from "../../../logger";
-import { ONE18, scaleTo18, scaleFrom18 } from "../../../math";
-// import { RPoolFilter, visualizeRoute } from "../../../router";
 import { RainSolverSigner, RawTransaction } from "../../../signer";
+import { BalancerRouter, BalancerRouterErrorType } from "../../../router/balancer";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
 import { TakeOrdersConfigType, SimulationResult, TradeType, FailedSimulation } from "../../types";
 import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
-import { getBalancerMarketPrice, getBestBalancerRoute } from "../../../router/balancer";
-import { AddressProvider } from "@balancer/sdk";
 
-/** Specifies the reason that route processor simulation failed */
+/** Specifies the reason that balancer trade simulation failed */
 export enum BalancerRouterSimulationHaltReason {
     NoOpportunity = 1,
     NoRoute = 2,
     OrderRatioGreaterThanMarketPrice = 3,
+    FetchFailed = 4,
+    SwapQueryFailed = 5,
 }
 
-/** Arguments for simulating route processor trade */
-export type SimulateRouteProcessorTradeArgs = {
+/** Arguments for simulating balancer protocol trade */
+export type SimulateBalancerTradeArgs = {
     /** The bundled order details including tokens, decimals, and take orders */
     orderDetails: Pair;
     /** The RainSolverSigner instance used for signing transactions */
@@ -41,13 +41,13 @@ export type SimulateRouteProcessorTradeArgs = {
 };
 
 /**
- * Attempts to find a profitable opportunity (opp) for a given order by simulating a trade against route processor.
+ * Attempts to find a profitable opportunity (opp) for a given order by simulating a trade against balancer protocol.
  * @param this - The RainSolver instance context
  * @param args - The arguments for simulating the trade
  */
 export async function trySimulateTrade(
     this: RainSolver,
-    args: SimulateRouteProcessorTradeArgs,
+    args: SimulateBalancerTradeArgs,
 ): Promise<SimulationResult> {
     const { orderDetails, signer, ethPrice, toToken, fromToken, maximumInputFixed, blockNumber } =
         args;
@@ -57,64 +57,58 @@ export async function trySimulateTrade(
     const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
     spanAttributes["amountIn"] = formatUnits(maximumInputFixed, 18);
 
-    const route = await getBestBalancerRoute.call(this.state, {
-        tokenIn: fromToken,
-        tokenOut: toToken,
-        swapAmount: maximumInput,
-    });
-    // const route = Result.ok<BalancerRouterPath[], Error>([
-    //     {
-    //         steps: [
-    //             {
-    //                 pool: "0x88c044fb203b58b12252be7242926b1eeb113b4a",
-    //                 tokenOut: "0x4200000000000000000000000000000000000006",
-    //                 isBuffer: false,
-    //             },
-    //         ],
-    //         tokenIn: fromToken.address as `0x${string}`,
-    //         exactAmountIn: maximumInput,
-    //         minAmountOut: 0n,
-    //     },
-    // ]);
-    if (route.isErr()) {
-        spanAttributes["error"] = route.error.message;
+    const routeResult = await this.state.balancerRouter!.getMarketPrice(
+        {
+            tokenIn: fromToken,
+            tokenOut: toToken,
+            swapAmount: maximumInput,
+        },
+        signer,
+    );
+    if (routeResult.isErr()) {
+        spanAttributes["error"] = routeResult.error.message;
+
+        let reason = BalancerRouterSimulationHaltReason.NoOpportunity;
+        if (routeResult.error.type === BalancerRouterErrorType.NoRouteFound) {
+            spanAttributes["route"] = "no-way";
+            reason = BalancerRouterSimulationHaltReason.NoRoute;
+        } else if (routeResult.error.type === BalancerRouterErrorType.FetchFailed) {
+            reason = BalancerRouterSimulationHaltReason.FetchFailed;
+        } else if (routeResult.error.type === BalancerRouterErrorType.SwapQueryFailed) {
+            reason = BalancerRouterSimulationHaltReason.SwapQueryFailed;
+        } else {
+            reason = BalancerRouterSimulationHaltReason.NoOpportunity;
+        }
+
         return Result.err({
             type: TradeType.Balancer,
             spanAttributes,
-            reason: BalancerRouterSimulationHaltReason.NoRoute,
+            reason,
         });
     }
 
-    const amountOut = await getBalancerMarketPrice.call(this.state, route.value, signer);
-    if (amountOut.isErr()) {
-        spanAttributes["error"] = amountOut.error.message;
-        return Result.err({
-            type: TradeType.Balancer,
-            spanAttributes,
-            reason: BalancerRouterSimulationHaltReason.NoRoute,
-        });
-    }
-    const rateFixed = scaleTo18(amountOut.value, orderDetails.buyTokenDecimals);
-    const price = (rateFixed * ONE18) / maximumInputFixed;
+    const route = routeResult.value;
+    const amountOut = route.amountOut;
+    const price = route.price;
 
-    spanAttributes["amountOut"] = formatUnits(amountOut.value, toToken.decimals);
+    spanAttributes["amountOut"] = formatUnits(amountOut, toToken.decimals);
     spanAttributes["marketPrice"] = formatUnits(price, 18);
 
-    // const routeVisual: string[] = [];
-    // try {
-    //     visualizeRoute(fromToken, toToken, route.legs).forEach((v) => {
-    //         routeVisual.push(v);
-    //     });
-    // } catch {
-    //     /**/
-    // }
-    // spanAttributes["route"] = routeVisual;
+    const routeVisual: string[] = [];
+    try {
+        BalancerRouter.visualizeRoute(route.route, this.state.watchedTokens).forEach((v) => {
+            routeVisual.push(v);
+        });
+    } catch {
+        /**/
+    }
+    spanAttributes["route"] = routeVisual;
 
     // exit early if market price is lower than order quote ratio
     if (price < orderDetails.takeOrder.quote!.ratio) {
         spanAttributes["error"] = "Order's ratio greater than market price";
         const result = {
-            type: TradeType.RouteProcessor,
+            type: TradeType.Balancer,
             spanAttributes,
             reason: BalancerRouterSimulationHaltReason.OrderRatioGreaterThanMarketPrice,
         };
@@ -123,7 +117,7 @@ export async function trySimulateTrade(
 
     spanAttributes["oppBlockNumber"] = Number(blockNumber);
 
-    const balancerRouter = AddressProvider.BatchRouter(this.state.chainConfig.id);
+    const balancerRouter = this.state.balancerRouter!.routerAddress;
     const orders = [orderDetails.takeOrder.struct];
     const takeOrdersConfigStruct: TakeOrdersConfigType = {
         minimumInput: 1n,
@@ -132,9 +126,10 @@ export async function trySimulateTrade(
         orders,
         data: encodeAbiParameters(
             [{ type: "address" }, ABI.BalancerBatchRouter.Structs.SwapPathExactAmountIn],
-            [balancerRouter, route.value],
+            [balancerRouter, route.route[0]],
         ),
     };
+
     const task = {
         evaluable: {
             interpreter: this.state.dispair.interpreter as `0x${string}`,
@@ -160,7 +155,7 @@ export async function trySimulateTrade(
             functionName: "arb3",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         }),
-        to: this.appOptions.arbAddress as `0x${string}`,
+        to: this.appOptions.balancerArbAddress as `0x${string}`,
         gasPrice,
     };
 
@@ -176,7 +171,7 @@ export async function trySimulateTrade(
         spanAttributes["stage"] = 1;
         Object.assign(initDryrunResult.error.spanAttributes, spanAttributes);
         initDryrunResult.error.reason = BalancerRouterSimulationHaltReason.NoOpportunity;
-        (initDryrunResult.error as FailedSimulation).type = TradeType.RouteProcessor;
+        (initDryrunResult.error as FailedSimulation).type = TradeType.Balancer;
         return Result.err(initDryrunResult.error as FailedSimulation);
     }
 
@@ -234,7 +229,7 @@ export async function trySimulateTrade(
             spanAttributes["stage"] = 2;
             Object.assign(finalDryrunResult.error.spanAttributes, spanAttributes);
             finalDryrunResult.error.reason = BalancerRouterSimulationHaltReason.NoOpportunity;
-            (finalDryrunResult.error as FailedSimulation).type = TradeType.RouteProcessor;
+            (finalDryrunResult.error as FailedSimulation).type = TradeType.Balancer;
             return Result.err(finalDryrunResult.error as FailedSimulation);
         }
 
@@ -281,7 +276,7 @@ export async function trySimulateTrade(
     // if reached here, it means there was a success and found opp
     spanAttributes["foundOpp"] = true;
     const result = {
-        type: TradeType.RouteProcessor,
+        type: TradeType.Balancer,
         spanAttributes,
         rawtx,
         estimatedGasCost,
@@ -294,17 +289,4 @@ export async function trySimulateTrade(
         )!,
     };
     return Result.ok(result);
-}
-
-/** Estimates profit for a route processor clear mode */
-export function estimateProfit(
-    orderDetails: Pair,
-    ethPrice: bigint,
-    marketPrice: bigint,
-    maxInput: bigint,
-): bigint {
-    const marketAmountOut = (maxInput * marketPrice) / ONE18;
-    const orderInput = (maxInput * orderDetails.takeOrder.quote!.ratio) / ONE18;
-    const estimatedProfit = marketAmountOut - orderInput;
-    return (estimatedProfit * ethPrice) / ONE18;
 }

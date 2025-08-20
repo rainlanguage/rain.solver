@@ -9,7 +9,7 @@ import { SimulationResult, TradeType } from "../../types";
 import { trySimulateTrade } from "./simulate";
 
 /**
- * Tries to find the best trade against route processor for the given order,
+ * Tries to find the best trade against balancer protocol for the given order,
  * it will try to simulate a trade for full trade size (order's max output)
  * and if it was not successful it will try again with partial trade size
  * @param this - RainSolver instance

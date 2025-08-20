@@ -42,6 +42,27 @@ export async function getMarketPrice(
             RPoolFilter,
         );
         if (route.status == "NoWay") {
+            // try balancer
+            if (this.balancerRouter) {
+                const balancerPriceResult = await this.balancerRouter.getMarketPrice(
+                    {
+                        tokenIn: fromToken,
+                        tokenOut: toToken,
+                        swapAmount: amountIn,
+                    },
+                    this.client,
+                );
+                if (balancerPriceResult.isOk()) {
+                    const price = scaleTo18(balancerPriceResult.value.amountOut, toToken.decimals);
+                    return {
+                        price: formatUnits(price, 18),
+                        amountOut: formatUnits(
+                            balancerPriceResult.value.amountOut,
+                            toToken.decimals,
+                        ),
+                    };
+                }
+            }
             return;
         } else {
             const price = scaleTo18(route.amountOutBI, toToken.decimals);
