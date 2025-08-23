@@ -65,7 +65,7 @@ describe("Test trySimulateTrade", () => {
                 client: {},
                 balancerRouter: {
                     routerAddress: "0xbalancerRouter",
-                    getMarketPrice: vi.fn(),
+                    tryQuote: vi.fn(),
                     visualizeRoute: vi.fn().mockReturnValue(["visualRoute"]),
                 },
             },
@@ -91,7 +91,7 @@ describe("Test trySimulateTrade", () => {
     });
 
     it("should return NoRoute if Router.findBestRoute returns NoWay", async () => {
-        (solver.state.balancerRouter?.getMarketPrice as Mock).mockReturnValueOnce(
+        (solver.state.balancerRouter?.tryQuote as Mock).mockReturnValueOnce(
             Result.err(
                 new BalancerRouterError(
                     "Failed to fetch balancer routes",
@@ -111,7 +111,7 @@ describe("Test trySimulateTrade", () => {
     });
 
     it("should return OrderRatioGreaterThanMarketPrice if price < order ratio", async () => {
-        (solver.state.balancerRouter?.getMarketPrice as Mock).mockReturnValueOnce(
+        (solver.state.balancerRouter?.tryQuote as Mock).mockReturnValueOnce(
             Result.ok({
                 route: [],
                 amountOut: 1n * ONE18,
@@ -135,7 +135,7 @@ describe("Test trySimulateTrade", () => {
     });
 
     it("should return NoOpportunity if initial dryrun fails", async () => {
-        (solver.state.balancerRouter?.getMarketPrice as Mock).mockReturnValueOnce(
+        (solver.state.balancerRouter?.tryQuote as Mock).mockReturnValueOnce(
             Result.ok({
                 route: [],
                 amountOut: 20n * ONE18,
@@ -162,7 +162,7 @@ describe("Test trySimulateTrade", () => {
     });
 
     it("should return ok result if all steps succeed with gasCoveragePercentage 0", async () => {
-        (solver.state.balancerRouter?.getMarketPrice as Mock).mockReturnValueOnce(
+        (solver.state.balancerRouter?.tryQuote as Mock).mockReturnValueOnce(
             Result.ok({
                 route: ["route"],
                 amountOut: 20n * ONE18,
@@ -228,7 +228,7 @@ describe("Test trySimulateTrade", () => {
     });
 
     it("should return ok result if all steps succeed with gasCoveragePercentage not 0", async () => {
-        (solver.state.balancerRouter?.getMarketPrice as Mock).mockReturnValueOnce(
+        (solver.state.balancerRouter?.tryQuote as Mock).mockReturnValueOnce(
             Result.ok({
                 route: [],
                 amountOut: 20n * ONE18,
@@ -278,7 +278,7 @@ describe("Test trySimulateTrade", () => {
     });
 
     it("should return NoOpportunity if final dryrun fails when gasCoveragePercentage is not 0", async () => {
-        (solver.state.balancerRouter?.getMarketPrice as Mock).mockReturnValueOnce(
+        (solver.state.balancerRouter?.tryQuote as Mock).mockReturnValueOnce(
             Result.ok({
                 route: [],
                 amountOut: 20n * ONE18,

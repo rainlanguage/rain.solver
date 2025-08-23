@@ -1062,7 +1062,7 @@ for (let i = 0; i < testData.length; i++) {
                 const testSpan = tracer.startSpan("test-clearing");
 
                 // set as the route for POC
-                balancerHelpers.BalancerRouter.prototype.getMarketPrice = async function (params) {
+                balancerHelpers.BalancerRouter.prototype.tryQuote = async function (params) {
                     return Result.ok({
                         route: [
                             {

@@ -57,7 +57,7 @@ export async function trySimulateTrade(
     const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
     spanAttributes["amountIn"] = formatUnits(maximumInputFixed, 18);
 
-    const routeResult = await this.state.balancerRouter!.getMarketPrice(
+    const quoteResult = await this.state.balancerRouter!.tryQuote(
         {
             tokenIn: fromToken,
             tokenOut: toToken,
@@ -65,16 +65,16 @@ export async function trySimulateTrade(
         },
         signer,
     );
-    if (routeResult.isErr()) {
-        spanAttributes["error"] = routeResult.error.message;
+    if (quoteResult.isErr()) {
+        spanAttributes["error"] = quoteResult.error.message;
 
         let reason = BalancerRouterSimulationHaltReason.NoOpportunity;
-        if (routeResult.error.type === BalancerRouterErrorType.NoRouteFound) {
+        if (quoteResult.error.type === BalancerRouterErrorType.NoRouteFound) {
             spanAttributes["route"] = "no-way";
             reason = BalancerRouterSimulationHaltReason.NoRoute;
-        } else if (routeResult.error.type === BalancerRouterErrorType.FetchFailed) {
+        } else if (quoteResult.error.type === BalancerRouterErrorType.FetchFailed) {
             reason = BalancerRouterSimulationHaltReason.FetchFailed;
-        } else if (routeResult.error.type === BalancerRouterErrorType.SwapQueryFailed) {
+        } else if (quoteResult.error.type === BalancerRouterErrorType.SwapQueryFailed) {
             reason = BalancerRouterSimulationHaltReason.SwapQueryFailed;
         } else {
             reason = BalancerRouterSimulationHaltReason.NoOpportunity;
@@ -87,16 +87,16 @@ export async function trySimulateTrade(
         });
     }
 
-    const route = routeResult.value;
-    const amountOut = route.amountOut;
-    const price = route.price;
+    const quote = quoteResult.value;
+    const amountOut = quote.amountOut;
+    const price = quote.price;
 
     spanAttributes["amountOut"] = formatUnits(amountOut, toToken.decimals);
     spanAttributes["marketPrice"] = formatUnits(price, 18);
 
     const routeVisual: string[] = [];
     try {
-        BalancerRouter.visualizeRoute(route.route, this.state.watchedTokens).forEach((v) => {
+        BalancerRouter.visualizeRoute(quote.route, this.state.watchedTokens).forEach((v) => {
             routeVisual.push(v);
         });
     } catch {
@@ -126,7 +126,7 @@ export async function trySimulateTrade(
         orders,
         data: encodeAbiParameters(
             [{ type: "address" }, ABI.BalancerBatchRouter.Structs.SwapPathExactAmountIn],
-            [balancerRouter, route.route[0]],
+            [balancerRouter, quote.route[0]],
         ),
     };
 

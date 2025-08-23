@@ -32,7 +32,7 @@ describe("test BalancerRouter", () => {
                 expect(router).toBeInstanceOf(BalancerRouter);
                 expect(router.chainId).toBe(chainId);
                 expect(router.protocolVersion).toBe(3);
-                expect(router.routeTime).toBe(60_000);
+                expect(router.routeTime).toBe(300_000);
                 expect(router.routerAddress).toBeDefined();
                 expect(router.balancerApi).toBeDefined();
                 expect(router.cache).toBeInstanceOf(Map);
@@ -427,6 +427,7 @@ describe("test BalancerRouter", () => {
                         ],
                     },
                 ],
+                altRoutes: [],
                 validUntil: Date.now() - 1000, // Expired 1 second ago
                 price: 2000000000000000000000n,
             };
@@ -525,7 +526,7 @@ describe("test BalancerRouter", () => {
         });
     });
 
-    describe("test getMarketPrice method", () => {
+    describe("test tryQuote method", () => {
         let router: BalancerRouter;
         let mockBalancerApi: { sorSwapPaths: { fetchSorSwapPaths: Mock } };
         let mockSigner: any;
@@ -582,7 +583,7 @@ describe("test BalancerRouter", () => {
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
             mockSigner.simulateContract.mockResolvedValue(mockSimulationResult);
 
-            const result = await router.getMarketPrice(
+            const result = await router.tryQuote(
                 {
                     tokenIn: mockTokenIn,
                     tokenOut: mockTokenOut,
@@ -625,6 +626,7 @@ describe("test BalancerRouter", () => {
                         ],
                     },
                 ],
+                altRoutes: [],
                 validUntil: Date.now() + 60000,
                 price: 3000000000000000000000n,
                 onchainPrice,
@@ -634,7 +636,7 @@ describe("test BalancerRouter", () => {
             const cacheKey = `${mockTokenIn.address.toLowerCase()}/${mockTokenOut.address.toLowerCase()}`;
             router.cache.set(cacheKey, cachedRoute);
 
-            const result = await router.getMarketPrice(
+            const result = await router.tryQuote(
                 {
                     tokenIn: mockTokenIn,
                     tokenOut: mockTokenOut,
@@ -677,7 +679,7 @@ describe("test BalancerRouter", () => {
 
             const customAddress = "0x9999999999999999999999999999999999999999" as `0x${string}`;
 
-            const result = await router.getMarketPrice(
+            const result = await router.tryQuote(
                 {
                     tokenIn: mockTokenIn,
                     tokenOut: mockTokenOut,
@@ -715,7 +717,7 @@ describe("test BalancerRouter", () => {
                 result: [null, null, []], // Invalid simulation result
             });
 
-            const result = await router.getMarketPrice(
+            const result = await router.tryQuote(
                 {
                     tokenIn: mockTokenIn,
                     tokenOut: mockTokenOut,
@@ -736,7 +738,7 @@ describe("test BalancerRouter", () => {
             const mockError = new Error("Network error");
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockRejectedValue(mockError);
 
-            const result = await router.getMarketPrice(
+            const result = await router.tryQuote(
                 {
                     tokenIn: mockTokenIn,
                     tokenOut: mockTokenOut,
@@ -770,7 +772,7 @@ describe("test BalancerRouter", () => {
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
             mockSigner.simulateContract.mockRejectedValue(simulationError);
 
-            const result = await router.getMarketPrice(
+            const result = await router.tryQuote(
                 {
                     tokenIn: mockTokenIn,
                     tokenOut: mockTokenOut,
@@ -810,7 +812,7 @@ describe("test BalancerRouter", () => {
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
             mockSigner.simulateContract.mockResolvedValue(mockSimulationResult);
 
-            const result = await router.getMarketPrice(
+            const result = await router.tryQuote(
                 {
                     tokenIn: mockTokenIn,
                     tokenOut: mockTokenOut,

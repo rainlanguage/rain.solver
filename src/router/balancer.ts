@@ -42,8 +42,8 @@ export type FetchBalancerRoutesParams = {
     swapAmount: bigint;
 };
 
-/** Represents the parameters for getting the best Balancer route */
-export type GetBestBalancerRouteParams = {
+/** Represents the parameters for quoting Balancer */
+export type BalancerQuoteParams = {
     tokenIn: TokenDetails | SushiToken;
     tokenOut: TokenDetails | SushiToken;
     swapAmount: bigint;
@@ -54,6 +54,8 @@ export type GetBestBalancerRouteParams = {
 export type BalancerCachedRoute = {
     /** The route paths details used for getting calldata */
     route: BalancerRouterPath[];
+    /** The alternative route paths details */
+    altRoutes: BalancerRouterPath[];
     /** The timestamp until which the route is valid */
     validUntil: number;
     /** The price of the route from balancer API */
@@ -83,10 +85,10 @@ export enum BalancerRouterErrorType {
  *
  * @example
  * ```typescript
- * // with cause
+ * // without cause
  * throw new BalancerRouterError("msg", BalancerRouterErrorType);
  *
- * // without cause
+ * // with cause
  * throw new BalancerRouterError("msg", BalancerRouterErrorType, originalError);
  * ```
  */
@@ -112,7 +114,7 @@ export class BalancerRouter {
     /** The protocol version of the balancer */
     readonly protocolVersion = 3 as const;
     /** The duration for which a route is considered valid in cache */
-    readonly routeTime = 60_000 as const; // 1 minute in milliseconds
+    readonly routeTime = 300_000 as const; // 5 minutes in milliseconds
     /** The Balancer API instance */
     readonly balancerApi: BalancerApi;
     /** The cache for storing previously fetched routes that are valid until specified timestamp */
@@ -146,12 +148,12 @@ export class BalancerRouter {
     }
 
     /**
-     * Gets the balancer market price for a token pair by simulating balancer swap query
-     * @param params The parameters for getting the best Balancer route and market price
+     * Gets the balancer market quote for a token pair by simulating balancer swap query
+     * @param params The parameters for getting the best Balancer market quote
      * @param signer The signer instance
      */
-    async getMarketPrice(
-        params: GetBestBalancerRouteParams,
+    async tryQuote(
+        params: BalancerQuoteParams,
         signer: PublicClient | RainSolverSigner,
         address: `0x${string}` = `0x${"1".repeat(40)}`,
     ): Promise<
@@ -172,12 +174,38 @@ export class BalancerRouter {
                     amountOut: route.value.route[0].minAmountOut,
                 });
             }
-            const result = await signer.simulateContract({
-                address: this.routerAddress,
-                abi: ABI.BalancerBatchRouter.Primary.BatchRouterV3,
-                functionName: "querySwapExactIn",
-                args: [route.value.route, signer.account?.address ?? address, "0x"],
-            });
+
+            // fallback to alt routes if the best one fails
+            const { result, pickedRoute } = await (async () => {
+                let err: any = undefined;
+                const allRoutes = [...route.value.route, ...route.value.altRoutes];
+                for (let i = 0; i < allRoutes.length + 1; i++) {
+                    try {
+                        const result = await signer.simulateContract({
+                            address: this.routerAddress,
+                            abi: ABI.BalancerBatchRouter.Primary.BatchRouterV3,
+                            functionName: "querySwapExactIn",
+                            args: [[allRoutes[i]], signer.account?.address ?? address, "0x"],
+                        });
+                        if (i > 0) {
+                            // swap the routes so that next time the working one is tried first
+                            [route.value.route, route.value.altRoutes[i - 1]] = [
+                                [allRoutes[i]],
+                                route.value.route[0],
+                            ];
+                            // move the failed alt route to the end of alt routes
+                            route.value.altRoutes.push(...route.value.altRoutes.splice(i - 1, 1));
+                        }
+                        return {
+                            result,
+                            pickedRoute: allRoutes[i],
+                        };
+                    } catch (error) {
+                        if (!err) err = error;
+                    }
+                }
+                throw err;
+            })();
 
             const [price, amountOut] = (() => {
                 try {
@@ -192,7 +220,7 @@ export class BalancerRouter {
                 }
             })();
 
-            return Result.ok({ price, route: route.value.route, amountOut });
+            return Result.ok({ price, route: [pickedRoute], amountOut });
         } catch (error: any) {
             return Result.err(
                 new BalancerRouterError(
@@ -209,7 +237,7 @@ export class BalancerRouter {
      * @param params The parameters for getting the best Balancer route
      */
     async getBestRoute(
-        params: GetBestBalancerRouteParams,
+        params: BalancerQuoteParams,
     ): Promise<Result<BalancerCachedRoute, BalancerRouterError>> {
         const key = `${params.tokenIn.address.toLowerCase()}/${params.tokenOut.address.toLowerCase()}`;
 
@@ -241,6 +269,11 @@ export class BalancerRouter {
                     minAmountOut,
                 },
             ],
+            altRoutes: balancerSortedRoutes.value.slice(1).map((r) => ({
+                ...r,
+                exactAmountIn: params.swapAmount,
+                minAmountOut,
+            })),
             validUntil: Date.now() + this.routeTime,
             price,
         };
