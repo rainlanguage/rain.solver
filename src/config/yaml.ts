@@ -36,6 +36,8 @@ export type AppOptions = {
     dispair: string;
     /** Generic arb contract address */
     genericArbAddress?: string;
+    /** Balancer arb contract address */
+    balancerArbAddress?: string;
     /** List of subgraph urls */
     subgraph: string[];
     /** Option to maximize maxIORatio, default is true */
@@ -139,6 +141,11 @@ export namespace AppOptions {
                 genericArbAddress: Validator.resolveAddress(
                     input.genericArbAddress,
                     "genericArbAddress",
+                    true,
+                ),
+                balancerArbAddress: Validator.resolveAddress(
+                    input.balancerArbAddress,
+                    "balancerArbAddress",
                     true,
                 ),
                 liquidityProviders: Validator.resolveLiquidityProviders(input.liquidityProviders),

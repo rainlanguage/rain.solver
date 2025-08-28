@@ -160,7 +160,7 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
         const hash = await signer.writeContract({
             address: details.orderbook as `0x${string}`,
             abi: [ABI.Orderbook.Primary.Orderbook[4]],
-            functionName: "deposite2",
+            functionName: "deposit2",
             args: [vaultToken.address, BigInt(details.vaultId), topupAmount, []],
         });
         const receipt = await signer.waitForTransactionReceipt({

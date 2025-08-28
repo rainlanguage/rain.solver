@@ -34,6 +34,17 @@ exports.arbDeploy = async (orderbookAddress, rpAddress) => {
     });
 };
 
+// exports.balancerArbDeploy = async (orderbookAddress, rpAddress) => {
+//     return await this.basicDeploy(BalancerRouterOrderBookV4ArbOrderTakerArtifact, {
+//         orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
+//         task: {
+//             evaluable: ABI.Orderbook.DefaultArbEvaluable,
+//             signedContext: [],
+//         },
+//         implementationData: ethers.utils.defaultAbiCoder.encode(["address"], [rpAddress]),
+//     });
+// };
+
 exports.genericArbrbDeploy = async (orderbookAddress) => {
     return await this.basicDeploy(GenericPoolOrderBookV5ArbOrderTakerArtifact, {
         orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,

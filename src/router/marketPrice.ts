@@ -1,7 +1,7 @@
+import { ONE18 } from "../math";
 import { SharedState } from "../state";
 import { Token } from "sushi/currency";
 import { ChainId, Router } from "sushi";
-import { scaleTo18, ONE18 } from "../math";
 import { PoolBlackList, RPoolFilter } from ".";
 import { formatUnits, parseUnits, maxUint256 } from "viem";
 
@@ -16,13 +16,10 @@ export async function getMarketPrice(
     fromToken: Token,
     toToken: Token,
     blockNumber?: bigint,
-): Promise<{ price: string; amountOut: string } | undefined> {
+): Promise<{ price: string } | undefined> {
     // return early if from and to tokens are the same
     if (fromToken.address.toLowerCase() === toToken.address.toLowerCase()) {
-        return {
-            price: "1",
-            amountOut: "1",
-        };
+        return { price: "1" };
     }
 
     const amountIn = parseUnits("1", fromToken.decimals);
@@ -42,13 +39,22 @@ export async function getMarketPrice(
             RPoolFilter,
         );
         if (route.status == "NoWay") {
+            // try balancer
+            if (this.balancerRouter) {
+                const balancerRouteResult = await this.balancerRouter.getBestRoute({
+                    tokenIn: fromToken,
+                    tokenOut: toToken,
+                    swapAmount: amountIn,
+                });
+                if (balancerRouteResult.isOk()) {
+                    const price =
+                        balancerRouteResult.value.onchainPrice ?? balancerRouteResult.value.price;
+                    return { price: formatUnits(price, 18) };
+                }
+            }
             return;
         } else {
-            const price = scaleTo18(route.amountOutBI, toToken.decimals);
-            return {
-                price: formatUnits(price, 18),
-                amountOut: formatUnits(route.amountOutBI, toToken.decimals),
-            };
+            return { price: formatUnits(route.amountOutBI, toToken.decimals) };
         }
     } catch (error) {
         return;

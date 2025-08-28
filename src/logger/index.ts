@@ -188,7 +188,7 @@ export class PreAssembledSpan {
     /** Initial span options */
     options?: Omit<SpanOptions, "startTime">;
     /** A manually specified start time for this span */
-    startTime?: TimeInput = Date.now();
+    startTime?: TimeInput;
     /** A manually specified end time for this span */
     endTime?: TimeInput;
     /** The status of this span */
@@ -219,7 +219,11 @@ export class PreAssembledSpan {
      * @param startTime - (optional) Start time of this span, defaults to now
      * @param options - (optional) Initial options
      */
-    constructor(name: string, startTime?: TimeInput, options?: Omit<SpanOptions, "startTime">) {
+    constructor(
+        name: string,
+        startTime: TimeInput = performance.now(),
+        options?: Omit<SpanOptions, "startTime">,
+    ) {
         this.name = name;
         this.options = options;
         this.startTime = startTime;
@@ -283,7 +287,7 @@ export class PreAssembledSpan {
      * Marks the end of Span execution by setting its end time
      * @param endTime - (optional) the span's end time to set, defaults to now
      */
-    end(endTime: TimeInput = Date.now()): this {
+    end(endTime: TimeInput = performance.now()): this {
         this.endTime = endTime;
         return this;
     }

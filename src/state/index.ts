@@ -13,6 +13,7 @@ import { createPublicClient, PublicClient } from "viem";
 import { LiquidityProviders, RainDataFetcher } from "sushi";
 import { getMarketPrice, processLiquidityProviders } from "../router";
 import { rainSolverTransport, RainSolverTransportConfig } from "../rpc";
+import { BalancerRouter } from "../router/balancer";
 
 /**
  * Rain dispair contracts, deployer, store and interpreter
@@ -65,6 +66,8 @@ export type SharedStateConfig = {
     rainSolverTransportConfig?: RainSolverTransportConfig;
     /** RainDataFetcher instance */
     dataFetcher: RainDataFetcher;
+    /** Balancer router instance */
+    balancerRouter?: BalancerRouter;
 };
 export namespace SharedStateConfig {
     export async function tryFromAppOptions(options: AppOptions): Promise<SharedStateConfig> {
@@ -110,6 +113,13 @@ export namespace SharedStateConfig {
             client,
             liquidityProviders,
         );
+
+        const balancerRouter = (() => {
+            const res = BalancerRouter.init(chainId);
+            if (res.isOk()) return res.value;
+            else return undefined;
+        })();
+
         const config: SharedStateConfig = {
             client,
             rpcState,
@@ -128,6 +138,7 @@ export namespace SharedStateConfig {
                 store,
                 deployer: options.dispair,
             },
+            balancerRouter,
         };
 
         // try to get init gas price
@@ -177,6 +188,8 @@ export class SharedState {
     readonly transactionGas?: string;
     /** RainSolver transport configuration */
     readonly rainSolverTransportConfig?: RainSolverTransportConfig;
+    /** Balancer router instance */
+    readonly balancerRouter?: BalancerRouter;
 
     /** Current gas price of the operating chain */
     gasPrice = 0n;
@@ -204,6 +217,7 @@ export class SharedState {
         this.rpc = config.rpcState;
         this.writeRpc = config.writeRpcState;
         this.dataFetcher = config.dataFetcher;
+        this.balancerRouter = config.balancerRouter;
         if (typeof config.gasPriceMultiplier === "number") {
             this.gasPriceMultiplier = config.gasPriceMultiplier;
         }

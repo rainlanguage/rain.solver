@@ -41,6 +41,7 @@
         "vitest": "npm run vitest:logger && vitest run --exclude ./src/logger/index.test.ts"
     },
     "dependencies": {
+        "@balancer/sdk": "^4.5.2",
         "@opentelemetry/api": "^1.8.0",
         "@opentelemetry/core": "^1.22.0",
         "@opentelemetry/exporter-trace-otlp-grpc": "^0.49.1",

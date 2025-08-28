@@ -152,6 +152,7 @@ export async function trySimulateTrade(
     }
 
     let { estimation, estimatedGasCost } = initDryrunResult.value;
+    delete rawtx.gas; // delete gas to let signer estimate gas again with updated tx data
     // include dryrun initial gas estimation in logs
     Object.assign(spanAttributes, initDryrunResult.value.spanAttributes);
     // include dryrun headroom gas estimation in otel logs

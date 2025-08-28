@@ -168,6 +168,17 @@ export class WalletManager {
                 }
 
                 // fund the wallet
+                const balance = await this.state.client.getBalance({
+                    address: wallet as `0x${string}`,
+                });
+                if (balance >= amount) {
+                    report.setStatus({
+                        code: SpanStatusCode.OK,
+                        message: "Wallet already has enough balance",
+                    });
+                    report.end();
+                    return report;
+                }
                 const hash = await this.mainSigner.sendTx({
                     to: wallet as `0x${string}`,
                     value: amount,

@@ -19,6 +19,7 @@ writeRpc:
     - url: http://write-rpc.example.com
 subgraph: ["http://subgraph.example.com"]
 arbAddress: "0x1111111111111111111111111111111111111111"
+balancerArbAddress: "0x3333333333333333333333333333333333333333"
 dispair: "0x2222222222222222222222222222222222222222"
 liquidityProviders: 
  - lp1
@@ -72,6 +73,7 @@ sgFilter:
             writeRpc: [{ url: "http://write-rpc.example.com" }],
             subgraph: ["http://subgraph.example.com"],
             arbAddress: "0x1111111111111111111111111111111111111111",
+            balancerArbAddress: "0x3333333333333333333333333333333333333333",
             dispair: "0x2222222222222222222222222222222222222222",
             genericArbAddress: undefined,
             liquidityProviders: ["lp1", "lp2"],

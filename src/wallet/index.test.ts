@@ -18,6 +18,7 @@ vi.mock("../signer", () => ({
         create: vi.fn().mockImplementation((wallet) => ({
             account: wallet,
             getSelfBalance: vi.fn(),
+            getBalance: vi.fn().mockResolvedValue(0n),
             sendTx: vi.fn(),
             waitForTransactionReceipt: vi.fn(),
         })),
@@ -54,6 +55,7 @@ describe("Test WalletManager", () => {
             },
             client: {
                 multicall: vi.fn(),
+                getBalance: vi.fn().mockResolvedValue(0n),
                 chain: { contracts: { multicall3: { address: "0xmulticall" } } },
             },
         } as any);
@@ -76,6 +78,7 @@ describe("Test WalletManager", () => {
             },
             client: {
                 multicall: vi.fn(),
+                getBalance: vi.fn().mockResolvedValue(0n),
                 chain: { contracts: { multicall3: { address: "0xmulticall" } } },
             },
         } as any);

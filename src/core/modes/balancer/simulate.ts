@@ -1,34 +1,39 @@
-import { RainSolver } from "../..";
 import { dryrun } from "../dryrun";
+import { RainSolver } from "../..";
 import { Pair } from "../../../order";
-import { estimateProfit } from "./utils";
+import { Token } from "sushi/currency";
+import { scaleFrom18 } from "../../../math";
+import { estimateProfit } from "../rp/utils";
+import { Result, ABI } from "../../../common";
 import { Attributes } from "@opentelemetry/api";
-import { ABI, Result, toFloat } from "../../../common";
 import { extendObjectWithHeader } from "../../../logger";
 import { RainSolverSigner, RawTransaction } from "../../../signer";
+import { BalancerRouter, BalancerRouterErrorType } from "../../../router/balancer";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
-import { ONE18, minFloat, maxFloat, scaleFrom18 } from "../../../math";
-import { encodeAbiParameters, encodeFunctionData, formatUnits, parseUnits } from "viem";
-import {
-    TaskType,
-    TradeType,
-    FailedSimulation,
-    SimulationResult,
-    TakeOrdersConfigType,
-} from "../../types";
+import { TakeOrdersConfigType, SimulationResult, TradeType, FailedSimulation } from "../../types";
+import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
 
-/** Arguments for simulating inter-orderbook trade */
-export type SimulateInterOrderbookTradeArgs = {
+/** Specifies the reason that balancer trade simulation failed */
+export enum BalancerRouterSimulationHaltReason {
+    NoOpportunity = 1,
+    NoRoute = 2,
+    OrderRatioGreaterThanMarketPrice = 3,
+    FetchFailed = 4,
+    SwapQueryFailed = 5,
+}
+
+/** Arguments for simulating balancer protocol trade */
+export type SimulateBalancerTradeArgs = {
     /** The bundled order details including tokens, decimals, and take orders */
     orderDetails: Pair;
-    /** The counterparty order to trade against */
-    counterpartyOrderDetails: Pair;
     /** The RainSolverSigner instance used for signing transactions */
     signer: RainSolverSigner;
-    /** The input token to ETH price (in 18 decimals) */
-    inputToEthPrice: string;
-    /** The output token to ETH price (in 18 decimals) */
-    outputToEthPrice: string;
+    /** The current ETH price (in 18 decimals) */
+    ethPrice: string;
+    /** The token to be received in the swap */
+    toToken: Token;
+    /** The token to be sold in the swap */
+    fromToken: Token;
     /** The maximum input amount (in 18 decimals) */
     maximumInputFixed: bigint;
     /** The current block number for context */
@@ -36,132 +41,126 @@ export type SimulateInterOrderbookTradeArgs = {
 };
 
 /**
- * Attempts to simulate a inter-orderbook trade against the given counterparty order
+ * Attempts to find a profitable opportunity (opp) for a given order by simulating a trade against balancer protocol.
  * @param this - The RainSolver instance context
  * @param args - The arguments for simulating the trade
  */
 export async function trySimulateTrade(
     this: RainSolver,
-    args: SimulateInterOrderbookTradeArgs,
+    args: SimulateBalancerTradeArgs,
 ): Promise<SimulationResult> {
-    const {
-        orderDetails,
-        counterpartyOrderDetails,
-        signer,
-        maximumInputFixed,
-        blockNumber,
-        inputToEthPrice,
-        outputToEthPrice,
-    } = args;
-    const spanAttributes: Attributes = {};
+    const { orderDetails, signer, ethPrice, toToken, fromToken, maximumInputFixed, blockNumber } =
+        args;
     const gasPrice = this.state.gasPrice;
-
-    spanAttributes["against"] = counterpartyOrderDetails.takeOrder.id;
-    spanAttributes["inputToEthPrice"] = inputToEthPrice;
-    spanAttributes["outputToEthPrice"] = outputToEthPrice;
-    spanAttributes["counterpartyOrderQuote"] = JSON.stringify({
-        maxOutput: formatUnits(counterpartyOrderDetails.takeOrder.quote!.maxOutput, 18),
-        ratio: formatUnits(counterpartyOrderDetails.takeOrder.quote!.ratio, 18),
-    });
+    const spanAttributes: Attributes = {};
 
     const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
-    spanAttributes["maxInput"] = maximumInput.toString();
+    spanAttributes["amountIn"] = formatUnits(maximumInputFixed, 18);
 
-    let opposingMaxInput: `0x${string}` = maxFloat(orderDetails.buyTokenDecimals);
-    let opposingMaxIORatio: `0x${string}` = maxFloat(18);
-    if (orderDetails.takeOrder.quote!.ratio !== 0n) {
-        const maxInputResult = toFloat(
-            scaleFrom18(
-                (maximumInputFixed * orderDetails.takeOrder.quote!.ratio) / ONE18,
-                orderDetails.buyTokenDecimals,
-            ),
-            orderDetails.buyTokenDecimals,
-        );
-        if (maxInputResult.isErr()) {
-            spanAttributes["error"] = maxInputResult.error.readableMsg;
-            const result: FailedSimulation = {
-                spanAttributes,
-                type: TradeType.InterOrderbook,
-                noneNodeError: maxInputResult.error.readableMsg,
-            };
-            return Result.err(result);
-        }
-        opposingMaxInput = maxInputResult.value;
+    const quoteResult = await this.state.balancerRouter!.tryQuote(
+        {
+            tokenIn: fromToken,
+            tokenOut: toToken,
+            swapAmount: maximumInput,
+        },
+        signer,
+    );
+    if (quoteResult.isErr()) {
+        spanAttributes["error"] = quoteResult.error.message;
 
-        const maxIoRatioResult = toFloat(ONE18 ** 2n / orderDetails.takeOrder.quote!.ratio, 18);
-        if (maxIoRatioResult.isErr()) {
-            spanAttributes["error"] = maxIoRatioResult.error.readableMsg;
-            const result: FailedSimulation = {
-                spanAttributes,
-                type: TradeType.InterOrderbook,
-                noneNodeError: maxIoRatioResult.error.readableMsg,
-            };
-            return Result.err(result);
+        let reason = BalancerRouterSimulationHaltReason.NoOpportunity;
+        if (quoteResult.error.type === BalancerRouterErrorType.NoRouteFound) {
+            spanAttributes["route"] = "no-way";
+            reason = BalancerRouterSimulationHaltReason.NoRoute;
+        } else if (quoteResult.error.type === BalancerRouterErrorType.FetchFailed) {
+            reason = BalancerRouterSimulationHaltReason.FetchFailed;
+        } else if (quoteResult.error.type === BalancerRouterErrorType.SwapQueryFailed) {
+            reason = BalancerRouterSimulationHaltReason.SwapQueryFailed;
+        } else {
+            reason = BalancerRouterSimulationHaltReason.NoOpportunity;
         }
-        opposingMaxIORatio = maxIoRatioResult.value;
+
+        return Result.err({
+            type: TradeType.Balancer,
+            spanAttributes,
+            reason,
+        });
     }
 
-    // encode takeOrders3() and build tx fields
-    const encodedFN = encodeFunctionData({
-        abi: ABI.Orderbook.Primary.Orderbook,
-        functionName: "takeOrders3",
-        args: [
-            {
-                minimumInput: minFloat(orderDetails.sellTokenDecimals),
-                maximumInput: opposingMaxInput, // main maxout * main ratio
-                maximumIORatio: opposingMaxIORatio, // inverse of main ratio (1 / ratio)
-                orders: [counterpartyOrderDetails.takeOrder.struct], // opposing orders
-                data: "0x",
-            },
-        ],
-    });
+    const quote = quoteResult.value;
+    const amountOut = quote.amountOut;
+    const price = quote.price;
+
+    spanAttributes["amountOut"] = formatUnits(amountOut, toToken.decimals);
+    spanAttributes["marketPrice"] = formatUnits(price, 18);
+
+    const routeVisual: string[] = [];
+    try {
+        BalancerRouter.visualizeRoute(quote.route, this.state.watchedTokens).forEach((v) => {
+            routeVisual.push(v);
+        });
+    } catch {
+        /**/
+    }
+    spanAttributes["route"] = routeVisual;
+
+    // exit early if market price is lower than order quote ratio
+    if (price < orderDetails.takeOrder.quote!.ratio) {
+        spanAttributes["error"] = "Order's ratio greater than market price";
+        const result = {
+            type: TradeType.Balancer,
+            spanAttributes,
+            reason: BalancerRouterSimulationHaltReason.OrderRatioGreaterThanMarketPrice,
+        };
+        return Result.err(result);
+    }
+
+    spanAttributes["oppBlockNumber"] = Number(blockNumber);
+
+    const balancerRouter = this.state.balancerRouter!.routerAddress;
+    const orders = [orderDetails.takeOrder.struct];
     const takeOrdersConfigStruct: TakeOrdersConfigType = {
-        minimumInput: minFloat(orderDetails.sellTokenDecimals),
-        maximumInput: maxFloat(orderDetails.sellTokenDecimals),
-        maximumIORatio: maxFloat(18),
-        orders: [orderDetails.takeOrder.struct],
+        minimumInput: 1n,
+        maximumInput: maxUint256,
+        maximumIORatio: this.appOptions.maxRatio ? maxUint256 : price,
+        orders,
         data: encodeAbiParameters(
-            [{ type: "address" }, { type: "address" }, { type: "bytes" }],
-            [
-                counterpartyOrderDetails.orderbook as `0x${string}`,
-                counterpartyOrderDetails.orderbook as `0x${string}`,
-                encodedFN,
-            ],
+            [{ type: "address" }, ABI.BalancerBatchRouter.Structs.SwapPathExactAmountIn],
+            [balancerRouter, quote.route[0]],
         ),
     };
-    const task: TaskType = {
+
+    const task = {
         evaluable: {
             interpreter: this.state.dispair.interpreter as `0x${string}`,
             store: this.state.dispair.store as `0x${string}`,
-            bytecode:
-                this.appOptions.gasCoveragePercentage === "0"
-                    ? "0x"
-                    : ((await parseRainlang(
-                          await getBountyEnsureRainlang(
-                              parseUnits(inputToEthPrice, 18),
-                              parseUnits(outputToEthPrice, 18),
-                              0n,
-                              signer.account.address,
-                          ),
-                          this.state.client,
-                          this.state.dispair,
-                      )) as `0x${string}`),
+            bytecode: (this.appOptions.gasCoveragePercentage === "0"
+                ? "0x"
+                : await parseRainlang(
+                      await getBountyEnsureRainlang(
+                          parseUnits(ethPrice, 18),
+                          0n,
+                          0n,
+                          signer.account.address,
+                      ),
+                      this.state.client,
+                      this.state.dispair,
+                  )) as `0x${string}`,
         },
         signedContext: [],
     };
     const rawtx: RawTransaction = {
         data: encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb4",
+            functionName: "arb3",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         }),
-        to: this.appOptions.genericArbAddress as `0x${string}`,
+        to: this.appOptions.balancerArbAddress as `0x${string}`,
         gasPrice,
     };
 
     // initial dryrun with 0 minimum sender output to get initial
     // pass and tx gas cost to calc minimum sender output
-    spanAttributes["oppBlockNumber"] = Number(blockNumber);
     const initDryrunResult = await dryrun(
         signer,
         rawtx,
@@ -171,7 +170,8 @@ export async function trySimulateTrade(
     if (initDryrunResult.isErr()) {
         spanAttributes["stage"] = 1;
         Object.assign(initDryrunResult.error.spanAttributes, spanAttributes);
-        (initDryrunResult.error as FailedSimulation).type = TradeType.InterOrderbook;
+        initDryrunResult.error.reason = BalancerRouterSimulationHaltReason.NoOpportunity;
+        (initDryrunResult.error as FailedSimulation).type = TradeType.Balancer;
         return Result.err(initDryrunResult.error as FailedSimulation);
     }
 
@@ -195,7 +195,7 @@ export async function trySimulateTrade(
         "gasEst.initial",
     );
 
-    // repeat the same process with heaedroom if gas
+    // repeat the same process with headroom if gas
     // coverage is not 0, 0 gas coverage means 0 minimum
     // sender output which is already called above
     if (this.appOptions.gasCoveragePercentage !== "0") {
@@ -206,8 +206,8 @@ export async function trySimulateTrade(
         ).toString();
         task.evaluable.bytecode = (await parseRainlang(
             await getBountyEnsureRainlang(
-                parseUnits(inputToEthPrice, 18),
-                parseUnits(outputToEthPrice, 18),
+                parseUnits(ethPrice, 18),
+                0n,
                 (estimatedGasCost * headroom) / 100n,
                 signer.account.address,
             ),
@@ -216,7 +216,7 @@ export async function trySimulateTrade(
         )) as `0x${string}`;
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb4",
+            functionName: "arb3",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
 
@@ -229,7 +229,8 @@ export async function trySimulateTrade(
         if (finalDryrunResult.isErr()) {
             spanAttributes["stage"] = 2;
             Object.assign(finalDryrunResult.error.spanAttributes, spanAttributes);
-            (finalDryrunResult.error as FailedSimulation).type = TradeType.InterOrderbook;
+            finalDryrunResult.error.reason = BalancerRouterSimulationHaltReason.NoOpportunity;
+            (finalDryrunResult.error as FailedSimulation).type = TradeType.Balancer;
             return Result.err(finalDryrunResult.error as FailedSimulation);
         }
 
@@ -254,8 +255,8 @@ export async function trySimulateTrade(
 
         task.evaluable.bytecode = (await parseRainlang(
             await getBountyEnsureRainlang(
-                parseUnits(inputToEthPrice, 18),
-                parseUnits(outputToEthPrice, 18),
+                parseUnits(ethPrice, 18),
+                0n,
                 (estimatedGasCost * BigInt(this.appOptions.gasCoveragePercentage)) / 100n,
                 signer.account.address,
             ),
@@ -264,7 +265,7 @@ export async function trySimulateTrade(
         )) as `0x${string}`;
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb4",
+            functionName: "arb3",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
         spanAttributes["gasEst.final.minBountyExpected"] = (
@@ -276,16 +277,15 @@ export async function trySimulateTrade(
     // if reached here, it means there was a success and found opp
     spanAttributes["foundOpp"] = true;
     const result = {
-        type: TradeType.InterOrderbook,
+        type: TradeType.Balancer,
         spanAttributes,
         rawtx,
         estimatedGasCost,
         oppBlockNumber: Number(blockNumber),
         estimatedProfit: estimateProfit(
             orderDetails,
-            parseUnits(inputToEthPrice, 18),
-            parseUnits(outputToEthPrice, 18),
-            counterpartyOrderDetails,
+            parseUnits(ethPrice, 18),
+            price,
             maximumInputFixed,
         )!,
     };

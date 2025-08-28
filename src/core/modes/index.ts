@@ -10,6 +10,7 @@ import { findBestRouteProcessorTrade } from "./rp";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
 import { extendObjectWithHeader } from "../../logger";
+import { findBestBalancerTrade } from "./balancer";
 
 /** Arguments for finding the best trade */
 export type FindBestTradeArgs = {
@@ -52,6 +53,19 @@ export async function findBestTrade(
             toToken,
             fromToken,
         ),
+        // include balancer trade only if balancer router is available for the operating chain
+        ...(this.state.balancerRouter && this.appOptions.balancerArbAddress
+            ? [
+                  findBestBalancerTrade.call(
+                      this,
+                      orderDetails,
+                      signer,
+                      inputToEthPrice,
+                      toToken,
+                      fromToken,
+                  ),
+              ]
+            : []),
         // include intra and inter orderbook trades types only if rpOnly is false
         ...(!this.appOptions.rpOnly
             ? [

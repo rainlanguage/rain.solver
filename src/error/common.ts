@@ -44,7 +44,14 @@ export async function errorSnapshot(
         if (err.details) message.push(`Details: ${err.details}`);
         if (typeof org.code === "number") message.push(`RPC Error Code: ${org.code}`);
         if (typeof org.message === "string") message.push(`RPC Error Msg: ${org.message}`);
-        if (message.some((v) => v.includes("unknown reason") || v.includes("execution reverted"))) {
+        if (
+            message.some(
+                (v) =>
+                    v.includes("unknown reason") ||
+                    v.includes("execution reverted") ||
+                    v.includes("custom error"),
+            )
+        ) {
             const { raw, decoded } = await parseRevertError(err);
             if (decoded) {
                 message.push("Error Name: " + decoded.name);

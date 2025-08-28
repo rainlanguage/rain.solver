@@ -114,7 +114,7 @@ describe("Test fundVault", () => {
         expect(mockSigner.writeContract as Mock).toHaveBeenCalledWith({
             address: vaultDetails.orderbook,
             abi: expect.any(Array),
-            functionName: "deposite2",
+            functionName: "deposit2",
             args: [
                 vaultDetails.token,
                 BigInt(vaultDetails.vaultId),
@@ -159,7 +159,7 @@ describe("Test fundVault", () => {
         expect(mockSigner.writeContract as Mock).toHaveBeenCalledWith({
             address: vaultDetails.orderbook,
             abi: expect.any(Array),
-            functionName: "deposite2",
+            functionName: "deposit2",
             args: [
                 vaultDetails.token,
                 BigInt(vaultDetails.vaultId),
