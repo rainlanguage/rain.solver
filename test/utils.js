@@ -8,6 +8,7 @@ const RainterpreterParserArtifact = require("./abis/RainterpreterParser.json");
 const RainterpreterExpressionDeployerArtifact = require("./abis/RainterpreterExpressionDeployer.json");
 const GenericPoolOrderBookV5ArbOrderTakerArtifact = require("./abis/GenericPoolOrderBookV5ArbOrderTaker.json");
 const RouteProcessorOrderBookV5ArbOrderTakerArtifact = require("./abis/RouteProcessorOrderBookV5ArbOrderTaker.json");
+const BalancerRouterOrderBookV5ArbOrderTakerArtifact = require("./abis/BalancerRouterOrderBookV5ArbOrderTaker.json");
 
 /**
  * Deploys a simple contracts that takes no arguments for deployment
@@ -34,16 +35,16 @@ exports.arbDeploy = async (orderbookAddress, rpAddress) => {
     });
 };
 
-// exports.balancerArbDeploy = async (orderbookAddress, rpAddress) => {
-//     return await this.basicDeploy(BalancerRouterOrderBookV4ArbOrderTakerArtifact, {
-//         orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
-//         task: {
-//             evaluable: ABI.Orderbook.DefaultArbEvaluable,
-//             signedContext: [],
-//         },
-//         implementationData: ethers.utils.defaultAbiCoder.encode(["address"], [rpAddress]),
-//     });
-// };
+exports.balancerArbDeploy = async (orderbookAddress, rpAddress) => {
+    return await this.basicDeploy(BalancerRouterOrderBookV5ArbOrderTakerArtifact, {
+        orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
+        task: {
+            evaluable: ABI.Orderbook.DefaultArbEvaluable,
+            signedContext: [],
+        },
+        implementationData: ethers.utils.defaultAbiCoder.encode(["address"], [rpAddress]),
+    });
+};
 
 exports.genericArbrbDeploy = async (orderbookAddress) => {
     return await this.basicDeploy(GenericPoolOrderBookV5ArbOrderTakerArtifact, {

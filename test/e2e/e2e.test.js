@@ -7,7 +7,7 @@ const { RpcState } = require("../../src/rpc");
 const mockServer = require("mockttp").getLocal();
 const { sendTx, waitUntilFree, estimateGasCost } = require("../../src/signer/actions");
 const { ethers, viem, network } = require("hardhat");
-const { ChainKey, RainDataFetcher } = require("sushi");
+const { ChainKey, RainDataFetcher, ChainId } = require("sushi");
 const { publicClientConfig } = require("sushi/config");
 const { Resource } = require("@opentelemetry/resources");
 const { getChainConfig } = require("../../src/state/chain");
@@ -37,6 +37,7 @@ const {
 } = require("../utils");
 const { SharedState } = require("../../src/state");
 const balancerHelpers = require("../../src/router/balancer");
+const { maxFloat } = require("../../src/math");
 
 // run tests on each network in the provided data
 for (let i = 0; i < testData.length; i++) {
@@ -234,8 +235,7 @@ for (let i = 0; i < testData.length; i++) {
 
                     // prebuild bytecode: "_ _: 0 max; :;"
                     const ratio = "0".repeat(64); // 0
-                    const maxOutput =
-                        "000000007fffffffffffffffffffffffffffffffffffffffffffffffffffffff"; // max
+                    const maxOutput = maxFloat(18).substring(2).padStart(64, "0"); // max
                     const bytecode = `0x0000000000000000000000000000000000000000000000000000000000000002${maxOutput}${ratio}0000000000000000000000000000000000000000000000000000000000000015020000000c02020002011000000110000100000000`;
                     const addOrderConfig = {
                         evaluable: {
@@ -519,8 +519,7 @@ for (let i = 0; i < testData.length; i++) {
 
                     // prebuild bytecode: "_ _: 0 max; :;"
                     const ratio = "0".repeat(64); // 0
-                    const maxOutput =
-                        "000000007fffffffffffffffffffffffffffffffffffffffffffffffffffffff"; // max
+                    const maxOutput = maxFloat(18).substring(2).padStart(64, "0"); // max
                     const bytecode = `0x0000000000000000000000000000000000000000000000000000000000000002${maxOutput}${ratio}0000000000000000000000000000000000000000000000000000000000000015020000000c02020002011000000110000100000000`;
                     const addOrderConfig1 = {
                         evaluable: {
@@ -885,8 +884,7 @@ for (let i = 0; i < testData.length; i++) {
                     const ratio1 = toFloat(500000000000000000n, 18)
                         .value.substring(2)
                         .padStart(64, "0"); // 0.5
-                    const maxOutput1 =
-                        "000000007fffffffffffffffffffffffffffffffffffffffffffffffffffffff"; // max
+                    const maxOutput1 = maxFloat(18).substring(2).padStart(64, "0"); // max
                     const bytecode1 = `0x0000000000000000000000000000000000000000000000000000000000000002${maxOutput1}${ratio1}0000000000000000000000000000000000000000000000000000000000000015020000000c02020002011000000110000100000000`;
                     const addOrderConfig1 = {
                         evaluable: {
@@ -955,8 +953,7 @@ for (let i = 0; i < testData.length; i++) {
                     const ratio2 = toFloat(1000000000000000000n, 18)
                         .value.substring(2)
                         .padStart(64, "0"); // 1
-                    const maxOutput2 =
-                        "000000007fffffffffffffffffffffffffffffffffffffffffffffffffffffff"; // max
+                    const maxOutput2 = maxFloat(18).substring(2).padStart(64, "0"); // max
                     const bytecode2 = `0x0000000000000000000000000000000000000000000000000000000000000002${maxOutput2}${ratio2}0000000000000000000000000000000000000000000000000000000000000015020000000c02020002011000000110000100000000`;
                     const addOrderConfig2 = {
                         evaluable: {
@@ -1016,7 +1013,8 @@ for (let i = 0; i < testData.length; i++) {
                 config.arbAddress = arb.address;
                 config.orderbookAddress = orderbook.address;
                 config.testBlockNumber = BigInt(blockNumber);
-                config.gasCoveragePercentage = "1";
+                config.gasCoveragePercentage =
+                    chainId === ChainId.BASE || chainId == ChainId.MATCHAIN ? "0" : "1";
                 config.viemClient = viemClient;
                 config.dataFetcher = dataFetcher;
                 config.accounts = [];
@@ -1139,7 +1137,7 @@ for (let i = 0; i < testData.length; i++) {
                 testSpan.end();
             });
 
-            it(`should clear orders successfully using balancer router v${rpVersion}`, async function () {
+            it("should clear orders successfully using balancer router", async function () {
                 config.rpc = [rpc];
                 const viemClient = await viem.getPublicClient();
                 state.client = viemClient;
@@ -1279,16 +1277,16 @@ for (let i = 0; i < testData.length; i++) {
                         .approve(orderbook.address, depositConfigStruct.amount);
                     await orderbook
                         .connect(owners[i])
-                        .deposit2(
+                        .deposit3(
                             depositConfigStruct.token,
                             depositConfigStruct.vaultId,
-                            depositConfigStruct.amount,
+                            toFloat(depositConfigStruct.amount, tokens[i].decimals).value,
                             [],
                         );
 
                     // prebuild bytecode: "_ _: 0 max; :;"
                     const ratio = "0".repeat(64); // 0
-                    const maxOutput = "f".repeat(64); // max
+                    const maxOutput = maxFloat(18).substring(2).padStart(64, "0"); // max
                     const bytecode = `0x0000000000000000000000000000000000000000000000000000000000000002${maxOutput}${ratio}0000000000000000000000000000000000000000000000000000000000000015020000000c02020002011000000110000100000000`;
                     const addOrderConfig = {
                         evaluable: {
@@ -1301,25 +1299,37 @@ for (let i = 0; i < testData.length; i++) {
                         validInputs: [
                             {
                                 token: tokens[0].address,
-                                decimals: tokens[0].decimals,
                                 vaultId: tokens[0].vaultId,
                             },
                         ],
                         validOutputs: [
                             {
                                 token: tokens[i].address,
-                                decimals: tokens[i].decimals,
                                 vaultId: tokens[i].vaultId,
                             },
                         ],
                         meta: encodeMeta("some_order"),
                     };
-                    const tx = await orderbook.connect(owners[i]).addOrder2(addOrderConfig, []);
+                    const tx = await orderbook.connect(owners[i]).addOrder3(addOrderConfig, [
+                        {
+                            evaluable: {
+                                interpreter: interpreter.address,
+                                store: store.address,
+                                bytecode:
+                                    "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000701000000000000",
+                            },
+                            signedContext: [],
+                        },
+                    ]);
                     orders.push(
                         await mockSgFromEvent(
-                            await getEventArgs(tx, "AddOrderV2", orderbook),
+                            await getEventArgs(tx, "AddOrderV3", orderbook),
                             orderbook,
-                            tokens.map((v) => ({ ...v.contract, knownSymbol: v.symbol })),
+                            tokens.map((v) => ({
+                                ...v.contract,
+                                knownSymbol: v.symbol,
+                                decimals: v.decimals,
+                            })),
                         ),
                     );
                 }
@@ -1351,7 +1361,10 @@ for (let i = 0; i < testData.length; i++) {
                 };
 
                 const orderManager = new OrderManager(state);
-                await orderManager.addOrders(orders);
+                for (const order of orders) {
+                    const res = await orderManager.addOrder(order);
+                    assert(res.isOk());
+                }
                 orders = orderManager.getNextRoundOrders(false);
 
                 state.gasPrice = await bot.getGasPrice();
@@ -1380,15 +1393,25 @@ for (let i = 0; i < testData.length; i++) {
 
                     const pair = `${tokens[0].symbol}/${tokens[i + 1].symbol}`;
                     const clearedAmount = ethers.BigNumber.from(report.clearedAmount);
-                    const outputVault = await orderbook.vaultBalance(
-                        owners[i + 1].address,
-                        tokens[i + 1].address,
-                        tokens[i + 1].vaultId,
+                    const outputVault = ethers.BigNumber.from(
+                        normalizeFloat(
+                            await orderbook.vaultBalance2(
+                                owners[i + 1].address,
+                                tokens[i + 1].address,
+                                tokens[i + 1].vaultId,
+                            ),
+                            tokens[i + 1].decimals,
+                        ).value,
                     );
-                    const inputVault = await orderbook.vaultBalance(
-                        owners[0].address,
-                        tokens[0].address,
-                        tokens[0].vaultId,
+                    const inputVault = ethers.BigNumber.from(
+                        normalizeFloat(
+                            await orderbook.vaultBalance2(
+                                owners[0].address,
+                                tokens[0].address,
+                                tokens[0].vaultId,
+                            ),
+                            tokens[0].decimals,
+                        ).value,
                     );
                     const botTokenBalance = await tokens[i + 1].contract.balanceOf(
                         bot.account.address,

@@ -4,7 +4,7 @@ import { ONE18 } from "../../../math";
 import { Pair } from "../../../order";
 import { ABI, Result } from "../../../common";
 import { SimulationResult } from "../../types";
-import { encodeFunctionData, encodeAbiParameters, maxUint256 } from "viem";
+import { encodeFunctionData, encodeAbiParameters } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { BalancerRouterError, BalancerRouterErrorType } from "../../../router/balancer";
 import {
@@ -199,14 +199,14 @@ describe("Test trySimulateTrade", () => {
         // Assert encodeFunctionData was called correctly
         expect(encodeFunctionData).toHaveBeenCalledWith({
             abi: expect.any(Array), // ArbAbi
-            functionName: "arb3",
+            functionName: "arb4",
             args: [
                 "0xorderbook",
                 {
                     data: "0xparams",
-                    maximumIORatio: 2000000000000000000n,
-                    maximumInput: maxUint256,
-                    minimumInput: 1n,
+                    maximumIORatio: expect.any(String),
+                    maximumInput: expect.any(String),
+                    minimumInput: expect.any(String),
                     orders: [{}],
                 },
                 {

@@ -2,16 +2,16 @@ import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
 import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
-import { scaleFrom18 } from "../../../math";
 import { estimateProfit } from "../rp/utils";
-import { Result, ABI } from "../../../common";
 import { Attributes } from "@opentelemetry/api";
+import { Result, ABI, toFloat } from "../../../common";
 import { extendObjectWithHeader } from "../../../logger";
+import { maxFloat, minFloat, scaleFrom18 } from "../../../math";
 import { RainSolverSigner, RawTransaction } from "../../../signer";
-import { BalancerRouter, BalancerRouterErrorType } from "../../../router/balancer";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
+import { BalancerRouter, BalancerRouterErrorType } from "../../../router/balancer";
+import { encodeAbiParameters, encodeFunctionData, formatUnits, parseUnits } from "viem";
 import { TakeOrdersConfigType, SimulationResult, TradeType, FailedSimulation } from "../../types";
-import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
 
 /** Specifies the reason that balancer trade simulation failed */
 export enum BalancerRouterSimulationHaltReason {
@@ -117,12 +117,28 @@ export async function trySimulateTrade(
 
     spanAttributes["oppBlockNumber"] = Number(blockNumber);
 
+    const maximumInputFloat: `0x${string}` = maxFloat(orderDetails.sellTokenDecimals);
+    let maximumIORatioFloat: `0x${string}` = maxFloat(18);
+    if (!this.appOptions.maxRatio) {
+        const valueResult = toFloat(price, 18);
+        if (valueResult.isErr()) {
+            spanAttributes["error"] = valueResult.error.readableMsg;
+            const result: FailedSimulation = {
+                spanAttributes,
+                type: TradeType.RouteProcessor,
+                noneNodeError: valueResult.error.readableMsg,
+            };
+            return Result.err(result);
+        }
+        maximumIORatioFloat = valueResult.value;
+    }
+
     const balancerRouter = this.state.balancerRouter!.routerAddress;
     const orders = [orderDetails.takeOrder.struct];
     const takeOrdersConfigStruct: TakeOrdersConfigType = {
-        minimumInput: 1n,
-        maximumInput: maxUint256,
-        maximumIORatio: this.appOptions.maxRatio ? maxUint256 : price,
+        minimumInput: minFloat(orderDetails.sellTokenDecimals),
+        maximumInput: maximumInputFloat,
+        maximumIORatio: maximumIORatioFloat,
         orders,
         data: encodeAbiParameters(
             [{ type: "address" }, ABI.BalancerBatchRouter.Structs.SwapPathExactAmountIn],
@@ -152,7 +168,7 @@ export async function trySimulateTrade(
     const rawtx: RawTransaction = {
         data: encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         }),
         to: this.appOptions.balancerArbAddress as `0x${string}`,
@@ -216,7 +232,7 @@ export async function trySimulateTrade(
         )) as `0x${string}`;
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
 
@@ -265,7 +281,7 @@ export async function trySimulateTrade(
         )) as `0x${string}`;
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
         spanAttributes["gasEst.final.minBountyExpected"] = (
