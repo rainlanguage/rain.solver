@@ -28,6 +28,18 @@ balancerBatchRouterAbiExtended.forEach((abi: any) => {
     SelectorCache.set(toFunctionSelector(minimalSig), [minimalSig]);
 });
 
+// set route processor error signatures in the cache as they are not available in the registry
+// we need dynamic import here to avoid files that are not in the tsconfig "rootDir"
+import(
+    "../../lib/sushiswap/protocols/route-processor/deployments/arbitrum/RouteProcessor4.json"
+).then(({ abi: abiItems }) => {
+    abiItems.forEach((abi: any) => {
+        if (abi.type !== "error") return;
+        const minimalSig = toFunctionSignature(abi).replace("error ", "");
+        SelectorCache.set(toFunctionSelector(minimalSig), [minimalSig]);
+    });
+});
+
 /**
  * Tries to decode the given error data by running through known matching signatures
  * @param data - the error data
