@@ -26,7 +26,7 @@ describe("Test decoder functions", () => {
             expect(result.error.message).toBe(
                 "invalid data, expected hex string with at least 32 bytes",
             );
-            expect(isHex).toHaveBeenCalledWith("invalid-hex", { strict: true });
+            expect(isHex).toHaveBeenCalledWith("0xinvalid-hex", { strict: true });
         });
 
         it("should decode panic error successfully", async () => {
@@ -208,9 +208,11 @@ describe("Test decoder functions", () => {
             });
         });
 
-        it("should throw assertion error for invalid selector format", async () => {
+        it("should return assertion error for invalid selector format", async () => {
             const invalidSelector = "0x123"; // too short
-            await expect(tryGetSignature(invalidSelector)).rejects.toThrow();
+            const result = await tryGetSignature(invalidSelector);
+            assert(result.isErr());
+            expect(result.error.message).toContain("Invalid selector");
         });
 
         it("should return error when registry request fails", async () => {
