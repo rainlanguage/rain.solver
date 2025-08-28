@@ -1,6 +1,6 @@
 import axios from "axios";
 import assert from "assert";
-import { Result } from "../common";
+import { ABI, Result } from "../common";
 import { balancerBatchRouterAbiExtended } from "@balancer/sdk";
 import {
     isHex,
@@ -17,9 +17,6 @@ import {
     SELECTOR_REGISTRY,
     PANIC_REASONS,
 } from "./types";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore
-import { abi as rpAbi } from "../../lib/sushiswap/protocols/route-processor/deployments/arbitrum/RouteProcessor4.json";
 
 /** Selector abi/sig cache at runtime */
 export const SelectorCache = new Map<string, string[]>();
@@ -31,7 +28,7 @@ balancerBatchRouterAbiExtended.forEach((abi: any) => {
     SelectorCache.set(toFunctionSelector(minimalSig), [minimalSig]);
 });
 // set route processor error signatures in the cache as they are not available in the registry
-rpAbi.forEach((abi: any) => {
+ABI.RouteProcessor.Primary.RouteProcessor4.forEach((abi: any) => {
     if (abi.type !== "error") return;
     const minimalSig = toFunctionSignature(abi).replace("error ", "");
     SelectorCache.set(toFunctionSelector(minimalSig), [minimalSig]);
