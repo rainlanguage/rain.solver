@@ -1,6 +1,6 @@
-import axios, { AxiosError } from "axios";
 import assert from "assert";
 import { ABI, Result } from "../common";
+import axios, { AxiosError } from "axios";
 import { balancerBatchRouterAbiExtended } from "@balancer/sdk";
 import {
     isHex,
