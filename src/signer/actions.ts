@@ -141,7 +141,7 @@ export async function estimateGasCost(
     signer: RainSolverSigner,
     tx: EstimateGasParameters<Chain>,
 ): Promise<EstimateGasCostResult> {
-    const gasPrice = (signer.state.gasPrice * BigInt(signer.state.gasPriceMultiplier)) / 100n;
+    const gasPrice = signer.state.gasPrice;
     const gas = await signer.estimateGas(tx);
     const result = {
         gas,

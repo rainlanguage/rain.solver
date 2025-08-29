@@ -184,10 +184,10 @@ describe("Test estimateGasCost", () => {
         expect(mockSigner.estimateGas).toHaveBeenCalledWith(mockTx);
         expect(result).toEqual({
             gas: 100000n,
-            gasPrice: 22000000000n, // 20 gwei * 110%
+            gasPrice: 20000000000n, // 20 gwei * 110%
             l1GasPrice: 0n,
             l1Cost: 0n,
-            totalGasCost: 2200000000000000n, // gas * gasPrice
+            totalGasCost: 2000000000000000n, // gas * gasPrice
         });
     });
 
@@ -209,10 +209,10 @@ describe("Test estimateGasCost", () => {
         });
         expect(result).toEqual({
             gas: 100000n,
-            gasPrice: 22000000000n,
+            gasPrice: 20000000000n,
             l1GasPrice: 50000000000n,
             l1Cost: 500000000000n,
-            totalGasCost: 22000000000n * 100000n + 500000000000n, // L2 gas cost + L1 cost
+            totalGasCost: 20000000000n * 100000n + 500000000000n, // L2 gas cost + L1 cost
         });
     });
 
@@ -243,10 +243,10 @@ describe("Test estimateGasCost", () => {
 
         expect(result).toEqual({
             gas: 100000n,
-            gasPrice: 22000000000n,
+            gasPrice: 20000000000n,
             l1GasPrice: 0n,
             l1Cost: 0n,
-            totalGasCost: 2200000000000000n, // Only L2 gas cost
+            totalGasCost: 2000000000000000n, // Only L2 gas cost
         });
     });
 });

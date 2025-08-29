@@ -264,7 +264,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.spanAttributes["gasEst.initial.gasLimit"]).toBe("100");
         expect(result.error.spanAttributes["gasEst.initial.totalCost"]).toBe("200");
         expect(result.error.spanAttributes["gasEst.initial.gasPrice"]).toBe("1");
-        expect(result.error.spanAttributes["gasEst.initial.minBountyExpected"]).toBe("206");
+        expect(result.error.spanAttributes["gasEst.initial.minBountyExpected"]).toBe("202");
         expect(result.error.type).toBe("interOrderbook");
 
         // Verify encodeFunctionData was called twice (for both dryruns)

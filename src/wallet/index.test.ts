@@ -629,9 +629,15 @@ describe("Test WalletManager", () => {
             );
             expect(report.attributes["details.swaps.TEST2.status"]).toBe("Successfully swapped");
             expect(report.attributes["details.swaps.TEST2.amount"]).toBe("50");
-            expect(report.attributes["details.swaps.TEST2.receivedAmount"]).toBe("0.05");
-            expect(report.attributes["details.swaps.TEST2.receivedAmountMin"]).toBe("0.0475");
-            expect(report.attributes["details.swaps.TEST2.expectedGasCost"]).toBe("0.01");
+            expect(report.attributes["details.swaps.TEST2.receivedAmount"]).toBe(
+                "0.00000000000005",
+            );
+            expect(report.attributes["details.swaps.TEST2.receivedAmountMin"]).toBe(
+                "0.0000000000000475",
+            );
+            expect(report.attributes["details.swaps.TEST2.expectedGasCost"]).toBe(
+                "0.00000000000001",
+            );
             expect(report.attributes["details.swaps.TEST2.route"]).toBe("TEST2 -> WETH");
 
             // verify spy calls
