@@ -205,7 +205,7 @@ export async function trySimulateTrade(
     // coverage is not 0, 0 gas coverage means 0 minimum
     // sender output which is already called above
     if (this.appOptions.gasCoveragePercentage !== "0") {
-        const headroom = BigInt((Number(this.appOptions.gasCoveragePercentage) * 1.03).toFixed());
+        const headroom = BigInt((Number(this.appOptions.gasCoveragePercentage) * 1.01).toFixed());
         spanAttributes["gasEst.initial.minBountyExpected"] = (
             (estimatedGasCost * headroom) /
             100n
