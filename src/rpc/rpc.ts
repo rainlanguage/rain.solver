@@ -81,11 +81,12 @@ export class RpcState {
         // point decimals relative to other rpcs sucess rates, so the bigger the rate,
         // the higher chance of being selected
         const rates = this.urls.map((url) => this.metrics[url].progress.selectionRate);
+        const weights = this.urls.map((url) => this.metrics[url].progress.selectionWeight);
         return await promiseTimeout(
             (async () => {
                 for (;;) {
                     // pick a random one
-                    const index = probablyPicksFrom(rates);
+                    const index = probablyPicksFrom(rates, weights);
                     if (isNaN(index)) {
                         await sleep(pollingInterval);
                     } else {
