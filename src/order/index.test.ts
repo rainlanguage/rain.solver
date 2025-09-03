@@ -921,4 +921,33 @@ describe("Test OrderManager", () => {
 
         resetLimitsSpy.mockRestore();
     });
+
+    it("test getCurrentMetadata method", async () => {
+        const orders = [
+            {
+                orderHash: "0xhash1",
+                orderbook: { id: "0xorderbook1" },
+                orderBytes: "0xbytes",
+                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
+                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 2n }],
+            },
+            {
+                orderHash: "0xhash2",
+                orderbook: { id: "0xorderbook2" },
+                orderBytes: "0xbytes",
+                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 3n }],
+                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 4n }],
+            },
+        ];
+        await orderManager.addOrders(orders as any);
+
+        const metadata = orderManager.getCurrentMetadata();
+
+        expect(metadata).toEqual({
+            totalCount: 2,
+            totalOwnersCount: 2,
+            totalPairsCount: 2,
+            totalDistinctPairsCount: 1,
+        });
+    });
 });

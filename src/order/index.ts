@@ -491,4 +491,42 @@ export class OrderManager {
         const ob = orderDetails.orderbook.toLowerCase();
         return getSortedPairList(this.oiPairMap, ob, buyToken, sellToken, counterpartySource);
     }
+
+    /**
+     * Gets the current metadata of all orders that being processed, which includes total
+     * orders count, total owners count, total pairs count and total distinct pairs count
+     * @returns An object containing the metadata
+     */
+    getCurrentMetadata() {
+        let totalCount = 0;
+        let totalOwnersCount = 0;
+        let totalPairsCount = 0;
+        let totalDistinctPairsCount = 0;
+        this.ownersMap.forEach((ownersProfileMap) => {
+            let obOwners = 0;
+            let obOrders = 0;
+            let obPairs = 0;
+            const distinctPairsSet = new Set<string>();
+            ownersProfileMap.forEach((ownerProfile) => {
+                obOwners++;
+                obOrders += ownerProfile.orders.size;
+                ownerProfile.orders.forEach((orderProfile) => {
+                    obPairs += orderProfile.takeOrders.length;
+                    orderProfile.takeOrders.forEach((pair) => {
+                        distinctPairsSet.add(`${pair.buyToken}-${pair.sellToken}`);
+                    });
+                });
+            });
+            totalCount += obOrders;
+            totalOwnersCount += obOwners;
+            totalPairsCount += obPairs;
+            totalDistinctPairsCount = distinctPairsSet.size;
+        });
+        return {
+            totalCount,
+            totalOwnersCount,
+            totalPairsCount,
+            totalDistinctPairsCount,
+        };
+    }
 }
