@@ -689,10 +689,7 @@ describe("Test RainSolverCli", () => {
                 "https://etherscan.io/tx/0x456",
             ]);
             expect(mockOrderManager.getCurrentMetadata).toHaveBeenCalledTimes(1);
-            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith(
-                "details.ordersMetadata.key",
-                "value",
-            );
+            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("ordersMetadata.key", "value");
         });
 
         it("should not set foundOpp when no transactions found", async () => {

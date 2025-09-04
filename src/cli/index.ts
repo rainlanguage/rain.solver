@@ -303,13 +303,13 @@ export class RainSolverCli {
             roundSpan.setAttribute("txUrls", txUrls);
         }
         roundSpan.setAttribute(
-            "details.ordersMetadata.roundProcessedOrderPairsCount",
+            "ordersMetadata.roundProcessedOrderPairsCount",
             checkpointReports.length,
         );
         const ordersMetadata = this.orderManager.getCurrentMetadata();
         for (const key in ordersMetadata) {
             roundSpan.setAttribute(
-                `details.ordersMetadata.${key}`,
+                `ordersMetadata.${key}`,
                 ordersMetadata[key as keyof typeof ordersMetadata],
             );
         }
