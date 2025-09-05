@@ -84,24 +84,22 @@ export async function syncOrders(this: OrderManager) {
         }
         if (event.__typename === "AddOrder") {
             // handle order addition if passes filters
-            if (typeof event?.order?.active === "boolean" && event.order.active) {
-                if (applyFilters(event.order, this.subgraphManager.filters)) {
-                    if (!syncStatus[url][event.order.orderbook.id]) {
-                        syncStatus[url][event.order.orderbook.id] = {
-                            added: [],
-                            removed: [],
-                            failedAdds: {},
-                        };
-                    }
-                    const result = await this.addOrder(event.order);
-                    if (result.isErr()) {
-                        syncStatus[url][event.order.orderbook.id].failedAdds[
-                            event.order.orderHash
-                        ] = await errorSnapshot("Failed to handle order", result.error);
-                    } else {
-                        syncStatus[url][event.order.orderbook.id].added.push(event.order.orderHash);
-                    }
-                }
+            if (typeof event?.order?.active !== "boolean" || !event.order.active) continue;
+            if (!applyFilters(event.order, this.subgraphManager.filters)) continue;
+
+            if (!syncStatus[url][event.order.orderbook.id]) {
+                syncStatus[url][event.order.orderbook.id] = {
+                    added: [],
+                    removed: [],
+                    failedAdds: {},
+                };
+            }
+            const result = await this.addOrder(event.order);
+            if (result.isErr()) {
+                syncStatus[url][event.order.orderbook.id].failedAdds[event.order.orderHash] =
+                    await errorSnapshot("Failed to handle order", result.error);
+            } else {
+                syncStatus[url][event.order.orderbook.id].added.push(event.order.orderHash);
             }
         }
         if (event.__typename === "RemoveOrder") {

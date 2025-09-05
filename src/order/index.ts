@@ -1,3 +1,5 @@
+import { erc20Abi } from "viem";
+import { Result } from "../common";
 import { syncOrders } from "./sync";
 import { SgOrder } from "../subgraph";
 import { errorSnapshot } from "../error";
@@ -8,7 +10,7 @@ import { downscaleProtection } from "./protection";
 import { normalizeFloat, Result } from "../common";
 import { SharedState, TokenDetails } from "../state";
 import { WasmEncodedError } from "@rainlanguage/float";
-import { DecodeAbiParametersErrorType, erc20Abi } from "viem";
+import { errorSnapshot, RainSolverBaseError } from "../error";
 import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
 import {
     IO,
@@ -26,6 +28,38 @@ export * from "./config";
 
 /** The default owner limit */
 export const DEFAULT_OWNER_LIMIT = 25 as const;
+
+/** Enumerates the possible error types that can occur within the OrderManager functionalities */
+export enum OrderManagerErrorType {
+    UndefinedTokenDecimals,
+    DecodeAbiParametersError,
+    WasmEncodedError,
+}
+
+/**
+ * Represents an error type for the OrderManager functionalities.
+ * This error class extends the `RainSolverBaseError` error class, with the `type`
+ * property indicates the specific category of the error, as defined by the
+ * `OrderManagerErrorType` enum. The optional `cause` property can be used to
+ * attach the original error or any relevant context that led to this error.
+ *
+ * @example
+ * ```typescript
+ * // without cause
+ * throw new OrderManagerError("msg", OrderManagerErrorType);
+ *
+ * // with cause
+ * throw new OrderManagerError("msg", OrderManagerErrorType, originalError);
+ * ```
+ */
+export class OrderManagerError extends RainSolverBaseError {
+    type: OrderManagerErrorType;
+    constructor(message: string, type: OrderManagerErrorType, cause?: any) {
+        super(message, cause);
+        this.type = type;
+        this.name = "OrderManagerError";
+    }
+}
 
 /**
  * OrderManager is responsible for managing orders state for Rainsolver during runtime, it
@@ -124,14 +158,20 @@ export class OrderManager {
      * Adds a new order to the order map
      * @param orderDetails - Order details from subgraph
      */
-    async addOrder(
-        orderDetails: SgOrder,
-    ): Promise<Result<void, WasmEncodedError | DecodeAbiParametersErrorType>> {
+    async addOrder(orderDetails: SgOrder): Promise<Result<void, OrderManagerError>> {
         const orderHash = orderDetails.orderHash.toLowerCase();
         const orderbook = orderDetails.orderbook.id.toLowerCase();
 
         const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
-        if (orderStructResult.isErr()) return Result.err(orderStructResult.error);
+        if (orderStructResult.isErr()) {
+            return Result.err(
+                new OrderManagerError(
+                    "Failed to decode order bytes",
+                    OrderManagerErrorType.DecodeAbiParametersError,
+                    orderStructResult.error,
+                ),
+            );
+        }
         const orderStruct = orderStructResult.value;
 
         const pairsResult = await this.getOrderPairs(orderHash, orderStruct, orderDetails);
@@ -340,7 +380,7 @@ export class OrderManager {
         orderHash: string,
         orderStruct: Order,
         orderDetails: SgOrder,
-    ): Promise<Result<Pair[], WasmEncodedError>> {
+    ): Promise<Result<Pair[], OrderManagerError>> {
         const pairs: Pair[] = [];
         // helper iterator function
         function* iterIO() {
@@ -357,7 +397,12 @@ export class OrderManager {
         }
 
         // helper function to handle token details
-        const handleToken = async (io: IO, tokensList: SgOrder["outputs"]) => {
+        const handleToken = async (
+            io: IO,
+            tokensList: SgOrder["outputs"],
+        ): Promise<
+            Result<{ symbol: string; decimals: number; balance: string }, OrderManagerError>
+        > => {
             const address = io.token.toLowerCase() as `0x${string}`;
             const cached = this.state.watchedTokens.get(address);
             const sgOrderIO = tokensList.find((v) => v.token.address.toLowerCase() === address)!;
@@ -371,46 +416,80 @@ export class OrderManager {
                         functionName: "symbol",
                     })
                     .catch(() => "UnknownSymbol")); // fallback to unknown symbol if all fail
-            const decimals =
+            let decimals =
+                io.decimals ??
                 cached?.decimals ??
                 (sgOrderIO?.token.decimals === undefined
                     ? undefined
-                    : Number(sgOrderIO?.token.decimals)) ??
-                (await this.state.client
-                    .readContract({
+                    : Number(sgOrderIO?.token.decimals));
+            if (typeof decimals !== "number") {
+                try {
+                    decimals = await this.state.client.readContract({
                         address,
                         abi: erc20Abi,
                         functionName: "decimals",
-                    })
-                    .catch(() => undefined))!;
+                    });
+                } catch (error) {
+                    return Result.err(
+                        new OrderManagerError(
+                            `Failed to get token decimals for: ${address}`,
+                            OrderManagerErrorType.UndefinedTokenDecimals,
+                        ),
+                    );
+                }
+            }
             // add to watched tokens
-            this.state.watchToken({
-                symbol,
-                address,
-                decimals,
-            });
-            return { symbol, decimals, balance: sgOrderIO.balance };
+            if (typeof decimals === "number") {
+                this.state.watchToken({
+                    symbol,
+                    address,
+                    decimals,
+                });
+            }
+            return Result.ok({ symbol, decimals, balance: sgOrderIO.balance });
         };
 
         for (const { output, input, outputIOIndex, inputIOIndex } of iterIO()) {
+            const inputResult = await handleToken(input, orderDetails.inputs);
+            if (inputResult.isErr()) {
+                return Result.err(inputResult.error);
+            }
+
+            const outputResult = await handleToken(output, orderDetails.outputs);
+            if (outputResult.isErr()) {
+                return Result.err(outputResult.error);
+            }
+
             const {
                 symbol: inputSymbol,
                 decimals: inputDecimals,
                 balance: inputBalanceHex,
-            } = await handleToken(input, orderDetails.inputs);
+            } = inputResult.value;
             const {
                 symbol: outputSymbol,
                 decimals: outputDecimals,
                 balance: outputBalanceHex,
-            } = await handleToken(output, orderDetails.outputs);
-
+            } = outputResult.value;
+          
             const inputBalanceRes = normalizeFloat(inputBalanceHex, inputDecimals);
             if (inputBalanceRes.isErr()) {
-                return Result.err(inputBalanceRes.error);
+                return Result.err(
+                  new OrderManagerError(
+                      `Failed to parse float`,
+                      OrderManagerErrorType.WasmEncodedError,
+                      inputBalanceRes.error
+                  )
+                );
             }
             const outputBalanceRes = normalizeFloat(outputBalanceHex, outputDecimals);
             if (outputBalanceRes.isErr()) {
-                return Result.err(outputBalanceRes.error);
+                return Result.err(
+                  new OrderManagerError(
+                      `Failed to parse float`,
+                      OrderManagerErrorType.WasmEncodedError,
+                      outputBalanceRes.error
+                  )
+                );
             }
 
             if (input.token.toLowerCase() !== output.token.toLowerCase()) {

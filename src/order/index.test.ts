@@ -5,7 +5,7 @@ import { SharedState } from "../state";
 import { SubgraphManager } from "../subgraph";
 import { downscaleProtection } from "./protection";
 import { CounterpartySource, Order, Pair } from "./types";
-import { OrderManager, DEFAULT_OWNER_LIMIT } from "./index";
+import { OrderManager, DEFAULT_OWNER_LIMIT, OrderManagerError } from "./index";
 import { describe, it, expect, beforeEach, vi, Mock, assert } from "vitest";
 
 vi.mock("./sync", () => ({
@@ -137,7 +137,7 @@ describe("Test OrderManager", () => {
     });
 
     it("should correctly sync orders", async () => {
-        // mock syncOrders to return addOrders and removeOrders
+        // mock syncOrders to return addOrder and removeOrders
         (syncOrders as Mock).mockResolvedValueOnce(undefined);
         await orderManager.sync();
 
@@ -321,9 +321,19 @@ describe("Test OrderManager", () => {
                 },
             ],
         };
+
+        (Order.tryFromBytes as Mock).mockReturnValueOnce(Result.err("some error"));
         const result = await orderManager.addOrder(order as any);
         assert(result.isErr());
-        expect((result.error as any).readableMsg).toContain("Invalid hex string");
+        expect(result.error).instanceOf(OrderManagerError);
+
+        const getOrderPairsSpy = vi.spyOn(orderManager, "getOrderPairs");
+        getOrderPairsSpy.mockResolvedValueOnce(Result.err(new OrderManagerError("err", 1)));
+        const result2 = await orderManager.addOrder(order as any);
+        assert(result2.isErr());
+        expect(result2.error).instanceOf(OrderManagerError);
+
+        getOrderPairsSpy.mockRestore();
     });
 
     it("should remove orders", async () => {
@@ -543,7 +553,7 @@ describe("Test OrderManager", () => {
             },
         ]);
     });
-
+  
     it("getOrderPairs should return error when fails to parse float", async () => {
         const orderStruct = {
             owner: "0xowner",
@@ -572,6 +582,37 @@ describe("Test OrderManager", () => {
         );
         assert(pairsResult.isErr());
         expect(pairsResult.error.readableMsg).toContain("Invalid hex string");
+    });
+
+    it("getOrderPairs should return error when fails to get decimals", async () => {
+        const orderStruct = {
+            owner: "0xowner",
+            validInputs: [{ token: "0xinput" }],
+            validOutputs: [{ token: "0xoutput" }],
+        };
+        const orderDetails = {
+            orderbook: { id: "0xorderbook" },
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT1" },
+                    balance: "0x01",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN1" },
+                    balance: "0x01",
+                },
+            ],
+        };
+        (orderManager.state.client.readContract as Mock).mockRejectedValueOnce("some error");
+        const pairsResult = await orderManager.getOrderPairs(
+            "0xhash",
+            orderStruct as any,
+            orderDetails as any,
+        );
+        assert(pairsResult.isErr());
+        expect(pairsResult.error).instanceOf(OrderManagerError);
     });
 
     it("quoteOrder should set quote on the takeOrder", async () => {
@@ -1244,7 +1285,8 @@ describe("Test OrderManager", () => {
                 inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 4n }],
             },
         ];
-        await orderManager.addOrders(orders as any);
+        await orderManager.addOrder(orders[0] as any);
+        await orderManager.addOrder(orders[1] as any);
 
         const metadata = orderManager.getCurrentMetadata();
 
