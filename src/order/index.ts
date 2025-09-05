@@ -1,4 +1,5 @@
 import { erc20Abi } from "viem";
+import { Result } from "../common";
 import { syncOrders } from "./sync";
 import { SgOrder } from "../subgraph";
 import { quoteSingleOrder } from "./quote";
@@ -6,6 +7,7 @@ import { PreAssembledSpan } from "../logger";
 import { SubgraphManager } from "../subgraph";
 import { downscaleProtection } from "./protection";
 import { SharedState, TokenDetails } from "../state";
+import { errorSnapshot, RainSolverBaseError } from "../error";
 import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
 import {
     IO,
@@ -23,6 +25,37 @@ export * from "./config";
 
 /** The default owner limit */
 export const DEFAULT_OWNER_LIMIT = 25 as const;
+
+/** Enumerates the possible error types that can occur within the OrderManager functionalities */
+export enum OrderManagerErrorType {
+    UndefinedTokenDecimals,
+    DecodeAbiParametersError,
+}
+
+/**
+ * Represents an error type for the OrderManager functionalities.
+ * This error class extends the `RainSolverBaseError` error class, with the `type`
+ * property indicates the specific category of the error, as defined by the
+ * `OrderManagerErrorType` enum. The optional `cause` property can be used to
+ * attach the original error or any relevant context that led to this error.
+ *
+ * @example
+ * ```typescript
+ * // without cause
+ * throw new OrderManagerError("msg", OrderManagerErrorType);
+ *
+ * // with cause
+ * throw new OrderManagerError("msg", OrderManagerErrorType, originalError);
+ * ```
+ */
+export class OrderManagerError extends RainSolverBaseError {
+    type: OrderManagerErrorType;
+    constructor(message: string, type: OrderManagerErrorType, cause?: any) {
+        super(message, cause);
+        this.type = type;
+        this.name = "OrderManagerError";
+    }
+}
 
 /**
  * OrderManager is responsible for managing orders state for Rainsolver during runtime, it
@@ -100,7 +133,15 @@ export class OrderManager {
     /** Fetches all active orders from upstream subgraphs */
     async fetch(): Promise<PreAssembledSpan> {
         const { orders, report } = await this.subgraphManager.fetchAll();
-        await this.addOrders(orders);
+        for (const order of orders) {
+            const result = await this.addOrder(order);
+            if (result.isErr()) {
+                report.setAttr(
+                    `fetchstatus.orders.${order.orderHash}`,
+                    await errorSnapshot("Failed to handle order", result.error),
+                );
+            }
+        }
         return report;
     }
 
@@ -110,57 +151,66 @@ export class OrderManager {
     }
 
     /**
-     * Adds new orders to the order map
-     * @param ordersDetails - Array of order details from subgraph
+     * Adds a new order to the order map
+     * @param orderDetails - Order details from subgraph
      */
-    async addOrders(ordersDetails: SgOrder[]) {
-        for (let i = 0; i < ordersDetails.length; i++) {
-            const orderDetails = ordersDetails[i];
-            const orderHash = orderDetails.orderHash.toLowerCase();
-            const orderbook = orderDetails.orderbook.id.toLowerCase();
+    async addOrder(orderDetails: SgOrder): Promise<Result<void, OrderManagerError>> {
+        const orderHash = orderDetails.orderHash.toLowerCase();
+        const orderbook = orderDetails.orderbook.id.toLowerCase();
 
-            const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
-            if (orderStructResult.isErr()) continue;
-            const orderStruct = orderStructResult.value;
-
-            const pairs = await this.getOrderPairs(orderHash, orderStruct, orderDetails);
-
-            // add to the owners map
-            if (!this.ownersMap.has(orderbook)) {
-                this.ownersMap.set(orderbook, new Map());
-            }
-            const orderbookOwnerProfileItem = this.ownersMap.get(orderbook)!;
-
-            if (!orderbookOwnerProfileItem.has(orderStruct.owner)) {
-                const order = {
-                    active: true,
-                    order: orderStruct,
-                    takeOrders: pairs,
-                };
-                orderbookOwnerProfileItem.set(orderStruct.owner, {
-                    limit: this.ownerLimits[orderStruct.owner] ?? DEFAULT_OWNER_LIMIT,
-                    orders: new Map([[orderHash, order]]),
-                    lastIndex: 0,
-                });
-            }
-            const ownerProfile = orderbookOwnerProfileItem.get(orderStruct.owner)!;
-            const order = ownerProfile.orders.get(orderHash);
-            if (!order) {
-                ownerProfile.orders.set(orderHash, {
-                    active: true,
-                    order: orderStruct,
-                    takeOrders: pairs,
-                });
-            } else {
-                if (!order.active) order.active = true;
-            }
-
-            // add to the pair maps
-            for (let j = 0; j < pairs.length; j++) {
-                this.addToPairMaps(pairs[j]);
-                this.addToTokenVaultsMap(pairs[j]);
-            }
+        const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
+        if (orderStructResult.isErr()) {
+            return Result.err(
+                new OrderManagerError(
+                    "Failed to decode order bytes",
+                    OrderManagerErrorType.DecodeAbiParametersError,
+                    orderStructResult.error,
+                ),
+            );
         }
+        const orderStruct = orderStructResult.value;
+
+        const pairsResult = await this.getOrderPairs(orderHash, orderStruct, orderDetails);
+        if (pairsResult.isErr()) return Result.err(pairsResult.error);
+        const pairs = pairsResult.value;
+
+        // add to the owners map
+        if (!this.ownersMap.has(orderbook)) {
+            this.ownersMap.set(orderbook, new Map());
+        }
+        const orderbookOwnerProfileItem = this.ownersMap.get(orderbook)!;
+
+        if (!orderbookOwnerProfileItem.has(orderStruct.owner)) {
+            const order = {
+                active: true,
+                order: orderStruct,
+                takeOrders: pairs,
+            };
+            orderbookOwnerProfileItem.set(orderStruct.owner, {
+                limit: this.ownerLimits[orderStruct.owner] ?? DEFAULT_OWNER_LIMIT,
+                orders: new Map([[orderHash, order]]),
+                lastIndex: 0,
+            });
+        }
+        const ownerProfile = orderbookOwnerProfileItem.get(orderStruct.owner)!;
+        const order = ownerProfile.orders.get(orderHash);
+        if (!order) {
+            ownerProfile.orders.set(orderHash, {
+                active: true,
+                order: orderStruct,
+                takeOrders: pairs,
+            });
+        } else {
+            if (!order.active) order.active = true;
+        }
+
+        // add to the pair maps
+        for (let j = 0; j < pairs.length; j++) {
+            this.addToPairMaps(pairs[j]);
+            this.addToTokenVaultsMap(pairs[j]);
+        }
+
+        return Result.ok(undefined);
     }
 
     /**
@@ -326,7 +376,7 @@ export class OrderManager {
         orderHash: string,
         orderStruct: Order,
         orderDetails: SgOrder,
-    ): Promise<Pair[]> {
+    ): Promise<Result<Pair[], OrderManagerError>> {
         const pairs: Pair[] = [];
         // helper iterator function
         function* iterIO() {
@@ -343,7 +393,12 @@ export class OrderManager {
         }
 
         // helper function to handle token details
-        const handleToken = async (io: IO, tokensList: SgOrder["outputs"]) => {
+        const handleToken = async (
+            io: IO,
+            tokensList: SgOrder["outputs"],
+        ): Promise<
+            Result<{ symbol: string; decimals: number; balance: string }, OrderManagerError>
+        > => {
             const address = io.token.toLowerCase() as `0x${string}`;
             const cached = this.state.watchedTokens.get(address);
             const sgOrderIO = tokensList.find((v) => v.token.address.toLowerCase() === address)!;
@@ -357,35 +412,71 @@ export class OrderManager {
                         functionName: "symbol",
                     })
                     .catch(() => "UnknownSymbol")); // fallback to unknown symbol if all fail
+            let decimals =
+                io.decimals ??
+                cached?.decimals ??
+                (sgOrderIO?.token.decimals === undefined
+                    ? undefined
+                    : Number(sgOrderIO?.token.decimals));
+            if (typeof decimals !== "number") {
+                try {
+                    decimals = await this.state.client.readContract({
+                        address,
+                        abi: erc20Abi,
+                        functionName: "decimals",
+                    });
+                } catch (error) {
+                    return Result.err(
+                        new OrderManagerError(
+                            `Failed to get token decimals for: ${address}`,
+                            OrderManagerErrorType.UndefinedTokenDecimals,
+                        ),
+                    );
+                }
+            }
             // add to watched tokens
-            this.state.watchToken({
-                symbol,
-                address,
-                decimals: io.decimals,
-            });
-            return { symbol, balance: sgOrderIO.balance };
+            if (typeof decimals === "number") {
+                this.state.watchToken({
+                    symbol,
+                    address,
+                    decimals,
+                });
+            }
+            return Result.ok({ symbol, decimals, balance: sgOrderIO.balance });
         };
 
         for (const { output, input, outputIOIndex, inputIOIndex } of iterIO()) {
-            const { symbol: inputSymbol, balance: inputBalance } = await handleToken(
-                input,
-                orderDetails.inputs,
-            );
-            const { symbol: outputSymbol, balance: outputBalance } = await handleToken(
-                output,
-                orderDetails.outputs,
-            );
+            const inputResult = await handleToken(input, orderDetails.inputs);
+            if (inputResult.isErr()) {
+                return Result.err(inputResult.error);
+            }
+
+            const outputResult = await handleToken(output, orderDetails.outputs);
+            if (outputResult.isErr()) {
+                return Result.err(outputResult.error);
+            }
+
+            const {
+                symbol: inputSymbol,
+                decimals: inputDecimals,
+                balance: inputBalance,
+            } = inputResult.value;
+            const {
+                symbol: outputSymbol,
+                decimals: outputDecimals,
+                balance: outputBalance,
+            } = outputResult.value;
 
             if (input.token.toLowerCase() !== output.token.toLowerCase()) {
                 pairs.push({
                     orderbook: orderDetails.orderbook.id.toLowerCase(),
                     buyToken: input.token.toLowerCase(),
                     buyTokenSymbol: inputSymbol,
-                    buyTokenDecimals: input.decimals,
+                    buyTokenDecimals: inputDecimals,
                     buyTokenVaultBalance: BigInt(inputBalance),
                     sellToken: output.token.toLowerCase(),
                     sellTokenSymbol: outputSymbol,
-                    sellTokenDecimals: output.decimals,
+                    sellTokenDecimals: outputDecimals,
                     sellTokenVaultBalance: BigInt(outputBalance),
                     takeOrder: {
                         id: orderHash,
@@ -400,7 +491,7 @@ export class OrderManager {
             }
         }
 
-        return pairs;
+        return Result.ok(pairs);
     }
 
     /**

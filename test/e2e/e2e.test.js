@@ -296,7 +296,10 @@ for (let i = 0; i < testData.length; i++) {
                 };
 
                 const orderManager = new OrderManager(state);
-                await orderManager.addOrders(orders);
+                for (const order of orders) {
+                    const res = await orderManager.addOrder(order);
+                    assert(res.isOk());
+                }
                 orders = orderManager.getNextRoundOrders(false);
 
                 state.gasPrice = await bot.getGasPrice();
@@ -605,7 +608,10 @@ for (let i = 0; i < testData.length; i++) {
                 };
 
                 const orderManager = new OrderManager(state);
-                await orderManager.addOrders(orders);
+                for (const order of orders) {
+                    const res = await orderManager.addOrder(order);
+                    assert(res.isOk());
+                }
                 orders = orderManager.getNextRoundOrders(false);
 
                 // mock init quotes
@@ -958,7 +964,10 @@ for (let i = 0; i < testData.length; i++) {
                 };
 
                 const orderManager = new OrderManager(state);
-                await orderManager.addOrders(orders);
+                for (const order of orders) {
+                    const res = await orderManager.addOrder(order);
+                    assert(res.isOk());
+                }
                 orders = orderManager.getNextRoundOrders(false);
 
                 // mock init quotes
@@ -1263,7 +1272,10 @@ for (let i = 0; i < testData.length; i++) {
                 };
 
                 const orderManager = new OrderManager(state);
-                await orderManager.addOrders(orders);
+                for (const order of orders) {
+                    const res = await orderManager.addOrder(order);
+                    assert(res.isOk());
+                }
                 orders = orderManager.getNextRoundOrders(false);
 
                 state.gasPrice = await bot.getGasPrice();
