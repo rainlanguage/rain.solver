@@ -436,13 +436,11 @@ export class OrderManager {
                 }
             }
             // add to watched tokens
-            if (typeof decimals === "number") {
-                this.state.watchToken({
-                    symbol,
-                    address,
-                    decimals,
-                });
-            }
+            this.state.watchToken({
+                symbol,
+                address,
+                decimals,
+            });
             return Result.ok({ symbol, decimals, balance: sgOrderIO.balance });
         };
 
