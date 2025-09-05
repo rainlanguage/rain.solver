@@ -430,6 +430,7 @@ export class OrderManager {
                         new OrderManagerError(
                             `Failed to get token decimals for: ${address}`,
                             OrderManagerErrorType.UndefinedTokenDecimals,
+                            error,
                         ),
                     );
                 }
