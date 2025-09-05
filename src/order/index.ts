@@ -1,15 +1,12 @@
 import { erc20Abi } from "viem";
-import { Result } from "../common";
 import { syncOrders } from "./sync";
 import { SgOrder } from "../subgraph";
-import { errorSnapshot } from "../error";
 import { quoteSingleOrder } from "./quote";
 import { PreAssembledSpan } from "../logger";
 import { SubgraphManager } from "../subgraph";
 import { downscaleProtection } from "./protection";
 import { normalizeFloat, Result } from "../common";
 import { SharedState, TokenDetails } from "../state";
-import { WasmEncodedError } from "@rainlanguage/float";
 import { errorSnapshot, RainSolverBaseError } from "../error";
 import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
 import {
@@ -417,7 +414,6 @@ export class OrderManager {
                     })
                     .catch(() => "UnknownSymbol")); // fallback to unknown symbol if all fail
             let decimals =
-                io.decimals ??
                 cached?.decimals ??
                 (sgOrderIO?.token.decimals === undefined
                     ? undefined
@@ -470,25 +466,25 @@ export class OrderManager {
                 decimals: outputDecimals,
                 balance: outputBalanceHex,
             } = outputResult.value;
-          
+
             const inputBalanceRes = normalizeFloat(inputBalanceHex, inputDecimals);
             if (inputBalanceRes.isErr()) {
                 return Result.err(
-                  new OrderManagerError(
-                      `Failed to parse float`,
-                      OrderManagerErrorType.WasmEncodedError,
-                      inputBalanceRes.error
-                  )
+                    new OrderManagerError(
+                        `Failed to parse float`,
+                        OrderManagerErrorType.WasmEncodedError,
+                        inputBalanceRes.error,
+                    ),
                 );
             }
             const outputBalanceRes = normalizeFloat(outputBalanceHex, outputDecimals);
             if (outputBalanceRes.isErr()) {
                 return Result.err(
-                  new OrderManagerError(
-                      `Failed to parse float`,
-                      OrderManagerErrorType.WasmEncodedError,
-                      outputBalanceRes.error
-                  )
+                    new OrderManagerError(
+                        `Failed to parse float`,
+                        OrderManagerErrorType.WasmEncodedError,
+                        outputBalanceRes.error,
+                    ),
                 );
             }
 

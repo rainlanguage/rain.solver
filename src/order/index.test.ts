@@ -553,7 +553,7 @@ describe("Test OrderManager", () => {
             },
         ]);
     });
-  
+
     it("getOrderPairs should return error when fails to parse float", async () => {
         const orderStruct = {
             owner: "0xowner",
@@ -581,7 +581,7 @@ describe("Test OrderManager", () => {
             orderDetails as any,
         );
         assert(pairsResult.isErr());
-        expect(pairsResult.error.readableMsg).toContain("Invalid hex string");
+        expect(pairsResult.error?.cause?.readableMsg).toContain("Invalid hex string");
     });
 
     it("getOrderPairs should return error when fails to get decimals", async () => {
@@ -1274,15 +1274,39 @@ describe("Test OrderManager", () => {
                 orderHash: "0xhash1",
                 orderbook: { id: "0xorderbook1" },
                 orderBytes: "0xbytes",
-                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 2n }],
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
             },
             {
                 orderHash: "0xhash2",
                 orderbook: { id: "0xorderbook2" },
                 orderBytes: "0xbytes",
-                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 3n }],
-                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 4n }],
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
             },
         ];
         await orderManager.addOrder(orders[0] as any);
