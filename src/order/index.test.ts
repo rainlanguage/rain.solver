@@ -90,11 +90,15 @@ describe("Test OrderManager", () => {
             outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
             inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
         };
-        (orderManager.subgraphManager.fetchAll as Mock).mockResolvedValueOnce({
-            orders: [mockOrder],
-            report: { status: "ok" },
-        });
-        const report = await orderManager.fetch();
+        (orderManager.subgraphManager.fetchAll as Mock).mockResolvedValueOnce(
+            Result.ok({
+                orders: [mockOrder],
+                report: { status: "ok" },
+            }),
+        );
+        const fetchResult = await orderManager.fetch();
+        assert(fetchResult.isOk());
+        const report = fetchResult.value;
 
         expect(report).toEqual({ status: "ok" });
         expect(orderManager.ownersMap.size).toBe(1);

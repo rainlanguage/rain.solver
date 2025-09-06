@@ -5,8 +5,8 @@ import { RainSolverSigner } from "../signer";
 import { PreAssembledSpan } from "../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { SharedState, TokenDetails } from "../state";
-import { shuffleArray, sleep, ABI } from "../common";
 import { ErrorSeverity, errorSnapshot } from "../error";
+import { shuffleArray, sleep, ABI, Result } from "../common";
 import { WalletConfig, WalletType, MainAccountDerivationIndex } from "./config";
 import { transferTokenFrom, transferRemainingGasFrom, convertToGas } from "./sweep";
 import {
@@ -115,11 +115,12 @@ export class WalletManager {
         const reports = [];
         if (walletManager.config.type === WalletType.Mnemonic) {
             for (const [address] of walletManager.workers.signers) {
-                reports.push(
-                    await walletManager
-                        .fundWallet(address)
-                        .catch((error: any) => error as any as PreAssembledSpan),
-                );
+                const fundWalletResult = await walletManager.fundWallet(address);
+                if (fundWalletResult.isErr()) {
+                    reports.push(fundWalletResult.error);
+                } else {
+                    reports.push(fundWalletResult.value);
+                }
             }
         }
 
@@ -131,23 +132,30 @@ export class WalletManager {
      * @param wallet - The destination wallet address
      * @param topupAmount - (optional) Topup amount, default is the top up amount in this.config
      * @returns The report of the funding process
-     * @throws If topup amount is not defined or fails to successfully top up
      */
-    async fundWallet(wallet: string, topupAmount?: bigint): Promise<PreAssembledSpan> {
+    async fundWallet(
+        wallet: string,
+        topupAmount?: bigint,
+    ): Promise<Result<PreAssembledSpan, PreAssembledSpan>> {
         let amount: bigint | undefined = topupAmount;
         if (amount === undefined && this.config.type === WalletType.Mnemonic) {
             amount = this.config.topupAmount;
         }
-        if (typeof amount === "undefined") throw new Error("undefined topup amount");
 
         const report = new PreAssembledSpan("fund-wallet");
         report.setAttr("details.wallet", wallet);
-        report.setAttr("details.amount", formatUnits(amount, 18));
 
+        if (typeof amount === "undefined") {
+            report.setStatus({ code: SpanStatusCode.OK, message: "undefined topup amount" });
+            report.end();
+            return Result.err(report);
+        }
+
+        report.setAttr("details.amount", formatUnits(amount, 18));
         if (amount <= 0n) {
             report.setStatus({ code: SpanStatusCode.OK, message: "Zero topup amount" });
             report.end();
-            return report;
+            return Result.ok(report);
         } else {
             try {
                 const mainWalletBalance = await this.mainSigner.getSelfBalance();
@@ -164,7 +172,7 @@ export class WalletManager {
                         ].join("\n"),
                     });
                     report.end();
-                    return Promise.reject(report);
+                    return Result.err(report);
                 }
 
                 // fund the wallet
@@ -177,7 +185,7 @@ export class WalletManager {
                         message: "Wallet already has enough balance",
                     });
                     report.end();
-                    return report;
+                    return Result.ok(report);
                 }
                 const hash = await this.mainSigner.sendTx({
                     to: wallet as `0x${string}`,
@@ -194,7 +202,7 @@ export class WalletManager {
                         message: "Successfully topped up",
                     });
                     report.end();
-                    return report;
+                    return Result.ok(report);
                 } else {
                     report.setAttr("severity", ErrorSeverity.LOW);
                     report.setStatus({
@@ -202,7 +210,7 @@ export class WalletManager {
                         message: "Failed to topup wallet: tx reverted",
                     });
                     report.end();
-                    return Promise.reject(report);
+                    return Result.err(report);
                 }
             } catch (error: any) {
                 report.setAttr("severity", ErrorSeverity.LOW);
@@ -212,7 +220,7 @@ export class WalletManager {
                     message: await errorSnapshot("Failed to topup wallet", error),
                 });
                 report.end();
-                throw report;
+                return Result.err(report);
             }
         }
     }
@@ -229,9 +237,8 @@ export class WalletManager {
             addressIndex: ++this.workers.lastUsedDerivationIndex,
         });
 
-        const report = await this.fundWallet(wallet.address).catch(
-            (error: any) => error as any as PreAssembledSpan,
-        );
+        const fundWalletResult = await this.fundWallet(wallet.address);
+        const report = fundWalletResult.isOk() ? fundWalletResult.value : fundWalletResult.error;
         report.name = "add-wallet";
 
         this.workers.signers.set(
@@ -529,15 +536,13 @@ export class WalletManager {
      * @returns The report of the addition process
      */
     async tryAddWorker(worker: RainSolverSigner): Promise<PreAssembledSpan> {
-        const report = await this.fundWallet(worker.account.address)
-            .then((report) => {
-                this.workers.signers.set(worker.account.address.toLowerCase(), worker);
-                return report;
-            })
-            .catch((report) => {
-                this.workers.pendingAdd.set(worker.account.address.toLowerCase(), worker);
-                return report as PreAssembledSpan;
-            });
+        const fundWalletResult = await this.fundWallet(worker.account.address);
+        if (fundWalletResult.isOk()) {
+            this.workers.signers.set(worker.account.address.toLowerCase(), worker);
+        } else {
+            this.workers.pendingAdd.set(worker.account.address.toLowerCase(), worker);
+        }
+        const report = fundWalletResult.isOk() ? fundWalletResult.value : fundWalletResult.error;
         report.name = "add-wallet";
 
         return report;

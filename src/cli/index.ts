@@ -107,7 +107,10 @@ export class RainSolverCli {
 
                 // init state
                 const stateConfig = await SharedStateConfig.tryFromAppOptions(appOptions);
-                const state = new SharedState(stateConfig);
+                if (stateConfig.isErr()) {
+                    throw stateConfig.error;
+                }
+                const state = new SharedState(stateConfig.value);
 
                 report.setStatus({ code: SpanStatusCode.OK });
                 report.end();
@@ -129,27 +132,28 @@ export class RainSolverCli {
         // init subgraph manager and check status
         const sgManagerConfig = SubgraphConfig.tryFromAppOptions(appOptions);
         const subgraphManager = new SubgraphManager(sgManagerConfig);
-        try {
-            const report = await subgraphManager.statusCheck();
-            report.forEach((statusReport) => logger.exportPreAssembledSpan(statusReport));
-        } catch (error: any) {
+        const statusCheckResult = await subgraphManager.statusCheck();
+        if (statusCheckResult.isOk()) {
+            statusCheckResult.value.forEach((statusReport) =>
+                logger.exportPreAssembledSpan(statusReport),
+            );
+        } else {
             // export the report and throw
-            error.forEach((statusReport: any) => logger.exportPreAssembledSpan(statusReport));
+            statusCheckResult.error.forEach((statusReport: any) =>
+                logger.exportPreAssembledSpan(statusReport),
+            );
             throw new Error("All subgraphs have indexing error");
         }
 
         // init order manager
-        const orderManager = await (async () => {
-            try {
-                const { orderManager, report } = await OrderManager.init(state, subgraphManager);
-                logger.exportPreAssembledSpan(report);
-                return orderManager;
-            } catch (error: any) {
-                // export the report and throw
-                logger.exportPreAssembledSpan(error);
-                throw new Error("Failed to get order details from subgraphs");
-            }
-        })();
+        const orderManagerResult = await OrderManager.init(state, subgraphManager);
+        if (orderManagerResult.isErr()) {
+            // export the report and throw
+            logger.exportPreAssembledSpan(orderManagerResult.error);
+            throw new Error("Failed to get order details from subgraphs");
+        }
+        const { orderManager, report } = orderManagerResult.value;
+        logger.exportPreAssembledSpan(report);
 
         // init wallet manager
         const { walletManager, reports } = await WalletManager.init(state);

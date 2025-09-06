@@ -9,8 +9,8 @@ import { RainSolverSigner } from "../signer";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { SharedState, TokenDetails } from "../state";
 import { SWEEP_RETRY_COUNT, WalletManager } from "./index";
-import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
+import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
 // mock signer module
 vi.mock("../signer", () => ({
@@ -121,18 +121,20 @@ describe("Test WalletManager", () => {
             const { walletManager } = await WalletManager.init(singleWalletState);
             const targetWallet = "0x1234567890123456789012345678901234567890";
 
-            await expect(walletManager.fundWallet(targetWallet)).rejects.toThrow(
-                "undefined topup amount",
-            );
+            const fundWalletResult = await walletManager.fundWallet(targetWallet);
+            assert(fundWalletResult.isErr());
+            expect(fundWalletResult.error.status?.message).toMatch("undefined topup amount");
         });
 
         it("should skip funding if amount is zero", async () => {
             const { walletManager } = await WalletManager.init(multiWalletState);
             const spy = vi.spyOn(walletManager.mainSigner, "getSelfBalance");
-            const report = await walletManager.fundWallet(
+            const result = await walletManager.fundWallet(
                 "0x1234567890123456789012345678901234567890",
                 0n,
             );
+            assert(result.isOk());
+            const report = result.value;
 
             expect(spy).not.toHaveBeenCalled();
             expect(report.status?.code).toBe(SpanStatusCode.OK);
@@ -149,7 +151,9 @@ describe("Test WalletManager", () => {
                 parseUnits("0.05", 18),
             );
 
-            await expect(() => walletManager.fundWallet(targetWallet)).rejects.toMatchObject({
+            const fundWalletResult = await walletManager.fundWallet(targetWallet);
+            assert(fundWalletResult.isErr());
+            expect(fundWalletResult.error).toMatchObject({
                 status: {
                     code: SpanStatusCode.ERROR,
                     message: [
@@ -174,7 +178,9 @@ describe("Test WalletManager", () => {
                 status: "success",
             });
 
-            const report = await walletManager.fundWallet(targetWallet);
+            const result = await walletManager.fundWallet(targetWallet);
+            assert(result.isOk());
+            const report = result.value;
 
             expect(report.status?.code).toBe(SpanStatusCode.OK);
             expect(report.status?.message).toBe("Successfully topped up");
@@ -192,7 +198,9 @@ describe("Test WalletManager", () => {
                 status: "reverted",
             });
 
-            await expect(() => walletManager.fundWallet(targetWallet)).rejects.toMatchObject({
+            const fundWalletResult = await walletManager.fundWallet(targetWallet);
+            assert(fundWalletResult.isErr());
+            expect(fundWalletResult.error).toMatchObject({
                 status: {
                     code: SpanStatusCode.ERROR,
                     message: "Failed to topup wallet: tx reverted",
@@ -859,12 +867,14 @@ describe("Test WalletManager", () => {
 
         it("should successfully add worker after successful funding", async () => {
             const { walletManager } = await WalletManager.init(multiWalletState);
-            const fundWalletSpy = vi.spyOn(walletManager, "fundWallet").mockResolvedValue({
-                name: "fund-wallet",
-                status: { code: SpanStatusCode.OK },
-                attributes: {},
-                end: vi.fn(),
-            } as any);
+            const fundWalletSpy = vi.spyOn(walletManager, "fundWallet").mockResolvedValue(
+                common.Result.ok({
+                    name: "fund-wallet",
+                    status: { code: SpanStatusCode.OK },
+                    attributes: {},
+                    end: vi.fn(),
+                } as any),
+            );
 
             const report = await walletManager.tryAddWorker(workerSigner);
 
@@ -881,12 +891,14 @@ describe("Test WalletManager", () => {
 
         it("should add worker to pendingAdd on funding failure", async () => {
             const { walletManager } = await WalletManager.init(multiWalletState);
-            const fundWalletSpy = vi.spyOn(walletManager, "fundWallet").mockRejectedValue({
-                name: "fund-wallet",
-                status: { code: SpanStatusCode.ERROR },
-                attributes: {},
-                end: vi.fn(),
-            } as any);
+            const fundWalletSpy = vi.spyOn(walletManager, "fundWallet").mockResolvedValue(
+                common.Result.err({
+                    name: "fund-wallet",
+                    status: { code: SpanStatusCode.ERROR },
+                    attributes: {},
+                    end: vi.fn(),
+                } as any),
+            );
 
             const report = await walletManager.tryAddWorker(workerSigner);
 

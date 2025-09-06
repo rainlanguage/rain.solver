@@ -3,7 +3,7 @@ import { SgOrder } from "./types";
 import { ErrorSeverity } from "../error";
 import { SubgraphManager } from "./index";
 import { SpanStatusCode } from "@opentelemetry/api";
-import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
 vi.mock("axios");
 
@@ -60,7 +60,9 @@ describe("Test SubgraphManager", () => {
 
     it("test fetchAll: should fetch all orders and report", async () => {
         vi.spyOn(manager, "fetchSubgraphOrders").mockResolvedValue([mockOrder]);
-        const { orders, report } = await manager.fetchAll();
+        const fetchAllResult = await manager.fetchAll();
+        assert(fetchAllResult.isOk());
+        const { orders, report } = fetchAllResult.value;
         expect(orders).toEqual([mockOrder]);
         expect(report.name).toBe("fetch-orders");
         expect(report.attributes[`fetchStatus.${subgraphUrl}`]).toBe("Fully fetched");
@@ -69,7 +71,9 @@ describe("Test SubgraphManager", () => {
 
     it("test fetchAll: should throw if all fetches fail", async () => {
         vi.spyOn(manager, "fetchSubgraphOrders").mockRejectedValue("fail");
-        await expect(manager.fetchAll()).rejects.toMatchObject({
+        const fetchAllResult = await manager.fetchAll();
+        assert(fetchAllResult.isErr());
+        expect(fetchAllResult.error).toMatchObject({
             orders: undefined,
             report: {
                 attributes: {
@@ -92,7 +96,9 @@ describe("Test SubgraphManager", () => {
         (axios.post as Mock).mockResolvedValue({
             data: { data: { _meta: { hasIndexingErrors: false, block: { number: 1 } } } },
         });
-        const reports = await manager.statusCheck();
+        const statusCheckResult = await manager.statusCheck();
+        assert(statusCheckResult.isOk());
+        const reports = statusCheckResult.value;
         expect(reports[0].status).toEqual({ code: SpanStatusCode.OK });
         expect(reports[0].endTime).toBeGreaterThan(0);
     });
@@ -101,7 +107,9 @@ describe("Test SubgraphManager", () => {
         (axios.post as Mock).mockResolvedValue({
             data: { data: { _meta: { hasIndexingErrors: true, block: { number: 1 } } } },
         });
-        const reports = await manager.statusCheck();
+        const statusCheckResult = await manager.statusCheck();
+        assert(statusCheckResult.isOk());
+        const reports = statusCheckResult.value;
         expect(reports[0].status?.code).toBe(SpanStatusCode.ERROR);
         expect(reports[0].attributes.severity).toBe(ErrorSeverity.HIGH);
         expect(reports[0].endTime).toBeGreaterThan(0);
@@ -109,7 +117,9 @@ describe("Test SubgraphManager", () => {
 
     it("test statusCheck: should report ERROR and MEDIUM severity on missing _meta", async () => {
         (axios.post as Mock).mockResolvedValue({ data: { data: {} } });
-        const reports = await manager.statusCheck();
+        const statusCheckResult = await manager.statusCheck();
+        assert(statusCheckResult.isOk());
+        const reports = statusCheckResult.value;
         expect(reports[0].status?.code).toBe(SpanStatusCode.ERROR);
         expect(reports[0].attributes.severity).toBe(ErrorSeverity.MEDIUM);
         expect(reports[0].endTime).toBeGreaterThan(0);
@@ -117,7 +127,9 @@ describe("Test SubgraphManager", () => {
 
     it("test statusCheck: should throw when all queries fails", async () => {
         (axios.post as Mock).mockRejectedValue(new Error("fail"));
-        await expect(manager.statusCheck()).rejects.toMatchObject([
+        const statusCheckResult = await manager.statusCheck();
+        assert(statusCheckResult.isErr());
+        expect(statusCheckResult.error).toMatchObject([
             {
                 attributes: {
                     severity: ErrorSeverity.MEDIUM,
