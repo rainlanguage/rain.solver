@@ -1,5 +1,5 @@
-import { shouldThrow } from "../error";
-import { normalizeUrl, RpcMetrics, RpcState } from "./";
+import { RpcMetrics, RpcState } from "./rpc";
+import { normalizeUrl, shouldThrow } from "./helpers";
 
 /**
  * A fetch request hook for the viem http client that is used to keeps track of rpc metrics

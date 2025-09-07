@@ -1,5 +1,5 @@
-import { RpcState } from ".";
-import { shouldThrow } from "../error";
+import { RpcState } from "./rpc";
+import { shouldThrow } from "./helpers";
 import { BaseError, createTransport, Transport, TransportConfig } from "viem";
 
 /**

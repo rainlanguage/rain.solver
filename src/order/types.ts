@@ -1,5 +1,4 @@
-import { ABI, Result } from "../common";
-import { TokenDetails } from "../state";
+import { ABI, Result, TokenDetails } from "../common";
 import { decodeAbiParameters, DecodeAbiParametersErrorType, parseAbiParameters } from "viem";
 
 export const OrderV3Abi = parseAbiParameters(ABI.Orderbook.Structs.OrderV3);

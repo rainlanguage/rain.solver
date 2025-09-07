@@ -1,10 +1,8 @@
-import { PublicClient } from "viem";
-import { ABI, Result } from "../common";
-import { TokenDetails } from "../state";
-import { ONE18, scaleTo18 } from "../math";
-import { RainSolverSigner } from "../signer";
-import { RainSolverBaseError } from "../error";
+import { ONE18, scaleTo18 } from "../../math";
 import { Token as SushiToken } from "sushi/currency";
+import { RainSolverBaseError } from "../../error/types";
+import { ABI, Result, TokenDetails } from "../../common";
+import { Account, Chain, formatUnits, PublicClient, Transport } from "viem";
 import {
     Path,
     Token,
@@ -148,13 +146,29 @@ export class BalancerRouter {
     }
 
     /**
+     * Gets the market price for a token pair and swap amount.
+     * @param args The parameters for the market price query
+     * @returns The formatted market price for the token pair
+     */
+    async getMarketPrice(
+        args: BalancerQuoteParams,
+    ): Promise<Result<{ price: string }, BalancerRouterError>> {
+        const balancerRouteResult = await this.getBestRoute(args);
+        if (balancerRouteResult.isOk()) {
+            const price = balancerRouteResult.value.onchainPrice ?? balancerRouteResult.value.price;
+            return Result.ok({ price: formatUnits(price, 18) });
+        }
+        return Result.err(balancerRouteResult.error);
+    }
+
+    /**
      * Gets the balancer market quote for a token pair by simulating balancer swap query
      * @param params The parameters for getting the best Balancer market quote
      * @param signer The signer instance
      */
     async tryQuote(
         params: BalancerQuoteParams,
-        signer: PublicClient | RainSolverSigner,
+        signer: PublicClient<Transport, Chain, Account>,
         address: `0x${string}` = `0x${"1".repeat(40)}`,
     ): Promise<
         Result<

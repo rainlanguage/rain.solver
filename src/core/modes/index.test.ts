@@ -2,12 +2,12 @@ import { RainSolver } from "..";
 import { Result } from "../../common";
 import { findBestTrade } from "./index";
 import { findBestBalancerTrade } from "./balancer";
-import { findBestRouteProcessorTrade } from "./rp";
+import { findBestRouteProcessorTrade } from "./router";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
-vi.mock("./rp", () => ({
+vi.mock("./router", () => ({
     findBestRouteProcessorTrade: vi.fn(),
 }));
 

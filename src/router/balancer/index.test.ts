@@ -1,12 +1,12 @@
 import { Token } from "sushi/currency";
-import { TokenDetails } from "../state";
+import { TokenDetails } from "../../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
     BalancerRouter,
     BalancerRouterPath,
     BalancerRouterError,
     BalancerRouterErrorType,
-} from "./balancer";
+} from ".";
 
 vi.mock("@balancer/sdk", async (importOriginal) => {
     return {

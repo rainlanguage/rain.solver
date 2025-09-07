@@ -3,13 +3,13 @@ import { RainSolver } from "../..";
 import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
 import { scaleFrom18 } from "../../../math";
-import { estimateProfit } from "../rp/utils";
-import { Result, ABI } from "../../../common";
+import { estimateProfit } from "../router/utils";
 import { Attributes } from "@opentelemetry/api";
+import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
-import { RainSolverSigner, RawTransaction } from "../../../signer";
-import { BalancerRouter, BalancerRouterErrorType } from "../../../router/balancer";
+import { Result, ABI, RawTransaction } from "../../../common";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
+import { BalancerRouter, BalancerRouterErrorType } from "../../../router";
 import { TakeOrdersConfigType, SimulationResult, TradeType, FailedSimulation } from "../../types";
 import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
 

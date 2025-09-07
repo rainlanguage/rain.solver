@@ -1,8 +1,8 @@
 import { Chain } from "viem";
 import { Result } from "../common";
 import { ChainId } from "sushi/chain";
-import { RainSolverBaseError } from "../error";
 import { Token, WNATIVE } from "sushi/currency";
+import { RainSolverBaseError } from "../error/types";
 import {
     STABLES,
     publicClientConfig,
