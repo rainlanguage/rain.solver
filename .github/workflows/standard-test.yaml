@@ -32,7 +32,7 @@ jobs:
       - name: Install Dependencies
         run:  nix develop -c npm install
 
-      - uses: rainlanguage/github-chore/.github/actions/npm-blacklist@599a9f4581b42b96dfa03473e600fffabe9e599d
+      - uses: rainlanguage/github-chore/.github/actions/npm-blacklist@2025-09-09-npm-checker
         with:
           working-directory: './src/../'
           additional-blacklist-file: './blklist.txt'
