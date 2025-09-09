@@ -125,15 +125,22 @@ export class OrderManager {
     static async init(
         state: SharedState,
         subgraphManager?: SubgraphManager,
-    ): Promise<{ orderManager: OrderManager; report: PreAssembledSpan }> {
+    ): Promise<Result<{ orderManager: OrderManager; report: PreAssembledSpan }, PreAssembledSpan>> {
         const orderManager = new OrderManager(state, subgraphManager);
-        const report = await orderManager.fetch();
-        return { orderManager, report };
+        const fetchResult = await orderManager.fetch();
+        if (fetchResult.isErr()) {
+            return Result.err(fetchResult.error);
+        }
+        return Result.ok({ orderManager, report: fetchResult.value });
     }
 
     /** Fetches all active orders from upstream subgraphs */
-    async fetch(): Promise<PreAssembledSpan> {
-        const { orders, report } = await this.subgraphManager.fetchAll();
+    async fetch(): Promise<Result<PreAssembledSpan, PreAssembledSpan>> {
+        const fetchResult = await this.subgraphManager.fetchAll();
+        if (fetchResult.isErr()) {
+            return Result.err(fetchResult.error.report);
+        }
+        const { orders, report } = fetchResult.value;
         for (const order of orders) {
             const result = await this.addOrder(order);
             if (result.isErr()) {
@@ -143,7 +150,7 @@ export class OrderManager {
                 );
             }
         }
-        return report;
+        return Result.ok(report);
     }
 
     /** Syncs orders to upstream subgraphs */
@@ -430,18 +437,17 @@ export class OrderManager {
                         new OrderManagerError(
                             `Failed to get token decimals for: ${address}`,
                             OrderManagerErrorType.UndefinedTokenDecimals,
+                            error,
                         ),
                     );
                 }
             }
             // add to watched tokens
-            if (typeof decimals === "number") {
-                this.state.watchToken({
-                    symbol,
-                    address,
-                    decimals,
-                });
-            }
+            this.state.watchToken({
+                symbol,
+                address,
+                decimals,
+            });
             return Result.ok({ symbol, decimals, balance: sgOrderIO.balance });
         };
 

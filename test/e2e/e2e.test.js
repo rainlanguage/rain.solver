@@ -62,7 +62,9 @@ for (let i = 0; i < testData.length; i++) {
         after(() => mockServer.stop());
 
         // get config for the chain
-        const config = getChainConfig(chainId);
+        const configResult = getChainConfig(chainId);
+        assert(configResult.isOk());
+        const config = configResult.value;
         config.chain = publicClientConfig[chainId].chain;
 
         // get available route processor versions for the chain (only RP4)

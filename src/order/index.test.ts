@@ -118,11 +118,15 @@ describe("Test OrderManager", () => {
                 },
             ],
         };
-        (orderManager.subgraphManager.fetchAll as Mock).mockResolvedValueOnce({
-            orders: [mockOrder],
-            report: { status: "ok" },
-        });
-        const report = await orderManager.fetch();
+        (orderManager.subgraphManager.fetchAll as Mock).mockResolvedValueOnce(
+            Result.ok({
+                orders: [mockOrder],
+                report: { status: "ok" },
+            }),
+        );
+        const fetchResult = await orderManager.fetch();
+        assert(fetchResult.isOk());
+        const report = fetchResult.value;
 
         expect(report).toEqual({ status: "ok" });
         expect(orderManager.ownersMap.size).toBe(1);

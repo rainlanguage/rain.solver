@@ -123,7 +123,7 @@ export function getSortedPairList<
 }
 
 /**
- * Sorts a pair list in descending order by their quotes ratio and maxoutput
+ * Sorts a pair list in ascending order by their quotes ratio and descending maxoutput
  * @param a - The first pair to compare
  * @param b - The second pair to compare
  */
@@ -132,9 +132,9 @@ export function sortPairList(a: [string, Pair], b: [string, Pair]): number {
     if (!a[1].takeOrder.quote) return 1;
     if (!b[1].takeOrder.quote) return -1;
     if (a[1].takeOrder.quote.ratio < b[1].takeOrder.quote.ratio) {
-        return 1;
-    } else if (a[1].takeOrder.quote.ratio > b[1].takeOrder.quote.ratio) {
         return -1;
+    } else if (a[1].takeOrder.quote.ratio > b[1].takeOrder.quote.ratio) {
+        return 1;
     } else {
         // if ratios are equal, sort by maxoutput
         if (a[1].takeOrder.quote.maxOutput < b[1].takeOrder.quote.maxOutput) {
