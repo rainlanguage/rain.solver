@@ -32,6 +32,12 @@ jobs:
       - name: Install Dependencies
         run:  nix develop -c npm install
 
+      - uses: rainlanguage/github-chore/.github/actions/npm-blacklist@c520d5956bd2ec0477a240a51b159fe3318c1157
+        with:
+          project-path: './src/../'
+          additional-blacklist-pkgs: |
+            vitest@3.1.4
+
       - name: Lint
         run:  nix develop -c npm run lint
       
