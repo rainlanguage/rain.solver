@@ -16,6 +16,7 @@ export type Settlement = {
     pair: string;
     owner: string;
     orderHash: string;
+    startTime: number;
     settle: () => Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>>;
 };
 
@@ -33,7 +34,8 @@ export async function initializeRound(
 
     for (const orderDetails of iterOrders(orders, shuffle)) {
         const pair = `${orderDetails.buyTokenSymbol}/${orderDetails.sellTokenSymbol}`;
-        const report = new PreAssembledSpan(`checkpoint_${pair}`);
+        const startTime = performance.now();
+        const report = new PreAssembledSpan(`checkpoint_${pair}`, startTime);
         const owner = orderDetails.takeOrder.struct.order.owner.toLowerCase();
         report.extendAttrs({
             "details.pair": pair,
@@ -68,6 +70,7 @@ export async function initializeRound(
         if (orderDetails.sellTokenVaultBalance <= 0n) {
             settlements.push({
                 pair,
+                startTime,
                 orderHash: orderDetails.takeOrder.id,
                 owner: orderDetails.takeOrder.struct.order.owner,
                 settle: async () => {
@@ -105,6 +108,7 @@ export async function initializeRound(
         settlements.push({
             settle,
             pair,
+            startTime,
             orderHash: orderDetails.takeOrder.id,
             owner: orderDetails.takeOrder.struct.order.owner,
         });
@@ -135,9 +139,9 @@ export async function finalizeRound(
 }> {
     const results: Result<ProcessOrderSuccess, ProcessOrderFailure>[] = [];
     const reports: PreAssembledSpan[] = [];
-    for (const { settle, pair, owner, orderHash } of settlements) {
+    for (const { settle, pair, owner, orderHash, startTime } of settlements) {
         // instantiate a span report for this pair
-        const report = new PreAssembledSpan(`order_${pair}`);
+        const report = new PreAssembledSpan(`order_${pair}`, startTime);
         report.setAttr("details.owner", owner);
 
         // settle the process results

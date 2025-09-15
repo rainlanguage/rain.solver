@@ -3,7 +3,7 @@ import { Result } from "../../common";
 import { Token } from "sushi/currency";
 import { processReceipt } from "./receipt";
 import { containsNodeError } from "../../error";
-import { sleep, withBigintSerializer } from "../../common";
+import { withBigintSerializer } from "../../common";
 import { RainSolverSigner, RawTransaction } from "../../signer";
 import { processTransaction, ProcessTransactionArgs } from "./transaction";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
@@ -106,7 +106,7 @@ describe("Test processTransaction", () => {
     });
 
     describe("successful transaction sending", () => {
-        it("should send transaction successfully on first attempt", async () => {
+        it("should send transaction successfully", async () => {
             const mockTxHash = "0xTransactionHash123";
             mockWriteSigner.sendTx.mockResolvedValueOnce(mockTxHash);
             const mockReceipt = {
@@ -157,41 +157,10 @@ describe("Test processTransaction", () => {
             // verify result is passed through from processReceipt
             expect(result).toBe(mockHandleReceiptResult);
         });
-
-        it("should retry transaction sending after first failure", async () => {
-            const mockTxHash = "0xRetryTxHash456";
-            const mockError = new Error("Network error");
-            mockWriteSigner.sendTx
-                .mockRejectedValueOnce(mockError) // First attempt fails
-                .mockResolvedValueOnce(mockTxHash); // Second attempt succeeds
-            const mockReceipt = {
-                status: "success",
-                transactionHash: mockTxHash,
-                gasUsed: 21000n,
-                effectiveGasPrice: 20000000000n,
-            };
-            (mockSigner.state.client.waitForTransactionReceipt as Mock).mockResolvedValueOnce(
-                mockReceipt,
-            );
-            (processReceipt as Mock).mockResolvedValueOnce(Result.ok(mockArgs.baseResult));
-            const settlerFn = await processTransaction(mockArgs);
-            await settlerFn();
-
-            // verify sleep was called for retry delay
-            expect(sleep).toHaveBeenCalledWith(5000);
-
-            // verify transaction was attempted twice
-            expect(mockWriteSigner.sendTx).toHaveBeenCalledTimes(2);
-
-            // verify final success with retry hash
-            expect(mockArgs.baseResult.spanAttributes["details.txUrl"]).toBe(
-                "https://etherscan.io/tx/0xRetryTxHash456",
-            );
-        });
     });
 
     describe("transaction sending failures", () => {
-        it("should return error result when both send attempts fail", async () => {
+        it("should return error result when send attempt fail", async () => {
             const mockError = new Error("Persistent network error");
             mockWriteSigner.sendTx.mockRejectedValue(mockError);
             (containsNodeError as Mock).mockResolvedValue(false);
