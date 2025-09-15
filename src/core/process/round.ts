@@ -76,6 +76,7 @@ export async function initializeRound(
                 settle: async () => {
                     return Result.ok({
                         tokenPair: pair,
+                        endTime: performance.now(),
                         buyToken: orderDetails.buyToken,
                         sellToken: orderDetails.sellToken,
                         status: ProcessOrderStatus.ZeroOutput,
@@ -148,9 +149,11 @@ export async function finalizeRound(
         // this will return the report of the operation
         const result = await settle();
         results.push(result);
+        let endTime = performance.now();
 
         if (result.isOk()) {
             const value = result.value;
+            endTime = value.endTime;
             // keep track of avg gas cost
             if (value.gasCost) {
                 this.state.gasCosts.push(value.gasCost);
@@ -196,6 +199,7 @@ export async function finalizeRound(
             }
         } else {
             const err = result.error;
+            endTime = err.endTime;
             // set the span attributes with the values gathered at processOrder()
             for (const attrKey in err.spanAttributes) {
                 // record event attrs
@@ -332,7 +336,7 @@ export async function finalizeRound(
                 }
             }
         }
-        report.end();
+        report.end(endTime);
         reports.push(report);
 
         // export the report to logger if logger is available

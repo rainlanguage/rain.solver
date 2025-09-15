@@ -566,6 +566,7 @@ describe("Test finalizeRound", () => {
                     status: ProcessOrderStatus.ZeroOutput,
                     tokenPair: "ETH/USDC",
                     spanAttributes: { "test.attr": "value" },
+                    endTime: 789,
                 }),
             );
 
@@ -591,6 +592,7 @@ describe("Test finalizeRound", () => {
                 tokenPair: "ETH/USDC",
                 gasCost: 1000000n,
                 spanAttributes: { "test.attr": "value" },
+                endTime: 789,
             });
 
             // assert gas cost tracking
@@ -601,6 +603,7 @@ describe("Test finalizeRound", () => {
             const report = result.reports[0];
             expect(report.name).toBe("order_ETH/USDC");
             expect(report.startTime).toBe(123);
+            expect(report.endTime).toBe(789);
             expect(report.attributes["details.owner"]).toBe("0x123");
             expect(report.attributes["test.attr"]).toBe("value");
             expect(report.status?.code).toBe(SpanStatusCode.OK);
@@ -613,6 +616,7 @@ describe("Test finalizeRound", () => {
                     status: ProcessOrderStatus.NoOpportunity,
                     spanAttributes: { liquidity: "low" },
                     message: "insufficient liquidity",
+                    endTime: 789,
                 }),
             );
 
@@ -634,8 +638,10 @@ describe("Test finalizeRound", () => {
                 status: ProcessOrderStatus.NoOpportunity,
                 spanAttributes: { liquidity: "low" },
                 message: "insufficient liquidity",
+                endTime: 789,
             });
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.ERROR);
             expect(result.reports[0].status?.message).toBe("insufficient liquidity");
             expect(result.reports[0].attributes["liquidity"]).toBe("low");
@@ -646,6 +652,7 @@ describe("Test finalizeRound", () => {
                 Result.ok({
                     status: ProcessOrderStatus.NoOpportunity,
                     spanAttributes: {},
+                    endTime: 789,
                 }),
             );
 
@@ -664,6 +671,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
             expect(result.reports[0].status?.message).toBe("no opportunity");
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle FoundOpportunity status", async () => {
@@ -672,6 +680,7 @@ describe("Test finalizeRound", () => {
                     status: ProcessOrderStatus.FoundOpportunity,
                     profit: "0.05",
                     spanAttributes: { "profit.eth": "0.05" },
+                    endTime: 789,
                 }),
             );
 
@@ -693,11 +702,13 @@ describe("Test finalizeRound", () => {
                 status: ProcessOrderStatus.FoundOpportunity,
                 profit: "0.05",
                 spanAttributes: { "profit.eth": "0.05" },
+                endTime: 789,
             });
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
             expect(result.reports[0].status?.message).toBe("found opportunity");
             expect(result.reports[0].attributes["profit.eth"]).toBe("0.05");
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle unknown status as unexpected error", async () => {
@@ -705,6 +716,7 @@ describe("Test finalizeRound", () => {
                 Result.ok({
                     status: "UNKNOWN_STATUS" as any,
                     spanAttributes: { custom: "attr" },
+                    endTime: 789,
                 }),
             );
 
@@ -724,6 +736,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.ERROR);
             expect(result.reports[0].status?.message).toBe("unexpected error");
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle settlement without gas cost", async () => {
@@ -731,6 +744,7 @@ describe("Test finalizeRound", () => {
                 Result.ok({
                     status: ProcessOrderStatus.FoundOpportunity,
                     spanAttributes: {},
+                    endTime: 789,
                     // No gasCost provided
                 }),
             );
@@ -756,6 +770,7 @@ describe("Test finalizeRound", () => {
                 Result.ok({
                     status: ProcessOrderStatus.FoundOpportunity,
                     spanAttributes: { "event.something": 1234, "event.another": 5678 },
+                    endTime: 789,
                 }),
             );
             settlements = [
@@ -784,6 +799,7 @@ describe("Test finalizeRound", () => {
                     reason: ProcessOrderHaltReason.FailedToQuote,
                     spanAttributes: { provider: "chainlink" },
                     status: "failed",
+                    endTime: 789,
                 }),
             );
 
@@ -805,10 +821,12 @@ describe("Test finalizeRound", () => {
                 status: "failed",
                 reason: ProcessOrderHaltReason.FailedToQuote,
                 spanAttributes: { provider: "chainlink" },
+                endTime: 789,
             });
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
             expect(result.reports[0].status?.message).toBe("failed to quote order: 0xabc");
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle FailedToQuote error with error details", async () => {
@@ -819,6 +837,7 @@ describe("Test finalizeRound", () => {
                     spanAttributes: { "retry.count": "3" },
                     status: "failed",
                     error,
+                    endTime: 789,
                 }),
             );
 
@@ -842,6 +861,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].status?.message).toContain("failed to quote order: 0xdef");
             expect(result.reports[0].status?.message).toContain("quote service down");
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle FailedToGetPools error with medium severity", async () => {
@@ -852,6 +872,7 @@ describe("Test finalizeRound", () => {
                     spanAttributes: { "pool.count": "0" },
                     status: "failed",
                     error,
+                    endTime: 789,
                 }),
             );
 
@@ -878,6 +899,7 @@ describe("Test finalizeRound", () => {
                 "pool fetch failed",
             );
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle FailedToGetEthPrice error with OK status", async () => {
@@ -888,6 +910,7 @@ describe("Test finalizeRound", () => {
                     spanAttributes: {},
                     status: "failed",
                     error,
+                    endTime: 789,
                 }),
             );
 
@@ -909,6 +932,7 @@ describe("Test finalizeRound", () => {
             );
             expect(result.reports[0].attributes["errorDetails"]).toContain("eth price unavailable");
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle FailedToUpdatePools error", async () => {
@@ -918,6 +942,7 @@ describe("Test finalizeRound", () => {
                     spanAttributes: { "test.attr": "value" },
                     status: "failed",
                     error: new Error("update failed"),
+                    endTime: 789,
                 }),
             );
 
@@ -941,6 +966,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].exception?.exception).toBeInstanceOf(Error);
             expect((result.reports[0].exception?.exception as any)?.message).toBe("update failed");
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle TxFailed error with timeout (low severity)", async () => {
@@ -951,6 +977,7 @@ describe("Test finalizeRound", () => {
                     spanAttributes: { "tx.hash": "0x123" },
                     status: "failed",
                     error: timeoutError,
+                    endTime: 789,
                 }),
             );
 
@@ -971,6 +998,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].attributes["txSendFailed"]).toBe(true);
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.ERROR);
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle TxFailed error without timeout (high severity)", async () => {
@@ -981,6 +1009,7 @@ describe("Test finalizeRound", () => {
                     spanAttributes: {},
                     status: "failed",
                     error,
+                    endTime: 789,
                 }),
             );
 
@@ -999,6 +1028,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].attributes["severity"]).toBe(ErrorSeverity.HIGH);
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.ERROR);
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle TxFailed error without error details", async () => {
@@ -1007,6 +1037,7 @@ describe("Test finalizeRound", () => {
                     reason: ProcessOrderHaltReason.TxFailed,
                     spanAttributes: { "test.attr": "value" },
                     status: "failed",
+                    endTime: 789,
                 }),
             );
 
@@ -1026,6 +1057,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].status?.message).toBe("failed to submit the transaction");
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.ERROR);
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle TxReverted error with snapshot", async () => {
@@ -1035,6 +1067,7 @@ describe("Test finalizeRound", () => {
                     spanAttributes: { "block.number": "12345" },
                     status: "reverted",
                     error: { snapshot: "Transaction reverted: INSUFFICIENT_LIQUIDITY" },
+                    endTime: 789,
                 }),
             );
 
@@ -1056,6 +1089,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].attributes["unsuccessfulClear"]).toBe(true);
             expect(result.reports[0].attributes["txReverted"]).toBe(true);
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle TxReverted error with known error (no high severity)", async () => {
@@ -1065,6 +1099,7 @@ describe("Test finalizeRound", () => {
                     spanAttributes: { "test.attr": "value" },
                     status: "failed",
                     error: { err: new Error("INSUFFICIENT_LIQUIDITY") }, // This is typically a known error
+                    endTime: 789,
                 }),
             );
 
@@ -1084,6 +1119,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.ERROR);
             expect(result.reports[0].attributes["txReverted"]).toBe(true);
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle TxReverted error with txNoneNodeError flag (high severity)", async () => {
@@ -1093,6 +1129,7 @@ describe("Test finalizeRound", () => {
                     spanAttributes: { txNoneNodeError: true },
                     status: "reverted",
                     error: { err: new Error("unknown revert") },
+                    endTime: 789,
                 }),
             );
 
@@ -1112,6 +1149,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].attributes["severity"]).toBe(ErrorSeverity.HIGH);
             expect(result.reports[0].attributes["txReverted"]).toBe(true);
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle TxMineFailed error with timeout", async () => {
@@ -1123,6 +1161,7 @@ describe("Test finalizeRound", () => {
                     spanAttributes: { "test.attr": "value" },
                     status: "failed",
                     error: timeoutError,
+                    endTime: 789,
                 }),
             );
 
@@ -1143,6 +1182,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].attributes["txMineFailed"]).toBe(true);
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.ERROR);
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle TxMineFailed error without timeout", async () => {
@@ -1152,6 +1192,7 @@ describe("Test finalizeRound", () => {
                     spanAttributes: { "test.attr": "value" },
                     status: "failed",
                     error: new Error("rpc error"),
+                    endTime: 789,
                 }),
             );
 
@@ -1170,6 +1211,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].attributes["severity"]).toBe(ErrorSeverity.HIGH);
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.ERROR);
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should handle unexpected error and set reason", async () => {
@@ -1179,6 +1221,7 @@ describe("Test finalizeRound", () => {
                     spanAttributes: { "test.attr": "value" },
                     status: "failed",
                     error: new Error("unexpected"),
+                    endTime: 789,
                 }),
             );
 
@@ -1199,6 +1242,7 @@ describe("Test finalizeRound", () => {
             expect((result.reports[0].exception?.exception as any)?.message).toBe("unexpected");
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.ERROR);
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
 
             const result1 = result.results[0];
             assert(result1.isErr());
@@ -1212,6 +1256,7 @@ describe("Test finalizeRound", () => {
                     spanAttributes: { "event.something": 1234, "event.another": 5678 },
                     status: "failed",
                     error: new Error("unexpected"),
+                    endTime: 789,
                 }),
             );
             settlements = [
@@ -1241,6 +1286,7 @@ describe("Test finalizeRound", () => {
                     status: ProcessOrderStatus.FoundOpportunity,
                     txUrl: "url1",
                     spanAttributes: { success: true },
+                    endTime: 789,
                 }),
             );
 
@@ -1251,6 +1297,7 @@ describe("Test finalizeRound", () => {
                     status: "failed",
                     txUrl: "url2",
                     error: new Error("tx failed"),
+                    endTime: 987,
                 }),
             );
 
@@ -1286,6 +1333,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].attributes["success"]).toBe(true);
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
 
             // assert second result (error)
             const result2 = result.results[1];
@@ -1296,6 +1344,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[1].attributes["failed"]).toBe(true);
             expect(result.reports[1].status?.code).toBe(SpanStatusCode.ERROR);
             expect(result.reports[1].startTime).toBe(456);
+            expect(result.reports[1].endTime).toBe(987);
 
             // assert gas costs only added for successful settlement
             expect(mockSolver.state.gasCosts).toHaveLength(1);
@@ -1309,6 +1358,7 @@ describe("Test finalizeRound", () => {
                 Result.ok({
                     status: ProcessOrderStatus.FoundOpportunity,
                     spanAttributes: {},
+                    endTime: 789,
                 }),
             );
 
@@ -1329,6 +1379,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].endTime).toBeTypeOf("number");
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should extend span attributes from settlement result", async () => {
@@ -1337,6 +1388,7 @@ describe("Test finalizeRound", () => {
                 Result.ok({
                     status: ProcessOrderStatus.FoundOpportunity,
                     spanAttributes,
+                    endTime: 789,
                 }),
             );
 
@@ -1356,6 +1408,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].attributes["another.attr"]).toBe(123);
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
             expect(result.reports[0].startTime).toBe(123);
+            expect(result.reports[0].endTime).toBe(789);
         });
 
         it("should export settlement report if logger is available", async () => {
@@ -1363,6 +1416,7 @@ describe("Test finalizeRound", () => {
                 Result.ok({
                     status: ProcessOrderStatus.FoundOpportunity,
                     spanAttributes: { "event.something": 1234, "event.another": 5678 },
+                    endTime: 789,
                 }),
             );
             settlements = [
@@ -1394,6 +1448,7 @@ describe("Test finalizeRound", () => {
                 Result.ok({
                     status: ProcessOrderStatus.FoundOpportunity,
                     spanAttributes: { "event.something": 1234, "event.another": 5678 },
+                    endTime: 789,
                 }),
             );
             settlements = [

@@ -122,6 +122,7 @@ describe("Test processTransaction", () => {
                 ...mockArgs.baseResult,
                 clearedAmount: "100",
                 gasCost: 420000000000000n,
+                endTime: 123,
             });
             (processReceipt as Mock).mockResolvedValueOnce(mockHandleReceiptResult);
             const settlerFn = await processTransaction(mockArgs);
@@ -173,6 +174,7 @@ describe("Test processTransaction", () => {
                 ...mockArgs.baseResult,
                 error: mockError,
                 reason: ProcessOrderHaltReason.TxFailed,
+                endTime: expect.any(Number),
             });
 
             // verify raw transaction was logged
@@ -213,6 +215,7 @@ describe("Test processTransaction", () => {
                 txUrl: "https://etherscan.io/tx/0xFailedReceiptHash",
                 reason: ProcessOrderHaltReason.TxMineFailed,
                 error: receiptError,
+                endTime: expect.any(Number),
             });
             expect(result.error.spanAttributes["details.rawTx"]).toBeDefined();
             expect(result.error.spanAttributes["txNoneNodeError"]).toBe(false);
@@ -242,6 +245,7 @@ describe("Test processTransaction", () => {
                 txUrl: "https://etherscan.io/tx/0xHandleReceiptFailHash",
                 reason: ProcessOrderHaltReason.TxMineFailed,
                 error: handleReceiptError,
+                endTime: expect.any(Number),
             });
             expect(result.error.spanAttributes["txNoneNodeError"]).toBe(true);
         });

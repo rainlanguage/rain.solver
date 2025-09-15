@@ -42,6 +42,7 @@ export type ProcessOrderResultBase = {
 
 /** Successful process order result */
 export type ProcessOrderSuccess = ProcessOrderResultBase & {
+    endTime: number;
     txUrl?: string;
     clearedAmount?: string;
     inputTokenIncome?: string;
@@ -54,6 +55,7 @@ export type ProcessOrderSuccess = ProcessOrderResultBase & {
 
 /** Failed process order result */
 export type ProcessOrderFailure = ProcessOrderResultBase & {
+    endTime: number;
     reason: ProcessOrderHaltReason;
     error?: any;
     txUrl?: string;

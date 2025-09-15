@@ -97,6 +97,7 @@ export async function processReceipt({
             inputTokenIncome: baseResult.spanAttributes["details.inputTokenIncome"] as any,
             outputTokenIncome: baseResult.spanAttributes["details.outputTokenIncome"] as any,
             netProfit,
+            endTime: performance.now(),
         };
 
         return Result.ok({
@@ -141,6 +142,7 @@ export async function processReceipt({
             txUrl,
             error: simulation,
             reason: ProcessOrderHaltReason.TxReverted,
+            endTime: performance.now(),
         };
         return Result.err(failure);
     }

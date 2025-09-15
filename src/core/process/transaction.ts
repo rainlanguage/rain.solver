@@ -71,6 +71,7 @@ export async function processTransaction({
                 ...baseResult,
                 error: e,
                 reason: ProcessOrderHaltReason.TxFailed,
+                endTime: performance.now(),
             });
     }
 
@@ -107,6 +108,7 @@ export async function processTransaction({
                 txUrl,
                 reason: ProcessOrderHaltReason.TxMineFailed,
                 error: e,
+                endTime: performance.now(),
             });
         }
     };

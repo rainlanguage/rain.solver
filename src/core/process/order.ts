@@ -68,6 +68,7 @@ export async function processOrder(
             return async () => {
                 return Result.ok({
                     ...baseResult,
+                    endTime: performance.now(),
                     status: ProcessOrderStatus.ZeroOutput,
                 });
             };
@@ -80,6 +81,7 @@ export async function processOrder(
             Result.err({
                 ...baseResult,
                 error: e,
+                endTime: performance.now(),
                 reason: ProcessOrderHaltReason.FailedToQuote,
             });
     }
@@ -106,6 +108,7 @@ export async function processOrder(
                 Result.err({
                     ...baseResult,
                     error: e,
+                    endTime: performance.now(),
                     reason: ProcessOrderHaltReason.FailedToUpdatePools,
                 });
         }
@@ -124,6 +127,7 @@ export async function processOrder(
             Result.err({
                 ...baseResult,
                 error: e,
+                endTime: performance.now(),
                 reason: ProcessOrderHaltReason.FailedToGetPools,
             });
     }
@@ -168,6 +172,7 @@ export async function processOrder(
             return async () => {
                 return Result.err({
                     ...baseResult,
+                    endTime: performance.now(),
                     reason: ProcessOrderHaltReason.FailedToGetEthPrice,
                     error: "no-route for both in/out tokens",
                 });
@@ -179,6 +184,7 @@ export async function processOrder(
                 return Result.err({
                     ...baseResult,
                     error: e,
+                    endTime: performance.now(),
                     reason: ProcessOrderHaltReason.FailedToGetEthPrice,
                 });
             };
@@ -205,6 +211,7 @@ export async function processOrder(
     if (trade.isErr()) {
         const result: ProcessOrderSuccess = {
             ...baseResult,
+            endTime: performance.now(),
         };
         // record all span attributes
         for (const attrKey in trade.error.spanAttributes) {
