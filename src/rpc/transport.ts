@@ -10,7 +10,7 @@ export namespace RainSolverTransportDefaults {
     export const TIMEOUT = 10_000 as const;
     export const RETRY_DELAY = 150 as const;
     export const RETRY_COUNT_NEXT = 1 as const;
-    export const POLLING_INTERVAL = 250 as const;
+    export const POLLING_INTERVAL = 25 as const;
     export const POLLING_TIMEOUT = 10_000 as const;
     export const KEY = "RainSolverTransport" as const;
     export const NAME = "Rain Solver Transport" as const;

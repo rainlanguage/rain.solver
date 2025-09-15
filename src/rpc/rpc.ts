@@ -72,7 +72,7 @@ export class RpcState {
      */
     async nextRpc({
         timeout = 10_000,
-        pollingInterval = 250,
+        pollingInterval = 25,
     }: {
         timeout?: number;
         pollingInterval?: number;
