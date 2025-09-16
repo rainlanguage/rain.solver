@@ -10,9 +10,13 @@ import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
 import { Result, ABI, RawTransaction } from "../../../common";
 import { BalancerRouter, BalancerRouterErrorType } from "../../../router";
-import { EnsureBountyTaskType, getEnsureBountyTaskBytecode } from "../../../task";
 import { TakeOrdersConfigType, SimulationResult, TradeType, FailedSimulation } from "../../types";
 import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
+import {
+    EnsureBountyTaskType,
+    EnsureBountyTaskErrorType,
+    getEnsureBountyTaskBytecode,
+} from "../../../task";
 
 /** Specifies the reason that balancer trade simulation failed */
 export enum BalancerRouterSimulationHaltReason {
@@ -145,7 +149,8 @@ export async function trySimulateTrade(
     );
     if (taskBytecodeResult.isErr()) {
         const errMsg = await errorSnapshot("", taskBytecodeResult.error);
-        spanAttributes["isNodeError"] = true;
+        spanAttributes["isNodeError"] =
+            taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
         spanAttributes["error"] = errMsg;
         const result = {
             type: TradeType.Balancer,
@@ -233,7 +238,8 @@ export async function trySimulateTrade(
         );
         if (taskBytecodeResult.isErr()) {
             const errMsg = await errorSnapshot("", taskBytecodeResult.error);
-            spanAttributes["isNodeError"] = true;
+            spanAttributes["isNodeError"] =
+                taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
             spanAttributes["error"] = errMsg;
             const result = {
                 type: TradeType.Balancer,
@@ -297,7 +303,8 @@ export async function trySimulateTrade(
         );
         if (taskBytecodeResult.isErr()) {
             const errMsg = await errorSnapshot("", taskBytecodeResult.error);
-            spanAttributes["isNodeError"] = true;
+            spanAttributes["isNodeError"] =
+                taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
             spanAttributes["error"] = errMsg;
             const result = {
                 type: TradeType.Balancer,

@@ -8,8 +8,12 @@ import { RainSolverSigner } from "../../../signer";
 import { ONE18, scaleFrom18 } from "../../../math";
 import { extendObjectWithHeader } from "../../../logger";
 import { ABI, Result, RawTransaction } from "../../../common";
-import { EnsureBountyTaskType, getEnsureBountyTaskBytecode } from "../../../task";
 import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
+import {
+    EnsureBountyTaskType,
+    EnsureBountyTaskErrorType,
+    getEnsureBountyTaskBytecode,
+} from "../../../task";
 import {
     TaskType,
     TradeType,
@@ -124,7 +128,8 @@ export async function trySimulateTrade(
     );
     if (taskBytecodeResult.isErr()) {
         const errMsg = await errorSnapshot("", taskBytecodeResult.error);
-        spanAttributes["isNodeError"] = true;
+        spanAttributes["isNodeError"] =
+            taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
         spanAttributes["error"] = errMsg;
         const result = {
             type: TradeType.InterOrderbook,
@@ -211,7 +216,8 @@ export async function trySimulateTrade(
         );
         if (taskBytecodeResult.isErr()) {
             const errMsg = await errorSnapshot("", taskBytecodeResult.error);
-            spanAttributes["isNodeError"] = true;
+            spanAttributes["isNodeError"] =
+                taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
             spanAttributes["error"] = errMsg;
             const result = {
                 type: TradeType.InterOrderbook,
@@ -273,7 +279,8 @@ export async function trySimulateTrade(
         );
         if (taskBytecodeResult.isErr()) {
             const errMsg = await errorSnapshot("", taskBytecodeResult.error);
-            spanAttributes["isNodeError"] = true;
+            spanAttributes["isNodeError"] =
+                taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
             spanAttributes["error"] = errMsg;
             const result = {
                 type: TradeType.InterOrderbook,

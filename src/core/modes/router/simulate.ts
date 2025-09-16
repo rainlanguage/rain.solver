@@ -11,9 +11,13 @@ import { extendObjectWithHeader } from "../../../logger";
 import { ONE18, scaleTo18, scaleFrom18 } from "../../../math";
 import { RPoolFilter, visualizeRoute } from "../../../router";
 import { Result, ABI, RawTransaction } from "../../../common";
-import { EnsureBountyTaskType, getEnsureBountyTaskBytecode } from "../../../task";
 import { TakeOrdersConfigType, SimulationResult, TradeType, FailedSimulation } from "../../types";
 import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
+import {
+    EnsureBountyTaskType,
+    EnsureBountyTaskErrorType,
+    getEnsureBountyTaskBytecode,
+} from "../../../task";
 
 /** Specifies the reason that route processor simulation failed */
 export enum RouteProcessorSimulationHaltReason {
@@ -143,7 +147,8 @@ export async function trySimulateTrade(
     );
     if (taskBytecodeResult.isErr()) {
         const errMsg = await errorSnapshot("", taskBytecodeResult.error);
-        spanAttributes["isNodeError"] = true;
+        spanAttributes["isNodeError"] =
+            taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
         spanAttributes["error"] = errMsg;
         const result = {
             type: TradeType.RouteProcessor,
@@ -239,7 +244,8 @@ export async function trySimulateTrade(
         );
         if (taskBytecodeResult.isErr()) {
             const errMsg = await errorSnapshot("", taskBytecodeResult.error);
-            spanAttributes["isNodeError"] = true;
+            spanAttributes["isNodeError"] =
+                taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
             spanAttributes["error"] = errMsg;
             const result = {
                 type: TradeType.RouteProcessor,
@@ -304,7 +310,8 @@ export async function trySimulateTrade(
         );
         if (taskBytecodeResult.isErr()) {
             const errMsg = await errorSnapshot("", taskBytecodeResult.error);
-            spanAttributes["isNodeError"] = true;
+            spanAttributes["isNodeError"] =
+                taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
             spanAttributes["error"] = errMsg;
             const result = {
                 type: TradeType.RouteProcessor,
