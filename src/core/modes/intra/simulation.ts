@@ -2,12 +2,13 @@ import { RainSolver } from "../..";
 import { dryrun } from "../dryrun";
 import { estimateProfit } from "./utils";
 import { ABI, Result } from "../../../common";
+import { errorSnapshot } from "../../../error";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
 import { Pair, TakeOrderDetails } from "../../../order";
-import { getWithdrawEnsureRainlang, parseRainlang } from "../../../task";
 import { encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
+import { EnsureBountyTaskType, getEnsureBountyTaskBytecode } from "../../../task";
 import { FailedSimulation, SimulationResult, TaskType, TradeType } from "../../types";
 
 /** Arguments for simulating inter-orderbook trade */
@@ -63,25 +64,37 @@ export async function trySimulateTrade(
     });
 
     // build clear2 function call data and withdraw tasks
+    const taskBytecodeResult = await getEnsureBountyTaskBytecode(
+        {
+            type: EnsureBountyTaskType.Internal,
+            botAddress: signer.account.address,
+            inputToken: orderDetails.buyToken,
+            outputToken: orderDetails.sellToken,
+            orgInputBalance: inputBalance,
+            orgOutputBalance: outputBalance,
+            inputToEthPrice: parseUnits(inputToEthPrice, 18),
+            outputToEthPrice: parseUnits(outputToEthPrice, 18),
+            minimumExpected: 0n,
+            sender: signer.account.address,
+        },
+        this.state.client,
+        this.state.dispair,
+    );
+    if (taskBytecodeResult.isErr()) {
+        const errMsg = await errorSnapshot("", taskBytecodeResult.error);
+        spanAttributes["isNodeError"] = true;
+        spanAttributes["error"] = errMsg;
+        const result = {
+            type: TradeType.IntraOrderbook,
+            spanAttributes,
+        };
+        return Result.err(result);
+    }
     const task: TaskType = {
         evaluable: {
             interpreter: this.state.dispair.interpreter as `0x${string}`,
             store: this.state.dispair.store as `0x${string}`,
-            bytecode: (await parseRainlang(
-                await getWithdrawEnsureRainlang(
-                    signer.account.address,
-                    orderDetails.buyToken,
-                    orderDetails.sellToken,
-                    inputBalance,
-                    outputBalance,
-                    parseUnits(inputToEthPrice, 18),
-                    parseUnits(outputToEthPrice, 18),
-                    0n,
-                    signer.account.address,
-                ),
-                this.state.client,
-                this.state.dispair,
-            )) as `0x${string}`,
+            bytecode: taskBytecodeResult.value,
         },
         signedContext: [],
     };
@@ -175,21 +188,35 @@ export async function trySimulateTrade(
             (estimatedGasCost * headroom) /
             100n
         ).toString();
-        task.evaluable.bytecode = (await parseRainlang(
-            await getWithdrawEnsureRainlang(
-                signer.account.address,
-                orderDetails.buyToken,
-                orderDetails.sellToken,
-                inputBalance,
-                outputBalance,
-                parseUnits(inputToEthPrice, 18),
-                parseUnits(outputToEthPrice, 18),
-                (estimatedGasCost * headroom) / 100n,
-                signer.account.address,
-            ),
+
+        let taskBytecodeResult = await getEnsureBountyTaskBytecode(
+            {
+                type: EnsureBountyTaskType.Internal,
+                botAddress: signer.account.address,
+                inputToken: orderDetails.buyToken,
+                outputToken: orderDetails.sellToken,
+                orgInputBalance: inputBalance,
+                orgOutputBalance: outputBalance,
+                inputToEthPrice: parseUnits(inputToEthPrice, 18),
+                outputToEthPrice: parseUnits(outputToEthPrice, 18),
+                minimumExpected: (estimatedGasCost * headroom) / 100n,
+                sender: signer.account.address,
+            },
             this.state.client,
             this.state.dispair,
-        )) as `0x${string}`;
+        );
+        if (taskBytecodeResult.isErr()) {
+            const errMsg = await errorSnapshot("", taskBytecodeResult.error);
+            spanAttributes["isNodeError"] = true;
+            spanAttributes["error"] = errMsg;
+            const result = {
+                type: TradeType.IntraOrderbook,
+                spanAttributes,
+            };
+            return Result.err(result);
+        }
+
+        task.evaluable.bytecode = taskBytecodeResult.value;
         withdrawOutputCalldata = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Orderbook,
             functionName: "withdraw2",
@@ -233,21 +260,35 @@ export async function trySimulateTrade(
             "gasEst.final",
         );
 
-        task.evaluable.bytecode = (await parseRainlang(
-            await getWithdrawEnsureRainlang(
-                signer.account.address,
-                orderDetails.buyToken,
-                orderDetails.sellToken,
-                inputBalance,
-                outputBalance,
-                parseUnits(inputToEthPrice, 18),
-                parseUnits(outputToEthPrice, 18),
-                (estimatedGasCost * BigInt(this.appOptions.gasCoveragePercentage)) / 100n,
-                signer.account.address,
-            ),
+        taskBytecodeResult = await getEnsureBountyTaskBytecode(
+            {
+                type: EnsureBountyTaskType.Internal,
+                botAddress: signer.account.address,
+                inputToken: orderDetails.buyToken,
+                outputToken: orderDetails.sellToken,
+                orgInputBalance: inputBalance,
+                orgOutputBalance: outputBalance,
+                inputToEthPrice: parseUnits(inputToEthPrice, 18),
+                outputToEthPrice: parseUnits(outputToEthPrice, 18),
+                minimumExpected:
+                    (estimatedGasCost * BigInt(this.appOptions.gasCoveragePercentage)) / 100n,
+                sender: signer.account.address,
+            },
             this.state.client,
             this.state.dispair,
-        )) as `0x${string}`;
+        );
+        if (taskBytecodeResult.isErr()) {
+            const errMsg = await errorSnapshot("", taskBytecodeResult.error);
+            spanAttributes["isNodeError"] = true;
+            spanAttributes["error"] = errMsg;
+            const result = {
+                type: TradeType.IntraOrderbook,
+                spanAttributes,
+            };
+            return Result.err(result);
+        }
+
+        task.evaluable.bytecode = taskBytecodeResult.value;
         withdrawOutputCalldata = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Orderbook,
             functionName: "withdraw2",

@@ -6,6 +6,7 @@ import { Token } from "sushi/currency";
 import { Result } from "../../../common";
 import { Pair } from "../../../order";
 import { SimulationResult } from "../../types";
+import { getEnsureBountyTaskBytecode } from "../../../task";
 import { encodeFunctionData, encodeAbiParameters, maxUint256 } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
@@ -30,9 +31,9 @@ vi.mock("../../../router", async (importOriginal) => ({
     visualizeRoute: vi.fn().mockReturnValue(["routeVisual"]),
 }));
 
-vi.mock("../../../task", () => ({
-    parseRainlang: vi.fn().mockResolvedValue("0xbytecode"),
-    getBountyEnsureRainlang: vi.fn().mockResolvedValue("rainlang"),
+vi.mock("../../../task", async (importOriginal) => ({
+    ...(await importOriginal()),
+    getEnsureBountyTaskBytecode: vi.fn().mockResolvedValue(Result.ok("0xbytecode")),
 }));
 
 vi.mock("../dryrun", () => ({
@@ -335,6 +336,24 @@ describe("Test trySimulateTrade", () => {
         // verify encodeFunctionData was called twice (for both dryruns)
         expect(encodeFunctionData).toHaveBeenCalledTimes(2);
         expect(encodeAbiParameters).toHaveBeenCalledTimes(1);
+    });
+
+    it("should return error when getEnsureBountyTaskBytecode fails", async () => {
+        (Router.findBestRoute as Mock).mockReturnValue({
+            status: "OK",
+            amountOutBI: 20n * ONE18,
+            legs: [],
+        });
+        args.orderDetails = makeOrderDetails(1n * ONE18);
+        (getEnsureBountyTaskBytecode as Mock).mockResolvedValue(Result.err("error"));
+
+        const result: SimulationResult = await trySimulateTrade.call(solver, args);
+
+        assert(result.isErr());
+        expect(result.error).toHaveProperty("spanAttributes");
+        expect(result.error).toHaveProperty("reason");
+        expect(result.error.reason).toBe(RouteProcessorSimulationHaltReason.NoOpportunity);
+        expect(result.error.type).toBe("routeProcessor");
     });
 });
 

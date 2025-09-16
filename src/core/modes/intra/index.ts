@@ -1,7 +1,7 @@
 import assert from "assert";
-import { erc20Abi } from "viem";
 import { RainSolver } from "../..";
 import { Result } from "../../../common";
+import { BaseError, erc20Abi } from "viem";
 import { ONE18, scaleTo18 } from "../../../math";
 import { Attributes } from "@opentelemetry/api";
 import { trySimulateTrade } from "./simulation";
@@ -9,7 +9,8 @@ import { RainSolverSigner } from "../../../signer";
 import { fallbackEthPrice } from "../../../router";
 import { CounterpartySource, Pair } from "../../../order";
 import { extendObjectWithHeader } from "../../../logger";
-import { SimulationResult, TradeType } from "../../types";
+import { containsNodeError, errorSnapshot } from "../../../error";
+import { FailedSimulation, SimulationResult, TradeType } from "../../types";
 
 /**
  * Tries to find the best trade against opposite orders of the same orderbook (intra-orderbook) for
@@ -19,6 +20,7 @@ import { SimulationResult, TradeType } from "../../types";
  * @param signer - The signer to be used for the trade
  * @param inputToEthPrice - The current price of input token to ETH price
  * @param outputToEthPrice - The current price of output token to ETH price
+ * @param blockNumber - The current block number
  */
 export async function findBestIntraOrderbookTrade(
     this: RainSolver,
@@ -26,6 +28,7 @@ export async function findBestIntraOrderbookTrade(
     signer: RainSolverSigner,
     inputToEthPrice: string,
     outputToEthPrice: string,
+    blockNumber: bigint,
 ): Promise<SimulationResult> {
     const spanAttributes: Attributes = {};
 
@@ -44,25 +47,57 @@ export async function findBestIntraOrderbookTrade(
                 (v.takeOrder.quote.ratio * orderDetails.takeOrder.quote!.ratio) / ONE18 < ONE18,
         );
 
-    const blockNumber = await this.state.client.getBlockNumber();
-    const inputBalance = scaleTo18(
-        await this.state.client.readContract({
+    // get input token balance of signer with handling errors
+    const inputBalanceResult: Result<bigint, FailedSimulation> = await this.state.client
+        .readContract({
             address: orderDetails.buyToken as `0x${string}`,
             abi: erc20Abi,
             functionName: "balanceOf",
             args: [signer.account.address],
-        }),
-        orderDetails.buyTokenDecimals,
-    );
-    const outputBalance = scaleTo18(
-        await this.state.client.readContract({
+        })
+        .then((v) => Result.ok(v) as Result<bigint, FailedSimulation>)
+        .catch(async (err) => {
+            const errMsg = await errorSnapshot("Failed to get input token balance", err);
+            const isNodeError = await containsNodeError(err as BaseError);
+            const result: FailedSimulation = {
+                type: TradeType.IntraOrderbook,
+                spanAttributes: { error: errMsg } as Attributes,
+            };
+            if (!isNodeError) {
+                result.noneNodeError = errMsg;
+            }
+            return Result.err(result);
+        });
+    if (inputBalanceResult.isErr()) {
+        return Result.err(inputBalanceResult.error);
+    }
+    const inputBalance = scaleTo18(inputBalanceResult.value, orderDetails.buyTokenDecimals);
+
+    // get output token balance of signer with handling errors
+    const outputBalanceResult: Result<bigint, FailedSimulation> = await this.state.client
+        .readContract({
             address: orderDetails.sellToken as `0x${string}`,
             abi: erc20Abi,
             functionName: "balanceOf",
             args: [signer.account.address],
-        }),
-        orderDetails.sellTokenDecimals,
-    );
+        })
+        .then((v) => Result.ok(v) as Result<bigint, FailedSimulation>)
+        .catch(async (err) => {
+            const errMsg = await errorSnapshot("Failed to get output token balance", err);
+            const isNodeError = await containsNodeError(err as BaseError);
+            const result: FailedSimulation = {
+                type: TradeType.IntraOrderbook,
+                spanAttributes: { error: errMsg } as Attributes,
+            };
+            if (!isNodeError) {
+                result.noneNodeError = errMsg;
+            }
+            return Result.err(result);
+        });
+    if (outputBalanceResult.isErr()) {
+        return Result.err(outputBalanceResult.error);
+    }
+    const outputBalance = scaleTo18(outputBalanceResult.value, orderDetails.sellTokenDecimals);
 
     // run simulations for top 3 counterparty orders
     const promises = counterpartyOrders.slice(0, 3).map((counterparty) => {
