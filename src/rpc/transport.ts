@@ -8,9 +8,9 @@ import { BaseError, createTransport, Transport, TransportConfig } from "viem";
 export namespace RainSolverTransportDefaults {
     export const RETRY_COUNT = 1 as const;
     export const TIMEOUT = 10_000 as const;
-    export const RETRY_DELAY = 150 as const;
+    export const RETRY_DELAY = 100 as const;
     export const RETRY_COUNT_NEXT = 1 as const;
-    export const POLLING_INTERVAL = 25 as const;
+    export const POLLING_INTERVAL = 50 as const;
     export const POLLING_TIMEOUT = 10_000 as const;
     export const KEY = "RainSolverTransport" as const;
     export const NAME = "Rain Solver Transport" as const;
@@ -81,25 +81,20 @@ export function rainSolverTransport(
         pollingInterval = RainSolverTransportDefaults.POLLING_INTERVAL,
         retryCountNext = RainSolverTransportDefaults.RETRY_COUNT_NEXT,
     } = config;
-    return (({
-        chain,
-        timeout: timeout_,
-        retryCount: retryCount_,
-        pollingInterval: pollingInterval_,
-    }) => {
+    return (({ chain, timeout: timeout_, retryCount: retryCount_ }) => {
         return createTransport({
             key,
             name,
             retryDelay,
-            retryCount: 0,
+            retryCount,
             type: "RainSolverTransport",
             timeout: timeout_ ?? timeout,
-            async request(args) {
+            async request(args, options) {
                 const req = async (tryNextCount: number): Promise<any> => {
                     try {
                         const transport = await state.nextRpc({
                             timeout: pollingTimeout,
-                            pollingInterval: pollingInterval_ ?? pollingInterval,
+                            pollingInterval,
                         });
                         // cancel inner transport retry when success rate is below 20% threshold
                         const shouldRetry =
@@ -108,7 +103,11 @@ export function rainSolverTransport(
                         return await transport({
                             chain,
                             retryCount: resolvedRetryCount,
-                        }).request(args);
+                        }).request(args, {
+                            ...options,
+                            retryDelay,
+                            retryCount: resolvedRetryCount,
+                        });
                     } catch (error: any) {
                         if (shouldThrow(error)) throw error;
                         if (tryNextCount) return req(tryNextCount - 1);
