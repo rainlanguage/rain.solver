@@ -66,12 +66,13 @@ export async function processTransaction({
             withBigintSerializer,
         );
         baseResult.spanAttributes["txNoneNodeError"] = !(await containsNodeError(e as BaseError));
+        const endTime = performance.now();
         return async () =>
             Result.err({
                 ...baseResult,
                 error: e,
                 reason: ProcessOrderHaltReason.TxFailed,
-                endTime: performance.now(),
+                endTime,
             });
     }
 
