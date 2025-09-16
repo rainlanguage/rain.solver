@@ -81,14 +81,14 @@ export function rainSolverTransport(
         pollingInterval = RainSolverTransportDefaults.POLLING_INTERVAL,
         retryCountNext = RainSolverTransportDefaults.RETRY_COUNT_NEXT,
     } = config;
-    return (({ chain, timeout: timeout_, retryCount: retryCount_ }) => {
+    return (({ chain }) => {
         return createTransport({
             key,
             name,
+            timeout,
             retryDelay,
             retryCount,
             type: "RainSolverTransport",
-            timeout: timeout_ ?? timeout,
             async request(args, options) {
                 const req = async (tryNextCount: number): Promise<any> => {
                     try {
@@ -97,9 +97,10 @@ export function rainSolverTransport(
                             pollingInterval,
                         });
                         // cancel inner transport retry when success rate is below 20% threshold
-                        const shouldRetry =
-                            state.metrics[state.lastUsedUrl].progress.successRate > 2000;
-                        const resolvedRetryCount = shouldRetry ? (retryCount_ ?? retryCount) : 0;
+                        const resolvedRetryCount =
+                            state.metrics[state.lastUsedUrl].progress.successRate > 2000
+                                ? retryCount
+                                : 0;
                         return await transport({
                             chain,
                             retryCount: resolvedRetryCount,
@@ -114,7 +115,7 @@ export function rainSolverTransport(
                         throw error;
                     }
                 };
-                return req(Math.max(retryCountNext, 1));
+                return req(retryCountNext);
             },
         });
     }) as RainSolverTransport;
