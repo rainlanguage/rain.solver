@@ -65,10 +65,11 @@ export async function processOrder(
             // remove from pair maps if quote fails, to keep the pair map list free
             // of orders with 0 maxoutput this will make counterparty lookups faster
             this.orderManager.removeFromPairMaps(orderDetails);
+            const endTime = performance.now();
             return async () => {
                 return Result.ok({
                     ...baseResult,
-                    endTime: performance.now(),
+                    endTime,
                     status: ProcessOrderStatus.ZeroOutput,
                 });
             };
@@ -77,11 +78,12 @@ export async function processOrder(
         this.orderManager.addToPairMaps(orderDetails);
     } catch (e) {
         this.orderManager.removeFromPairMaps(orderDetails);
+        const endTime = performance.now();
         return async () =>
             Result.err({
                 ...baseResult,
                 error: e,
-                endTime: performance.now(),
+                endTime,
                 reason: ProcessOrderHaltReason.FailedToQuote,
             });
     }
@@ -104,11 +106,12 @@ export async function processOrder(
         await this.state.dataFetcher.updatePools(dataFetcherBlockNumber);
     } catch (e) {
         if (typeof e !== "string" || !e.includes("fetchPoolsForToken")) {
+            const endTime = performance.now();
             return async () =>
                 Result.err({
                     ...baseResult,
                     error: e,
-                    endTime: performance.now(),
+                    endTime,
                     reason: ProcessOrderHaltReason.FailedToUpdatePools,
                 });
         }
@@ -123,11 +126,12 @@ export async function processOrder(
         };
         await this.state.dataFetcher.fetchPoolsForToken(fromToken, toToken, PoolBlackList, options);
     } catch (e) {
+        const endTime = performance.now();
         return async () =>
             Result.err({
                 ...baseResult,
                 error: e,
-                endTime: performance.now(),
+                endTime,
                 reason: ProcessOrderHaltReason.FailedToGetPools,
             });
     }
@@ -169,10 +173,11 @@ export async function processOrder(
             )?.price ?? (this.appOptions.gasCoveragePercentage === "0" ? "0" : "");
 
         if (!inputToEthPrice && !outputToEthPrice) {
+            const endTime = performance.now();
             return async () => {
                 return Result.err({
                     ...baseResult,
-                    endTime: performance.now(),
+                    endTime,
                     reason: ProcessOrderHaltReason.FailedToGetEthPrice,
                     error: "no-route for both in/out tokens",
                 });
@@ -180,11 +185,12 @@ export async function processOrder(
         }
     } catch (e) {
         if (!inputToEthPrice && !outputToEthPrice) {
+            const endTime = performance.now();
             return async () => {
                 return Result.err({
                     ...baseResult,
                     error: e,
-                    endTime: performance.now(),
+                    endTime,
                     reason: ProcessOrderHaltReason.FailedToGetEthPrice,
                 });
             };
