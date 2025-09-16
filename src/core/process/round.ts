@@ -68,6 +68,7 @@ export async function initializeRound(
 
         // skip if the output vault is empty
         if (orderDetails.sellTokenVaultBalance <= 0n) {
+            const endTime = performance.now();
             settlements.push({
                 pair,
                 startTime,
@@ -75,8 +76,8 @@ export async function initializeRound(
                 owner: orderDetails.takeOrder.struct.order.owner,
                 settle: async () => {
                     return Result.ok({
+                        endTime,
                         tokenPair: pair,
-                        endTime: performance.now(),
                         buyToken: orderDetails.buyToken,
                         sellToken: orderDetails.sellToken,
                         status: ProcessOrderStatus.ZeroOutput,
@@ -154,6 +155,7 @@ export async function finalizeRound(
         if (result.isOk()) {
             const value = result.value;
             endTime = value.endTime;
+
             // keep track of avg gas cost
             if (value.gasCost) {
                 this.state.gasCosts.push(value.gasCost);
