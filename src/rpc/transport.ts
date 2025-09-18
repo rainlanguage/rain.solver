@@ -102,6 +102,7 @@ export function rainSolverTransport(
                         });
                         // cancel inner transport retry when success rate is below 20% threshold
                         const resolvedRetryCount =
+                            tryNextCount &&
                             state.metrics[state.lastUsedUrl].progress.successRate > 2000
                                 ? retryCount
                                 : 0;
