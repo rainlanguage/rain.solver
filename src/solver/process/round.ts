@@ -1,19 +1,23 @@
 import { ethers } from "ethers";
 import { RainSolver } from "..";
+import { Result } from "../../result";
 import { PreAssembledSpan } from "../../logger";
-import { processPair } from "../../processOrders";
 import { arbAbis, orderbookAbi } from "../../abis";
 import { SpanStatusCode } from "@opentelemetry/api";
-import { Report, ProcessPairResult } from "../../types";
-import { ProcessOrderHaltReason, ProcessOrderStatus } from "../types";
 import { ErrorSeverity, errorSnapshot, isTimeout, KnownErrors } from "../../error";
+import {
+    ProcessOrderStatus,
+    ProcessOrderSuccess,
+    ProcessOrderFailure,
+    ProcessOrderHaltReason,
+} from "../types";
 
 /** Represents a settlement for a processed order */
 export type Settlement = {
     pair: string;
     owner: string;
     orderHash: string;
-    settle: () => Promise<ProcessPairResult>;
+    settle: () => Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>>;
 };
 
 /**
@@ -53,7 +57,6 @@ export async function initializeRound(this: RainSolver) {
 
                 const pair = `${pairOrders.buyTokenSymbol}/${pairOrders.sellTokenSymbol}`;
                 const report = new PreAssembledSpan(`checkpoint_${pair}`);
-                // const span = tracer.startSpan(`checkpoint_${pair}`, undefined, ctx);
                 report.extendAttrs({
                     "details.pair": pair,
                     "details.orderHash": orderDetails.takeOrders[0].id,
@@ -65,18 +68,13 @@ export async function initializeRound(this: RainSolver) {
                 // call process pair and save the settlement fn
                 // to later settle without needing to pause if
                 // there are more signers available
-                const settle = await processPair({
-                    config: this.config,
-                    orderPairObject: orderDetails,
-                    viemClient: this.state.client,
-                    dataFetcher: this.state.dataFetcher,
+                const settle = await this.processOrder({
+                    orderDetails,
                     signer,
                     arb,
                     genericArb,
                     orderbook,
-                    pair,
                     orderbooksOrders: orders,
-                    state: this.state,
                 });
                 settlements.push({
                     settle,
@@ -104,41 +102,40 @@ export async function finalizeRound(
     this: RainSolver,
     settlements: Settlement[],
 ): Promise<{
-    results: Report[];
+    results: Result<ProcessOrderSuccess, ProcessOrderFailure>[];
     reports: PreAssembledSpan[];
 }> {
-    const results: Report[] = [];
+    const results: Result<ProcessOrderSuccess, ProcessOrderFailure>[] = [];
     const reports: PreAssembledSpan[] = [];
     for (const { settle, pair, owner, orderHash } of settlements) {
         // instantiate a span report for this pair
         const report = new PreAssembledSpan(`order_${pair}`);
         report.setAttr("details.owner", owner);
-        try {
-            // settle the process results
-            // this will return the report of the operation and in case
-            // there was a revert tx, it will try to simulate it and find
-            // the root cause as well
-            const result = await settle();
 
+        // settle the process results
+        // this will return the report of the operation
+        const result = await settle();
+        results.push(result);
+
+        if (result.isOk()) {
+            const value = result.value;
             // keep track of avg gas cost
-            if (result.gasCost) {
-                this.state.gasCosts.push(result.gasCost.toBigInt());
+            if (value.gasCost) {
+                this.state.gasCosts.push(value.gasCost);
             }
 
-            results.push(result.report);
-
-            // set the span attributes with the values gathered at processPair()
-            report.extendAttrs(result.spanAttributes);
+            // set the span attributes with the values gathered at processOrder()
+            report.extendAttrs(value.spanAttributes);
 
             // set the otel span status based on report status
-            switch (result.report.status) {
+            switch (value.status) {
                 case ProcessOrderStatus.ZeroOutput: {
                     report.setStatus({ code: SpanStatusCode.OK, message: "zero max output" });
                     break;
                 }
                 case ProcessOrderStatus.NoOpportunity: {
-                    if (result.error && typeof result.error === "string") {
-                        report.setStatus({ code: SpanStatusCode.ERROR, message: result.error });
+                    if (value.message) {
+                        report.setStatus({ code: SpanStatusCode.ERROR, message: value.message });
                     } else {
                         report.setStatus({ code: SpanStatusCode.OK, message: "no opportunity" });
                     }
@@ -154,25 +151,26 @@ export async function finalizeRound(
                     report.setStatus({ code: SpanStatusCode.ERROR, message: "unexpected error" });
                 }
             }
-        } catch (e: any) {
-            // set the span attributes with the values gathered at processPair()
-            report.extendAttrs(e.spanAttributes);
+        } else {
+            const err = result.error;
+            // set the span attributes with the values gathered at processOrder()
+            report.extendAttrs(err.spanAttributes);
 
             // Finalize the reports based on error type
-            switch (e.reason) {
+            switch (err.reason) {
                 case ProcessOrderHaltReason.FailedToQuote: {
                     let message = "failed to quote order: " + orderHash;
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
+                    if (err.error) {
+                        message = errorSnapshot(message, err.error);
                     }
                     report.setStatus({ code: SpanStatusCode.OK, message });
                     break;
                 }
                 case ProcessOrderHaltReason.FailedToGetPools: {
                     let message = pair + ": failed to get pool details";
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
-                        report.recordException(e.error);
+                    if (err.error) {
+                        message = errorSnapshot(message, err.error);
+                        report.recordException(err.error);
                     }
                     report.setAttr("severity", ErrorSeverity.MEDIUM);
                     report.setStatus({ code: SpanStatusCode.ERROR, message });
@@ -183,8 +181,8 @@ export async function finalizeRound(
                     // be fetched for it and if it is set to ERROR it will constantly error on each round
                     // resulting in lots of false positives
                     let message = "failed to get eth price";
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
+                    if (err.error) {
+                        message = errorSnapshot(message, err.error);
                         report.setAttr("errorDetails", message);
                     }
                     report.setStatus({ code: SpanStatusCode.OK, message });
@@ -192,9 +190,9 @@ export async function finalizeRound(
                 }
                 case ProcessOrderHaltReason.FailedToUpdatePools: {
                     let message = pair + ": failed to update pool details by event data";
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
-                        report.recordException(e.error);
+                    if (err.error) {
+                        message = errorSnapshot(message, err.error);
+                        report.recordException(err.error);
                     }
                     report.setStatus({ code: SpanStatusCode.ERROR, message });
                     break;
@@ -203,10 +201,10 @@ export async function finalizeRound(
                     // failed to submit the tx to mempool, this can happen for example when rpc rejects
                     // the tx for example because of low gas or invalid parameters, etc
                     let message = "failed to submit the transaction";
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
+                    if (err.error) {
+                        message = errorSnapshot(message, err.error);
                         report.setAttr("errorDetails", message);
-                        if (isTimeout(e.error)) {
+                        if (isTimeout(err.error)) {
                             report.setAttr("severity", ErrorSeverity.LOW);
                         } else {
                             report.setAttr("severity", ErrorSeverity.HIGH);
@@ -223,18 +221,18 @@ export async function finalizeRound(
                     // Tx reverted onchain, this can happen for example
                     // because of mev front running or false positive opportunities, etc
                     let message = "";
-                    if (e.error) {
-                        if ("snapshot" in e.error) {
-                            message = e.error.snapshot;
+                    if (err.error) {
+                        if ("snapshot" in err.error) {
+                            message = err.error.snapshot;
                         } else {
-                            message = errorSnapshot("transaction reverted onchain", e.error.err);
+                            message = errorSnapshot("transaction reverted onchain", err.error.err);
                         }
                         report.setAttr("errorDetails", message);
                     }
                     if (KnownErrors.every((v) => !message.includes(v))) {
                         report.setAttr("severity", ErrorSeverity.HIGH);
                     }
-                    if (e.spanAttributes["txNoneNodeError"]) {
+                    if (err.spanAttributes["txNoneNodeError"]) {
                         report.setAttr("severity", ErrorSeverity.HIGH);
                     }
                     report.setStatus({ code: SpanStatusCode.ERROR, message });
@@ -245,10 +243,10 @@ export async function finalizeRound(
                 case ProcessOrderHaltReason.TxMineFailed: {
                     // tx failed to get included onchain, this can happen as result of timeout, rpc dropping the tx, etc
                     let message = "transaction failed";
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
+                    if (err.error) {
+                        message = errorSnapshot(message, err.error);
                         report.setAttr("errorDetails", message);
-                        if (isTimeout(e.error)) {
+                        if (isTimeout(err.error)) {
                             report.setAttr("severity", ErrorSeverity.LOW);
                         } else {
                             report.setAttr("severity", ErrorSeverity.HIGH);
@@ -264,25 +262,18 @@ export async function finalizeRound(
                 default: {
                     // record the error for the span
                     let message = "unexpected error";
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
-                        report.recordException(e.error);
+                    if (err.error) {
+                        message = errorSnapshot(message, err.error);
+                        report.recordException(err.error);
                     }
                     // set the span status to unexpected error
                     report.setAttr("severity", ErrorSeverity.HIGH);
                     report.setStatus({ code: SpanStatusCode.ERROR, message });
 
                     // set the reason explicitly to unexpected error
-                    e.reason = ProcessOrderHaltReason.UnexpectedError;
+                    err.reason = ProcessOrderHaltReason.UnexpectedError;
                 }
             }
-
-            // report the error reason along with the rest of report
-            results.push({
-                ...e.report,
-                error: e.error,
-                reason: e.reason,
-            });
         }
         report.end();
         reports.push(report);

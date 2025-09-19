@@ -6,9 +6,10 @@ import { extendSpanAttributes } from "../utils";
 import { findOpp as findInterObOpp } from "./interOrderbook";
 import { findOpp as findIntraObOpp } from "./intraOrderbook";
 import { findOppWithRetries as findRpOpp } from "./routeProcessor";
-import { BotConfig, DryrunResult, SpanAttrs } from "../types";
+import { BotConfig, DryrunResult } from "../types";
 import { BundledOrders } from "../order";
 import { RainSolverSigner } from "../signer";
+import { Attributes } from "@opentelemetry/api";
 
 /**
  * The main entrypoint for the main logic to find opps.
@@ -106,7 +107,7 @@ export async function findOpp({
                   : 0,
         )[0].value;
     } else {
-        const spanAttributes: SpanAttrs = {};
+        const spanAttributes: Attributes = {};
         const result = {
             spanAttributes,
             rawtx: undefined,

@@ -4,9 +4,10 @@ import { containsNodeError, errorSnapshot } from "../error";
 import { getWithdrawEnsureRainlang, parseRainlang } from "../task";
 import { BaseError, erc20Abi, ExecutionRevertedError, PublicClient } from "viem";
 import { estimateProfit, scale18, withBigintSerializer, extendSpanAttributes } from "../utils";
-import { SpanAttrs, BotConfig, DryrunResult } from "../types";
+import { BotConfig, DryrunResult } from "../types";
 import { BundledOrders, TakeOrderDetails } from "../order";
 import { RainSolverSigner } from "../signer";
+import { Attributes } from "@opentelemetry/api";
 
 const obInterface = new ethers.utils.Interface(orderbookAbi);
 
@@ -36,7 +37,7 @@ export async function dryrun({
     outputBalance: BigNumber;
     opposingOrder: TakeOrderDetails;
 }): Promise<DryrunResult> {
-    const spanAttributes: SpanAttrs = {};
+    const spanAttributes: Attributes = {};
     const result: DryrunResult = {
         value: undefined,
         reason: undefined,
@@ -312,7 +313,7 @@ export async function findOpp({
     inputToEthPrice: string;
     outputToEthPrice: string;
 }): Promise<DryrunResult> {
-    const spanAttributes: SpanAttrs = {};
+    const spanAttributes: Attributes = {};
     const result: DryrunResult = {
         value: undefined,
         reason: undefined,

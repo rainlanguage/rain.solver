@@ -4,6 +4,9 @@ import { SharedState } from "../state";
 import { OrderManager } from "../order";
 import { WalletManager } from "../wallet";
 import { finalizeRound, initializeRound } from "./process/round";
+import { processOrder, ProcessOrderArgs } from "./process/order";
+import { ProcessOrderFailure, ProcessOrderSuccess } from "./types";
+import { Result } from "../result";
 
 /**
  * RainSolver is the main class that orchestrates the Rain Orderbook solver logic
@@ -50,5 +53,16 @@ export class RainSolver {
             reports,
             checkpointReports,
         };
+    }
+
+    /**
+     * Processes an order trying to find an opportunity to clear it
+     * @param args - The arguments for processing the order
+     * @returns A function that returns the result of processing the order
+     */
+    async processOrder(
+        args: ProcessOrderArgs,
+    ): Promise<() => Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>>> {
+        return processOrder.call(this, args);
     }
 }

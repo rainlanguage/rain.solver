@@ -3,7 +3,7 @@ import { BigNumber, Contract, ethers } from "ethers";
 import { containsNodeError, errorSnapshot } from "../error";
 import { getBountyEnsureRainlang, parseRainlang } from "../task";
 import { BaseError, ExecutionRevertedError, PublicClient } from "viem";
-import { BotConfig, DryrunResult, SpanAttrs } from "../types";
+import { BotConfig, DryrunResult } from "../types";
 import {
     ONE18,
     scale18To,
@@ -13,6 +13,7 @@ import {
 } from "../utils";
 import { BundledOrders } from "../order";
 import { RainSolverSigner } from "../signer";
+import { Attributes } from "@opentelemetry/api";
 
 const obInterface = new ethers.utils.Interface(orderbookAbi);
 
@@ -42,7 +43,7 @@ export async function dryrun({
     opposingOrders: BundledOrders;
     maximumInput: BigNumber;
 }): Promise<DryrunResult> {
-    const spanAttributes: SpanAttrs = {};
+    const spanAttributes: Attributes = {};
     const result: DryrunResult = {
         value: undefined,
         reason: undefined,
@@ -316,7 +317,7 @@ export async function findOpp({
     outputToEthPrice: string;
 }): Promise<DryrunResult> {
     if (!arb) throw undefined;
-    const spanAttributes: SpanAttrs = {};
+    const spanAttributes: Attributes = {};
     const result: DryrunResult = {
         value: undefined,
         reason: undefined,
