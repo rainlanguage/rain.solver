@@ -148,6 +148,7 @@ describe("Test revert error handling functions", () => {
             (isDeepStrictEqual as Mock).mockReturnValue(true);
             (containsNodeError as Mock).mockResolvedValue(true);
             (errorSnapshot as Mock).mockResolvedValue("Error snapshot with frontrun info");
+            (getRpcError as Mock).mockReturnValue({});
 
             const result = await handleRevert(
                 mockViemClient,
@@ -194,6 +195,7 @@ describe("Test revert error handling functions", () => {
             mockViemClient.getLogs.mockResolvedValue([]);
             (containsNodeError as Mock).mockResolvedValue(false);
             (errorSnapshot as Mock).mockResolvedValue("Error snapshot without frontrun");
+            (getRpcError as Mock).mockReturnValue({});
 
             const result = await handleRevert(
                 mockViemClient,
@@ -277,7 +279,6 @@ describe("Test revert error handling functions", () => {
             const mockRawError = {
                 code: -32000,
                 message: "execution reverted",
-                data: undefined,
             };
             (getRpcError as Mock).mockReturnValue(mockRawError);
 

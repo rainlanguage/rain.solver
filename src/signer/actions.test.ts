@@ -27,11 +27,8 @@ describe("Test RainSolverSignerActions", () => {
                 ["0xtoken2", { address: "0xtoken2", symbol: "TKN2", decimals: 6 }],
             ]),
         } as SharedState;
-        const mockSigner = {
-            state: mockSharedState,
-        } as RainSolverSigner;
 
-        const actions = RainSolverSignerActions.fromSharedState(mockSharedState)(mockSigner);
+        const actions = RainSolverSignerActions.fromSharedState(mockSharedState)();
 
         expect(actions.state).toBe(mockSharedState);
         expect(actions.busy).toBe(false);
@@ -258,34 +255,28 @@ describe("Test getTxGas", () => {
     const originalGas = 100000n;
 
     it("should return original gas when no transactionGas is set", () => {
-        const mockSigner = {
-            state: {
-                transactionGas: undefined,
-            },
-        } as RainSolverSigner;
-        const result = getTxGas(mockSigner, originalGas);
+        const state = {
+            transactionGas: undefined,
+        } as SharedState;
+        const result = getTxGas(state, originalGas);
 
         expect(result).toBe(originalGas);
     });
 
     it("should apply percentage multiplier when transactionGas ends with %", () => {
-        const mockSigner = {
-            state: {
-                transactionGas: "150%", // 150% of original gas
-            },
-        } as RainSolverSigner;
-        const result = getTxGas(mockSigner, originalGas);
+        const state = {
+            transactionGas: "150%", // 150% of original gas
+        } as SharedState;
+        const result = getTxGas(state, originalGas);
 
         expect(result).toBe(150000n); // 100000 * 150 / 100
     });
 
     it("should use fixed gas value when transactionGas is a number string", () => {
-        const mockSigner = {
-            state: {
-                transactionGas: "200000",
-            },
-        } as RainSolverSigner;
-        const result = getTxGas(mockSigner, originalGas);
+        const state = {
+            transactionGas: "200000",
+        } as SharedState;
+        const result = getTxGas(state, originalGas);
 
         expect(result).toBe(200000n);
     });
@@ -356,7 +347,7 @@ describe("Test getWriteSignerFrom", () => {
 
         const signer = RainSolverSigner.create(account, mockState);
         const spySigner = vi.spyOn(RainSolverSigner, "create");
-        getWriteSignerFrom(signer, mockState);
+        getWriteSignerFrom(signer);
 
         expect(spySigner).toHaveBeenCalledTimes(0);
 
@@ -375,7 +366,7 @@ describe("Test getWriteSignerFrom", () => {
 
         const signer: any = RainSolverSigner.create(account, mockState);
         const spySigner = vi.spyOn(RainSolverSigner, "create");
-        getWriteSignerFrom(signer, mockState);
+        getWriteSignerFrom(signer);
 
         expect(spySigner).toHaveBeenCalledTimes(1);
         expect(spySigner).toHaveBeenCalledWith(account, mockState, true);

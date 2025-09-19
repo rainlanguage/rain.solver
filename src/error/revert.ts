@@ -92,8 +92,8 @@ export async function handleRevert(
 export async function parseRevertError(error: BaseError): Promise<TxRevertError> {
     const raw = getRpcError(error);
     let decoded: DecodedErrorType | undefined;
-    if ("data" in error && isHex(error.data, { strict: true })) {
-        const result = await tryDecodeError(error.data);
+    if ("data" in raw && isHex(raw.data, { strict: true })) {
+        const result = await tryDecodeError(raw.data);
         if (result.isOk()) {
             decoded = result.value;
         }
