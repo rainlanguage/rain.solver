@@ -65,16 +65,22 @@ export namespace RainSolverSigner {
      * Creates a new RainSolverSigner instance for the given account and state.
      * @param account - The account to use for the signer
      * @param state - The state to use for the signer
+     * @param writeSigner - Determines whether or not the signer should be configured
+     * with the state's write rpc(s), (default: false)
      * @returns A new RainSolverSigner instance
      */
     export function create<account extends HDAccount | PrivateKeyAccount>(
         account: account,
         state: SharedState,
+        writeSigner = false,
     ): RainSolverSigner<account> {
         return createWalletClient({
             account,
             chain: state.chainConfig,
-            transport: rainSolverTransport(state.rpc, state.rainSolverTransportConfig),
+            transport: rainSolverTransport(
+                writeSigner ? (state.writeRpc ?? state.rpc) : state.rpc,
+                state.rainSolverTransportConfig,
+            ),
         })
             .extend(publicActions)
             .extend(() => ({ state }))

@@ -27,6 +27,9 @@ import {
  *   to: "0x1234567890123456789012345678901234567890",
  *   value: parseEther("0.001"),
  * });
+ *
+ * // get the associated write signer
+ * const writeSigner = signer.toWriteSigner();
  */
 export type RainSolverSignerActions<
     account extends HDAccount | PrivateKeyAccount = HDAccount | PrivateKeyAccount,
@@ -60,6 +63,15 @@ export type RainSolverSignerActions<
      * @param tx - The transaction parameters to estimate
      */
     estimateGasCost: (tx: EstimateGasParameters<Chain>) => Promise<EstimateGasCostResult>;
+
+    /**
+     * Returns the associated write signer of this signer which basically is the same wallet
+     * signer but configured to use the state's write rpc(s) to interact with evm network, this
+     * is manily used for sending transactions or in other words performing write transactions
+     * with specified write rpc(s) that usually are the ones that provide protection against
+     * MEV attacks and dont suite read calls as they are paid or have high ratelimit
+     * */
+    asWriteSigner: () => RainSolverSigner<account>;
 };
 
 export namespace RainSolverSignerActions {
@@ -75,6 +87,7 @@ export namespace RainSolverSignerActions {
             waitUntilFree: () => waitUntilFree(client),
             getSelfBalance: () => getSelfBalance(client),
             estimateGasCost: (tx) => estimateGasCost(client, tx),
+            asWriteSigner: () => getWriteSignerFrom(client, state),
         });
     }
 }
@@ -197,4 +210,16 @@ export async function waitUntilFree(signer: RainSolverSigner) {
  */
 export async function getSelfBalance(signer: RainSolverSigner) {
     return await signer.getBalance({ address: signer.account.address });
+}
+
+/**
+ * Get the associated write signer from the given signer and state, that is
+ * basically the same signer wallet but configured with app's write rpc
+ * @param signber - A RainSolverSigner instance
+ * @param state - Sharedstate instance
+ * */
+export function getWriteSignerFrom(signer: RainSolverSigner, state: SharedState): RainSolverSigner {
+    // if state doesnt have write rpc configured, return the signer as is
+    if (!state.writeRpc) return signer;
+    return RainSolverSigner.create(signer.account, state, true);
 }

@@ -58,6 +58,9 @@ describe("Test find opp", async function () {
             getBlockNumber: async () => oppBlockNumber,
             estimateGas: async () => gasLimitEstimation.toBigInt(),
             getBalance: async () => 0n,
+            asWriteSigner() {
+                return this;
+            },
             async estimateGasCost() {
                 return {
                     gas: await this.estimateGas(),

@@ -42,6 +42,9 @@ describe("Test tx", async function () {
                     events: [],
                 };
             },
+            asWriteSigner() {
+                return this;
+            },
         };
         viemClient = {
             chain: config.chain,

@@ -1,11 +1,10 @@
 import { findOpp } from "./modes";
 import { PublicClient } from "viem";
-import { getQuoteGas } from "./order/quote";
+import { getQuoteGas } from "./order";
 import { SharedState } from "./state";
 import { Token } from "sushi/currency";
 import { arbAbis, orderbookAbi } from "./abis";
 import { getSigner, handleTransaction } from "./tx";
-import { privateKeyToAccount } from "viem/accounts";
 import { BigNumber, Contract, ethers } from "ethers";
 import { fundOwnedOrders, checkOwnedOrders } from "./account";
 import { Context, SpanStatusCode, Tracer } from "@opentelemetry/api";
@@ -137,21 +136,6 @@ export const processOrders = async (
                 // await for first available signer to get free
                 const signer = await getSigner(accounts, mainAccount, true);
 
-                const writeSigner = state.writeRpc
-                    ? (RainSolverSigner.create(
-                          privateKeyToAccount(
-                              signer.account.source === "hd"
-                                  ? (ethers.utils.hexlify(
-                                        signer.account.getHdKey().privateKey!,
-                                    ) as `0x${string}`)
-                                  : ((state.walletKey.startsWith("0x")
-                                        ? state.walletKey
-                                        : "0x" + state.walletKey) as `0x${string}`),
-                          ),
-                          state,
-                      ) as any as RainSolverSigner)
-                    : undefined;
-
                 const pair = `${pairOrders.buyTokenSymbol}/${pairOrders.sellTokenSymbol}`;
                 const span = tracer.startSpan(`checkpoint_${pair}`, undefined, ctx);
                 span.setAttributes({
@@ -171,7 +155,6 @@ export const processOrders = async (
                     viemClient,
                     dataFetcher,
                     signer,
-                    writeSigner,
                     arb,
                     genericArb,
                     orderbook,
@@ -372,7 +355,6 @@ export async function processPair(args: {
     viemClient: PublicClient;
     dataFetcher: RainDataFetcher;
     signer: RainSolverSigner;
-    writeSigner: RainSolverSigner | undefined;
     arb: Contract;
     genericArb: Contract | undefined;
     orderbook: Contract;
@@ -386,7 +368,6 @@ export async function processPair(args: {
         viemClient,
         dataFetcher,
         signer,
-        writeSigner,
         arb,
         genericArb,
         orderbook,
@@ -661,6 +642,5 @@ export async function processPair(args: {
         toToken,
         fromToken,
         config,
-        writeSigner,
     );
 }

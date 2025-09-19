@@ -67,6 +67,9 @@ describe("Test process pair", async function () {
                     events: [],
                 };
             },
+            asWriteSigner() {
+                return this;
+            },
             async estimateGasCost() {
                 return {
                     gas: (await this.estimateGas()).toBigInt(),

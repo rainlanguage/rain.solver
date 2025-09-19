@@ -141,6 +141,7 @@ for (let i = 0; i < testData.length; i++) {
                 bot.estimateGasCost = async (tx) => {
                     return await estimateGasCost(bot, tx);
                 };
+                bot.asWriteSigner = () => bot;
                 bot.state = state;
                 bot.impersonateAccount({
                     address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
@@ -401,6 +402,7 @@ for (let i = 0; i < testData.length; i++) {
                 bot.estimateGasCost = async (tx) => {
                     return await estimateGasCost(bot, tx);
                 };
+                bot.asWriteSigner = () => bot;
                 bot.state = state;
                 bot.impersonateAccount({
                     address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
@@ -749,6 +751,7 @@ for (let i = 0; i < testData.length; i++) {
                 bot.estimateGasCost = async (tx) => {
                     return await estimateGasCost(bot, tx);
                 };
+                bot.asWriteSigner = () => bot;
                 bot.state = state;
                 bot.impersonateAccount({
                     address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",

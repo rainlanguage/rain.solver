@@ -1,15 +1,18 @@
 import * as utils from "../utils";
+import { RpcState } from "../rpc";
 import { BigNumber } from "ethers";
-import { type SharedState } from "../state";
+import { SharedState } from "../state";
+import { RainSolverSigner } from "./index";
 import { publicActionsL2 } from "viem/op-stack";
-import { type RainSolverSigner } from "./index";
+import { privateKeyToAccount } from "viem/accounts";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 import {
     sendTx,
-    waitUntilFree,
     getTxGas,
+    waitUntilFree,
     getSelfBalance,
     estimateGasCost,
+    getWriteSignerFrom,
     RainSolverSignerActions,
 } from "./actions";
 
@@ -39,6 +42,7 @@ describe("Test RainSolverSignerActions", () => {
         expect(typeof actions.waitUntilFree).toBe("function");
         expect(typeof actions.getSelfBalance).toBe("function");
         expect(typeof actions.estimateGasCost).toBe("function");
+        expect(typeof actions.asWriteSigner).toBe("function");
     });
 });
 
@@ -336,5 +340,49 @@ describe("Test getSelfBalance", () => {
             address: "0xuser",
         });
         expect(balance).toBe(expectedBalance);
+    });
+});
+
+describe("Test getWriteSignerFrom", () => {
+    const account = privateKeyToAccount(
+        "0x1234567890123456789012345678901234567890123456789012345678901234",
+    );
+
+    it("should return same signer when no write RPC is configured", () => {
+        const mockState = new SharedState({
+            rpcState: new RpcState([{ url: "https://example.com" }]),
+            chainConfig: {
+                id: 1,
+                isSpecialL2: false,
+            },
+        } as any);
+
+        const signer = RainSolverSigner.create(account, mockState);
+        const spySigner = vi.spyOn(RainSolverSigner, "create");
+        getWriteSignerFrom(signer, mockState);
+
+        expect(spySigner).toHaveBeenCalledTimes(0);
+
+        spySigner.mockRestore();
+    });
+
+    it("should return new signer with write RPC when configured", () => {
+        const mockState = new SharedState({
+            rpcState: new RpcState([{ url: "https://example.com" }]),
+            writeRpcState: new RpcState([{ url: "https://example-write.com" }]),
+            chainConfig: {
+                id: 1,
+                isSpecialL2: false,
+            },
+        } as any);
+
+        const signer: any = RainSolverSigner.create(account, mockState);
+        const spySigner = vi.spyOn(RainSolverSigner, "create");
+        getWriteSignerFrom(signer, mockState);
+
+        expect(spySigner).toHaveBeenCalledTimes(1);
+        expect(spySigner).toHaveBeenCalledWith(account, mockState, true);
+
+        spySigner.mockRestore();
     });
 });

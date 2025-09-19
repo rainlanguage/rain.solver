@@ -37,6 +37,9 @@ describe("Test inter-orderbook dryrun", async function () {
             getBlockNumber: async () => oppBlockNumber,
             estimateGas: async () => gasLimitEstimation,
             getBalance: async () => ethers.BigNumber.from(0),
+            asWriteSigner() {
+                return this;
+            },
             async estimateGasCost() {
                 return {
                     gas: (await this.estimateGas()).toBigInt(),
@@ -198,6 +201,9 @@ describe("Test inter-orderbook find opp", async function () {
             getBlockNumber: async () => oppBlockNumber,
             estimateGas: async () => gasLimitEstimation,
             getBalance: async () => ethers.BigNumber.from(0),
+            asWriteSigner() {
+                return this;
+            },
             async estimateGasCost() {
                 return {
                     gas: (await this.estimateGas()).toBigInt(),

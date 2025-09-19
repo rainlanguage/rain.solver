@@ -41,22 +41,15 @@ export async function handleTransaction(
     toToken: Token,
     fromToken: Token,
     config: BotConfig,
-    writeSigner?: RainSolverSigner,
 ): Promise<() => Promise<ProcessPairResult>> {
     // submit the tx
     let txhash: `0x${string}`, txUrl: string;
     let time = 0;
     const sendTx = async () => {
-        txhash =
-            writeSigner !== undefined
-                ? await writeSigner.sendTx({
-                      ...rawtx,
-                      type: "legacy",
-                  })
-                : await signer.sendTx({
-                      ...rawtx,
-                      type: "legacy",
-                  });
+        txhash = await signer.asWriteSigner().sendTx({
+            ...rawtx,
+            type: "legacy",
+        });
         txUrl = config.chain.blockExplorers?.default.url + "/tx/" + txhash;
         time = Date.now();
         // eslint-disable-next-line no-console
