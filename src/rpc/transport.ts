@@ -9,9 +9,9 @@ export namespace RainSolverTransportDefaults {
     export const DEDUPE = true as const;
     export const RETRY_COUNT = 1 as const;
     export const TIMEOUT = 10_000 as const;
-    export const RETRY_DELAY = 100 as const;
+    export const RETRY_DELAY = 150 as const;
     export const RETRY_COUNT_NEXT = 1 as const;
-    export const POLLING_INTERVAL = 50 as const;
+    export const POLLING_INTERVAL = 100 as const;
     export const POLLING_TIMEOUT = 10_000 as const;
     export const KEY = "RainSolverTransport" as const;
     export const NAME = "Rain Solver Transport" as const;
@@ -91,7 +91,7 @@ export function rainSolverTransport(
             name,
             timeout,
             retryDelay,
-            retryCount,
+            retryCount: 0,
             type: "RainSolverTransport",
             async request(args, options) {
                 const req = async (tryNextCount: number): Promise<any> => {
@@ -112,8 +112,6 @@ export function rainSolverTransport(
                         }).request(args, {
                             ...options,
                             dedupe,
-                            retryDelay,
-                            retryCount: resolvedRetryCount,
                         });
                     } catch (error: any) {
                         if (shouldThrow(error)) throw error;

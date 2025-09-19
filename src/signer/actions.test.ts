@@ -91,7 +91,7 @@ describe("Test sendTx", () => {
         (mockSigner.sendTransaction as Mock)
             .mockRejectedValueOnce(new Error("First attempt failed"))
             .mockResolvedValueOnce("0xhash");
-        const txHash = await sendTx(mockSigner, mockTx);
+        const txHash = await sendTx(mockSigner, mockTx, 10);
 
         expect(mockSigner.waitUntilFree).toHaveBeenCalled();
         expect(mockSigner.getTransactionCount).toHaveBeenCalledWith({
@@ -111,7 +111,7 @@ describe("Test sendTx", () => {
         (mockSigner.getTransactionCount as Mock)
             .mockRejectedValueOnce(new Error("First attempt failed"))
             .mockResolvedValueOnce(6);
-        const txHash = await sendTx(mockSigner, mockTx);
+        const txHash = await sendTx(mockSigner, mockTx, 10);
 
         expect(mockSigner.waitUntilFree).toHaveBeenCalled();
         expect(mockSigner.getTransactionCount).toHaveBeenCalledTimes(2);
@@ -159,7 +159,7 @@ describe("Test sendTx", () => {
         mockSigner.sendTransaction = vi.fn().mockRejectedValue(error);
 
         expect(mockSigner.busy).toBe(false);
-        await expect(sendTx(mockSigner, mockTx)).rejects.toThrow(error);
+        await expect(sendTx(mockSigner, mockTx, 10)).rejects.toThrow(error);
         expect(mockSigner.busy).toBe(false);
     });
 
@@ -176,7 +176,7 @@ describe("Test sendTx", () => {
         const error = new Error("Failed to get nonce");
         mockSigner.getTransactionCount = vi.fn().mockRejectedValue(error);
 
-        await expect(sendTx(mockSigner, mockTx)).rejects.toThrow(error);
+        await expect(sendTx(mockSigner, mockTx, 10)).rejects.toThrow(error);
         expect(mockSigner.busy).toBe(false);
         expect(mockSigner.sendTransaction).not.toHaveBeenCalled();
     });
@@ -344,7 +344,7 @@ describe("Test waitUntilFree", () => {
         expect(sleepSpy).toHaveBeenCalledWith(30);
     });
 
-    it("should call sleep ywice and resolve after 60 ms", async () => {
+    it("should call sleep twice and resolve after 60 ms", async () => {
         setTimeout(() => (mockSigner.busy = false), 40); // set busy to false after 40 ms
         await waitUntilFree(mockSigner);
 
