@@ -9,7 +9,19 @@ import { processOrder, ProcessOrderArgs } from "./process/order";
 import { FindBestTradeResult, ProcessOrderFailure, ProcessOrderSuccess } from "./types";
 
 /**
- * RainSolver is the main class that orchestrates the Rain Orderbook solver logic
+ * The `RainSolver` class orchestrates the core umbrella logic for processing and settling
+ * orders, it manages shared state, application configuration, order processing, and wallet
+ * operations, providing high-level methods to process orders to find best trades for them
+ * and broadcast them onchain.
+ *
+ * This class coordinates between the order manager and wallet manager to ensure that order
+ * processing is performed concurrently, while respecting resource constraints. It exposes
+ * methods for processing individual orders, finding optimal trades, and executing complete
+ * processing rounds for batch of orders.
+ *
+ * The high-level methods of this class are exposed as public for easy access, while the internal
+ * methods are defined in other files as standalone functions with `this` context and are used
+ * to manage the flow of order processing and settlement.
  */
 export class RainSolver {
     /** The shared state instance */

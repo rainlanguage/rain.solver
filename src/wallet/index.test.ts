@@ -2,6 +2,7 @@ import * as utils from "../utils";
 import { parseUnits } from "viem";
 import * as sweepFns from "./sweep";
 import { WalletType } from "./config";
+import { MulticallAbi } from "../abis";
 import { ErrorSeverity } from "../error";
 import * as fundVault from "./fundVault";
 import { RainSolverSigner } from "../signer";
@@ -51,6 +52,10 @@ describe("Test WalletManager", () => {
                     default: { url: "https://explorer.test" },
                 },
             },
+            client: {
+                multicall: vi.fn(),
+                chain: { contracts: { multicall3: { address: "0xmulticall" } } },
+            },
         } as any);
 
         multiWalletState = new SharedState({
@@ -68,6 +73,10 @@ describe("Test WalletManager", () => {
                 blockExplorers: {
                     default: { url: "https://explorer.test" },
                 },
+            },
+            client: {
+                multicall: vi.fn(),
+                chain: { contracts: { multicall3: { address: "0xmulticall" } } },
             },
         } as any);
 
@@ -1449,6 +1458,103 @@ describe("Test WalletManager", () => {
 
             expect(signer).toBe(workers[1]);
             expect(elapsed).toBeGreaterThanOrEqual(60); // at least 2 polling cycles
+        });
+    });
+
+    describe("Test getWorkerWalletsBalance", () => {
+        beforeEach(() => {
+            vi.clearAllMocks();
+        });
+
+        it("should return empty object when in single wallet mode (PrivateKey)", async () => {
+            // setup single wallet mode
+            const { walletManager } = await WalletManager.init(singleWalletState);
+
+            const result = await walletManager.getWorkerWalletsBalance();
+
+            expect(result).toEqual({});
+            expect(walletManager.state.client.multicall).not.toHaveBeenCalled();
+        });
+
+        it("should call multicall with correct parameters and return worker balances", async () => {
+            // setup mock balances
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const mockBalances = [1000000000000000000n, 2000000000000000000n, 3000000000000000000n];
+            (walletManager.state.client.multicall as Mock).mockResolvedValue(mockBalances);
+
+            const result = await walletManager.getWorkerWalletsBalance();
+            const workers = Array.from(walletManager.workers.signers);
+
+            // verify multicall was called with correct parameters
+            expect(walletManager.state.client.multicall).toHaveBeenCalledTimes(1);
+            expect(walletManager.state.client.multicall).toHaveBeenCalledWith({
+                multicallAddress: "0xmulticall",
+                allowFailure: false,
+                contracts: [
+                    {
+                        address: "0xmulticall",
+                        allowFailure: false,
+                        abi: MulticallAbi,
+                        functionName: "getEthBalance",
+                        args: [workers[0][1].account.address],
+                    },
+                    {
+                        address: "0xmulticall",
+                        allowFailure: false,
+                        abi: MulticallAbi,
+                        functionName: "getEthBalance",
+                        args: [workers[1][1].account.address],
+                    },
+                    {
+                        address: "0xmulticall",
+                        allowFailure: false,
+                        abi: MulticallAbi,
+                        functionName: "getEthBalance",
+                        args: [workers[2][1].account.address],
+                    },
+                ],
+            });
+
+            // verify returned result
+            expect(result).toStrictEqual({
+                [workers[0][0]]: 1000000000000000000n,
+                [workers[1][0]]: 2000000000000000000n,
+                [workers[2][0]]: 3000000000000000000n,
+            });
+        });
+
+        it("should handle empty workers list", async () => {
+            // setup empty workers
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            (walletManager as any).workers = {
+                signers: new Map(),
+            };
+
+            (walletManager.state.client.multicall as Mock).mockResolvedValue([]);
+
+            const result = await walletManager.getWorkerWalletsBalance();
+
+            // verify multicall was called with empty contracts array
+            expect(walletManager.state.client.multicall as Mock).toHaveBeenCalledWith({
+                multicallAddress: "0xmulticall",
+                allowFailure: false,
+                contracts: [],
+            });
+
+            expect(result).toEqual({});
+        });
+
+        it("should return empty object when multicall fails", async () => {
+            // setup multicall to reject
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            (walletManager.state.client.multicall as Mock).mockRejectedValue(
+                new Error("Multicall failed"),
+            );
+
+            const result = await walletManager.getWorkerWalletsBalance();
+
+            expect(walletManager.state.client.multicall).toHaveBeenCalledTimes(1);
+            expect(result).toEqual({});
         });
     });
 });
