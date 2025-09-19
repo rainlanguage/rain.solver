@@ -463,19 +463,19 @@ export class WalletManager {
                 if (typeof receivedAmount === "bigint") {
                     report.setAttr(
                         `details.swaps.${tokenDetails.symbol}.receivedAmount`,
-                        formatUnits(receivedAmount, tokenDetails.decimals),
+                        formatUnits(receivedAmount, 18),
                     );
                 }
                 if (typeof receivedAmountMin === "bigint") {
                     report.setAttr(
                         `details.swaps.${tokenDetails.symbol}.receivedAmountMin`,
-                        formatUnits(receivedAmountMin, tokenDetails.decimals),
+                        formatUnits(receivedAmountMin, 18),
                     );
                 }
                 if (typeof expectedGasCost === "bigint") {
                     report.setAttr(
                         `details.swaps.${tokenDetails.symbol}.expectedGasCost`,
-                        formatUnits(expectedGasCost, tokenDetails.decimals),
+                        formatUnits(expectedGasCost, 18),
                     );
                 }
                 if (typeof route === "string") {

@@ -1,7 +1,7 @@
 import { ChainId } from "sushi";
-import { ABI } from "../common";
 import { SharedState } from "../state";
 import { AppOptions } from "../config";
+import { ABI, normalizeFloat } from "../common";
 import { BundledOrders, Pair, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData, PublicClient } from "viem";
 
@@ -23,7 +23,7 @@ export async function quoteSingleOrder(
             to: orderDetails.orderbook as `0x${string}`,
             data: encodeFunctionData({
                 abi: ABI.Orderbook.Primary.Orderbook,
-                functionName: "quote",
+                functionName: "quote2",
                 args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.struct)],
             }),
             blockNumber,
@@ -35,13 +35,30 @@ export async function quoteSingleOrder(
         });
     if (typeof data !== "undefined") {
         const quoteResult = decodeFunctionResult({
-            abi: [ABI.Orderbook.Primary.Orderbook[14]],
-            functionName: "quote",
+            abi: [ABI.Orderbook.Primary.Orderbook[17]],
+            functionName: "quote2",
             data,
         });
+
+        // handle quote result floats
+        const maxoutputResult = normalizeFloat(quoteResult[1], 18);
+        if (maxoutputResult.isErr()) {
+            orderDetails.takeOrder.quote = undefined;
+            return Promise.reject(
+                `Failed to handle quote maxoutput float, reason: ${maxoutputResult.error.readableMsg}`,
+            );
+        }
+        const ratioResult = normalizeFloat(quoteResult[2], 18);
+        if (ratioResult.isErr()) {
+            orderDetails.takeOrder.quote = undefined;
+            return Promise.reject(
+                `Failed to handle quote ratio float, reason: ${ratioResult.error.readableMsg}`,
+            );
+        }
+
         orderDetails.takeOrder.quote = {
-            maxOutput: quoteResult[1],
-            ratio: quoteResult[2],
+            maxOutput: maxoutputResult.value,
+            ratio: ratioResult.value,
         };
         return;
     } else {

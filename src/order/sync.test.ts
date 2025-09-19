@@ -61,7 +61,8 @@ describe("Test syncOrders", () => {
                                     decimals: "18",
                                 },
                                 vaultId: "123",
-                                balance: "1000000000000000000",
+                                balance:
+                                    "0xffffffee00000000000000000000000000000000000000000de0b6b3a7640000",
                             },
                         },
                     ],
@@ -105,7 +106,8 @@ describe("Test syncOrders", () => {
                                     decimals: "6",
                                 },
                                 vaultId: "456",
-                                balance: "500000000",
+                                balance:
+                                    "0xfffffffa0000000000000000000000000000000000000000000000001dcd6500",
                             },
                         },
                     ],
@@ -152,7 +154,8 @@ describe("Test syncOrders", () => {
                                                 decimals: "18",
                                             },
                                             vaultId: "100",
-                                            balance: "2000000000000000000",
+                                            balance:
+                                                "0xffffffee00000000000000000000000000000000000000001bc16d674ec80000",
                                         },
                                     },
                                     outputVaultBalanceChange: {
@@ -165,7 +168,8 @@ describe("Test syncOrders", () => {
                                                 decimals: "6",
                                             },
                                             vaultId: "200",
-                                            balance: "1000000000",
+                                            balance:
+                                                "0xfffffffa0000000000000000000000000000000000000000000000003b9aca00",
                                         },
                                     },
                                 },
@@ -228,7 +232,8 @@ describe("Test syncOrders", () => {
                                                 decimals: "8",
                                             },
                                             vaultId: "789",
-                                            balance: "50000000",
+                                            balance:
+                                                "0xfffffff800000000000000000000000000000000000000000000000002faf080",
                                         },
                                     },
                                     outputVaultBalanceChange: {
@@ -241,7 +246,8 @@ describe("Test syncOrders", () => {
                                                 decimals: "18",
                                             },
                                             vaultId: "101112",
-                                            balance: "3000000000000000000",
+                                            balance:
+                                                "0xffffffee000000000000000000000000000000000000000029a2241af62c0000",
                                         },
                                     },
                                 },

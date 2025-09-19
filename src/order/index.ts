@@ -5,9 +5,9 @@ import { SharedState } from "../state";
 import { quoteSingleOrder } from "./quote";
 import { PreAssembledSpan } from "../logger";
 import { SubgraphManager } from "../subgraph";
-import { Result, TokenDetails } from "../common";
 import { downscaleProtection } from "./protection";
 import { errorSnapshot, RainSolverBaseError } from "../error";
+import { normalizeFloat, Result, TokenDetails } from "../common";
 import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
 import {
     IO,
@@ -30,6 +30,7 @@ export const DEFAULT_OWNER_LIMIT = 25 as const;
 export enum OrderManagerErrorType {
     UndefinedTokenDecimals,
     DecodeAbiParametersError,
+    WasmEncodedError,
 }
 
 /**
@@ -253,10 +254,10 @@ export class OrderManager {
             owner,
             {
                 address: outputVault.token.toLowerCase(),
-                decimals: outputVault.decimals,
+                decimals: pair.sellTokenDecimals,
                 symbol: pair.sellTokenSymbol,
             },
-            outputVault.vaultId,
+            BigInt(outputVault.vaultId),
             pair.sellTokenVaultBalance,
         );
         this.updateVault(
@@ -264,10 +265,10 @@ export class OrderManager {
             owner,
             {
                 address: inputVault.token.toLowerCase(),
-                decimals: inputVault.decimals,
+                decimals: pair.buyTokenDecimals,
                 symbol: pair.buyTokenSymbol,
             },
-            inputVault.vaultId,
+            BigInt(inputVault.vaultId),
             pair.buyTokenVaultBalance,
         );
     }
@@ -377,7 +378,7 @@ export class OrderManager {
      * @param orderHash - The hash of the order
      * @param orderStruct - The order struct
      * @param orderDetails - The order details from subgraph
-     * @returns Array of valid trading pairs
+     * @returns Array of valid trading pairs if successful, or an WasmEncoded if error
      */
     async getOrderPairs(
         orderHash: string,
@@ -420,7 +421,6 @@ export class OrderManager {
                     })
                     .catch(() => "UnknownSymbol")); // fallback to unknown symbol if all fail
             let decimals =
-                io.decimals ??
                 cached?.decimals ??
                 (sgOrderIO?.token.decimals === undefined
                     ? undefined
@@ -465,13 +465,34 @@ export class OrderManager {
             const {
                 symbol: inputSymbol,
                 decimals: inputDecimals,
-                balance: inputBalance,
+                balance: inputBalanceHex,
             } = inputResult.value;
             const {
                 symbol: outputSymbol,
                 decimals: outputDecimals,
-                balance: outputBalance,
+                balance: outputBalanceHex,
             } = outputResult.value;
+
+            const inputBalanceRes = normalizeFloat(inputBalanceHex, inputDecimals);
+            if (inputBalanceRes.isErr()) {
+                return Result.err(
+                    new OrderManagerError(
+                        `Failed to parse float`,
+                        OrderManagerErrorType.WasmEncodedError,
+                        inputBalanceRes.error,
+                    ),
+                );
+            }
+            const outputBalanceRes = normalizeFloat(outputBalanceHex, outputDecimals);
+            if (outputBalanceRes.isErr()) {
+                return Result.err(
+                    new OrderManagerError(
+                        `Failed to parse float`,
+                        OrderManagerErrorType.WasmEncodedError,
+                        outputBalanceRes.error,
+                    ),
+                );
+            }
 
             if (input.token.toLowerCase() !== output.token.toLowerCase()) {
                 pairs.push({
@@ -479,11 +500,11 @@ export class OrderManager {
                     buyToken: input.token.toLowerCase(),
                     buyTokenSymbol: inputSymbol,
                     buyTokenDecimals: inputDecimals,
-                    buyTokenVaultBalance: BigInt(inputBalance),
+                    buyTokenVaultBalance: inputBalanceRes.value,
                     sellToken: output.token.toLowerCase(),
                     sellTokenSymbol: outputSymbol,
                     sellTokenDecimals: outputDecimals,
-                    sellTokenVaultBalance: BigInt(outputBalance),
+                    sellTokenVaultBalance: outputBalanceRes.value,
                     takeOrder: {
                         id: orderHash,
                         struct: {
