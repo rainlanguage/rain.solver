@@ -78,6 +78,13 @@ export namespace Order {
     }
 }
 
+/** Represents the source of the counterparty order for an order */
+export enum CounterpartySource {
+    IntraOrderbook,
+    InterOrderbook,
+}
+// export type CounterpartyType = "IntraOrderbook" | "InterOrderbook";
+
 export type BundledOrders = {
     orderbook: string;
     buyToken: string;
@@ -120,4 +127,4 @@ export type OrderbooksOwnersProfileMap = Map<string, OwnersProfileMap>;
 
 export type OrderbooksPairMap = Map<string, PairMap>;
 
-export type PairMap = Map<string, Pair[]>;
+export type PairMap = Map<string, Map<string, Map<string, Pair>>>;

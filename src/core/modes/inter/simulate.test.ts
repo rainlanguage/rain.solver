@@ -1,9 +1,9 @@
 import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
 import { ONE18 } from "../../../math";
+import { Pair } from "../../../order";
 import { Result } from "../../../common";
 import { SimulationResult } from "../../types";
-import { BundledOrders, Pair } from "../../../order";
 import { encodeFunctionData, encodeAbiParameters } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { trySimulateTrade, SimulateInterOrderbookTradeArgs } from "./simulate";
@@ -27,15 +27,15 @@ vi.mock("../dryrun", () => ({
     dryrun: vi.fn(),
 }));
 
-function makeOrderDetails(ratio = 1n * ONE18): BundledOrders {
+function makeOrderDetails(ratio = 1n * ONE18): Pair {
     return {
         orderbook: "0xorderbook",
         sellToken: "0xselltoken",
         buyToken: "0xbuytoken",
         sellTokenDecimals: 18,
         buyTokenDecimals: 18,
-        takeOrders: [{ takeOrder: {}, quote: { ratio } }],
-    } as BundledOrders;
+        takeOrder: { takeOrder: {}, quote: { ratio } },
+    } as Pair;
 }
 
 function makeCounterpartyOrder(): Pair {

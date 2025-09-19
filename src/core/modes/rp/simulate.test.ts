@@ -4,7 +4,7 @@ import { RainSolver } from "../..";
 import { ONE18 } from "../../../math";
 import { Token } from "sushi/currency";
 import { Result } from "../../../common";
-import { BundledOrders } from "../../../order";
+import { Pair } from "../../../order";
 import { SimulationResult } from "../../types";
 import { encodeFunctionData, encodeAbiParameters, maxUint256 } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
@@ -47,13 +47,13 @@ vi.mock("sushi", async (importOriginal) => ({
     },
 }));
 
-function makeOrderDetails(ratio = 1n * ONE18): BundledOrders {
+function makeOrderDetails(ratio = 1n * ONE18): Pair {
     return {
         orderbook: "0xorderbook",
         sellTokenDecimals: 18,
         buyTokenDecimals: 18,
-        takeOrders: [{ takeOrder: {}, quote: { ratio } }],
-    } as BundledOrders;
+        takeOrder: { takeOrder: {}, quote: { ratio } },
+    } as Pair;
 }
 
 describe("Test trySimulateTrade", () => {

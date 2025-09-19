@@ -6,12 +6,10 @@ import { describe, it, expect } from "vitest";
 const ONE17 = 10n ** 17n;
 function makeOrderDetails(ratio: bigint) {
     return {
-        takeOrders: [
-            {
-                quote: { ratio },
-            },
-        ],
-    };
+        takeOrder: {
+            quote: { ratio },
+        },
+    } as Pair;
 }
 function makeCounterpartyOrder(ratio: bigint, maxOutput: bigint): Pair {
     return {

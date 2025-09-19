@@ -1,20 +1,18 @@
 import { ONE18 } from "../../../math";
 import { estimateProfit } from "./utils";
 import { describe, it, expect } from "vitest";
-import { BundledOrders, TakeOrderDetails } from "../../../order";
+import { Pair, TakeOrderDetails } from "../../../order";
 
 const ONE17 = 10n ** 17n;
-function makeOrderPairObject(ratio: bigint, maxOutput: bigint): BundledOrders {
+function makeOrderPairObject(ratio: bigint, maxOutput: bigint): Pair {
     return {
-        takeOrders: [
-            {
-                quote: {
-                    ratio,
-                    maxOutput,
-                },
+        takeOrder: {
+            quote: {
+                ratio,
+                maxOutput,
             },
-        ],
-    } as BundledOrders;
+        },
+    } as Pair;
 }
 function makeCounterpartyOrder(ratio: bigint, maxOutput: bigint): TakeOrderDetails {
     return {

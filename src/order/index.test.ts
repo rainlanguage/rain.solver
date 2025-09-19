@@ -1,9 +1,10 @@
-import { Order } from "./types";
+import { CounterpartySource, Order } from "./types";
+import * as pairFns from "./pair";
+import { Result } from "../common";
 import { SharedState } from "../state";
 import { SubgraphManager } from "../subgraph";
 import { OrderManager, DEFAULT_OWNER_LIMIT } from "./index";
 import { describe, it, expect, beforeEach, vi, Mock } from "vitest";
-import { Result } from "../common";
 
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
@@ -49,6 +50,14 @@ describe("Test OrderManager", () => {
     let orderManager: OrderManager;
     let state: SharedState;
     let subgraphManager: SubgraphManager;
+
+    const getPair = (orderbook: string, hash: string, output: string, input: string) =>
+        ({
+            orderbook,
+            buyToken: input,
+            sellToken: output,
+            takeOrder: { id: hash },
+        }) as any;
 
     beforeEach(async () => {
         state = new (SharedState as Mock)();
@@ -190,14 +199,14 @@ describe("Test OrderManager", () => {
         expect(orderProfile1?.takeOrders.length).toBeGreaterThan(0);
 
         // check pairMap for first order
-        const pairMap1 = orderManager.pairMap.get("0xorderbook1");
+        const pairMap1 = orderManager.oiPairMap.get("0xorderbook1");
         expect(pairMap1).toBeDefined();
-        const pairArr1 = pairMap1?.get("0xinput/0xoutput");
-        expect(Array.isArray(pairArr1)).toBe(true);
-        expect(pairArr1?.length).toBeGreaterThan(0);
-        expect(pairArr1?.[0].buyToken).toBe("0xinput");
-        expect(pairArr1?.[0].sellToken).toBe("0xoutput");
-        expect(pairArr1?.[0].takeOrder.id).toBe("0xhash1");
+        const pairArr1 = pairMap1?.get("0xoutput")?.get("0xinput");
+        expect(pairArr1).toBeInstanceOf(Map);
+        expect(pairArr1?.size).toBeGreaterThan(0);
+        expect(pairArr1?.get("0xhash1")?.buyToken).toBe("0xinput");
+        expect(pairArr1?.get("0xhash1")?.sellToken).toBe("0xoutput");
+        expect(pairArr1?.get("0xhash1")?.takeOrder.id).toBe("0xhash1");
 
         // check second order in owner map
         const ownerProfileMap2 = orderManager.ownersMap.get("0xorderbook2");
@@ -213,14 +222,14 @@ describe("Test OrderManager", () => {
         expect(orderProfile2?.takeOrders.length).toBeGreaterThan(0);
 
         // check pairMap for second order
-        const pairMap2 = orderManager.pairMap.get("0xorderbook2");
+        const pairMap2 = orderManager.oiPairMap.get("0xorderbook2");
         expect(pairMap2).toBeDefined();
-        const pairArr2 = pairMap2?.get("0xinput/0xoutput");
-        expect(Array.isArray(pairArr2)).toBe(true);
-        expect(pairArr2?.length).toBeGreaterThan(0);
-        expect(pairArr2?.[0].buyToken).toBe("0xinput");
-        expect(pairArr2?.[0].sellToken).toBe("0xoutput");
-        expect(pairArr2?.[0].takeOrder.id).toBe("0xhash2");
+        const pairArr2 = pairMap2?.get("0xoutput")?.get("0xinput");
+        expect(pairArr2).toBeInstanceOf(Map);
+        expect(pairArr2?.size).toBeGreaterThan(0);
+        expect(pairArr2?.get("0xhash2")?.buyToken).toBe("0xinput");
+        expect(pairArr2?.get("0xhash2")?.sellToken).toBe("0xoutput");
+        expect(pairArr2?.get("0xhash2")?.takeOrder.id).toBe("0xhash2");
     });
 
     it("should remove orders", async () => {
@@ -235,19 +244,19 @@ describe("Test OrderManager", () => {
         expect(orderManager.ownersMap.size).toBe(1);
 
         // check pairMap before removal
-        const pairMapBefore = orderManager.pairMap.get("0xorderbook");
+        const pairMapBefore = orderManager.oiPairMap.get("0xorderbook");
         expect(pairMapBefore).toBeDefined();
-        const pairArrBefore = pairMapBefore?.get("0xinput/0xoutput");
-        expect(Array.isArray(pairArrBefore)).toBe(true);
-        expect(pairArrBefore?.length).toBeGreaterThan(0);
-        expect(pairArrBefore?.[0].takeOrder.id).toBe("0xhash");
+        const pairArrBefore = pairMapBefore?.get("0xoutput")?.get("0xinput");
+        expect(pairArrBefore).toBeInstanceOf(Map);
+        expect(pairArrBefore?.size).toBeGreaterThan(0);
+        expect(pairArrBefore?.get("0xhash")?.takeOrder.id).toBe("0xhash");
 
         await orderManager.removeOrders([mockOrder as any]);
         const ownerProfileMap = orderManager.ownersMap.get("0xorderbook");
         expect(ownerProfileMap?.get("0xowner")?.orders.size).toBe(0);
 
         // check pairMap after removal
-        const pairMapAfter = orderManager.pairMap.get("0xorderbook");
+        const pairMapAfter = orderManager.oiPairMap.get("0xorderbook");
         // the pair should be deleted from the map after removal
         expect(pairMapAfter?.get("0xinput/0xoutput")).toBeUndefined();
     });
@@ -266,7 +275,7 @@ describe("Test OrderManager", () => {
         expect(result.length).toBeGreaterThan(0);
 
         // Check the structure of the first orderbook's bundled orders
-        const bundledOrders = result[0];
+        const bundledOrders = result;
         expect(Array.isArray(bundledOrders)).toBe(true);
         expect(bundledOrders.length).toBeGreaterThan(0);
 
@@ -278,10 +287,8 @@ describe("Test OrderManager", () => {
         expect(bundle).toHaveProperty("sellToken", "0xoutput");
         expect(bundle).toHaveProperty("sellTokenDecimals", 18);
         expect(bundle).toHaveProperty("sellTokenSymbol", "OUT");
-        expect(Array.isArray(bundle.takeOrders)).toBe(true);
-        expect(bundle.takeOrders.length).toBeGreaterThan(0);
 
-        const takeOrder = bundle.takeOrders[0];
+        const takeOrder = bundle.takeOrder;
         expect(takeOrder).toHaveProperty("id", "0xhash");
         expect(takeOrder).toHaveProperty("takeOrder");
         expect(takeOrder.takeOrder).toHaveProperty("order");
@@ -392,24 +399,22 @@ describe("Test OrderManager", () => {
             sellToken: "0xoutput",
             sellTokenDecimals: 18,
             sellTokenSymbol: "OUT",
-            takeOrders: [
-                {
-                    id: "0xhash",
-                    takeOrder: {
-                        order: {
-                            owner: "0xowner",
-                            validInputs: [{ token: "0xinput", decimals: 18 }],
-                            validOutputs: [{ token: "0xoutput", decimals: 18 }],
-                        },
-                        inputIOIndex: 0,
-                        outputIOIndex: 0,
-                        signedContext: [],
+            takeOrder: {
+                id: "0xhash",
+                takeOrder: {
+                    order: {
+                        owner: "0xowner",
+                        validInputs: [{ token: "0xinput", decimals: 18 }],
+                        validOutputs: [{ token: "0xoutput", decimals: 18 }],
                     },
+                    inputIOIndex: 0,
+                    outputIOIndex: 0,
+                    signedContext: [],
                 },
-            ],
+            },
         } as any;
         await orderManager.quoteOrder(bundledOrder as any);
-        expect(bundledOrder.takeOrders[0].quote).toEqual({
+        expect(bundledOrder.takeOrder.quote).toEqual({
             maxOutput: 100n,
             ratio: 2n,
         });
@@ -456,7 +461,7 @@ describe("Test OrderManager", () => {
         // helper to get the order hashes returned in the round
         const getRoundHashes = () => {
             const roundOrders = orderManager.getNextRoundOrders(false);
-            return roundOrders[0][0].takeOrders.map((t) => t.id);
+            return roundOrders.map((o) => o.takeOrder.id);
         };
 
         // first call: should return the first 3 orders
@@ -484,15 +489,14 @@ describe("Test OrderManager", () => {
 
         // get the takeOrder object from getNextRoundOrders
         const roundOrders = orderManager.getNextRoundOrders(false);
-        const orderDetails = roundOrders[0][0];
+        const orderDetails = roundOrders[0];
 
         // update the quote field via the object from getNextRoundOrders
-        orderDetails.takeOrders[0].quote = { maxOutput: 999n, ratio: 888n };
+        orderDetails.takeOrder.quote = { maxOutput: 999n, ratio: 888n };
 
         // now check that the update is reflected in both ownersMap and pairMap
         const orderbookKey = "0xorderbook";
         const ownerKey = "0xowner";
-        const pairKey = "0xinput/0xoutput";
         const orderHash = "0xhash";
 
         const ownersMap = orderManager.ownersMap.get(orderbookKey);
@@ -500,15 +504,14 @@ describe("Test OrderManager", () => {
         const orderEntry = ownerProfile?.orders.get(orderHash);
         const takeOrderFromOwnersMap = orderEntry?.takeOrders[0];
 
-        const pairMap = orderManager.pairMap.get(orderbookKey);
-        const pairArr = pairMap?.get(pairKey);
-        const takeOrderFromPairMap = pairArr?.[0];
+        const pairMap = orderManager.oiPairMap.get(orderbookKey);
+        const takeOrderFromPairMap = pairMap?.get("0xoutput")?.get("0xinput")?.get("0xhash");
 
         expect(takeOrderFromOwnersMap?.takeOrder.quote).toEqual({ maxOutput: 999n, ratio: 888n });
         expect(takeOrderFromPairMap?.takeOrder.quote).toEqual({ maxOutput: 999n, ratio: 888n });
         // and all references are the same object
-        expect(orderDetails.takeOrders[0]).toBe(takeOrderFromOwnersMap?.takeOrder);
-        expect(orderDetails.takeOrders[0]).toBe(takeOrderFromPairMap?.takeOrder);
+        expect(orderDetails.takeOrder).toBe(takeOrderFromOwnersMap?.takeOrder);
+        expect(orderDetails.takeOrder).toBe(takeOrderFromPairMap?.takeOrder);
     });
 
     it("should get opposing orders in the same orderbook", async () => {
@@ -548,7 +551,10 @@ describe("Test OrderManager", () => {
         const roundOrders = orderManager.getNextRoundOrders(false);
 
         // should find orderB as opposing order for orderA in the same orderbook
-        const opposing = orderManager.getCounterpartyOrders(roundOrders[0][0], true);
+        const opposing = orderManager.getCounterpartyOrders(
+            roundOrders[0],
+            CounterpartySource.IntraOrderbook,
+        );
         expect(Array.isArray(opposing)).toBe(true);
         expect(opposing.length).toBe(1);
         expect(opposing[0].buyToken).toBe("0xoutput");
@@ -593,7 +599,10 @@ describe("Test OrderManager", () => {
         const roundOrders = orderManager.getNextRoundOrders(false);
 
         // should find orderB as opposing order for orderA across orderbooks
-        const opposing = orderManager.getCounterpartyOrders(roundOrders[0][0], false);
+        const opposing = orderManager.getCounterpartyOrders(
+            roundOrders[0],
+            CounterpartySource.InterOrderbook,
+        );
         for (const counteryparties of opposing) {
             expect(Array.isArray(counteryparties)).toBe(true);
             expect(counteryparties.length).toBe(1);
@@ -601,5 +610,55 @@ describe("Test OrderManager", () => {
             expect(counteryparties[0].sellToken).toBe("0xinput");
             expect(counteryparties[0].takeOrder.id).toBe("0xhashb");
         }
+    });
+
+    it("should call addToPairMap with correct params", async () => {
+        const pair = getPair("0xorderbook", "0xhash", "0xtkn1", "0xtkn2");
+        const addToPairMapSpy = vi.spyOn(pairFns, "addToPairMap");
+        orderManager.addToPairMaps(pair);
+
+        expect(addToPairMapSpy).toHaveBeenCalledTimes(2);
+        expect(addToPairMapSpy).toHaveBeenCalledWith(
+            orderManager.oiPairMap,
+            "0xorderbook",
+            "0xhash",
+            "0xtkn1",
+            "0xtkn2",
+            pair,
+        );
+        expect(addToPairMapSpy).toHaveBeenCalledWith(
+            orderManager.ioPairMap,
+            "0xorderbook",
+            "0xhash",
+            "0xtkn2",
+            "0xtkn1",
+            pair,
+        );
+        addToPairMapSpy.mockRestore();
+    });
+
+    it("should call removeFromPairMaps with correct params", async () => {
+        const pair = getPair("0xorderbook", "0xhash", "0xtkn1", "0xtkn2");
+        orderManager.addToPairMaps(pair);
+
+        const removeFromPairMapSpy = vi.spyOn(pairFns, "removeFromPairMap");
+        orderManager.removeFromPairMaps(pair);
+
+        expect(removeFromPairMapSpy).toHaveBeenCalledTimes(2);
+        expect(removeFromPairMapSpy).toHaveBeenCalledWith(
+            orderManager.oiPairMap,
+            "0xorderbook",
+            "0xhash",
+            "0xtkn1",
+            "0xtkn2",
+        );
+        expect(removeFromPairMapSpy).toHaveBeenCalledWith(
+            orderManager.ioPairMap,
+            "0xorderbook",
+            "0xhash",
+            "0xtkn2",
+            "0xtkn1",
+        );
+        removeFromPairMapSpy.mockRestore();
     });
 });

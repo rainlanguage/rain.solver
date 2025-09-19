@@ -1,13 +1,13 @@
 import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
+import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
 import { ChainId, Router } from "sushi";
 import { estimateProfit } from "./utils";
-import { BundledOrders } from "../../../order";
 import { Attributes } from "@opentelemetry/api";
 import { Result, ArbAbi } from "../../../common";
 import { extendObjectWithHeader } from "../../../logger";
-import { ONE18, scale18, scale18To } from "../../../math";
+import { ONE18, scaleTo18, scaleFrom18 } from "../../../math";
 import { RPoolFilter, visualizeRoute } from "../../../router";
 import { RainSolverSigner, RawTransaction } from "../../../signer";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
@@ -24,7 +24,7 @@ export enum RouteProcessorSimulationHaltReason {
 /** Arguments for simulating route processor trade */
 export type SimulateRouteProcessorTradeArgs = {
     /** The bundled order details including tokens, decimals, and take orders */
-    orderDetails: BundledOrders;
+    orderDetails: Pair;
     /** The RainSolverSigner instance used for signing transactions */
     signer: RainSolverSigner;
     /** The current ETH price (in 18 decimals) */
@@ -63,7 +63,7 @@ export async function trySimulateTrade(
     const gasPrice = this.state.gasPrice;
     const spanAttributes: Attributes = {};
 
-    const maximumInput = scale18To(maximumInputFixed, orderDetails.sellTokenDecimals);
+    const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
     spanAttributes["amountIn"] = formatUnits(maximumInputFixed, 18);
 
     // get route details from sushi dataFetcher
@@ -93,7 +93,7 @@ export async function trySimulateTrade(
     }
 
     spanAttributes["amountOut"] = formatUnits(route.amountOutBI, toToken.decimals);
-    const rateFixed = scale18(route.amountOutBI, orderDetails.buyTokenDecimals);
+    const rateFixed = scaleTo18(route.amountOutBI, orderDetails.buyTokenDecimals);
     const price = (rateFixed * ONE18) / maximumInputFixed;
     spanAttributes["marketPrice"] = formatUnits(price, 18);
 
@@ -108,7 +108,7 @@ export async function trySimulateTrade(
     spanAttributes["route"] = routeVisual;
 
     // exit early if market price is lower than order quote ratio
-    if (price < orderDetails.takeOrders[0].quote!.ratio) {
+    if (price < orderDetails.takeOrder.quote!.ratio) {
         spanAttributes["error"] = "Order's ratio greater than market price";
         const result = {
             type: TradeType.RouteProcessor,
@@ -128,7 +128,7 @@ export async function trySimulateTrade(
         this.state.chainConfig.routeProcessors["4"],
     );
 
-    const orders = orderDetails.takeOrders.map((v) => v.takeOrder);
+    const orders = [orderDetails.takeOrder.takeOrder];
     const takeOrdersConfigStruct: TakeOrdersConfigType = {
         minimumInput: 1n,
         maximumInput: isPartial ? maximumInput : maxUint256,
@@ -309,19 +309,19 @@ export async function trySimulateTrade(
  */
 export function findLargestTradeSize(
     this: RainSolver,
-    orderDetails: BundledOrders,
+    orderDetails: Pair,
     toToken: Token,
     fromToken: Token,
     maximumInputFixed: bigint,
 ): bigint | undefined {
     const result: bigint[] = [];
     const gasPrice = Number(this.state.gasPrice);
-    const ratio = orderDetails.takeOrders[0].quote!.ratio;
+    const ratio = orderDetails.takeOrder.quote!.ratio;
     const pcMap = this.state.dataFetcher.getCurrentPoolCodeMap(fromToken, toToken);
-    const initAmount = scale18To(maximumInputFixed, fromToken.decimals) / 2n;
+    const initAmount = scaleFrom18(maximumInputFixed, fromToken.decimals) / 2n;
     let maximumInput = initAmount;
     for (let i = 1n; i < 26n; i++) {
-        const maxInput18 = scale18(maximumInput, fromToken.decimals);
+        const maxInput18 = scaleTo18(maximumInput, fromToken.decimals);
         const route = Router.findBestRoute(
             pcMap,
             this.state.chainConfig.id as ChainId,
@@ -338,7 +338,7 @@ export function findLargestTradeSize(
         if (route.status == "NoWay") {
             maximumInput = maximumInput - initAmount / 2n ** i;
         } else {
-            const amountOut = scale18(route.amountOutBI, toToken.decimals);
+            const amountOut = scaleTo18(route.amountOutBI, toToken.decimals);
             const price = (amountOut * ONE18) / maxInput18;
 
             if (price < ratio) {

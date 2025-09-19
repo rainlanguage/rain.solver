@@ -1,9 +1,9 @@
 import { RainSolver } from "../..";
 import { dryrun } from "../dryrun";
+import { Pair } from "../../../order";
 import { estimateProfit } from "./utils";
 import { Attributes } from "@opentelemetry/api";
-import { ONE18, scale18To } from "../../../math";
-import { BundledOrders, Pair } from "../../../order";
+import { ONE18, scaleFrom18 } from "../../../math";
 import { extendObjectWithHeader } from "../../../logger";
 import { ArbAbi, TakeOrdersV2Abi, Result } from "../../../common";
 import { RainSolverSigner, RawTransaction } from "../../../signer";
@@ -20,7 +20,7 @@ import {
 /** Arguments for simulating inter-orderbook trade */
 export type SimulateInterOrderbookTradeArgs = {
     /** The bundled order details including tokens, decimals, and take orders */
-    orderDetails: BundledOrders;
+    orderDetails: Pair;
     /** The counterparty order to trade against */
     counterpartyOrderDetails: Pair;
     /** The RainSolverSigner instance used for signing transactions */
@@ -64,21 +64,21 @@ export async function trySimulateTrade(
         ratio: formatUnits(counterpartyOrderDetails.takeOrder.quote!.ratio, 18),
     });
 
-    const maximumInput = scale18To(maximumInputFixed, orderDetails.sellTokenDecimals);
+    const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
     spanAttributes["maxInput"] = maximumInput.toString();
 
     const opposingMaxInput =
-        orderDetails.takeOrders[0].quote!.ratio === 0n
+        orderDetails.takeOrder.quote!.ratio === 0n
             ? maxUint256
-            : scale18To(
-                  (maximumInputFixed * orderDetails.takeOrders[0].quote!.ratio) / ONE18,
+            : scaleFrom18(
+                  (maximumInputFixed * orderDetails.takeOrder.quote!.ratio) / ONE18,
                   orderDetails.buyTokenDecimals,
               );
 
     const opposingMaxIORatio =
-        orderDetails.takeOrders[0].quote!.ratio === 0n
+        orderDetails.takeOrder.quote!.ratio === 0n
             ? maxUint256
-            : ONE18 ** 2n / orderDetails.takeOrders[0].quote!.ratio;
+            : ONE18 ** 2n / orderDetails.takeOrder.quote!.ratio;
 
     // encode takeOrders2() and build tx fields
     const encodedFN = encodeFunctionData({
@@ -98,7 +98,7 @@ export async function trySimulateTrade(
         minimumInput: 1n,
         maximumInput: maxUint256,
         maximumIORatio: maxUint256,
-        orders: [orderDetails.takeOrders[0].takeOrder],
+        orders: [orderDetails.takeOrder.takeOrder],
         data: encodeAbiParameters(
             [{ type: "address" }, { type: "address" }, { type: "bytes" }],
             [
