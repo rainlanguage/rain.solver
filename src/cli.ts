@@ -1,20 +1,21 @@
 import { config } from "dotenv";
 import { Command } from "commander";
-import { clear } from ".";
 import { AppOptions } from "./config";
-import { BigNumber, ethers } from "ethers";
+import { ethers } from "ethers";
 import { RainSolverLogger } from "./logger";
 import { sleep, withBigintSerializer } from "./utils";
 import { ErrorSeverity, errorSnapshot } from "./error";
 import { getDataFetcher, getMetaInfo } from "./client";
 import { SharedState, SharedStateConfig } from "./state";
 import { SubgraphManager, SubgraphConfig } from "./subgraph";
-import { BotConfig, ProcessPairReportStatus } from "./types";
-import { OrderManager, BundledOrders } from "./order";
-import { trace, Tracer, context, Context, SpanStatusCode } from "@opentelemetry/api";
+import { BotConfig } from "./types";
+import { OrderManager } from "./order";
+import { trace, context, SpanStatusCode } from "@opentelemetry/api";
 import { WalletManager, WalletType } from "./wallet";
 import { publicClientConfig } from "sushi/config";
 import { MulticallAbi } from "./abis";
+import { RainSolver } from "./solver";
+import { formatUnits } from "viem";
 
 config();
 
@@ -38,75 +39,6 @@ const getOptions = async (argv: any, version?: string) => {
         .opts();
 
     return cmdOptions;
-};
-
-export const arbRound = async (
-    tracer: Tracer,
-    roundCtx: Context,
-    options: AppOptions,
-    config: BotConfig,
-    bundledOrders: BundledOrders[][],
-    state: SharedState,
-) => {
-    return await tracer.startActiveSpan("process-orders", {}, roundCtx, async (span) => {
-        const ctx = trace.setSpan(context.active(), span);
-        options;
-        try {
-            let txs;
-            let foundOpp = false;
-            let didClear = false;
-            const { reports = [], avgGasCost = undefined } = await clear(
-                config,
-                bundledOrders,
-                state,
-                tracer,
-                ctx,
-            );
-            if (reports && reports.length) {
-                txs = reports.map((v) => v.txUrl).filter((v) => !!v);
-                if (txs.length) {
-                    foundOpp = true;
-                    span.setAttribute("txUrls", txs);
-                    span.setAttribute("foundOpp", true);
-                } else if (
-                    reports.some((v) => v.status === ProcessPairReportStatus.FoundOpportunity)
-                ) {
-                    foundOpp = true;
-                    span.setAttribute("foundOpp", true);
-                }
-                if (
-                    reports.some(
-                        (v) => v.status === ProcessPairReportStatus.FoundOpportunity && !v.reason,
-                    )
-                ) {
-                    didClear = true;
-                    span.setAttribute("didClear", true);
-                }
-            } else {
-                span.setAttribute("didClear", false);
-            }
-            if (avgGasCost) {
-                span.setAttribute("avgGasCost", ethers.utils.formatUnits(avgGasCost));
-            }
-            span.setStatus({ code: SpanStatusCode.OK });
-            span.end();
-            return { txs, foundOpp, didClear, avgGasCost };
-        } catch (e: any) {
-            if (e?.startsWith?.("Failed to batch quote orders")) {
-                span.setAttribute("severity", ErrorSeverity.LOW);
-                span.setStatus({ code: SpanStatusCode.ERROR, message: e });
-            } else {
-                const snapshot = errorSnapshot("Unexpected error occurred", e);
-                span.setAttribute("severity", ErrorSeverity.HIGH);
-                span.setStatus({ code: SpanStatusCode.ERROR, message: snapshot });
-            }
-            span.recordException(e);
-            span.setAttribute("didClear", false);
-            span.setAttribute("foundOpp", false);
-            span.end();
-            return { txs: [], foundOpp: false, didClear: false, avgGasCost: undefined };
-        }
-    });
 };
 
 /**
@@ -203,10 +135,12 @@ export const main = async (argv: any, version?: string) => {
     config.mainAccount = walletManager.mainSigner;
     config.accounts = Array.from(walletManager.workers.signers.values());
 
+    const rainSolver = new RainSolver(state, options, orderManager, walletManager, config);
+
     const day = 24 * 60 * 60 * 1000;
     let lastGasReset = Date.now() + day;
     let lastInterval = Date.now() + poolUpdateInterval;
-    let avgGasCost: BigNumber | undefined;
+    let avgGasCost = 0n;
     let counter = 1;
 
     // run bot's processing orders in a loop
@@ -248,41 +182,26 @@ export const main = async (argv: any, version?: string) => {
                 fundOwnedVaultsReport.forEach((report) => {
                     logger.exportPreAssembledSpan(report, roundCtx);
                 });
-
-                const bundledOrders = orderManager.getNextRoundOrders();
                 if (update) {
                     const freshdataFetcher = await getDataFetcher(state);
                     state.dataFetcher = freshdataFetcher;
                     config.dataFetcher = state.dataFetcher;
                 }
                 roundSpan.setAttribute("details.rpc", state.rpc.urls);
-                const roundResult = await arbRound(
-                    logger.tracer,
-                    roundCtx,
-                    options,
-                    config,
-                    bundledOrders,
-                    state,
-                );
-                let txs, foundOpp, didClear, roundAvgGasCost;
-                if (roundResult) {
-                    txs = roundResult.txs;
-                    foundOpp = roundResult.foundOpp;
-                    didClear = roundResult.didClear;
-                    roundAvgGasCost = roundResult.avgGasCost;
-                }
-                if (txs && txs.length) {
-                    roundSpan.setAttribute("txUrls", txs);
+
+                // process round and export the reports
+                const { results, reports, checkpointReports } = await rainSolver.processNextRound();
+                checkpointReports.forEach((report) => {
+                    logger.exportPreAssembledSpan(report, roundCtx);
+                });
+                reports.forEach((report) => {
+                    logger.exportPreAssembledSpan(report, roundCtx);
+                });
+                const txUrls = results.filter((v) => v.txUrl).map((v) => v.txUrl);
+                const foundOpp = txUrls.length > 0;
+                if (foundOpp) {
                     roundSpan.setAttribute("foundOpp", true);
-                } else if (didClear) {
-                    roundSpan.setAttribute("foundOpp", true);
-                    roundSpan.setAttribute("didClear", true);
-                } else if (foundOpp) {
-                    roundSpan.setAttribute("foundOpp", true);
-                    roundSpan.setAttribute("didClear", false);
-                } else {
-                    roundSpan.setAttribute("foundOpp", false);
-                    roundSpan.setAttribute("didClear", false);
+                    roundSpan.setAttribute("txUrls", txUrls);
                 }
 
                 // fecth account's balances
@@ -311,17 +230,13 @@ export const main = async (argv: any, version?: string) => {
                 }
 
                 // keep avg gas cost
-                if (roundAvgGasCost) {
-                    const _now = Date.now();
-                    if (lastGasReset <= _now) {
-                        lastGasReset = _now + day;
-                        avgGasCost = undefined;
-                        state.gasCosts = [roundAvgGasCost.toBigInt()];
-                    } else {
-                        state.gasCosts.push(roundAvgGasCost.toBigInt());
-                    }
-                    avgGasCost = ethers.BigNumber.from(state.avgGasCost);
+                const _now = Date.now();
+                if (lastGasReset <= _now) {
+                    lastGasReset = _now + day;
+                    avgGasCost = state.avgGasCost;
+                    state.gasCosts = [];
                 }
+                avgGasCost = state.avgGasCost || avgGasCost;
 
                 // retry pending add workers
                 const retryPendingAddReports = await walletManager.retryPendingAddWorkers();
@@ -372,7 +287,7 @@ export const main = async (argv: any, version?: string) => {
                 );
             }
             if (avgGasCost) {
-                roundSpan.setAttribute("avgGasCost", ethers.utils.formatUnits(avgGasCost));
+                roundSpan.setAttribute("avgGasCost", formatUnits(avgGasCost, 18));
             }
 
             try {

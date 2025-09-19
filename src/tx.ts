@@ -3,17 +3,11 @@ import { Contract, ethers } from "ethers";
 import { getL1Fee, getTxFee } from "./gas";
 import { containsNodeError, handleRevert } from "./error";
 import { BaseError, TransactionReceipt } from "viem";
-import {
-    BotConfig,
-    ProcessPairResult,
-    ProcessPairHaltReason,
-    ProcessPairReportStatus,
-} from "./types";
+import { BotConfig, ProcessPairResult } from "./types";
 import {
     sleep,
     toNumber,
     getIncome,
-    shuffleArray,
     getTotalIncome,
     addWatchedToken,
     withBigintSerializer,
@@ -21,6 +15,7 @@ import {
 } from "./utils";
 import { BundledOrders } from "./order";
 import { RainSolverSigner, RawTransaction } from "./signer";
+import { ProcessOrderHaltReason, ProcessOrderStatus } from "./solver/types";
 
 /**
  * Handles the given transaction, starts by sending the transaction and
@@ -74,7 +69,7 @@ export async function handleTransaction(
             );
             spanAttributes["txNoneNodeError"] = !containsNodeError(e as BaseError);
             result.error = e;
-            result.reason = ProcessPairHaltReason.TxFailed;
+            result.reason = ProcessOrderHaltReason.TxFailed;
             return async () => {
                 throw result;
             };
@@ -122,7 +117,7 @@ export async function handleTransaction(
             );
         } catch (e: any) {
             result.report = {
-                status: ProcessPairReportStatus.FoundOpportunity,
+                status: ProcessOrderStatus.FoundOpportunity,
                 txUrl,
                 tokenPair: pair,
                 buyToken: orderPairObject.buyToken,
@@ -137,7 +132,7 @@ export async function handleTransaction(
                 withBigintSerializer,
             );
             spanAttributes["txNoneNodeError"] = !containsNodeError(e);
-            result.reason = ProcessPairHaltReason.TxMineFailed;
+            result.reason = ProcessOrderHaltReason.TxMineFailed;
             throw result;
         }
     };
@@ -215,7 +210,7 @@ export async function handleReceipt(
         }
 
         result.report = {
-            status: ProcessPairReportStatus.FoundOpportunity,
+            status: ProcessOrderStatus.FoundOpportunity,
             txUrl,
             tokenPair: pair,
             buyToken: orderPairObject.buyToken,
@@ -286,45 +281,14 @@ export async function handleReceipt(
             spanAttributes["txNoneNodeError"] = !simulation.nodeError;
         }
         result.report = {
-            status: ProcessPairReportStatus.FoundOpportunity,
+            status: ProcessOrderStatus.FoundOpportunity,
             txUrl,
             tokenPair: pair,
             buyToken: orderPairObject.buyToken,
             sellToken: orderPairObject.sellToken,
             actualGasCost: ethers.utils.formatUnits(actualGasCost),
         };
-        result.reason = ProcessPairHaltReason.TxReverted;
+        result.reason = ProcessOrderHaltReason.TxReverted;
         return Promise.reject(result);
-    }
-}
-
-/**
- * Returns the first available signer by polling the
- * signers until first one becomes available
- */
-export async function getSigner(
-    accounts: RainSolverSigner[],
-    mainAccount: RainSolverSigner,
-    shuffle = false,
-): Promise<RainSolverSigner> {
-    if (shuffle && accounts.length) {
-        shuffleArray(accounts);
-    }
-    const accs = accounts.length ? accounts : [mainAccount];
-    return await pollSigners(accs);
-}
-
-/**
- * Polls an array of given signers in 30ms intervals
- * until the first one becomes free for consumption
- */
-export async function pollSigners(accounts: RainSolverSigner[]): Promise<RainSolverSigner> {
-    for (;;) {
-        const acc = accounts.find((v) => !v.busy);
-        if (acc) {
-            return acc;
-        } else {
-            await sleep(30);
-        }
     }
 }

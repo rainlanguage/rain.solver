@@ -6,29 +6,7 @@ import { AppOptions } from "./config";
 import { Token } from "sushi/currency";
 import { Dispair } from "./state";
 import { RainSolverSigner, RawTransaction } from "./signer";
-
-/**
- * Specifies reason that order process halted
- */
-export enum ProcessPairHaltReason {
-    FailedToQuote = 1,
-    FailedToGetEthPrice = 2,
-    FailedToGetPools = 3,
-    TxFailed = 4,
-    TxMineFailed = 5,
-    TxReverted = 6,
-    FailedToUpdatePools = 7,
-    UnexpectedError = 8,
-}
-
-/**
- * Specifies status of an processed order report
- */
-export enum ProcessPairReportStatus {
-    ZeroOutput = 1,
-    NoOpportunity = 2,
-    FoundOpportunity = 3,
-}
+import { ProcessOrderHaltReason, ProcessOrderStatus } from "./solver/types";
 
 export type BotError = {
     snapshot: string;
@@ -51,7 +29,7 @@ export type BotConfig = Omit<AppOptions, "dispair"> & {
 };
 
 export type Report = {
-    status: ProcessPairReportStatus;
+    status: ProcessOrderStatus;
     tokenPair: string;
     buyToken: string;
     sellToken: string;
@@ -63,7 +41,7 @@ export type Report = {
     clearedOrders?: string[];
     income?: BigNumber;
     netProfit?: BigNumber;
-    reason?: ProcessPairHaltReason;
+    reason?: ProcessOrderHaltReason;
     error?: any;
 };
 
@@ -75,7 +53,7 @@ export type RoundReport = {
 export type SpanAttrs = Record<string, AttributeValue>;
 
 export type ProcessPairResult = {
-    reason?: ProcessPairHaltReason;
+    reason?: ProcessOrderHaltReason;
     error?: any;
     report: Report;
     gasCost?: BigNumber;

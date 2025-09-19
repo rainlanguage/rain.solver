@@ -1,3 +1,4 @@
+import * as utils from "../utils";
 import { parseUnits } from "viem";
 import * as sweepFns from "./sweep";
 import { WalletType } from "./config";
@@ -1348,6 +1349,106 @@ describe("Test WalletManager", () => {
             expect(reports).toHaveLength(0);
 
             fundVaultSpy.mockRestore();
+        });
+    });
+
+    describe("Test getRandomSigner", () => {
+        beforeEach(() => {
+            vi.clearAllMocks();
+        });
+
+        it("should return mainSigner when no workers available (single wallet mode)", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+            const signer = await walletManager.getRandomSigner();
+
+            expect(signer).toBe(walletManager.mainSigner);
+        });
+
+        it("should return mainSigner when workers map is empty (multi wallet mode)", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            walletManager.workers.signers.clear();
+            const signer = await walletManager.getRandomSigner();
+
+            expect(signer).toBe(walletManager.mainSigner);
+        });
+
+        it("should return available worker when not busy", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            // mock all workers as not busy
+            for (const [, worker] of walletManager.workers.signers) {
+                (worker as any).busy = false;
+            }
+            const signer = await walletManager.getRandomSigner();
+
+            expect(walletManager.workers.signers.has(signer.account.address.toLowerCase())).toBe(
+                true,
+            );
+            expect(signer).not.toBe(walletManager.mainSigner);
+        });
+
+        it("should wait and return first available worker when all initially busy", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const workers = Array.from(walletManager.workers.signers.values());
+            // mock all workers as busy initially
+            workers.forEach((worker) => {
+                (worker as any).busy = true;
+            });
+            // make first worker available after some time
+            setTimeout(() => {
+                (workers[0] as any).busy = false;
+            }, 50);
+            const signer = await walletManager.getRandomSigner();
+
+            expect(signer).toBe(workers[0]);
+        });
+
+        it("should shuffle workers when shuffle parameter is true", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            // mock all workers as not busy
+            for (const [, worker] of walletManager.workers.signers) {
+                (worker as any).busy = false;
+            }
+            // spy on shuffleArray utility
+            const shuffleArraySpy = vi.spyOn(utils, "shuffleArray");
+            await walletManager.getRandomSigner(true);
+
+            expect(shuffleArraySpy).toHaveBeenCalledTimes(1);
+            expect(shuffleArraySpy).toHaveBeenCalledWith(expect.any(Array));
+
+            shuffleArraySpy.mockRestore();
+        });
+
+        it("should return first available worker in order when shuffle is false", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const workers = Array.from(walletManager.workers.signers.values());
+            // make first two workers busy, third one available
+            (workers[0] as any).busy = true;
+            (workers[1] as any).busy = true;
+            (workers[2] as any).busy = false;
+
+            const signer = await walletManager.getRandomSigner(false);
+
+            expect(signer).toBe(workers[2]);
+        });
+
+        it("should handle scenario where worker becomes available during polling", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const workers = Array.from(walletManager.workers.signers.values());
+            // mock all workers as busy initially
+            workers.forEach((worker) => {
+                (worker as any).busy = true;
+            });
+            // make second worker available after two polling cycles
+            setTimeout(() => {
+                (workers[1] as any).busy = false;
+            }, 70); // should be after 2-3 polling cycles (30ms each)
+
+            const start = Date.now();
+            const signer = await walletManager.getRandomSigner();
+            const elapsed = Date.now() - start;
+
+            expect(signer).toBe(workers[1]);
+            expect(elapsed).toBeGreaterThanOrEqual(60); // at least 2 polling cycles
         });
     });
 });

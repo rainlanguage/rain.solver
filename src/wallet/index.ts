@@ -3,6 +3,7 @@ import { formatUnits } from "viem";
 import { fundVault } from "./fundVault";
 import { RainSolverSigner } from "../signer";
 import { PreAssembledSpan } from "../logger";
+import { shuffleArray, sleep } from "../utils";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { SharedState, TokenDetails } from "../state";
 import { ErrorSeverity, errorSnapshot } from "../error";
@@ -649,5 +650,27 @@ export class WalletManager {
         }
 
         return reports;
+    }
+
+    /**
+     * Returns the first available signer by polling the
+     * signers until first one becomes available
+     */
+    async getRandomSigner(shuffle = false): Promise<RainSolverSigner> {
+        if (!this.workers.signers.size) {
+            return this.mainSigner;
+        }
+        const signers = Array.from(this.workers.signers.values());
+        if (shuffle) {
+            shuffleArray(signers);
+        }
+        for (;;) {
+            const acc = signers.find((v) => !v.busy);
+            if (acc) {
+                return acc;
+            } else {
+                await sleep(30);
+            }
+        }
     }
 }

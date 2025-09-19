@@ -1,9 +1,9 @@
 import { assert } from "chai";
 import fixtures from "./data";
 import { ethers } from "ethers";
-import { ProcessPairHaltReason, ProcessPairReportStatus } from "../src/types";
+import { ProcessOrderHaltReason, ProcessOrderStatus } from "../src/solver/types";
 import { InsufficientFundsError, TransactionReceipt } from "viem";
-import { getSigner, pollSigners, handleReceipt, handleTransaction } from "../src/tx";
+import { handleReceipt, handleTransaction } from "../src/tx";
 
 describe("Test tx", async function () {
     let signer: any = {};
@@ -73,7 +73,7 @@ describe("Test tx", async function () {
             gasCost: undefined,
             spanAttributes,
             report: {
-                status: ProcessPairReportStatus.FoundOpportunity,
+                status: ProcessOrderStatus.FoundOpportunity,
                 tokenPair: pair,
                 buyToken: orderPairObject.buyToken,
                 sellToken: orderPairObject.sellToken,
@@ -108,7 +108,7 @@ describe("Test tx", async function () {
                 ),
             },
             report: {
-                status: ProcessPairReportStatus.FoundOpportunity,
+                status: ProcessOrderStatus.FoundOpportunity,
                 txUrl: scannerUrl + "/tx/" + txHash,
                 tokenPair: pair,
                 buyToken: orderPairObject.buyToken,
@@ -141,7 +141,7 @@ describe("Test tx", async function () {
             gasCost: undefined,
             spanAttributes,
             report: {
-                status: ProcessPairReportStatus.FoundOpportunity,
+                status: ProcessOrderStatus.FoundOpportunity,
                 tokenPair: pair,
                 buyToken: orderPairObject.buyToken,
                 sellToken: orderPairObject.sellToken,
@@ -170,11 +170,11 @@ describe("Test tx", async function () {
             const x = {
                 error: new InsufficientFundsError(),
                 gasCost: undefined,
-                reason: ProcessPairHaltReason.TxFailed,
+                reason: ProcessOrderHaltReason.TxFailed,
                 report: {
                     buyToken: orderPairObject.buyToken,
                     sellToken: orderPairObject.sellToken,
-                    status: ProcessPairReportStatus.FoundOpportunity,
+                    status: ProcessOrderStatus.FoundOpportunity,
                     tokenPair: pair,
                 },
                 spanAttributes: {
@@ -210,7 +210,7 @@ describe("Test tx", async function () {
             gasCost: undefined,
             spanAttributes,
             report: {
-                status: ProcessPairReportStatus.FoundOpportunity,
+                status: ProcessOrderStatus.FoundOpportunity,
                 tokenPair: pair,
                 buyToken: orderPairObject.buyToken,
                 sellToken: orderPairObject.sellToken,
@@ -286,7 +286,7 @@ describe("Test tx", async function () {
             gasCost: undefined,
             spanAttributes,
             report: {
-                status: ProcessPairReportStatus.FoundOpportunity,
+                status: ProcessOrderStatus.FoundOpportunity,
                 tokenPair: pair,
                 buyToken: orderPairObject.buyToken,
                 sellToken: orderPairObject.sellToken,
@@ -314,7 +314,7 @@ describe("Test tx", async function () {
             assert.fail("expected to fail, but resolved");
         } catch (e) {
             const expected = {
-                reason: ProcessPairHaltReason.TxReverted,
+                reason: ProcessOrderHaltReason.TxReverted,
                 error: {
                     err: "transaction reverted onchain, account ran out of gas for transaction gas cost",
                     nodeError: false,
@@ -324,7 +324,7 @@ describe("Test tx", async function () {
                 gasCost: undefined,
                 spanAttributes: { txNoneNodeError: true },
                 report: {
-                    status: ProcessPairReportStatus.FoundOpportunity,
+                    status: ProcessOrderStatus.FoundOpportunity,
                     txUrl,
                     tokenPair: pair,
                     buyToken: orderPairObject.buyToken,
@@ -334,44 +334,5 @@ describe("Test tx", async function () {
             };
             assert.deepEqual(e, expected);
         }
-    });
-
-    it("should test getSigner", async function () {
-        // mock some signer accounts and main signer
-        const mainSigner: any = { busy: true };
-        const someMockedSigners: any[] = [
-            { busy: true },
-            { busy: true },
-            { busy: true },
-            { busy: true },
-        ];
-
-        // set timeout to free a signer after 2s
-        setTimeout(() => (someMockedSigners[2].busy = false), 2000);
-        // test multi account
-        let result = await getSigner(someMockedSigners, mainSigner);
-        assert.equal(result, someMockedSigners[2]);
-
-        // set timeout to free main signer after 2s
-        setTimeout(() => (mainSigner.busy = false), 2000);
-        // test single account
-        result = await getSigner([], mainSigner);
-        assert.equal(result, mainSigner);
-    });
-
-    it("should test pollSigners", async function () {
-        // mock some signer accounts
-        const someMockedSigners: any[] = [
-            { busy: true },
-            { busy: true },
-            { busy: true },
-            { busy: true },
-        ];
-
-        // set timeout to free a signer after 2s
-        setTimeout(() => (someMockedSigners[2].busy = false), 2000);
-
-        const result = await pollSigners(someMockedSigners);
-        assert.equal(result, someMockedSigners[2]);
     });
 });

@@ -3,280 +3,16 @@ import { PublicClient } from "viem";
 import { getQuoteGas } from "./order";
 import { SharedState } from "./state";
 import { Token } from "sushi/currency";
-import { arbAbis, orderbookAbi } from "./abis";
-import { getSigner, handleTransaction } from "./tx";
+import { handleTransaction } from "./tx";
 import { BigNumber, Contract, ethers } from "ethers";
-import { Context, SpanStatusCode, Tracer } from "@opentelemetry/api";
 import { RainDataFetcher, RainDataFetcherOptions } from "sushi";
-import { ErrorSeverity, errorSnapshot, isTimeout, KnownErrors } from "./error";
+import { errorSnapshot } from "./error";
 import { toNumber, getEthPrice, PoolBlackList, getMarketQuote } from "./utils";
-import { BotConfig, ProcessPairHaltReason, ProcessPairReportStatus } from "./types";
-import { Report, SpanAttrs, RoundReport, ProcessPairResult } from "./types";
+import { BotConfig } from "./types";
+import { SpanAttrs, ProcessPairResult } from "./types";
 import { BundledOrders, quoteSingleOrder } from "./order";
 import { RainSolverSigner } from "./signer";
-
-/**
- * Main function that processes all given orders and tries clearing them against onchain liquidity and reports the result
- * @param config - The configuration object
- * @param ordersDetails - The order details queried from subgraph
- * @param tracer
- * @param ctx
- */
-export const processOrders = async (
-    config: BotConfig,
-    bundledOrders: BundledOrders[][],
-    state: SharedState,
-    tracer: Tracer,
-    ctx: Context,
-): Promise<RoundReport> => {
-    const viemClient = config.viemClient;
-    const dataFetcher = config.dataFetcher;
-    const accounts = config.accounts;
-    const mainAccount = config.mainAccount;
-
-    // instantiating arb contract
-    const arb = new ethers.Contract(config.arbAddress, arbAbis);
-    let genericArb;
-    if (config.genericArbAddress) {
-        genericArb = new ethers.Contract(config.genericArbAddress, arbAbis);
-    }
-
-    const txGasCosts: BigNumber[] = [];
-    const reports: Report[] = [];
-    const results: {
-        settle: () => Promise<ProcessPairResult>;
-        pair: string;
-        orderPairObject: BundledOrders;
-    }[] = [];
-    for (const orderbookOrders of bundledOrders) {
-        for (const pairOrders of orderbookOrders) {
-            // instantiating orderbook contract
-            const orderbook = new ethers.Contract(pairOrders.orderbook, orderbookAbi);
-
-            for (let i = 0; i < pairOrders.takeOrders.length; i++) {
-                const orderPairObject = {
-                    orderbook: pairOrders.orderbook,
-                    buyToken: pairOrders.buyToken,
-                    buyTokenSymbol: pairOrders.buyTokenSymbol,
-                    buyTokenDecimals: pairOrders.buyTokenDecimals,
-                    sellToken: pairOrders.sellToken,
-                    sellTokenSymbol: pairOrders.sellTokenSymbol,
-                    sellTokenDecimals: pairOrders.sellTokenDecimals,
-                    takeOrders: [pairOrders.takeOrders[i]],
-                };
-
-                // await for first available signer to get free
-                const signer = await getSigner(accounts, mainAccount, true);
-
-                const pair = `${pairOrders.buyTokenSymbol}/${pairOrders.sellTokenSymbol}`;
-                const span = tracer.startSpan(`checkpoint_${pair}`, undefined, ctx);
-                span.setAttributes({
-                    "details.pair": pair,
-                    "details.orderHash": orderPairObject.takeOrders[0].id,
-                    "details.orderbook": orderbook.address,
-                    "details.sender": signer.account.address,
-                    "details.owner": orderPairObject.takeOrders[0].takeOrder.order.owner,
-                });
-
-                // call process pair and save the settlement fn
-                // to later settle without needing to pause if
-                // there are more signers available
-                const settle = await processPair({
-                    config,
-                    orderPairObject,
-                    viemClient,
-                    dataFetcher,
-                    signer,
-                    arb,
-                    genericArb,
-                    orderbook,
-                    pair,
-                    orderbooksOrders: bundledOrders,
-                    state,
-                });
-                results.push({ settle, pair, orderPairObject });
-                span.end();
-            }
-        }
-    }
-
-    for (const { settle, pair, orderPairObject } of results) {
-        // instantiate a span for this pair
-        const span = tracer.startSpan(`order_${pair}`, undefined, ctx);
-        span.setAttribute("details.owner", orderPairObject.takeOrders[0].takeOrder.order.owner);
-        try {
-            // settle the process results
-            // this will return the report of the operation and in case
-            // there was a revert tx, it will try to simulate it and find
-            // the root cause as well
-            const result = await settle();
-
-            // keep track of avg gas cost
-            if (result.gasCost) {
-                txGasCosts.push(result.gasCost);
-            }
-
-            reports.push(result.report);
-
-            // set the span attributes with the values gathered at processPair()
-            span.setAttributes(result.spanAttributes);
-
-            // set the otel span status based on report status
-            if (result.report.status === ProcessPairReportStatus.ZeroOutput) {
-                span.setStatus({ code: SpanStatusCode.OK, message: "zero max output" });
-            } else if (result.report.status === ProcessPairReportStatus.NoOpportunity) {
-                if (result.error && typeof result.error === "string") {
-                    span.setStatus({ code: SpanStatusCode.ERROR, message: result.error });
-                } else {
-                    span.setStatus({ code: SpanStatusCode.OK, message: "no opportunity" });
-                }
-            } else if (result.report.status === ProcessPairReportStatus.FoundOpportunity) {
-                span.setStatus({ code: SpanStatusCode.OK, message: "found opportunity" });
-            } else {
-                // set the span status to unexpected error
-                span.setAttribute("severity", ErrorSeverity.HIGH);
-                span.setStatus({ code: SpanStatusCode.ERROR, message: "unexpected error" });
-            }
-        } catch (e: any) {
-            // set the span attributes with the values gathered at processPair()
-            span.setAttributes(e.spanAttributes);
-
-            // record otel span status based on reported reason
-            if (e.reason) {
-                // report the error reason along with the rest of report
-                reports.push({
-                    ...e.report,
-                    error: e.error,
-                    reason: e.reason,
-                });
-
-                // set the otel span status based on returned reason
-                if (e.reason === ProcessPairHaltReason.FailedToQuote) {
-                    let message = "failed to quote order: " + orderPairObject.takeOrders[0].id;
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
-                    }
-                    span.setStatus({ code: SpanStatusCode.OK, message });
-                } else if (e.reason === ProcessPairHaltReason.FailedToGetPools) {
-                    let message = pair + ": failed to get pool details";
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
-                        span.recordException(e.error);
-                    }
-                    span.setAttribute("severity", ErrorSeverity.MEDIUM);
-                    span.setStatus({ code: SpanStatusCode.ERROR, message });
-                } else if (e.reason === ProcessPairHaltReason.FailedToGetEthPrice) {
-                    // set OK status because a token might not have a pool and as a result eth price cannot
-                    // be fetched for it and if it is set to ERROR it will constantly error on each round
-                    // resulting in lots of false positives
-                    let message = "failed to get eth price";
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
-                        span.setAttribute("errorDetails", message);
-                    }
-                    span.setStatus({ code: SpanStatusCode.OK, message });
-                } else if (e.reason === ProcessPairHaltReason.FailedToUpdatePools) {
-                    let message = pair + ": failed to update pool details by event data";
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
-                        span.recordException(e.error);
-                    }
-                    span.setStatus({ code: SpanStatusCode.ERROR, message });
-                } else if (e.reason === ProcessPairHaltReason.TxFailed) {
-                    // failed to submit the tx to mempool, this can happen for example when rpc rejects
-                    // the tx for example because of low gas or invalid parameters, etc
-                    let message = "failed to submit the transaction";
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
-                        span.setAttribute("errorDetails", message);
-                        if (isTimeout(e.error)) {
-                            span.setAttribute("severity", ErrorSeverity.LOW);
-                        } else {
-                            span.setAttribute("severity", ErrorSeverity.HIGH);
-                        }
-                    } else {
-                        span.setAttribute("severity", ErrorSeverity.HIGH);
-                    }
-                    span.setStatus({ code: SpanStatusCode.ERROR, message });
-                    span.setAttribute("unsuccessfulClear", true);
-                    span.setAttribute("txSendFailed", true);
-                } else if (e.reason === ProcessPairHaltReason.TxReverted) {
-                    // Tx reverted onchain, this can happen for example
-                    // because of mev front running or false positive opportunities, etc
-                    let message = "";
-                    if (e.error) {
-                        if ("snapshot" in e.error) {
-                            message = e.error.snapshot;
-                        } else {
-                            message = errorSnapshot("transaction reverted onchain", e.error.err);
-                        }
-                        span.setAttribute("errorDetails", message);
-                    }
-                    if (KnownErrors.every((v) => !message.includes(v))) {
-                        span.setAttribute("severity", ErrorSeverity.HIGH);
-                    }
-                    if (e.spanAttributes["txNoneNodeError"]) {
-                        span.setAttribute("severity", ErrorSeverity.HIGH);
-                    }
-                    span.setStatus({ code: SpanStatusCode.ERROR, message });
-                    span.setAttribute("unsuccessfulClear", true);
-                    span.setAttribute("txReverted", true);
-                } else if (e.reason === ProcessPairHaltReason.TxMineFailed) {
-                    // tx failed to get included onchain, this can happen as result of timeout, rpc dropping the tx, etc
-                    let message = "transaction failed";
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
-                        span.setAttribute("errorDetails", message);
-                        if (isTimeout(e.error)) {
-                            span.setAttribute("severity", ErrorSeverity.LOW);
-                        } else {
-                            span.setAttribute("severity", ErrorSeverity.HIGH);
-                        }
-                    } else {
-                        span.setAttribute("severity", ErrorSeverity.HIGH);
-                    }
-                    span.setStatus({ code: SpanStatusCode.ERROR, message });
-                    span.setAttribute("unsuccessfulClear", true);
-                    span.setAttribute("txMineFailed", true);
-                } else {
-                    // record the error for the span
-                    let message = "unexpected error";
-                    if (e.error) {
-                        message = errorSnapshot(message, e.error);
-                        span.recordException(e.error);
-                    }
-                    // set the span status to unexpected error
-                    span.setAttribute("severity", ErrorSeverity.HIGH);
-                    span.setStatus({ code: SpanStatusCode.ERROR, message });
-                }
-            } else {
-                // record the error for the span
-                let message = "unexpected error";
-                if (e.error) {
-                    message = errorSnapshot(message, e.error);
-                    span.recordException(e.error);
-                }
-
-                // report the unexpected error reason
-                reports.push({
-                    ...e.report,
-                    error: e.error,
-                    reason: ProcessPairHaltReason.UnexpectedError,
-                });
-                // set the span status to unexpected error
-                span.setAttribute("severity", ErrorSeverity.HIGH);
-                span.setStatus({ code: SpanStatusCode.ERROR, message });
-            }
-        }
-        span.end();
-    }
-    return {
-        reports,
-        avgGasCost: txGasCosts.length
-            ? txGasCosts.reduce((a, b) => a.add(b), ethers.constants.Zero).div(txGasCosts.length)
-            : undefined,
-    };
-};
+import { ProcessOrderHaltReason, ProcessOrderStatus } from "./solver/types";
 
 /**
  * Processes an pair order by trying to clear it against an onchain liquidity and reporting the result
@@ -315,7 +51,7 @@ export async function processPair(args: {
         gasCost: undefined,
         spanAttributes,
         report: {
-            status: ProcessPairReportStatus.NoOpportunity,
+            status: ProcessOrderStatus.NoOpportunity,
             tokenPair: pair,
             buyToken: orderPairObject.buyToken,
             sellToken: orderPairObject.sellToken,
@@ -346,7 +82,7 @@ export async function processPair(args: {
         );
         if (orderPairObject.takeOrders[0].quote?.maxOutput === 0n) {
             result.report = {
-                status: ProcessPairReportStatus.ZeroOutput,
+                status: ProcessOrderStatus.ZeroOutput,
                 tokenPair: pair,
                 buyToken: orderPairObject.buyToken,
                 sellToken: orderPairObject.sellToken,
@@ -357,7 +93,7 @@ export async function processPair(args: {
         }
     } catch (e) {
         result.error = e;
-        result.reason = ProcessPairHaltReason.FailedToQuote;
+        result.reason = ProcessOrderHaltReason.FailedToQuote;
         return async () => {
             throw result;
         };
@@ -384,7 +120,7 @@ export async function processPair(args: {
         await dataFetcher.updatePools(dataFetcherBlockNumber);
     } catch (e) {
         if (typeof e !== "string" || !e.includes("fetchPoolsForToken")) {
-            result.reason = ProcessPairHaltReason.FailedToUpdatePools;
+            result.reason = ProcessOrderHaltReason.FailedToUpdatePools;
             result.error = e;
             return async () => {
                 throw result;
@@ -404,7 +140,7 @@ export async function processPair(args: {
         }
         await dataFetcher.fetchPoolsForToken(fromToken, toToken, PoolBlackList, options);
     } catch (e) {
-        result.reason = ProcessPairHaltReason.FailedToGetPools;
+        result.reason = ProcessOrderHaltReason.FailedToGetPools;
         result.error = e;
         return async () => {
             throw result;
@@ -456,7 +192,7 @@ export async function processPair(args: {
                 inputToEthPrice = "0";
                 outputToEthPrice = "0";
             } else {
-                result.reason = ProcessPairHaltReason.FailedToGetEthPrice;
+                result.reason = ProcessOrderHaltReason.FailedToGetEthPrice;
                 result.error = "no-route";
                 return async () => {
                     return Promise.reject(result);
@@ -471,7 +207,7 @@ export async function processPair(args: {
             inputToEthPrice = "0";
             outputToEthPrice = "0";
         } else {
-            result.reason = ProcessPairHaltReason.FailedToGetEthPrice;
+            result.reason = ProcessOrderHaltReason.FailedToGetEthPrice;
             result.error = e;
             return async () => {
                 throw result;
@@ -528,7 +264,7 @@ export async function processPair(args: {
             spanAttributes["details.noneNodeError"] = false;
         }
         result.report = {
-            status: ProcessPairReportStatus.NoOpportunity,
+            status: ProcessOrderStatus.NoOpportunity,
             tokenPair: pair,
             buyToken: orderPairObject.buyToken,
             sellToken: orderPairObject.sellToken,
@@ -540,7 +276,7 @@ export async function processPair(args: {
 
     // from here on we know an opp is found, so record it in report and in otel span attributes
     result.report = {
-        status: ProcessPairReportStatus.FoundOpportunity,
+        status: ProcessOrderStatus.FoundOpportunity,
         tokenPair: pair,
         buyToken: orderPairObject.buyToken,
         sellToken: orderPairObject.sellToken,

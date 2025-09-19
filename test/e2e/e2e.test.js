@@ -1,7 +1,7 @@
 require("dotenv").config();
 const { assert } = require("chai");
 const testData = require("./data");
-const { clear } = require("../../src");
+const { RainSolver } = require("../../src/solver");
 const { arbAbis } = require("../../src/abis");
 const { RpcState } = require("../../src/rpc");
 const mockServer = require("mockttp").getLocal();
@@ -14,7 +14,7 @@ const { Resource } = require("@opentelemetry/resources");
 const { trace, context } = require("@opentelemetry/api");
 const { getChainConfig } = require("../../src/state/chain");
 const { rainSolverTransport } = require("../../src/transport");
-const { ProcessPairReportStatus } = require("../../src/types");
+const { ProcessOrderStatus } = require("../../src/solver/types");
 const ERC20Artifact = require("../abis/ERC20Upgradeable.json");
 const { abi: orderbookAbi } = require("../abis/OrderBook.json");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -113,7 +113,9 @@ for (let i = 0; i < testData.length; i++) {
             it(`should clear orders successfully using route processor v${rpVersion}`, async function () {
                 config.rpc = [rpc];
                 const viemClient = await viem.getPublicClient();
+                state.client = viemClient;
                 const dataFetcher = await dataFetcherPromise;
+                state.dataFetcher = dataFetcher;
                 dataFetcher.web3Client.transport.retryCount = 3;
                 const testSpan = tracer.startSpan("test-clearing");
                 const ctx = trace.setSpan(context.active(), testSpan);
@@ -290,7 +292,24 @@ for (let i = 0; i < testData.length; i++) {
                 orders = orderManager.getNextRoundOrders(false);
 
                 state.gasPrice = await bot.getGasPrice();
-                const { reports } = await clear(config, orders, state, tracer, ctx);
+                orderManager.getNextRoundOrders = () => orders;
+                const rainSolver = new RainSolver(
+                    state,
+                    config,
+                    orderManager,
+                    {
+                        mainSigner: bot,
+                        getRandomSigner: () => bot,
+                    },
+                    config,
+                );
+                const { results: reports } = await rainSolver.processNextRound(
+                    config,
+                    orders,
+                    state,
+                    tracer,
+                    ctx,
+                );
 
                 // should have cleared correct number of orders
                 assert.ok(reports.length == tokens.length - 1, "Failed to clear all given orders");
@@ -299,7 +318,7 @@ for (let i = 0; i < testData.length; i++) {
                 let inputProfit = ethers.constants.Zero;
                 let gasSpent = ethers.constants.Zero;
                 for (let i = 0; i < reports.length; i++) {
-                    assert.equal(reports[i].status, ProcessPairReportStatus.FoundOpportunity);
+                    assert.equal(reports[i].status, ProcessOrderStatus.FoundOpportunity);
                     assert.equal(reports[i].clearedOrders.length, 1);
 
                     const pair = `${tokens[0].symbol}/${tokens[i + 1].symbol}`;
@@ -373,7 +392,9 @@ for (let i = 0; i < testData.length; i++) {
             it("should clear orders successfully using inter-orderbook", async function () {
                 config.rpc = [rpc];
                 const viemClient = await viem.getPublicClient();
+                state.client = viemClient;
                 const dataFetcher = await dataFetcherPromise;
+                state.dataFetcher = dataFetcher;
                 dataFetcher.web3Client.transport.retryCount = 3;
                 const testSpan = tracer.startSpan("test-clearing");
                 const ctx = trace.setSpan(context.active(), testSpan);
@@ -626,7 +647,24 @@ for (let i = 0; i < testData.length; i++) {
                     });
                 });
                 state.gasPrice = await bot.getGasPrice();
-                const { reports } = await clear(config, orders, state, tracer, ctx);
+                orderManager.getNextRoundOrders = () => orders;
+                const rainSolver = new RainSolver(
+                    state,
+                    config,
+                    orderManager,
+                    {
+                        mainSigner: bot,
+                        getRandomSigner: () => bot,
+                    },
+                    config,
+                );
+                const { results: reports } = await rainSolver.processNextRound(
+                    config,
+                    orders,
+                    state,
+                    tracer,
+                    ctx,
+                );
 
                 // should have cleared correct number of orders
                 assert.ok(
@@ -638,7 +676,7 @@ for (let i = 0; i < testData.length; i++) {
                 let gasSpent = ethers.constants.Zero;
                 let inputProfit = ethers.constants.Zero;
                 for (let i = 0; i < reports.length / 2; i++) {
-                    assert.equal(reports[i].status, ProcessPairReportStatus.FoundOpportunity);
+                    assert.equal(reports[i].status, ProcessOrderStatus.FoundOpportunity);
                     assert.equal(reports[i].clearedOrders.length, 1);
 
                     const pair = `${tokens[0].symbol}/${tokens[i + 1].symbol}`;
@@ -723,6 +761,8 @@ for (let i = 0; i < testData.length; i++) {
                 config.rpc = [rpc];
                 const viemClient = await viem.getPublicClient();
                 const dataFetcher = await dataFetcherPromise;
+                state.client = viemClient;
+                state.dataFetcher = dataFetcher;
                 dataFetcher.web3Client.transport.retryCount = 3;
                 const testSpan = tracer.startSpan("test-clearing");
                 const ctx = trace.setSpan(context.active(), testSpan);
@@ -985,7 +1025,24 @@ for (let i = 0; i < testData.length; i++) {
                     });
                 });
                 state.gasPrice = await bot.getGasPrice();
-                const { reports } = await clear(config, orders, state, tracer, ctx);
+                orderManager.getNextRoundOrders = () => orders;
+                const rainSolver = new RainSolver(
+                    state,
+                    config,
+                    orderManager,
+                    {
+                        mainSigner: bot,
+                        getRandomSigner: () => bot,
+                    },
+                    config,
+                );
+                const { results: reports } = await rainSolver.processNextRound(
+                    config,
+                    orders,
+                    state,
+                    tracer,
+                    ctx,
+                );
 
                 // should have cleared correct number of orders
                 assert.ok(
@@ -998,8 +1055,8 @@ for (let i = 0; i < testData.length; i++) {
                 let gasSpent = ethers.constants.Zero;
                 let inputProfit = ethers.constants.Zero;
                 for (let i = 0; i < reports.length; i++) {
-                    if (reports[i].status !== ProcessPairReportStatus.FoundOpportunity) continue;
-                    assert.equal(reports[i].status, ProcessPairReportStatus.FoundOpportunity);
+                    if (reports[i].status !== ProcessOrderStatus.FoundOpportunity) continue;
+                    assert.equal(reports[i].status, ProcessOrderStatus.FoundOpportunity);
                     assert.equal(reports[i].clearedOrders.length, 1);
 
                     const pair = `${tokens[0].symbol}/${tokens[c].symbol}`;

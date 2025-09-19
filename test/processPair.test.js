@@ -4,7 +4,7 @@ const mockServer = require("mockttp").getLocal();
 const { encodeQuoteResponse } = require("./utils");
 const { processPair } = require("../src/processOrders");
 const { clone, estimateProfit } = require("../src/utils");
-const { ProcessPairHaltReason, ProcessPairReportStatus } = require("../src/types");
+const { ProcessOrderHaltReason, ProcessOrderStatus } = require("../src/solver/types");
 const {
     ethers,
     utils: { formatUnits },
@@ -142,7 +142,7 @@ describe("Test process pair", async function () {
         )();
         const expected = {
             report: {
-                status: ProcessPairReportStatus.FoundOpportunity,
+                status: ProcessOrderStatus.FoundOpportunity,
                 txUrl: scannerUrl + "/tx/" + txHash,
                 tokenPair: pair,
                 buyToken: orderPairObject.buyToken,
@@ -234,7 +234,7 @@ describe("Test process pair", async function () {
         )();
         const expected = {
             report: {
-                status: ProcessPairReportStatus.FoundOpportunity,
+                status: ProcessOrderStatus.FoundOpportunity,
                 txUrl: scannerUrl + "/tx/" + txHash,
                 tokenPair: pair,
                 buyToken: orderPairObject.buyToken,
@@ -328,7 +328,7 @@ describe("Test process pair", async function () {
             error: undefined,
             gasCost: undefined,
             report: {
-                status: ProcessPairReportStatus.ZeroOutput,
+                status: ProcessOrderStatus.ZeroOutput,
                 tokenPair: pair,
                 buyToken: orderPairObject.buyToken,
                 sellToken: orderPairObject.sellToken,
@@ -367,13 +367,13 @@ describe("Test process pair", async function () {
         } catch (error) {
             const expected = {
                 report: {
-                    status: ProcessPairReportStatus.NoOpportunity,
+                    status: ProcessOrderStatus.NoOpportunity,
                     tokenPair: pair,
                     buyToken: orderPairObject.buyToken,
                     sellToken: orderPairObject.sellToken,
                 },
                 gasCost: undefined,
-                reason: ProcessPairHaltReason.FailedToQuote,
+                reason: ProcessOrderHaltReason.FailedToQuote,
                 error: 'Execution reverted with unknown error. Data: "" ',
                 spanAttributes: {
                     "details.pair": pair,
@@ -412,13 +412,13 @@ describe("Test process pair", async function () {
         } catch (error) {
             const expected = {
                 report: {
-                    status: ProcessPairReportStatus.NoOpportunity,
+                    status: ProcessOrderStatus.NoOpportunity,
                     tokenPair: pair,
                     buyToken: orderPairObject.buyToken,
                     sellToken: orderPairObject.sellToken,
                 },
                 gasCost: undefined,
-                reason: ProcessPairHaltReason.FailedToGetEthPrice,
+                reason: ProcessOrderHaltReason.FailedToGetEthPrice,
                 error: "no-route",
                 spanAttributes: {
                     "details.pair": pair,
@@ -463,13 +463,13 @@ describe("Test process pair", async function () {
         } catch (error) {
             const expected = {
                 report: {
-                    status: ProcessPairReportStatus.NoOpportunity,
+                    status: ProcessOrderStatus.NoOpportunity,
                     tokenPair: pair,
                     buyToken: orderPairObject.buyToken,
                     sellToken: orderPairObject.sellToken,
                 },
                 gasCost: undefined,
-                reason: ProcessPairHaltReason.FailedToGetPools,
+                reason: ProcessOrderHaltReason.FailedToGetPools,
                 error: evmError,
                 spanAttributes: {
                     "details.pair": pair,
@@ -541,12 +541,12 @@ describe("Test process pair", async function () {
             };
             const expected = {
                 report: {
-                    status: ProcessPairReportStatus.FoundOpportunity,
+                    status: ProcessOrderStatus.FoundOpportunity,
                     tokenPair: pair,
                     buyToken: orderPairObject.buyToken,
                     sellToken: orderPairObject.sellToken,
                 },
-                reason: ProcessPairHaltReason.TxFailed,
+                reason: ProcessOrderHaltReason.TxFailed,
                 gasCost: undefined,
                 error: evmError,
                 spanAttributes: {
@@ -639,14 +639,14 @@ describe("Test process pair", async function () {
         } catch (error) {
             const expected = {
                 report: {
-                    status: ProcessPairReportStatus.FoundOpportunity,
+                    status: ProcessOrderStatus.FoundOpportunity,
                     tokenPair: pair,
                     buyToken: orderPairObject.buyToken,
                     sellToken: orderPairObject.sellToken,
                     txUrl: scannerUrl + "/tx/" + txHash,
                     actualGasCost: formatUnits(effectiveGasPrice.mul(gasUsed)),
                 },
-                reason: ProcessPairHaltReason.TxReverted,
+                reason: ProcessOrderHaltReason.TxReverted,
                 error: {
                     err: "transaction reverted onchain, account ran out of gas for transaction gas cost",
                     nodeError: false,
@@ -758,13 +758,13 @@ describe("Test process pair", async function () {
             };
             const expected = {
                 report: {
-                    status: ProcessPairReportStatus.FoundOpportunity,
+                    status: ProcessOrderStatus.FoundOpportunity,
                     tokenPair: pair,
                     buyToken: orderPairObject.buyToken,
                     sellToken: orderPairObject.sellToken,
                     txUrl: scannerUrl + "/tx/" + txHash,
                 },
-                reason: ProcessPairHaltReason.TxMineFailed,
+                reason: ProcessOrderHaltReason.TxMineFailed,
                 error: errorRejection,
                 gasCost: undefined,
                 spanAttributes: {
