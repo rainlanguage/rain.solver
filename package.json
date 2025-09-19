@@ -1,42 +1,43 @@
 {
-    "name": "@rainlanguage/arb-bot",
+    "name": "@rainlanguage/solver",
     "version": "2.5.1",
     "description": "NodeJS app that clears Rain orderbook orders against decentralized liquididty providers (decentralized exchanges)",
     "author": "Rain Protocol",
     "license": "CAL-1.0",
     "repository": {
         "type": "git",
-        "url": "https://github.com/rainlanguage/arb-bot.git"
+        "url": "https://github.com/rainlanguage/rain.solver.git"
     },
     "keywords": [],
     "bugs": {
-        "url": "https://github.com/rainlanguage/arb-bot/issues"
+        "url": "https://github.com/rainlanguage/rain.solver/issues"
     },
-    "homepage": "https://github.com/rainlanguage/arb-bot/",
+    "homepage": "https://github.com/rainlanguage/rain.solver/",
     "engines": {
-        "node": ">=18"
+        "node": ">=22"
     },
     "engineStrict": true,
     "main": "./dist/index.js",
     "files": [
         "src",
         "./dist",
-        "./arb-bot.js",
+        "./rain-solver.js",
         "./example.env",
         "./lib/sushiswap"
     ],
     "bin": {
-        "arb-bot": "./arb-bot.js"
+        "rain-solver": "./rain-solver.js"
     },
     "scripts": {
         "prepublish": "npm run build",
         "test": "npm run unit-test && npm run e2e-test",
         "unit-test": "hardhat test ./test/*.test.*",
         "e2e-test": "hardhat test",
-        "lint": "eslint ./src ./test ./arb-bot.js",
-        "lint-fix": "eslint ./src ./test ./arb-bot.js --fix",
-        "arb-bot": "ts-node arb-bot",
-        "build": "tsc"
+        "lint": "eslint ./src ./test ./rain-solver.js",
+        "lint-fix": "eslint ./src ./test ./rain-solver.js --fix",
+        "rain-solver": "ts-node rain-solver",
+        "build": "tsc",
+        "vitest": "vitest run -c ./vitest.config.ts"
     },
     "dependencies": {
         "@opentelemetry/api": "^1.8.0",
@@ -83,6 +84,7 @@
         "prettier": "^3.1.1",
         "rimraf": "^5.0.0",
         "ts-node": "^10.9.1",
-        "typescript": "^5.0.4"
+        "typescript": "^5.0.4",
+        "vitest": "^3.1.4"
     }
 }

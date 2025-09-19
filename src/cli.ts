@@ -48,7 +48,7 @@ import {
 config();
 
 const getOptions = async (argv: any, version?: string) => {
-    const cmdOptions = new Command("node arb-bot")
+    const cmdOptions = new Command("node rain-solver")
         .option(
             "-c, --config <path>",
             "Path to config yaml file, can be set in 'CONFIG' env var instead, if none is given looks for ./config.yaml in workspace root directory",
@@ -57,11 +57,11 @@ const getOptions = async (argv: any, version?: string) => {
         .description(
             [
                 "A NodeJS app to find and take arbitrage trades for Rain Orderbook orders against some DeFi liquidity providers, requires NodeJS v18 or higher.",
-                '- Use "node arb-bot [options]" command alias for running the app from its repository workspace',
-                '- Use "arb-bot [options]" command alias when this app is installed as a dependency in another project',
+                '- Use "node rain-solver [options]" command alias for running the app from its repository workspace',
+                '- Use "rain-solver [options]" command alias when this app is installed as a dependency in another project',
             ].join("\n"),
         )
-        .alias("arb-bot")
+        .alias("rain-solver")
         .version(version ?? "0.0.0")
         .parse(argv)
         .opts();
@@ -210,7 +210,7 @@ export const main = async (argv: any, version?: string) => {
     );
     const provider = new BasicTracerProvider({
         resource: new Resource({
-            [SEMRESATTRS_SERVICE_NAME]: process?.env?.TRACER_SERVICE_NAME ?? "arb-bot",
+            [SEMRESATTRS_SERVICE_NAME]: process?.env?.TRACER_SERVICE_NAME ?? "rain-solver",
         }),
     });
     provider.addSpanProcessor(new BatchSpanProcessor(exporter));
@@ -222,7 +222,7 @@ export const main = async (argv: any, version?: string) => {
     }
 
     provider.register();
-    const tracer = provider.getTracer("arb-bot-tracer");
+    const tracer = provider.getTracer("rain-solver-tracer");
 
     // parse cli args and startup bot configuration
     const {

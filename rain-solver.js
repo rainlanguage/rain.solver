@@ -6,10 +6,7 @@ const { version } = require("./package.json");
 
 main(process.argv, version)
     .then(() => {
-        console.log(
-            "\x1b[32m%s\x1b[0m",
-            "Rain orderbook arbitrage clearing process finished successfully!",
-        );
+        console.log("\x1b[32m%s\x1b[0m", "Rain Solver process finished successfully!");
         process.exit(0);
     })
     .catch((v) => {

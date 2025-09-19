@@ -66,12 +66,12 @@ for (let i = 0; i < testData.length; i++) {
         const exporter = new OTLPTraceExporter();
         const provider = new BasicTracerProvider({
             resource: new Resource({
-                [SEMRESATTRS_SERVICE_NAME]: "arb-bot-test",
+                [SEMRESATTRS_SERVICE_NAME]: "rain-solver-test",
             }),
         });
         provider.addSpanProcessor(new BatchSpanProcessor(exporter));
         provider.register();
-        const tracer = provider.getTracer("arb-bot-tracer");
+        const tracer = provider.getTracer("rain-solver-tracer");
 
         config.rpc = [rpc];
         const state = OperationState.init(config.rpc.map((v) => ({ url: v })));

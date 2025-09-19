@@ -16,10 +16,10 @@ describe("Test cli", async function () {
     it("return correct result for empty orders array", async function () {
         const provider = new BasicTracerProvider({
             resource: new Resource({
-                [SEMRESATTRS_SERVICE_NAME]: "arb-bot-test",
+                [SEMRESATTRS_SERVICE_NAME]: "rain-solver-test",
             }),
         });
-        const tracer = provider.getTracer("arb-bot-tracer");
+        const tracer = provider.getTracer("rain-solver-tracer");
         const testSpan = tracer.startSpan("test");
         const ctx = trace.setSpan(context.active(), testSpan);
 

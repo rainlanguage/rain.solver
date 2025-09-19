@@ -45,12 +45,12 @@ jobs:
         run: ./prep-sushi.sh
 
       # Install node
-      - name: Install NodeJS v18
+      - name: Install NodeJS v22
         id: node
         if: steps.sushi.outcome == 'success'
         uses: actions/setup-node@v3
         with:
-          node-version: 18
+          node-version: 22
           cache: 'npm'
 
       # Install deps

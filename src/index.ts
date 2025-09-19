@@ -177,8 +177,8 @@ export async function clear(
     const version = versions.node;
     const majorVersion = Number(version.slice(0, version.indexOf(".")));
 
-    if (majorVersion >= 18) return await processOrders(config, bundledOrders, state, tracer, ctx);
-    else throw `NodeJS v18 or higher is required for running the app, current version: ${version}`;
+    if (majorVersion >= 22) return await processOrders(config, bundledOrders, state, tracer, ctx);
+    else throw `NodeJS v22 or higher is required for running the app, current version: ${version}`;
 }
 
 async function getChainId(rpcs: string[]): Promise<number> {
