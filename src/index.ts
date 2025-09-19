@@ -6,9 +6,8 @@ import { initAccounts } from "./account";
 import { getDataFetcher } from "./client";
 import { processOrders } from "./processOrders";
 import { publicClientConfig } from "sushi/config";
-import { Context, Span } from "@opentelemetry/api";
 import { checkSgStatus, handleSgResults } from "./sg";
-import { Tracer } from "@opentelemetry/sdk-trace-base";
+import { Context, Span, Tracer } from "@opentelemetry/api";
 import { querySgOrders, SgOrder, statusCheckQuery } from "./query";
 import { SgFilter, RoundReport, BundledOrders, BotConfig } from "./types";
 

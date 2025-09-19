@@ -37,7 +37,8 @@
         "lint-fix": "eslint ./src ./test ./rain-solver.js --fix",
         "rain-solver": "ts-node rain-solver",
         "build": "tsc",
-        "vitest": "vitest run -c ./vitest.config.ts"
+        "vitest:logger": "vitest run ./src/logger.test.ts --disableConsoleIntercept",
+        "vitest": "vitest run -c ./vitest.config.ts --exclude ./src/logger.test.ts && npm run vitest:logger"
     },
     "dependencies": {
         "@opentelemetry/api": "^1.8.0",
