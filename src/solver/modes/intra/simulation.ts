@@ -1,6 +1,6 @@
 import { RainSolver } from "../..";
 import { dryrun } from "../dryrun";
-import { Result } from "../../../result";
+import { Result } from "../../../common";
 import { estimateProfit } from "./utils";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";

@@ -1,6 +1,6 @@
 import { RainSolver } from "..";
 import { TimeoutError } from "viem";
-import { Result } from "../../result";
+import { Result } from "../../common";
 import { ErrorSeverity } from "../../error";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { finalizeRound, initializeRound, Settlement } from "./round";

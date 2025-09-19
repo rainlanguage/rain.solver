@@ -1,9 +1,9 @@
 import { BaseError } from "viem";
-import { Result } from "../../result";
+import { Result } from "../../common";
 import { Token } from "sushi/currency";
 import { processReceipt } from "./receipt";
 import { containsNodeError } from "../../error";
-import { sleep, withBigintSerializer } from "../../utils";
+import { sleep, withBigintSerializer } from "../../common";
 import { RainSolverSigner, RawTransaction } from "../../signer";
 import { processTransaction, ProcessTransactionArgs } from "./transaction";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
@@ -24,7 +24,7 @@ vi.mock("./receipt", async (importOriginal) => ({
     processReceipt: vi.fn(),
 }));
 
-vi.mock("../../utils", async (importOriginal) => {
+vi.mock("../../common", async (importOriginal) => {
     const org: any = await importOriginal();
     return {
         ...org,

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { RainSolver } from "..";
-import { Result } from "../../result";
+import { Result } from "../../common";
 import { findBestTrade } from "../modes";
 import { SharedState } from "../../state";
 import { OrderManager } from "../../order";

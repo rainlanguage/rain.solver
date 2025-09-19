@@ -1,4 +1,4 @@
-import { Result } from "../../../result";
+import { Result } from "../../../common";
 import { SimulationResult } from "../../types";
 import { findBestRouteProcessorTrade } from "./index";
 import { extendObjectWithHeader } from "../../../logger";

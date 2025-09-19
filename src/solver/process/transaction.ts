@@ -1,8 +1,8 @@
 import { BaseError } from "viem";
-import { Result } from "../../result";
+import { Result } from "../../common";
 import { Token } from "sushi/currency";
 import { containsNodeError } from "../../error";
-import { sleep, withBigintSerializer } from "../../utils";
+import { sleep, withBigintSerializer } from "../../common";
 import { processReceipt, tryGetReceipt } from "./receipt";
 import { RainSolverSigner, RawTransaction } from "../../signer";
 import {

@@ -1,6 +1,6 @@
 import { RainSolver } from "../..";
 import { Token } from "sushi/currency";
-import { Result } from "../../../result";
+import { Result } from "../../../common";
 import { BundledOrders } from "../../../order";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";

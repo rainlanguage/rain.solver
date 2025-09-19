@@ -5,7 +5,7 @@ import { AppOptions } from "../config";
 import { RainSolver } from "../solver";
 import { OrderManager } from "../order";
 import { WalletManager, WalletType } from "../wallet";
-import { sleep, withBigintSerializer } from "../utils";
+import { sleep, withBigintSerializer } from "../common";
 import { ErrorSeverity, errorSnapshot } from "../error";
 import { SharedState, SharedStateConfig } from "../state";
 import { ChainId, ChainKey, RainDataFetcher } from "sushi";

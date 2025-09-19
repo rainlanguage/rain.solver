@@ -1,6 +1,6 @@
-import { Result } from "../../result";
+import { Result } from "../../common";
 import { Attributes } from "@opentelemetry/api";
-import { withBigintSerializer } from "../../utils";
+import { withBigintSerializer } from "../../common";
 import { BaseError, ExecutionRevertedError } from "viem";
 import { RainSolverSigner, RawTransaction } from "../../signer";
 import { containsNodeError, errorSnapshot } from "../../error";

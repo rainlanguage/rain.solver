@@ -3,7 +3,7 @@ import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
 import { ONE18 } from "../../../math";
 import { Token } from "sushi/currency";
-import { Result } from "../../../result";
+import { Result } from "../../../common";
 import { BundledOrders } from "../../../order";
 import { SimulationResult } from "../../types";
 import { encodeFunctionData, encodeAbiParameters, maxUint256 } from "viem";

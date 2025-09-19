@@ -1,5 +1,5 @@
 import { RainSolver } from "../..";
-import { Result } from "../../../result";
+import { Result } from "../../../common";
 import { trySimulateTrade } from "./simulate";
 import { SimulationResult } from "../../types";
 import { BundledOrders } from "../../../order";

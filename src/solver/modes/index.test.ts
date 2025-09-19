@@ -1,4 +1,4 @@
-import { Result } from "../../result";
+import { Result } from "../../common";
 import { findBestTrade } from "./index";
 import { findBestRouteProcessorTrade } from "./rp";
 import { findBestIntraOrderbookTrade } from "./intra";
