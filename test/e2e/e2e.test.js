@@ -6,7 +6,7 @@ const { arbAbis } = require("../../src/abis");
 const { RpcState } = require("../../src/rpc");
 const mockServer = require("mockttp").getLocal();
 const { publicRpcs } = require("../../src/client");
-const { sendTransaction } = require("../../src/tx");
+const { sendTx, waitUntilFree, estimateGasCost } = require("../../src/signer/actions");
 const { ethers, viem, network } = require("hardhat");
 const { ChainKey, RainDataFetcher } = require("sushi");
 const { publicClientConfig } = require("sushi/config");
@@ -133,8 +133,15 @@ for (let i = 0; i < testData.length; i++) {
                           .extend(publicActions)
                           .extend(walletActions);
                 bot.sendTx = async (tx) => {
-                    return await sendTransaction(bot, tx);
+                    return await sendTx(bot, tx);
                 };
+                bot.waitUntilFree = async () => {
+                    return await waitUntilFree(bot);
+                };
+                bot.estimateGasCost = async (tx) => {
+                    return await estimateGasCost(bot, tx);
+                };
+                bot.state = state;
                 bot.impersonateAccount({
                     address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
                 });
@@ -386,8 +393,15 @@ for (let i = 0; i < testData.length; i++) {
                           .extend(publicActions)
                           .extend(walletActions);
                 bot.sendTx = async (tx) => {
-                    return await sendTransaction(bot, tx);
+                    return await sendTx(bot, tx);
                 };
+                bot.waitUntilFree = async () => {
+                    return await waitUntilFree(bot);
+                };
+                bot.estimateGasCost = async (tx) => {
+                    return await estimateGasCost(bot, tx);
+                };
+                bot.state = state;
                 bot.impersonateAccount({
                     address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
                 });
@@ -727,8 +741,15 @@ for (let i = 0; i < testData.length; i++) {
                           .extend(publicActions)
                           .extend(walletActions);
                 bot.sendTx = async (tx) => {
-                    return await sendTransaction(bot, tx);
+                    return await sendTx(bot, tx);
                 };
+                bot.waitUntilFree = async () => {
+                    return await waitUntilFree(bot);
+                };
+                bot.estimateGasCost = async (tx) => {
+                    return await estimateGasCost(bot, tx);
+                };
+                bot.state = state;
                 bot.impersonateAccount({
                     address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
                 });

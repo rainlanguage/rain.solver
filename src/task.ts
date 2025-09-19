@@ -1,6 +1,5 @@
 import fs from "fs";
 import { Dispair } from "./state";
-import { ViemClient } from "./types";
 import { DeployerAbi } from "./abis";
 import { BigNumber, utils } from "ethers";
 import { PublicClient, stringToHex } from "viem";
@@ -87,10 +86,10 @@ export async function getWithdrawEnsureRainlang(
  */
 export async function parseRainlang(
     rainlang: string,
-    viemClient: ViemClient | PublicClient,
+    client: PublicClient,
     dispair: Dispair,
 ): Promise<string> {
-    return await viemClient.readContract({
+    return await client.readContract({
         address: dispair.deployer as `0x${string}`,
         abi: DeployerAbi,
         functionName: "parse2",

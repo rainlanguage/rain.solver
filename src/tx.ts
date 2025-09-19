@@ -2,11 +2,9 @@ import { Token } from "sushi/currency";
 import { Contract, ethers } from "ethers";
 import { getL1Fee, getTxFee } from "./gas";
 import { containsNodeError, handleRevert } from "./error";
-import { Account, BaseError, Chain, SendTransactionParameters, TransactionReceipt } from "viem";
+import { BaseError, TransactionReceipt } from "viem";
 import {
-    RawTx,
     BotConfig,
-    ViemClient,
     ProcessPairResult,
     ProcessPairHaltReason,
     ProcessPairReportStatus,
@@ -22,6 +20,7 @@ import {
     getActualClearAmount,
 } from "./utils";
 import { BundledOrders } from "./order";
+import { RainSolverSigner, RawTransaction } from "./signer";
 
 /**
  * Handles the given transaction, starts by sending the transaction and
@@ -29,10 +28,10 @@ import { BundledOrders } from "./order";
  * a function that resolves with the ProcessOrderResult type when called
  */
 export async function handleTransaction(
-    signer: ViemClient,
-    viemClient: ViemClient,
+    signer: RainSolverSigner,
+    viemClient: RainSolverSigner,
     spanAttributes: any,
-    rawtx: RawTx,
+    rawtx: RawTransaction,
     orderbook: Contract,
     orderPairObject: BundledOrders,
     inputToEthPrice: string,
@@ -42,13 +41,12 @@ export async function handleTransaction(
     toToken: Token,
     fromToken: Token,
     config: BotConfig,
-    writeSigner?: ViemClient,
+    writeSigner?: RainSolverSigner,
 ): Promise<() => Promise<ProcessPairResult>> {
     // submit the tx
     let txhash: `0x${string}`, txUrl: string;
     let time = 0;
     const sendTx = async () => {
-        rawtx.gas = getTxGas(config, rawtx.gas!);
         txhash =
             writeSigner !== undefined
                 ? await writeSigner.sendTx({
@@ -158,9 +156,9 @@ export async function handleTransaction(
 export async function handleReceipt(
     txhash: string,
     receipt: TransactionReceipt,
-    signer: ViemClient,
+    signer: RainSolverSigner,
     spanAttributes: any,
-    rawtx: RawTx,
+    rawtx: RawTransaction,
     orderbook: Contract,
     orderPairObject: BundledOrders,
     inputToEthPrice: string,
@@ -250,7 +248,7 @@ export async function handleReceipt(
                 decimals: orderPairObject.buyTokenDecimals,
                 symbol: orderPairObject.buyTokenSymbol,
             };
-            addWatchedToken(tkn, config.watchedTokens ?? [], signer);
+            addWatchedToken(tkn, [], signer);
         }
         if (outputTokenIncome && outputTokenIncome.gt(0)) {
             const tkn = {
@@ -258,7 +256,7 @@ export async function handleReceipt(
                 decimals: orderPairObject.sellTokenDecimals,
                 symbol: orderPairObject.sellTokenSymbol,
             };
-            addWatchedToken(tkn, config.watchedTokens ?? [], signer);
+            addWatchedToken(tkn, [], signer);
         }
         return result;
     } else {
@@ -308,49 +306,14 @@ export async function handleReceipt(
 }
 
 /**
- * A wrapper for sending transactions that handles nonce and keeps
- * signer busy while the transaction is being sent
- */
-export async function sendTransaction<chain extends Chain, account extends Account>(
-    signer: ViemClient,
-    tx: SendTransactionParameters<chain, account>,
-): Promise<`0x${string}`> {
-    // make sure signer is free
-    await pollSigners([signer]);
-
-    // start sending tranaction process
-    signer.BUSY = true;
-    try {
-        const nonce = await getNonce(signer);
-        const result = await signer.sendTransaction({ ...(tx as any), nonce });
-        signer.BUSY = false;
-        return result;
-    } catch (error) {
-        signer.BUSY = false;
-        throw error;
-    }
-}
-
-/**
- * A wrapper fn to get an signer's nonce at latest mined block
- */
-export async function getNonce(client: ViemClient): Promise<number> {
-    if (!client?.account?.address) throw "undefined account";
-    return await client.getTransactionCount({
-        address: client.account.address,
-        blockTag: "latest",
-    });
-}
-
-/**
  * Returns the first available signer by polling the
  * signers until first one becomes available
  */
 export async function getSigner(
-    accounts: ViemClient[],
-    mainAccount: ViemClient,
+    accounts: RainSolverSigner[],
+    mainAccount: RainSolverSigner,
     shuffle = false,
-): Promise<ViemClient> {
+): Promise<RainSolverSigner> {
     if (shuffle && accounts.length) {
         shuffleArray(accounts);
     }
@@ -362,29 +325,13 @@ export async function getSigner(
  * Polls an array of given signers in 30ms intervals
  * until the first one becomes free for consumption
  */
-export async function pollSigners(accounts: ViemClient[]): Promise<ViemClient> {
+export async function pollSigners(accounts: RainSolverSigner[]): Promise<RainSolverSigner> {
     for (;;) {
-        const acc = accounts.find((v) => !v.BUSY);
+        const acc = accounts.find((v) => !v.busy);
         if (acc) {
             return acc;
         } else {
             await sleep(30);
         }
-    }
-}
-
-/**
- * Returns the gas limit for a tx by applying the specified config
- */
-export function getTxGas(config: BotConfig, gas: bigint): bigint {
-    if (config.txGas) {
-        if (config.txGas.endsWith("%")) {
-            const multiplier = BigInt(config.txGas.substring(0, config.txGas.length - 1));
-            return (gas * multiplier) / 100n;
-        } else {
-            return BigInt(config.txGas);
-        }
-    } else {
-        return gas;
     }
 }

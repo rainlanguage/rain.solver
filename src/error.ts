@@ -2,7 +2,6 @@
 import { AxiosError } from "axios";
 import { BigNumber } from "ethers";
 import { isDeepStrictEqual } from "util";
-import { RawTx, ViemClient } from "./types";
 import { TakeOrderV2EventAbi } from "./abis";
 // @ts-ignore
 import { abi as obAbi } from "../test/abis/OrderBook.json";
@@ -38,6 +37,7 @@ import {
     // InvalidInputRpcError,
     // TransactionRejectedRpcError,
 } from "viem";
+import { RainSolverSigner, RawTransaction } from "./signer";
 
 /**
  * Specifies error severity
@@ -91,7 +91,7 @@ export function errorSnapshot(
     err: any,
     data?: {
         receipt: TransactionReceipt;
-        rawtx: RawTx;
+        rawtx: RawTransaction;
         signerBalance: BigNumber;
         frontrun?: string;
     },
@@ -195,10 +195,10 @@ export function isTimeout(err: BaseError, circuitBreaker = 0): boolean {
  * Handles a reverted transaction by simulating it and returning the revert error
  */
 export async function handleRevert(
-    viemClient: ViemClient,
+    viemClient: RainSolverSigner,
     hash: `0x${string}`,
     receipt: TransactionReceipt,
-    rawtx: RawTx,
+    rawtx: RawTransaction,
     signerBalance: BigNumber,
     orderbook: `0x${string}`,
 ): Promise<{
@@ -325,7 +325,11 @@ export function tryDecodeError(data: `0x${string}`): DecodedError | undefined {
 /**
  * Check if a mined transaction contains gas issue or not
  */
-export function checkGasIssue(receipt: TransactionReceipt, rawtx: RawTx, signerBalance: BigNumber) {
+export function checkGasIssue(
+    receipt: TransactionReceipt,
+    rawtx: RawTransaction,
+    signerBalance: BigNumber,
+) {
     const txGasCost = receipt.effectiveGasPrice * receipt.gasUsed;
     if (signerBalance.lt(txGasCost)) {
         return "account ran out of gas for transaction gas cost";
@@ -343,8 +347,8 @@ export function checkGasIssue(receipt: TransactionReceipt, rawtx: RawTx, signerB
  * the target event with the same TakeOrderConfigV3 struct.
  */
 export async function hasFrontrun(
-    viemClient: ViemClient,
-    rawtx: RawTx,
+    viemClient: RainSolverSigner,
+    rawtx: RawTransaction,
     receipt: TransactionReceipt,
     orderbook: `0x${string}`,
 ) {
@@ -353,7 +357,7 @@ export async function hasFrontrun(
             try {
                 const result = decodeFunctionData({
                     abi: arbRp4Abi,
-                    data: rawtx.data,
+                    data: rawtx.data!,
                 }) as any;
                 return result?.args?.[1]?.orders?.[0];
             } catch {

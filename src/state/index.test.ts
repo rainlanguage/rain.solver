@@ -45,6 +45,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             gasPriceMultiplier: 123,
             liquidityProviders: ["UniswapV2"],
             timeout: 1000,
+            txGas: "120%",
         };
         mockClient = {
             getChainId: vi.fn().mockResolvedValue(1),
@@ -70,6 +71,8 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
         });
         expect(config.initGasPrice).toBe(1000n);
         expect(config.initL1GasPrice).toBe(0n);
+        expect(config.transactionGas).toBe("120%");
+        expect(config.rainSolverTransportConfig).toMatchObject({ timeout: 1000 });
     });
 
     it("should throw if iInterpreter contract call fails", async () => {

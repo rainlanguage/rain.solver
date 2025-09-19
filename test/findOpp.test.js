@@ -58,6 +58,15 @@ describe("Test find opp", async function () {
             getBlockNumber: async () => oppBlockNumber,
             estimateGas: async () => gasLimitEstimation.toBigInt(),
             getBalance: async () => 0n,
+            async estimateGasCost() {
+                return {
+                    gas: await this.estimateGas(),
+                    gasPrice,
+                    l1GasPrice: 0n,
+                    l1Cost: 0n,
+                    totalGasCost: gasLimitEstimation.mul(gasPrice).toBigInt(),
+                };
+            },
         };
         dataFetcher = {
             fetchedPairPools: [],

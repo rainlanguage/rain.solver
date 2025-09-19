@@ -37,6 +37,15 @@ describe("Test inter-orderbook dryrun", async function () {
             getBlockNumber: async () => oppBlockNumber,
             estimateGas: async () => gasLimitEstimation,
             getBalance: async () => ethers.BigNumber.from(0),
+            async estimateGasCost() {
+                return {
+                    gas: (await this.estimateGas()).toBigInt(),
+                    gasPrice: gasPrice.toBigInt(),
+                    l1GasPrice: 0n,
+                    l1Cost: 0n,
+                    totalGasCost: gasLimitEstimation.mul(gasPrice).toBigInt(),
+                };
+            },
         };
     });
 
@@ -189,6 +198,15 @@ describe("Test inter-orderbook find opp", async function () {
             getBlockNumber: async () => oppBlockNumber,
             estimateGas: async () => gasLimitEstimation,
             getBalance: async () => ethers.BigNumber.from(0),
+            async estimateGasCost() {
+                return {
+                    gas: (await this.estimateGas()).toBigInt(),
+                    gasPrice: gasPrice.toBigInt(),
+                    l1GasPrice: 0n,
+                    l1Cost: 0n,
+                    totalGasCost: gasLimitEstimation.mul(gasPrice).toBigInt(),
+                };
+            },
         };
     });
 

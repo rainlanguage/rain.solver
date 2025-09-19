@@ -1,21 +1,11 @@
 import { BigNumber } from "ethers";
 import { LiquidityProviders, RainDataFetcher } from "sushi";
 import { AttributeValue } from "@opentelemetry/api";
-import {
-    Chain,
-    Account,
-    HDAccount,
-    TestClient,
-    WalletClient,
-    PublicActions,
-    WalletActions,
-    FallbackTransport,
-    SendTransactionParameters,
-    PublicClient,
-} from "viem";
+import { Chain, PublicClient } from "viem";
 import { AppOptions } from "./config";
 import { Token } from "sushi/currency";
-import { Dispair, TokenDetails } from "./state";
+import { Dispair } from "./state";
+import { RainSolverSigner, RawTransaction } from "./signer";
 
 /**
  * Specifies reason that order process halted
@@ -45,27 +35,6 @@ export type BotError = {
     error: any;
 };
 
-export type ViemClient = WalletClient<FallbackTransport, Chain, HDAccount> &
-    PublicActions & {
-        BALANCE: BigNumber;
-        BOUNTY: TokenDetails[];
-        BUSY: boolean;
-        sendTx: <chain extends Chain, account extends Account>(
-            tx: SendTransactionParameters<chain, account>,
-        ) => Promise<`0x${string}`>;
-    };
-
-export type TestViemClient = TestClient<"hardhat"> &
-    PublicActions &
-    WalletActions & {
-        BALANCE: BigNumber;
-        BOUNTY: TokenDetails[];
-        BUSY: boolean;
-        sendTx: <chain extends Chain, account extends Account>(
-            tx: SendTransactionParameters<chain, account>,
-        ) => Promise<`0x${string}`>;
-    };
-
 /** @deprecated in favor of SharedState (WIP) */
 export type BotConfig = Omit<AppOptions, "dispair"> & {
     chain: Chain;
@@ -74,11 +43,10 @@ export type BotConfig = Omit<AppOptions, "dispair"> & {
     stableTokens?: Token[];
     isSpecialL2: boolean;
     lps: LiquidityProviders[];
-    watchedTokens?: TokenDetails[];
     viemClient: PublicClient;
     dataFetcher: RainDataFetcher;
-    mainAccount: ViemClient;
-    accounts: ViemClient[];
+    mainAccount: RainSolverSigner;
+    accounts: RainSolverSigner[];
     dispair: Dispair;
 };
 
@@ -114,17 +82,8 @@ export type ProcessPairResult = {
     spanAttributes: SpanAttrs;
 };
 
-export type RawTx = {
-    to: `0x${string}`;
-    from?: `0x${string}`;
-    data: `0x${string}`;
-    gasPrice?: bigint;
-    gas?: bigint;
-    nonce?: number;
-};
-
 export type DryrunValue = {
-    rawtx?: RawTx;
+    rawtx?: RawTransaction;
     maximumInput?: BigNumber;
     price?: BigNumber;
     routeVisual?: string[];

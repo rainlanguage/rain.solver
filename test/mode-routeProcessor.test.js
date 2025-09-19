@@ -48,6 +48,15 @@ describe("Test route processor dryrun", async function () {
             getBlockNumber: async () => oppBlockNumber,
             estimateGas: async () => gasLimitEstimation,
             getBalance: async () => ethers.BigNumber.from(0),
+            async estimateGasCost() {
+                return {
+                    gas: (await this.estimateGas()).toBigInt(),
+                    gasPrice: gasPrice.toBigInt(),
+                    l1GasPrice: 0n,
+                    l1Cost: 0n,
+                    totalGasCost: gasLimitEstimation.mul(gasPrice).toBigInt(),
+                };
+            },
         };
         dataFetcher = {
             fetchedPairPools: [],
@@ -270,6 +279,15 @@ describe("Test route processor find opp", async function () {
             getBlockNumber: async () => oppBlockNumber,
             estimateGas: async () => gasLimitEstimation,
             getBalance: async () => ethers.BigNumber.from(0),
+            async estimateGasCost() {
+                return {
+                    gas: (await this.estimateGas()).toBigInt(),
+                    gasPrice: gasPrice.toBigInt(),
+                    l1GasPrice: 0n,
+                    l1Cost: 0n,
+                    totalGasCost: gasLimitEstimation.mul(gasPrice).toBigInt(),
+                };
+            },
         };
         dataFetcher = {
             fetchedPairPools: [],
@@ -587,6 +605,15 @@ describe("Test find opp with retries", async function () {
             getBlockNumber: async () => oppBlockNumber,
             estimateGas: async () => gasLimitEstimation,
             getBalance: async () => ethers.BigNumber.from(0),
+            async estimateGasCost() {
+                return {
+                    gas: (await this.estimateGas()).toBigInt(),
+                    gasPrice: gasPrice.toBigInt(),
+                    l1GasPrice: 0n,
+                    l1Cost: 0n,
+                    totalGasCost: gasLimitEstimation.mul(gasPrice).toBigInt(),
+                };
+            },
         };
         dataFetcher = {
             fetchedPairPools: [],

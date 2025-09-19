@@ -53,8 +53,8 @@ describe("Test process pair", async function () {
             BOUNTY: [],
             getAddress: () => "0x1F1E4c845183EF6d50E9609F16f6f9cAE43BC9Cb",
             getBlockNumber: async () => 123456,
-            getGasPrice: async () => gasPrice.toBigInt(),
-            estimateGas: async () => gasLimitEstimation.toBigInt(),
+            getGasPrice: async () => gasPrice,
+            estimateGas: async () => gasLimitEstimation,
             sendTransaction: async () => txHash,
             sendTx: async () => txHash,
             getTransactionCount: async () => 0,
@@ -65,6 +65,15 @@ describe("Test process pair", async function () {
                     gasUsed,
                     logs: [],
                     events: [],
+                };
+            },
+            async estimateGasCost() {
+                return {
+                    gas: (await this.estimateGas()).toBigInt(),
+                    gasPrice: gasPrice.mul(107).div(100).toBigInt(),
+                    l1GasPrice: 0n,
+                    l1Cost: 0n,
+                    totalGasCost: gasLimitEstimation.mul(gasPrice.mul(107).div(100)).toBigInt(),
                 };
             },
         };

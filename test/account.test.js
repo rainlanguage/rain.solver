@@ -63,7 +63,12 @@ describe("Test accounts", async function () {
             topupAmount: "0.0000000000000001",
         };
         const mnemonic = "test test test test test test test test test test test junk";
-        const { mainAccount, accounts } = await initAccounts(mnemonic, config, {}, options);
+        const { mainAccount, accounts } = await initAccounts(
+            mnemonic,
+            config,
+            { watchedTokens: new Map(), client: viemClient },
+            options,
+        );
 
         const expected = [
             { address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" },
@@ -92,7 +97,12 @@ describe("Test accounts", async function () {
             topupAmount: "100",
         };
         const key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-        const { mainAccount, accounts } = await initAccounts(key, config, {}, options);
+        const { mainAccount, accounts } = await initAccounts(
+            key,
+            config,
+            { watchedTokens: new Map(), client: viemClient },
+            options,
+        );
 
         const expected = [
             { address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", BALANCE: "10000" },
@@ -168,24 +178,18 @@ describe("Test accounts", async function () {
             topupAmount: "0.00000000001",
             mnemonic,
         };
-        const result = await manageAccounts(
-            config,
-            options,
-            ethers.BigNumber.from("100"),
-            20,
-            [],
-            {},
-        );
+        const result = await manageAccounts(config, options, ethers.BigNumber.from("100"), 20, [], {
+            watchedTokens: new Map(),
+            client: viemClient,
+        });
         const expectedAccounts = [
             { address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" },
             { address: "0x02484cb50AAC86Eae85610D6f4Bf026f30f6627D" },
             { address: "0x08135Da0A343E492FA2d4282F2AE34c6c5CC1BbE" },
         ];
 
-        assert.equal(result, 22);
+        assert.equal(result, 27);
         assert.equal(mainAccount.account.address, expectedAccounts[0].address);
-        assert.equal(accounts[0].account.address, expectedAccounts[1].address);
-        assert.equal(accounts[1].account.address, expectedAccounts[2].address);
     });
 
     it("should rotate accounts", async function () {

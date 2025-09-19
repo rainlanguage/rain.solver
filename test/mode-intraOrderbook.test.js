@@ -39,6 +39,15 @@ describe("Test intra-orderbook dryrun", async function () {
             getBlockNumber: async () => oppBlockNumber,
             estimateGas: async () => gasLimitEstimation,
             getBalance: async () => ethers.BigNumber.from(0),
+            async estimateGasCost() {
+                return {
+                    gas: (await this.estimateGas()).toBigInt(),
+                    gasPrice: gasPrice.toBigInt(),
+                    l1GasPrice: 0n,
+                    l1Cost: 0n,
+                    totalGasCost: gasLimitEstimation.mul(gasPrice).toBigInt(),
+                };
+            },
         };
     });
     const inputBalance = ethers.BigNumber.from("1000000000000000000");
@@ -189,6 +198,15 @@ describe("Test intra-orderbook find opp", async function () {
             getBlockNumber: async () => oppBlockNumber,
             estimateGas: async () => gasLimitEstimation,
             getBalance: async () => ethers.BigNumber.from(0),
+            async estimateGasCost() {
+                return {
+                    gas: (await this.estimateGas()).toBigInt(),
+                    gasPrice: gasPrice.toBigInt(),
+                    l1GasPrice: 0n,
+                    l1Cost: 0n,
+                    totalGasCost: gasLimitEstimation.mul(gasPrice).toBigInt(),
+                };
+            },
         };
     });
     const balance = ethers.BigNumber.from("1000000000000000000");

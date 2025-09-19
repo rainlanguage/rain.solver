@@ -6,11 +6,11 @@ import { errorSnapshot } from "../error";
 import { getGasPrice } from "./gasPrice";
 import { LiquidityProviders } from "sushi";
 import { processLiquidityProviders } from "./lps";
-import { rainSolverTransport } from "../transport";
 import { SubgraphConfig } from "../subgraph/config";
+import { OrderManagerConfig } from "../order/config";
 import { ChainConfig, getChainConfig } from "./chain";
 import { createPublicClient, PublicClient } from "viem";
-import { OrderManagerConfig } from "../order/config";
+import { rainSolverTransport, RainSolverTransportConfig } from "../transport";
 
 /**
  * Rain dispair contracts, deployer, store and interpreter
@@ -57,15 +57,20 @@ export type SharedStateConfig = {
     subgraphConfig: SubgraphConfig;
     /** OrderManager configurations */
     orderManagerConfig: OrderManagerConfig;
+    /** Optional transaction gas multiplier */
+    transactionGas?: string;
+    /** RainSolver transport configuration */
+    rainSolverTransportConfig?: RainSolverTransportConfig;
 };
 export namespace SharedStateConfig {
     export async function tryFromAppOptions(options: AppOptions): Promise<SharedStateConfig> {
+        const rainSolverTransportConfig = { timeout: options.timeout };
         const rpcState = new RpcState(options.rpc);
         const writeRpcState = options.writeRpc ? new RpcState(options.writeRpc) : undefined;
 
         // use temp client to get chain id
         let client = createPublicClient({
-            transport: rainSolverTransport(rpcState, { timeout: options.timeout }),
+            transport: rainSolverTransport(rpcState, rainSolverTransportConfig),
         }) as any;
 
         // get chain config
@@ -78,7 +83,7 @@ export namespace SharedStateConfig {
         // re-assign the client with static chain data
         client = createPublicClient({
             chain: chainConfig,
-            transport: rainSolverTransport(rpcState, { timeout: options.timeout }),
+            transport: rainSolverTransport(rpcState, rainSolverTransportConfig),
         });
 
         const getDispairAddress = async (functionName: "iInterpreter" | "iStore") => {
@@ -100,6 +105,8 @@ export namespace SharedStateConfig {
             rpcState,
             writeRpcState,
             chainConfig,
+            rainSolverTransportConfig,
+            transactionGas: options.txGas,
             walletKey: (options.key ?? options.mnemonic)!,
             gasPriceMultiplier: options.gasPriceMultiplier,
             subgraphConfig: SubgraphConfig.tryFromAppOptions(options),
@@ -155,6 +162,10 @@ export class SharedState {
     readonly subgraphConfig: SubgraphConfig;
     /** OrderManager configurations */
     readonly orderManagerConfig: OrderManagerConfig;
+    /** Optional transaction gas multiplier */
+    readonly transactionGas?: string;
+    /** RainSolver transport configuration */
+    readonly rainSolverTransportConfig?: RainSolverTransportConfig;
 
     /** Current gas price of the operating chain */
     gasPrice = 0n;
@@ -188,6 +199,12 @@ export class SharedState {
         }
         if (config.watchedTokens) {
             this.watchedTokens = config.watchedTokens;
+        }
+        if (config.transactionGas) {
+            this.transactionGas = config.transactionGas;
+        }
+        if (config.rainSolverTransportConfig) {
+            this.rainSolverTransportConfig = config.rainSolverTransportConfig;
         }
         this.watchGasPrice();
     }

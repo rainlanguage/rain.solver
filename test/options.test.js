@@ -30,6 +30,7 @@ describe("Test app options", async function () {
                     chain: publicClientConfig[137]?.chain,
                     transport: fallback(rpcs.map((v) => http(v.url))),
                 }),
+                watchedTokens: new Map(),
             },
         );
 

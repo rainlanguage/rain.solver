@@ -1,11 +1,10 @@
 import { Token } from "sushi/currency";
-import { estimateGasCost } from "../gas";
 import { ChainId, DataFetcher, Router } from "sushi";
 import { BigNumber, Contract, ethers } from "ethers";
 import { containsNodeError, errorSnapshot } from "../error";
 import { getBountyEnsureRainlang, parseRainlang } from "../task";
 import { BaseError, ExecutionRevertedError, PublicClient } from "viem";
-import { SpanAttrs, BotConfig, ViemClient, DryrunResult } from "../types";
+import { SpanAttrs, BotConfig, DryrunResult } from "../types";
 import {
     ONE18,
     scale18,
@@ -17,6 +16,7 @@ import {
     extendSpanAttributes,
 } from "../utils";
 import { BundledOrders } from "../order";
+import { RainSolverSigner } from "../signer";
 
 /**
  * Specifies the reason that dryrun failed
@@ -43,14 +43,13 @@ export async function dryrun({
     config,
     viemClient,
     hasPriceMatch,
-    l1GasPrice,
 }: {
     mode: number;
     config: BotConfig;
     orderPairObject: BundledOrders;
     viemClient: PublicClient;
     dataFetcher: DataFetcher;
-    signer: ViemClient;
+    signer: RainSolverSigner;
     arb: Contract;
     gasPrice: bigint;
     ethPrice: string;
@@ -58,7 +57,6 @@ export async function dryrun({
     fromToken: Token;
     maximumInput: BigNumber;
     hasPriceMatch?: { value: boolean };
-    l1GasPrice?: bigint;
 }) {
     const spanAttributes: SpanAttrs = {};
     const result: DryrunResult = {
@@ -186,7 +184,7 @@ export async function dryrun({
         try {
             blockNumber = Number(await viemClient.getBlockNumber());
             spanAttributes["blockNumber"] = blockNumber;
-            const estimation = await estimateGasCost(rawtx, signer, config, l1GasPrice);
+            const estimation = await signer.estimateGasCost(rawtx);
             l1Cost = estimation.l1Cost;
             gasLimit = ethers.BigNumber.from(estimation.gas)
                 .mul(config.gasLimitMultiplier)
@@ -260,7 +258,7 @@ export async function dryrun({
 
             try {
                 spanAttributes["blockNumber"] = blockNumber;
-                const estimation = await estimateGasCost(rawtx, signer, config, l1GasPrice);
+                const estimation = await signer.estimateGasCost(rawtx);
                 gasLimit = ethers.BigNumber.from(estimation.gas)
                     .mul(config.gasLimitMultiplier)
                     .div(100);
@@ -379,20 +377,18 @@ export async function findOpp({
     ethPrice,
     config,
     viemClient,
-    l1GasPrice,
 }: {
     mode: number;
     config: BotConfig;
     orderPairObject: BundledOrders;
     viemClient: PublicClient;
     dataFetcher: DataFetcher;
-    signer: ViemClient;
+    signer: RainSolverSigner;
     arb: Contract;
     gasPrice: bigint;
     ethPrice: string;
     toToken: Token;
     fromToken: Token;
-    l1GasPrice?: bigint;
 }): Promise<DryrunResult> {
     const spanAttributes: SpanAttrs = {};
     const result: DryrunResult = {
@@ -426,7 +422,6 @@ export async function findOpp({
             config,
             viemClient,
             hasPriceMatch,
-            l1GasPrice,
         });
     } catch (e: any) {
         // the fail reason can only be no route in case all hops fail reasons are no route
@@ -459,7 +454,6 @@ export async function findOpp({
                     ethPrice,
                     config,
                     viemClient,
-                    l1GasPrice,
                 });
             } catch (e: any) {
                 // the fail reason can only be no route in case all hops fail reasons are no route
@@ -499,19 +493,17 @@ export async function findOppWithRetries({
     ethPrice,
     config,
     viemClient,
-    l1GasPrice,
 }: {
     config: BotConfig;
     orderPairObject: BundledOrders;
     viemClient: PublicClient;
     dataFetcher: DataFetcher;
-    signer: ViemClient;
+    signer: RainSolverSigner;
     arb: Contract;
     gasPrice: bigint;
     ethPrice: string;
     toToken: Token;
     fromToken: Token;
-    l1GasPrice?: bigint;
 }): Promise<DryrunResult> {
     const spanAttributes: SpanAttrs = {};
     const result: DryrunResult = {
@@ -535,7 +527,6 @@ export async function findOppWithRetries({
                 ethPrice,
                 config,
                 viemClient,
-                l1GasPrice,
             }),
         );
     }

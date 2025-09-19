@@ -1,9 +1,7 @@
 import { assert } from "chai";
 import { getLocal } from "mockttp";
-import { RpcState } from "../src/rpc";
 import { BigNumber, utils } from "ethers";
-import { encodeAbiParameters } from "viem";
-import { createViemClient } from "../src/client";
+import { createPublicClient, encodeAbiParameters, http } from "viem";
 import { getBountyEnsureRainlang, getWithdrawEnsureRainlang, parseRainlang } from "../src/task";
 
 describe("Test task", async function () {
@@ -86,10 +84,9 @@ total-bounty-eth: add(
     });
 
     it("should parse rainlang to bytecode", async function () {
-        const viemClient = await createViemClient(
-            1,
-            new RpcState([{ url: mockServer.url + "/rpc" }]),
-        );
+        const viemClient = createPublicClient({
+            transport: http(mockServer.url + "/rpc"),
+        });
         const rainlang = "some-rainlang";
         const dispair = {
             interpreter: utils.hexlify(utils.randomBytes(20)),

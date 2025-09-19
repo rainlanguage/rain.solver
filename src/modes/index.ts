@@ -6,8 +6,9 @@ import { extendSpanAttributes } from "../utils";
 import { findOpp as findInterObOpp } from "./interOrderbook";
 import { findOpp as findIntraObOpp } from "./intraOrderbook";
 import { findOppWithRetries as findRpOpp } from "./routeProcessor";
-import { BotConfig, ViemClient, DryrunResult, SpanAttrs } from "../types";
+import { BotConfig, DryrunResult, SpanAttrs } from "../types";
 import { BundledOrders } from "../order";
+import { RainSolverSigner } from "../signer";
 
 /**
  * The main entrypoint for the main logic to find opps.
@@ -30,13 +31,12 @@ export async function findOpp({
     inputToEthPrice,
     outputToEthPrice,
     orderbooksOrders,
-    l1GasPrice,
 }: {
     config: BotConfig;
     orderPairObject: BundledOrders;
     viemClient: PublicClient;
     dataFetcher: DataFetcher;
-    signer: ViemClient;
+    signer: RainSolverSigner;
     arb: Contract;
     genericArb: Contract | undefined;
     orderbooksOrders: BundledOrders[][];
@@ -45,7 +45,6 @@ export async function findOpp({
     outputToEthPrice: string;
     toToken: Token;
     fromToken: Token;
-    l1GasPrice: bigint;
 }): Promise<DryrunResult> {
     const promises = [
         findRpOpp({
@@ -59,7 +58,6 @@ export async function findOpp({
             ethPrice: inputToEthPrice,
             config,
             viemClient,
-            l1GasPrice,
         }),
         ...(!config.rpOnly
             ? [
@@ -72,7 +70,6 @@ export async function findOpp({
                       config,
                       viemClient,
                       orderbooksOrders,
-                      l1GasPrice,
                   }),
                   findInterObOpp({
                       orderPairObject,
@@ -84,7 +81,6 @@ export async function findOpp({
                       config,
                       viemClient,
                       orderbooksOrders,
-                      l1GasPrice,
                   }),
               ]
             : []),

@@ -1,10 +1,9 @@
 import { orderbookAbi } from "../abis";
-import { estimateGasCost } from "../gas";
 import { BigNumber, Contract, ethers } from "ethers";
 import { containsNodeError, errorSnapshot } from "../error";
 import { getBountyEnsureRainlang, parseRainlang } from "../task";
 import { BaseError, ExecutionRevertedError, PublicClient } from "viem";
-import { BotConfig, ViemClient, DryrunResult, SpanAttrs } from "../types";
+import { BotConfig, DryrunResult, SpanAttrs } from "../types";
 import {
     ONE18,
     scale18To,
@@ -13,6 +12,7 @@ import {
     extendSpanAttributes,
 } from "../utils";
 import { BundledOrders } from "../order";
+import { RainSolverSigner } from "../signer";
 
 const obInterface = new ethers.utils.Interface(orderbookAbi);
 
@@ -30,19 +30,17 @@ export async function dryrun({
     outputToEthPrice,
     config,
     viemClient,
-    l1GasPrice,
 }: {
     config: BotConfig;
     orderPairObject: BundledOrders;
     viemClient: PublicClient;
-    signer: ViemClient;
+    signer: RainSolverSigner;
     arb: Contract;
     gasPrice: bigint;
     inputToEthPrice: string;
     outputToEthPrice: string;
     opposingOrders: BundledOrders;
     maximumInput: BigNumber;
-    l1GasPrice?: bigint;
 }): Promise<DryrunResult> {
     const spanAttributes: SpanAttrs = {};
     const result: DryrunResult = {
@@ -126,7 +124,7 @@ export async function dryrun({
     try {
         blockNumber = Number(await viemClient.getBlockNumber());
         spanAttributes["blockNumber"] = blockNumber;
-        const estimation = await estimateGasCost(rawtx, signer, config, l1GasPrice);
+        const estimation = await signer.estimateGasCost(rawtx);
         l1Cost = estimation.l1Cost;
         gasLimit = ethers.BigNumber.from(estimation.gas).mul(config.gasLimitMultiplier).div(100);
 
@@ -196,7 +194,7 @@ export async function dryrun({
 
         try {
             spanAttributes["blockNumber"] = blockNumber;
-            const estimation = await estimateGasCost(rawtx, signer, config, l1GasPrice);
+            const estimation = await signer.estimateGasCost(rawtx);
             gasLimit = ethers.BigNumber.from(estimation.gas)
                 .mul(config.gasLimitMultiplier)
                 .div(100);
@@ -306,18 +304,16 @@ export async function findOpp({
     config,
     viemClient,
     orderbooksOrders,
-    l1GasPrice,
 }: {
     config: BotConfig;
     orderPairObject: BundledOrders;
     viemClient: PublicClient;
-    signer: ViemClient;
+    signer: RainSolverSigner;
     arb: Contract;
     orderbooksOrders: BundledOrders[][];
     gasPrice: bigint;
     inputToEthPrice: string;
     outputToEthPrice: string;
-    l1GasPrice?: bigint;
 }): Promise<DryrunResult> {
     if (!arb) throw undefined;
     const spanAttributes: SpanAttrs = {};
@@ -387,7 +383,6 @@ export async function findOpp({
                     outputToEthPrice,
                     config,
                     viemClient,
-                    l1GasPrice,
                 });
             }),
         );
@@ -458,19 +453,17 @@ export async function binarySearch({
     outputToEthPrice,
     config,
     viemClient,
-    l1GasPrice,
 }: {
     config: BotConfig;
     orderPairObject: BundledOrders;
     viemClient: PublicClient;
-    signer: ViemClient;
+    signer: RainSolverSigner;
     arb: ethers.Contract;
     gasPrice: bigint;
     inputToEthPrice: string;
     outputToEthPrice: string;
     opposingOrders: BundledOrders;
     maximumInput: ethers.BigNumber;
-    l1GasPrice?: bigint;
 }): Promise<DryrunResult> {
     const spanAttributes = {};
     const result: DryrunResult = {
@@ -494,7 +487,6 @@ export async function binarySearch({
                     outputToEthPrice,
                     config,
                     viemClient,
-                    l1GasPrice,
                 }),
             );
             // set the maxInput for next hop by increasing

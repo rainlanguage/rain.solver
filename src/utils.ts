@@ -6,9 +6,10 @@ import BlackList from "./pool-blacklist.json";
 import { isBytes, isHexString } from "ethers/lib/utils";
 import { BigNumber, BigNumberish, ethers } from "ethers";
 import { erc20Abi, parseEventLogs, TransactionReceipt } from "viem";
-import { ViemClient, BotConfig } from "./types";
+import { BotConfig } from "./types";
 import { RainDataFetcher, DataFetcherOptions, LiquidityProviders, Router } from "sushi/router";
 import { TokenDetails } from "./state";
+import { RainSolverSigner } from "./signer";
 
 /**
  * One ether which equals to 1e18
@@ -812,7 +813,7 @@ export function extendSpanAttributes(
 export function addWatchedToken(
     token: TokenDetails,
     watchedTokens: TokenDetails[],
-    account?: ViemClient,
+    account?: RainSolverSigner,
 ) {
     if (!watchedTokens.find((v) => v.address.toLowerCase() === token.address.toLowerCase())) {
         watchedTokens.push(token);

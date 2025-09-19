@@ -3,19 +3,19 @@ import { PublicClient } from "viem";
 import { getQuoteGas } from "./order/quote";
 import { SharedState } from "./state";
 import { Token } from "sushi/currency";
-import { createViemClient } from "./client";
 import { arbAbis, orderbookAbi } from "./abis";
 import { getSigner, handleTransaction } from "./tx";
 import { privateKeyToAccount } from "viem/accounts";
 import { BigNumber, Contract, ethers } from "ethers";
 import { fundOwnedOrders, checkOwnedOrders } from "./account";
 import { Context, SpanStatusCode, Tracer } from "@opentelemetry/api";
-import { ChainId, RainDataFetcher, RainDataFetcherOptions } from "sushi";
+import { RainDataFetcher, RainDataFetcherOptions } from "sushi";
 import { ErrorSeverity, errorSnapshot, isTimeout, KnownErrors } from "./error";
 import { toNumber, getEthPrice, PoolBlackList, getMarketQuote } from "./utils";
 import { BotConfig, ProcessPairHaltReason, ProcessPairReportStatus } from "./types";
-import { Report, SpanAttrs, ViemClient, RoundReport, ProcessPairResult } from "./types";
+import { Report, SpanAttrs, RoundReport, ProcessPairResult } from "./types";
 import { BundledOrders, quoteSingleOrder } from "./order";
+import { RainSolverSigner } from "./signer";
 
 /**
  * Main function that processes all given orders and tries clearing them against onchain liquidity and reports the result
@@ -138,11 +138,9 @@ export const processOrders = async (
                 const signer = await getSigner(accounts, mainAccount, true);
 
                 const writeSigner = state.writeRpc
-                    ? await createViemClient(
-                          config.chain.id as ChainId,
-                          state.writeRpc,
+                    ? (RainSolverSigner.create(
                           privateKeyToAccount(
-                              signer.account.getHdKey
+                              signer.account.source === "hd"
                                   ? (ethers.utils.hexlify(
                                         signer.account.getHdKey().privateKey!,
                                     ) as `0x${string}`)
@@ -150,9 +148,8 @@ export const processOrders = async (
                                         ? state.walletKey
                                         : "0x" + state.walletKey) as `0x${string}`),
                           ),
-                          { timeout: config.timeout },
-                          undefined,
-                      )
+                          state,
+                      ) as any as RainSolverSigner)
                     : undefined;
 
                 const pair = `${pairOrders.buyTokenSymbol}/${pairOrders.sellTokenSymbol}`;
@@ -374,8 +371,8 @@ export async function processPair(args: {
     orderPairObject: BundledOrders;
     viemClient: PublicClient;
     dataFetcher: RainDataFetcher;
-    signer: ViemClient;
-    writeSigner: ViemClient | undefined;
+    signer: RainSolverSigner;
+    writeSigner: RainSolverSigner | undefined;
     arb: Contract;
     genericArb: Contract | undefined;
     orderbook: Contract;
@@ -592,7 +589,6 @@ export async function processPair(args: {
             inputToEthPrice,
             outputToEthPrice,
             orderbooksOrders,
-            l1GasPrice: state.l1GasPrice,
         });
         ({ rawtx, oppBlockNumber, estimatedProfit } = findOppResult.value!);
 
@@ -653,7 +649,7 @@ export async function processPair(args: {
     // handle the found transaction opportunity
     return handleTransaction(
         signer,
-        viemClient as any as ViemClient,
+        viemClient as any as RainSolverSigner,
         spanAttributes,
         rawtx,
         orderbook,

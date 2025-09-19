@@ -1,19 +1,19 @@
-import { erc20Abi } from "viem";
+import { erc20Abi, PublicClient } from "viem";
 import { AppOptions } from "./config";
 import { SharedState, TokenDetails } from "./state";
-import { ChainId, RPParams } from "sushi";
+import { RPParams } from "sushi";
 import { BigNumber, ethers } from "ethers";
-import { createViemClient } from "./client";
-import { estimateGasCost, getTxFee } from "./gas";
+import { getTxFee } from "./gas";
 import { ErrorSeverity, errorSnapshot } from "./error";
 import { Native, Token, WNATIVE } from "sushi/currency";
 import { ROUTE_PROCESSOR_4_ADDRESS } from "sushi/config";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
-import { getRpSwap, PoolBlackList, sleep, addWatchedToken } from "./utils";
-import { BotConfig, ViemClient, OwnedOrder } from "./types";
+import { addWatchedToken, getRpSwap, PoolBlackList, sleep } from "./utils";
+import { BotConfig, OwnedOrder } from "./types";
 import { context, Context, SpanStatusCode, trace, Tracer } from "@opentelemetry/api";
 import { MulticallAbi, orderbookAbi, routeProcessor3Abi, VaultBalanceAbi } from "./abis";
 import { BundledOrders } from "./order";
+import { RainSolverSigner } from "./signer";
 
 /** Standard base path for eth accounts */
 export const BasePath = "m/44'/60'/0'/0/" as const;
@@ -36,12 +36,10 @@ export async function initAccounts(
     options: AppOptions,
     tracer?: Tracer,
     ctx?: Context,
-) {
-    const accounts: ViemClient[] = [];
+): Promise<{ mainAccount: RainSolverSigner; accounts: RainSolverSigner[] }> {
+    const accounts: RainSolverSigner[] = [];
     const isMnemonic = !/^(0x)?[a-fA-F0-9]{64}$/.test(mnemonicOrPrivateKey);
-    const mainAccount = await createViemClient(
-        config.chain.id as ChainId,
-        state.rpc,
+    const mainAccount = RainSolverSigner.create(
         isMnemonic
             ? mnemonicToAccount(mnemonicOrPrivateKey, {
                   addressIndex: MainAccountDerivationIndex,
@@ -51,8 +49,7 @@ export async function initAccounts(
                       ? mnemonicOrPrivateKey
                       : "0x" + mnemonicOrPrivateKey) as `0x${string}`,
               ),
-        { timeout: config.timeout },
-        (config as any).testClientViem,
+        state,
     );
 
     // if the provided key is mnemonic, generate new accounts
@@ -60,14 +57,11 @@ export async function initAccounts(
         const len = options.walletCount ?? 0;
         for (let addressIndex = 1; addressIndex <= len; addressIndex++) {
             accounts.push(
-                await createViemClient(
-                    config.chain.id as ChainId,
-                    state.rpc,
+                RainSolverSigner.create(
                     mnemonicToAccount(mnemonicOrPrivateKey, {
                         addressIndex,
                     }),
-                    { timeout: config.timeout },
-                    (config as any).testClientViem,
+                    state,
                 ),
             );
         }
@@ -77,10 +71,10 @@ export async function initAccounts(
     // tracked on through the bot's process whenever a tx is submitted
     const balances = await getBatchEthBalance(
         [mainAccount.account.address, ...accounts.map((v) => v.account.address)],
-        config.viemClient as any as ViemClient,
+        state.client,
     );
     mainAccount.BALANCE = balances[0];
-    await setWatchedTokens(mainAccount, config.watchedTokens ?? []);
+    setWatchedTokens(mainAccount, Array.from(state.watchedTokens.values()) ?? []);
 
     // incase of excess accounts, top them up from main account
     if (accounts.length) {
@@ -95,7 +89,7 @@ export async function initAccounts(
             throw "low on funds to topup excess wallets with specified initial topup amount";
         } else {
             for (let i = 0; i < accounts.length; i++) {
-                await setWatchedTokens(accounts[i], config.watchedTokens ?? []);
+                setWatchedTokens(accounts[i], Array.from(state.watchedTokens.values()) ?? []);
                 accounts[i].BALANCE = balances[i + 1];
 
                 // only topup those accounts that have lower than expected funds
@@ -151,12 +145,12 @@ export async function manageAccounts(
     options: AppOptions,
     avgGasCost: BigNumber,
     lastIndex: number,
-    wgc: ViemClient[],
+    wgc: RainSolverSigner[],
     state: SharedState,
     tracer?: Tracer,
     ctx?: Context,
 ) {
-    const removedWallets: ViemClient[] = [];
+    const removedWallets: RainSolverSigner[] = [];
     let accountsToAdd = 0;
     for (let i = config.accounts.length - 1; i >= 0; i--) {
         if (config.accounts[i].BALANCE.lt(avgGasCost.mul(4))) {
@@ -208,21 +202,18 @@ export async function manageAccounts(
             counter++;
             const span = tracer?.startSpan("add-new-wallet", undefined, ctx);
             try {
-                const acc = await createViemClient(
-                    config.chain.id as ChainId,
-                    state.rpc,
+                const acc = RainSolverSigner.create(
                     mnemonicToAccount(options.mnemonic!, {
                         addressIndex: ++lastIndex,
                     }),
-                    { timeout: config.timeout },
-                    (config as any).testClientViem,
+                    state,
                 );
                 span?.setAttribute("details.wallet", acc.account.address);
                 const balance = ethers.BigNumber.from(
                     await acc.getBalance({ address: acc.account.address }),
                 );
                 acc.BALANCE = balance;
-                await setWatchedTokens(acc, config.watchedTokens ?? []);
+                setWatchedTokens(acc, Array.from(state.watchedTokens.values()) ?? []);
 
                 if (topupAmountBN.gt(balance)) {
                     const transferAmount = topupAmountBN.sub(balance);
@@ -326,7 +317,7 @@ export async function manageAccounts(
  * Rotates accounts by putting the first one in last place
  * @param accounts - Array of accounts to rotate
  */
-export function rotateAccounts(accounts: ViemClient[]) {
+export function rotateAccounts(accounts: RainSolverSigner[]) {
     if (accounts && Array.isArray(accounts) && accounts.length > 1) {
         accounts.push(accounts.shift()!);
     }
@@ -340,7 +331,7 @@ export function rotateAccounts(accounts: ViemClient[]) {
  */
 export async function getBatchEthBalance(
     addresses: string[],
-    viemClient: ViemClient,
+    viemClient: PublicClient,
     multicallAddressOverride?: string,
 ) {
     return (
@@ -352,7 +343,7 @@ export async function getBatchEthBalance(
                 address: (multicallAddressOverride ??
                     viemClient.chain?.contracts?.multicall3?.address) as `0x${string}`,
                 allowFailure: false,
-                chainId: viemClient.chain.id,
+                chainId: viemClient.chain?.id,
                 abi: MulticallAbi,
                 functionName: "getEthBalance",
                 args: [v],
@@ -371,7 +362,7 @@ export async function getBatchEthBalance(
 export async function getBatchTokenBalanceForAccount(
     address: string,
     tokens: TokenDetails[],
-    viemClient: ViemClient,
+    viemClient: RainSolverSigner,
     multicallAddressOverride?: string,
 ) {
     return (
@@ -398,8 +389,8 @@ export async function getBatchTokenBalanceForAccount(
  * @param gasPrice - Gas price
  */
 export async function sweepToMainWallet(
-    fromWallet: ViemClient,
-    toWallet: ViemClient,
+    fromWallet: RainSolverSigner,
+    toWallet: RainSolverSigner,
     state: SharedState,
     config: BotConfig,
     tracer?: Tracer,
@@ -449,9 +440,7 @@ export async function sweepToMainWallet(
                     balance,
                 ]) as `0x${string}`,
             };
-            // const gas = await fromWallet.estimateGas(tx);
-            const gas = (await estimateGasCost(tx, fromWallet, config, state.l1GasPrice))
-                .totalGasCost;
+            const gas = (await fromWallet.estimateGasCost(tx)).totalGasCost;
             txs.push({ tx, bounty, balance: ethers.utils.formatUnits(balance, bounty.decimals) });
             cumulativeGas = cumulativeGas.add(gas);
         } catch {
@@ -550,12 +539,11 @@ export async function sweepToMainWallet(
         const span = tracer?.startSpan("sweep-remaining-gas-to-main-wallet", undefined, mainCtx);
         span?.setAttribute("details.wallet", fromWallet.account.address);
         try {
-            const estimation = await estimateGasCost(
-                { to: toWallet.account.address, value: 0n, gasPrice } as any,
-                fromWallet,
-                config,
-                state.l1GasPrice,
-            );
+            const estimation = await fromWallet.estimateGasCost({
+                to: toWallet.account.address,
+                value: 0n,
+                gasPrice,
+            });
 
             const remainingGas = ethers.BigNumber.from(
                 await fromWallet.getBalance({ address: fromWallet.account.address }),
@@ -805,7 +793,7 @@ export async function sweepToEth(
     }
 }
 
-export function setWatchedTokens(account: ViemClient, watchedTokens: TokenDetails[]) {
+export function setWatchedTokens(account: RainSolverSigner, watchedTokens: TokenDetails[]) {
     account.BOUNTY = [...watchedTokens];
 }
 

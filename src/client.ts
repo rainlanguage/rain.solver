@@ -1,56 +1,11 @@
 /* eslint-disable no-console */
 import { SharedState } from "./state";
-import { sendTransaction } from "./tx";
 import { RainDataFetcher } from "sushi/router";
-import { ViemClient, BotConfig } from "./types";
+import { BotConfig } from "./types";
 import { ChainId, ChainKey } from "sushi/chain";
-import { publicClientConfig } from "sushi/config";
 import { errorSnapshot, shouldThrow } from "./error";
 import { normalizeUrl, RpcMetrics, RpcState } from "./rpc";
-import { rainSolverTransport, RainSolverTransportConfig } from "./transport";
-import {
-    HDAccount,
-    publicActions,
-    walletActions,
-    PrivateKeyAccount,
-    createWalletClient,
-} from "viem";
 import { SubgraphManager } from "./subgraph";
-
-/**
- * Creates a viem client
- * @param chainId - The chain id
- * @param rpcState - rpc state
- * @param account - If fallback RPCs should be used as well or not
- * @param configuration - The rain solver transport configurations
- */
-export async function createViemClient(
-    chainId: ChainId,
-    rpcState: RpcState,
-    account?: HDAccount | PrivateKeyAccount,
-    configuration?: RainSolverTransportConfig,
-    testClient?: any,
-): Promise<ViemClient> {
-    const transport = rainSolverTransport(rpcState, configuration);
-
-    const client = testClient
-        ? ((await testClient({ account }))
-              .extend(publicActions)
-              .extend(walletActions) as any as ViemClient)
-        : (createWalletClient({
-              account,
-              chain: publicClientConfig[chainId]?.chain,
-              transport,
-          }).extend(publicActions) as any as ViemClient);
-
-    // set injected properties
-    client.BUSY = false;
-    client.sendTx = async (tx) => {
-        return await sendTransaction(client, tx);
-    };
-
-    return client;
-}
 
 /**
  * Keeps record of http fetch requests for a http viem client
