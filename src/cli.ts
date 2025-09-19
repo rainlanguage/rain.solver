@@ -12,9 +12,8 @@ import { SubgraphManager, SubgraphConfig } from "./subgraph";
 import { BotConfig, ProcessPairReportStatus } from "./types";
 import { OrderManager, BundledOrders } from "./order";
 import { trace, Tracer, context, Context, SpanStatusCode } from "@opentelemetry/api";
-import { sweepToEth, manageAccounts, sweepToMainWallet, getBatchEthBalance } from "./account";
-import { RainSolverSigner } from "./signer";
-import { WalletManager } from "./wallet";
+import { getBatchEthBalance } from "./account";
+import { WalletManager, WalletType } from "./wallet";
 import { publicClientConfig } from "sushi/config";
 
 config();
@@ -207,11 +206,8 @@ export const main = async (argv: any, version?: string) => {
     const day = 24 * 60 * 60 * 1000;
     let lastGasReset = Date.now() + day;
     let lastInterval = Date.now() + poolUpdateInterval;
-    let lastUsedAccountIndex = config.accounts.length;
     let avgGasCost: BigNumber | undefined;
     let counter = 1;
-    const wgc: RainSolverSigner[] = [];
-    const wgcBuffer: { address: string; count: number }[] = [];
 
     // run bot's processing orders in a loop
     // eslint-disable-next-line no-constant-condition
@@ -302,78 +298,39 @@ export const main = async (argv: any, version?: string) => {
                     if (lastGasReset <= _now) {
                         lastGasReset = _now + day;
                         avgGasCost = undefined;
-                    }
-                    if (avgGasCost) {
-                        avgGasCost = avgGasCost.add(roundAvgGasCost).div(2);
+                        state.gasCosts = [roundAvgGasCost.toBigInt()];
                     } else {
-                        avgGasCost = roundAvgGasCost;
+                        state.gasCosts.push(roundAvgGasCost.toBigInt());
                     }
-                }
-                if (avgGasCost && config.accounts.length) {
-                    // manage account by removing those that have ran out of gas
-                    // and issuing a new one into circulation
-                    lastUsedAccountIndex = await manageAccounts(
-                        config,
-                        options,
-                        avgGasCost,
-                        lastUsedAccountIndex,
-                        wgc,
-                        state,
-                        logger.tracer,
-                        roundCtx,
-                    );
+                    avgGasCost = ethers.BigNumber.from(state.avgGasCost);
                 }
 
-                // sweep tokens and wallets every 100 rounds
+                // retry pending add workers
+                const retryPendingAddReports = await walletManager.retryPendingAddWorkers();
+                retryPendingAddReports.forEach((report) => {
+                    logger.exportPreAssembledSpan(report, roundCtx);
+                });
+
+                // assess workers
+                const assessReports = await walletManager.assessWorkers();
+                assessReports.forEach((report) => {
+                    logger.exportPreAssembledSpan(report.removeWorkerReport, roundCtx);
+                    logger.exportPreAssembledSpan(report.addWorkerReport, roundCtx);
+                });
+                config.accounts = Array.from(walletManager.workers.signers.values());
+
                 if (counter % 100 === 0) {
-                    // try to sweep wallets that still have non transfered tokens to main wallet
-                    if (wgc.length) {
-                        for (let k = wgc.length - 1; k >= 0; k--) {
-                            try {
-                                await sweepToMainWallet(
-                                    wgc[k],
-                                    config.mainAccount,
-                                    state,
-                                    config,
-                                    logger.tracer,
-                                    roundCtx,
-                                );
-                                if (!wgc[k].BOUNTY.length) {
-                                    const index = wgcBuffer.findIndex(
-                                        (v) => v.address === wgc[k].account.address,
-                                    );
-                                    if (index > -1) wgcBuffer.splice(index, 1);
-                                    wgc.splice(k, 1);
-                                } else {
-                                    // retry to sweep garbage wallet 3 times before letting it go
-                                    const index = wgcBuffer.findIndex(
-                                        (v) => v.address === wgc[k].account.address,
-                                    );
-                                    if (index > -1) {
-                                        wgcBuffer[index].count++;
-                                        if (wgcBuffer[index].count >= 2) {
-                                            wgcBuffer.splice(index, 1);
-                                            wgc.splice(k, 1);
-                                        }
-                                    } else {
-                                        wgcBuffer.push({
-                                            address: wgc[k].account.address,
-                                            count: 0,
-                                        });
-                                    }
-                                }
-                            } catch {
-                                /**/
-                            }
-                        }
-                    }
-                    // try to sweep main wallet's tokens back to eth
-                    try {
-                        await sweepToEth(config, state, logger.tracer, roundCtx);
-                    } catch {
-                        /**/
-                    }
+                    // retry pending remove workers
+                    const pendingRemoveReports = await walletManager.retryPendingRemoveWorkers();
+                    pendingRemoveReports.forEach((report) => {
+                        logger.exportPreAssembledSpan(report, roundCtx);
+                    });
+
+                    // try to sweep main wallet's tokens back to gas
+                    const convertHoldingsToGasReport = await walletManager.convertHoldingsToGas();
+                    logger.exportPreAssembledSpan(convertHoldingsToGasReport, roundCtx);
                 }
+
                 roundSpan.setStatus({ code: SpanStatusCode.OK });
             } catch (error: any) {
                 const snapshot = errorSnapshot("", error);
@@ -382,7 +339,7 @@ export const main = async (argv: any, version?: string) => {
                 roundSpan.recordException(error);
                 roundSpan.setStatus({ code: SpanStatusCode.ERROR, message: snapshot });
             }
-            if (config.accounts.length) {
+            if (walletManager.config.type === WalletType.Mnemonic) {
                 const accountsWithBalance: Record<string, string> = {};
                 config.accounts.forEach(
                     (v) =>
@@ -391,7 +348,10 @@ export const main = async (argv: any, version?: string) => {
                         )),
                 );
                 roundSpan.setAttribute("circulatingAccounts", JSON.stringify(accountsWithBalance));
-                roundSpan.setAttribute("lastAccountIndex", lastUsedAccountIndex);
+                roundSpan.setAttribute(
+                    "lastAccountIndex",
+                    walletManager.workers.lastUsedDerivationIndex,
+                );
             }
             if (avgGasCost) {
                 roundSpan.setAttribute("avgGasCost", ethers.utils.formatUnits(avgGasCost));

@@ -1,11 +1,11 @@
 import { parseUnits } from "viem";
 import * as sweepFns from "./sweep";
 import { WalletType } from "./config";
-import { WalletManager } from "./index";
 import { ErrorSeverity } from "../error";
 import { RainSolverSigner } from "../signer";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { SharedState, TokenDetails } from "../state";
+import { SWEEP_RETRY_COUNT, WalletManager } from "./index";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 
@@ -345,8 +345,9 @@ describe("Test WalletManager", () => {
             );
             expect(report.attributes["details.transfers.remainingGas.amount"]).toBe("0.1");
 
-            // verify no failures were recorded
-            expect(report.status?.code).not.toBe(SpanStatusCode.ERROR);
+            // verify successfully swept
+            expect(report.status?.code).toBe(SpanStatusCode.OK);
+            expect(report.status?.message).toBe("Successfully swept wallet tokens");
 
             transferTokenFromSpy.mockRestore();
             transferRemainingGasFromSpy.mockRestore();
@@ -533,12 +534,7 @@ describe("Test WalletManager", () => {
             walletManager.convertToGas(mockToken, 10n).catch(() => {});
 
             expect(spy).toHaveBeenCalledTimes(1);
-            expect(spy).toHaveBeenCalledWith(
-                walletManager.mainSigner,
-                mockToken,
-                singleWalletState,
-                10n,
-            );
+            expect(spy).toHaveBeenCalledWith(walletManager.mainSigner, mockToken, 10n);
 
             spy.mockRestore();
         });
@@ -757,6 +753,382 @@ describe("Test WalletManager", () => {
             expect(convertToGasSpy).toHaveBeenCalledWith(expect.any(Object), 5n);
 
             convertToGasSpy.mockRestore();
+        });
+    });
+
+    describe("Test tryRemoveWorker", () => {
+        beforeEach(() => {
+            vi.clearAllMocks();
+        });
+
+        it("should successfully remove worker after successful sweep", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const sweepWalletSpy = vi.spyOn(walletManager, "sweepWallet").mockResolvedValue({
+                name: "sweep-wallet",
+                status: { code: SpanStatusCode.OK },
+                attributes: {},
+                end: vi.fn(),
+            } as any);
+
+            const report = await walletManager.tryRemoveWorker(workerSigner);
+
+            expect(report.name).toBe("remove-wallet");
+            expect(report.status?.code).toBe(SpanStatusCode.OK);
+            expect(walletManager.workers.pendingRemove.size).toBe(0);
+            expect(sweepWalletSpy).toHaveBeenCalledWith(workerSigner);
+
+            sweepWalletSpy.mockRestore();
+        });
+
+        it("should add worker to pendingRemove on first sweep failure", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const sweepWalletSpy = vi.spyOn(walletManager, "sweepWallet").mockResolvedValue({
+                name: "sweep-wallet",
+                status: { code: SpanStatusCode.ERROR },
+                attributes: {},
+                end: vi.fn(),
+            } as any);
+
+            const report = await walletManager.tryRemoveWorker(workerSigner);
+
+            expect(report.name).toBe("remove-wallet");
+            expect(report.status?.code).toBe(SpanStatusCode.ERROR);
+            expect(walletManager.workers.pendingRemove.get(workerSigner)).toBe(1);
+
+            sweepWalletSpy.mockRestore();
+        });
+
+        it("should increment retry count on subsequent sweep failures", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const sweepWalletSpy = vi.spyOn(walletManager, "sweepWallet").mockResolvedValue({
+                name: "sweep-wallet",
+                status: { code: SpanStatusCode.ERROR },
+                attributes: {},
+                end: vi.fn(),
+            } as any);
+
+            // first failure
+            await walletManager.tryRemoveWorker(workerSigner);
+            expect(walletManager.workers.pendingRemove.get(workerSigner)).toBe(1);
+
+            // second failure
+            await walletManager.tryRemoveWorker(workerSigner);
+            expect(walletManager.workers.pendingRemove.get(workerSigner)).toBe(2);
+
+            sweepWalletSpy.mockRestore();
+        });
+
+        it("should remove worker from pendingRemove after max retries", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const sweepWalletSpy = vi.spyOn(walletManager, "sweepWallet").mockResolvedValue({
+                name: "sweep-wallet",
+                status: { code: SpanStatusCode.ERROR },
+                attributes: {},
+                end: vi.fn(),
+            } as any);
+
+            // set initial retry count to max - 1
+            walletManager.workers.pendingRemove.set(workerSigner, SWEEP_RETRY_COUNT);
+
+            // final failure attempt
+            await walletManager.tryRemoveWorker(workerSigner);
+            expect(walletManager.workers.pendingRemove.has(workerSigner)).toBe(false);
+
+            sweepWalletSpy.mockRestore();
+        });
+    });
+
+    describe("Test tryAddWorker", () => {
+        beforeEach(() => {
+            vi.clearAllMocks();
+        });
+
+        it("should successfully add worker after successful funding", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const fundWalletSpy = vi.spyOn(walletManager, "fundWallet").mockResolvedValue({
+                name: "fund-wallet",
+                status: { code: SpanStatusCode.OK },
+                attributes: {},
+                end: vi.fn(),
+            } as any);
+
+            const report = await walletManager.tryAddWorker(workerSigner);
+
+            expect(report.name).toBe("add-wallet");
+            expect(report.status?.code).toBe(SpanStatusCode.OK);
+            expect(
+                walletManager.workers.signers.has(workerSigner.account.address.toLowerCase()),
+            ).toBe(true);
+            expect(walletManager.workers.pendingAdd.size).toBe(0);
+            expect(fundWalletSpy).toHaveBeenCalledWith(workerSigner.account.address);
+
+            fundWalletSpy.mockRestore();
+        });
+
+        it("should add worker to pendingAdd on funding failure", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const fundWalletSpy = vi.spyOn(walletManager, "fundWallet").mockRejectedValue({
+                name: "fund-wallet",
+                status: { code: SpanStatusCode.ERROR },
+                attributes: {},
+                end: vi.fn(),
+            } as any);
+
+            const report = await walletManager.tryAddWorker(workerSigner);
+
+            expect(report.name).toBe("add-wallet");
+            expect(report.status?.code).toBe(SpanStatusCode.ERROR);
+            expect(
+                walletManager.workers.pendingAdd.has(workerSigner.account.address.toLowerCase()),
+            ).toBe(true);
+            expect(
+                walletManager.workers.signers.has(workerSigner.account.address.toLowerCase()),
+            ).toBe(false);
+
+            fundWalletSpy.mockRestore();
+        });
+    });
+
+    describe("Test retryPendingAddWorkers", () => {
+        beforeEach(() => {
+            vi.clearAllMocks();
+        });
+
+        it("should retry all pending add workers", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+
+            // setup pending add workers
+            const pendingAddWorker1 = RainSolverSigner.create(
+                privateKeyToAccount(
+                    "0x3234567890123456789012345678901234567890123456789012345678901234",
+                ),
+                multiWalletState,
+            );
+            const pendingAddWorker2 = RainSolverSigner.create(
+                privateKeyToAccount(
+                    "0x4234567890123456789012345678901234567890123456789012345678901234",
+                ),
+                multiWalletState,
+            );
+
+            walletManager.workers.pendingAdd.set(
+                pendingAddWorker1.account.address.toLowerCase(),
+                pendingAddWorker1,
+            );
+            walletManager.workers.pendingAdd.set(
+                pendingAddWorker2.account.address.toLowerCase(),
+                pendingAddWorker2,
+            );
+
+            // mock tryAddWorker
+            const tryAddWorkerSpy = vi
+                .spyOn(walletManager, "tryAddWorker")
+                .mockResolvedValueOnce({
+                    name: "add-wallet",
+                    status: { code: SpanStatusCode.OK },
+                    attributes: { worker: pendingAddWorker1.account.address },
+                    end: vi.fn(),
+                } as any)
+                .mockResolvedValueOnce({
+                    name: "add-wallet",
+                    status: { code: SpanStatusCode.OK },
+                    attributes: { worker: pendingAddWorker2.account.address },
+                    end: vi.fn(),
+                } as any);
+
+            const reports = await walletManager.retryPendingAddWorkers();
+
+            // verify reports
+            expect(reports).toHaveLength(2);
+            expect(reports[0].name).toBe("add-wallet");
+            expect(reports[1].name).toBe("add-wallet");
+
+            // verify tryAddWorker was called for each pending worker
+            expect(tryAddWorkerSpy).toHaveBeenCalledTimes(2);
+            expect(tryAddWorkerSpy).toHaveBeenCalledWith(pendingAddWorker1);
+            expect(tryAddWorkerSpy).toHaveBeenCalledWith(pendingAddWorker2);
+
+            tryAddWorkerSpy.mockRestore();
+        });
+
+        it("should handle empty pending add list", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const tryAddWorkerSpy = vi.spyOn(walletManager, "tryAddWorker");
+
+            const reports = await walletManager.retryPendingAddWorkers();
+
+            expect(reports).toHaveLength(0);
+            expect(tryAddWorkerSpy).not.toHaveBeenCalled();
+
+            tryAddWorkerSpy.mockRestore();
+        });
+
+        it("should handle failures during retry", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+
+            // setup a pending add worker
+            const pendingAddWorker = RainSolverSigner.create(
+                privateKeyToAccount(
+                    "0x3234567890123456789012345678901234567890123456789012345678901234",
+                ),
+                multiWalletState,
+            );
+            walletManager.workers.pendingAdd.set(
+                pendingAddWorker.account.address.toLowerCase(),
+                pendingAddWorker,
+            );
+
+            // mock tryAddWorker to fail
+            const tryAddWorkerSpy = vi
+                .spyOn(walletManager, "tryAddWorker")
+                .mockRejectedValue(new Error("Funding failed"));
+
+            await expect(walletManager.retryPendingAddWorkers()).rejects.toThrow("Funding failed");
+
+            tryAddWorkerSpy.mockRestore();
+        });
+    });
+
+    describe("Test retryPendingRemoveWorkers", () => {
+        beforeEach(() => {
+            vi.clearAllMocks();
+        });
+
+        it("should retry all pending remove workers", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+
+            // setup pending remove workers
+            const pendingRemoveWorker1 = workerSigner;
+            const pendingRemoveWorker2 = RainSolverSigner.create(
+                privateKeyToAccount(
+                    "0x3234567890123456789012345678901234567890123456789012345678901234",
+                ),
+                multiWalletState,
+            );
+
+            walletManager.workers.pendingRemove.set(pendingRemoveWorker1, 1);
+            walletManager.workers.pendingRemove.set(pendingRemoveWorker2, 1);
+
+            // mock tryRemoveWorker
+            const tryRemoveWorkerSpy = vi
+                .spyOn(walletManager, "tryRemoveWorker")
+                .mockResolvedValueOnce({
+                    name: "remove-wallet",
+                    status: { code: SpanStatusCode.OK },
+                    attributes: { worker: pendingRemoveWorker1.account.address },
+                    end: vi.fn(),
+                } as any)
+                .mockResolvedValueOnce({
+                    name: "remove-wallet",
+                    status: { code: SpanStatusCode.OK },
+                    attributes: { worker: pendingRemoveWorker2.account.address },
+                    end: vi.fn(),
+                } as any);
+
+            const reports = await walletManager.retryPendingRemoveWorkers();
+
+            // verify reports
+            expect(reports).toHaveLength(2);
+            expect(reports[0].name).toBe("remove-wallet");
+            expect(reports[1].name).toBe("remove-wallet");
+
+            // verify tryRemoveWorker was called for each pending worker
+            expect(tryRemoveWorkerSpy).toHaveBeenCalledTimes(2);
+            expect(tryRemoveWorkerSpy).toHaveBeenCalledWith(pendingRemoveWorker1);
+            expect(tryRemoveWorkerSpy).toHaveBeenCalledWith(pendingRemoveWorker2);
+
+            tryRemoveWorkerSpy.mockRestore();
+        });
+
+        it("should handle empty pending remove list", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const tryRemoveWorkerSpy = vi.spyOn(walletManager, "tryRemoveWorker");
+
+            const reports = await walletManager.retryPendingRemoveWorkers();
+
+            expect(reports).toHaveLength(0);
+            expect(tryRemoveWorkerSpy).not.toHaveBeenCalled();
+
+            tryRemoveWorkerSpy.mockRestore();
+        });
+
+        it("should handle failures during retry", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+
+            // setup a pending remove worker
+            walletManager.workers.pendingRemove.set(workerSigner, 1);
+
+            // mock tryRemoveWorker to fail
+            const tryRemoveWorkerSpy = vi
+                .spyOn(walletManager, "tryRemoveWorker")
+                .mockRejectedValue(new Error("Sweep failed"));
+
+            await expect(walletManager.retryPendingRemoveWorkers()).rejects.toThrow("Sweep failed");
+
+            tryRemoveWorkerSpy.mockRestore();
+        });
+    });
+
+    describe("Test assessWorkers", () => {
+        beforeEach(() => {
+            vi.clearAllMocks();
+        });
+
+        it("should identify and replace low balance workers", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+
+            // setup state with average gas cost
+            (multiWalletState as any).gasCosts = [parseUnits("0.01", 18)];
+
+            // mock a worker with low balance
+            const lowBalanceWorker = Array.from(walletManager.workers.signers.values())[0];
+            vi.spyOn(lowBalanceWorker, "getSelfBalance").mockResolvedValue(parseUnits("0.01", 18));
+
+            // mock the worker management methods
+            const tryRemoveWorkerSpy = vi
+                .spyOn(walletManager, "tryRemoveWorker")
+                .mockResolvedValue({
+                    name: "remove-wallet",
+                    status: { code: SpanStatusCode.OK },
+                    attributes: {},
+                    end: vi.fn(),
+                } as any);
+
+            const tryAddWorkerSpy = vi.spyOn(walletManager, "tryAddWorker").mockResolvedValue({
+                name: "add-wallet",
+                status: { code: SpanStatusCode.OK },
+                attributes: {},
+                end: vi.fn(),
+            } as any);
+
+            const reports = await walletManager.assessWorkers();
+
+            expect(reports).toHaveLength(1);
+            expect(reports[0]).toHaveProperty("removeWorkerReport");
+            expect(reports[0]).toHaveProperty("addWorkerReport");
+            expect(tryRemoveWorkerSpy).toHaveBeenCalledWith(lowBalanceWorker);
+            expect(tryAddWorkerSpy).toHaveBeenCalled();
+            expect(walletManager.workers.lastUsedDerivationIndex).toBeGreaterThan(3);
+
+            tryRemoveWorkerSpy.mockRestore();
+            tryAddWorkerSpy.mockRestore();
+        });
+
+        it("should not replace workers with sufficient balance", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+
+            // setup state with average gas cost
+            (multiWalletState as any).gasCosts = [parseUnits("0.01", 18)];
+
+            // mock workers with sufficient balance
+            for (const [, worker] of walletManager.workers.signers) {
+                vi.spyOn(worker, "getSelfBalance").mockResolvedValue(parseUnits("1", 18));
+            }
+
+            const reports = await walletManager.assessWorkers();
+
+            expect(reports).toHaveLength(0);
+            expect(walletManager.workers.lastUsedDerivationIndex).toBe(3);
         });
     });
 });

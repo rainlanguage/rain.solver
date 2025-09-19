@@ -1,16 +1,12 @@
 const { assert } = require("chai");
-const { ethers, viem } = require("hardhat");
-const { sendTransaction } = require("../src/tx");
-const { publicActions, walletActions } = require("viem");
+const { ethers } = require("hardhat");
 const { BridgeUnlimited, ConstantProductRPool } = require("sushi/tines");
 const { WNATIVE, WNATIVE_ADDRESS, Native, DAI } = require("sushi/currency");
 const { NativeWrapBridgePoolCode, LiquidityProviders, ConstantProductPoolCode } = require("sushi");
 const {
-    manageAccounts,
     rotateAccounts,
     getBatchEthBalance,
     getBatchTokenBalanceForAccount,
-    sweepToEth,
     fundOwnedOrders,
 } = require("../src/account");
 
@@ -44,174 +40,12 @@ describe("Test accounts", async function () {
         assert.deepEqual(result, expected);
     });
 
-    it("should manage accounts successfully", async function () {
-        const viemClient = {
-            chain: { id: 137 },
-            multicall: async () => [10n, 0n],
-            getGasPrice: async () => 3000000n,
-        };
-        const mnemonic = "test test test test test test test test test test test junk";
-
-        const mainAccount = (
-            await viem.getTestClient({ account: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" })
-        )
-            .extend(publicActions)
-            .extend(walletActions);
-        const acc1 = (
-            await viem.getTestClient({ account: "0xdF906eA18C6537C6379aC83157047F507FB37263" })
-        )
-            .extend(publicActions)
-            .extend(walletActions);
-        const acc2 = (
-            await viem.getTestClient({ account: "0xe7804c37c13166fF0b37F5aE0BB07A3aEbb6e245" })
-        )
-            .extend(publicActions)
-            .extend(walletActions);
-        await network.provider.send("hardhat_setBalance", [
-            mainAccount.account.address,
-            "0x4563918244F40000",
-        ]);
-        await network.provider.send("hardhat_setBalance", [
-            acc1.account.address,
-            "0x4563918244F40000",
-        ]);
-        await network.provider.send("hardhat_setBalance", [
-            acc2.account.address,
-            "0x4563918244F40000",
-        ]);
-        acc1.BOUNTY = ["0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270"];
-        acc2.BOUNTY = ["0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"];
-        mainAccount.sendTx = async (tx) => {
-            return await sendTransaction(mainAccount, tx);
-        };
-        acc1.sendTx = async (tx) => {
-            return await sendTransaction(acc1, tx);
-        };
-        acc2.sendTx = async (tx) => {
-            return await sendTransaction(acc2, tx);
-        };
-
-        mainAccount.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
-        acc1.BALANCE = ethers.BigNumber.from("10");
-        acc2.BALANCE = ethers.BigNumber.from("0");
-
-        const accounts = [acc1, acc2];
-        const config = {
-            chain: { id: 31337 },
-            rpc: ["test"],
-            watchedTokens: [],
-            viemClient,
-            accounts,
-            mainAccount,
-            testClientViem: viem.getTestClient,
-        };
-        const options = {
-            walletCount: 2,
-            topupAmount: "0.00000000001",
-            mnemonic,
-        };
-        const result = await manageAccounts(config, options, ethers.BigNumber.from("100"), 20, [], {
-            watchedTokens: new Map(),
-            client: viemClient,
-        });
-        const expectedAccounts = [
-            { address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" },
-            { address: "0x02484cb50AAC86Eae85610D6f4Bf026f30f6627D" },
-            { address: "0x08135Da0A343E492FA2d4282F2AE34c6c5CC1BbE" },
-        ];
-
-        assert.equal(result, 27);
-        assert.equal(mainAccount.account.address, expectedAccounts[0].address);
-    });
-
     it("should rotate accounts", async function () {
         const accounts = ["account1", "account2", "account3"];
         rotateAccounts(accounts);
 
         const expected = ["account2", "account3", "account1"];
         assert.deepEqual(accounts, expected);
-    });
-
-    it("should sweep to eth", async function () {
-        const { hexlify, randomBytes } = ethers.utils;
-        const chainId = 137;
-        const wallet = hexlify(randomBytes(20));
-        const poolAddress = hexlify(randomBytes(20));
-        const fromToken = DAI[chainId];
-        const native = Native.onChain(chainId);
-        const poolCodeMap = new Map([
-            [
-                poolAddress,
-                new ConstantProductPoolCode(
-                    new ConstantProductRPool(
-                        poolAddress,
-                        WNATIVE[chainId],
-                        fromToken,
-                        0.003,
-                        100000000000000000000000n,
-                        100000000000000000000000n,
-                    ),
-                    "QuickSwapV2",
-                    "QuickSwapV2 0.3%",
-                ),
-            ],
-            [
-                WNATIVE_ADDRESS[chainId],
-                new NativeWrapBridgePoolCode(
-                    new BridgeUnlimited(
-                        WNATIVE_ADDRESS[chainId],
-                        {
-                            address: "",
-                            name: native.name,
-                            symbol: native.symbol,
-                            chainId: chainId,
-                            decimals: 18,
-                        },
-                        WNATIVE[chainId],
-                        0,
-                        50_000,
-                    ),
-                    LiquidityProviders.NativeWrap,
-                ),
-            ],
-        ]);
-        const state = { gasPrice: 5n };
-        const config = {
-            chain: { id: chainId },
-            mainAccount: {
-                account: { address: wallet },
-                BOUNTY: [fromToken],
-                BALANCE: ethers.BigNumber.from("10000"),
-                getAddress: () => wallet,
-                getGasPrice: async () => 5n,
-                estimateGas: async () => 25n,
-                getBalance: async () => 10000n,
-                sendTransaction: async () => "0x1234",
-                sendTx: async () => "0x1234",
-                getTransactionCount: async () => 0,
-                waitForTransactionReceipt: async () => ({
-                    status: "success",
-                    effectiveGasPrice: ethers.BigNumber.from(5),
-                    gasUsed: ethers.BigNumber.from(10),
-                    logs: [],
-                    events: [],
-                }),
-            },
-            dataFetcher: {
-                fetchedPairPools: [],
-                fetchPoolsForToken: async () => {},
-                getCurrentPoolCodeMap: () => poolCodeMap,
-                web3Client: { getGasPrice: async () => 30_000_000n },
-            },
-            viemClient: {
-                chain: { id: chainId },
-                call: async () => ({ data: `0x${"1" + "0".repeat(18)}` }),
-                getTransactionCount: async () => 0,
-            },
-        };
-
-        await sweepToEth(config, state);
-        assert.deepEqual(config.mainAccount.BOUNTY, []);
     });
 
     it("should fund owned orders", async function () {

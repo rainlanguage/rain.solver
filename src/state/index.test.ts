@@ -179,4 +179,24 @@ describe("Test SharedState", () => {
         sharedState.watchToken(token2);
         expect(Array.from(sharedState.watchedTokens).length).toBe(2);
     });
+
+    describe("Test avgGasCost", () => {
+        it("should return 0 when gasCosts array is empty", () => {
+            const state = new SharedState(config);
+            expect(state.avgGasCost).toBe(0n);
+        });
+
+        it("should calculate average correctly for single gas cost", () => {
+            const state = new SharedState(config);
+            state.gasCosts = [100n];
+            expect(state.avgGasCost).toBe(100n);
+        });
+
+        it("should calculate average correctly for multiple gas costs", () => {
+            const state = new SharedState(config);
+            state.gasCosts = [100n, 200n, 300n];
+            // (100 + 200 + 300) / 3 = 200
+            expect(state.avgGasCost).toBe(200n);
+        });
+    });
 });

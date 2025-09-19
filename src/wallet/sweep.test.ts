@@ -1,9 +1,9 @@
-import { SharedState, TokenDetails } from "../state";
+import { maxUint256 } from "viem";
+import { TokenDetails } from "../state";
+import { RainDataFetcher } from "sushi";
 import { RainSolverSigner } from "../signer";
 import { describe, it, expect, vi, Mock, beforeEach } from "vitest";
 import { transferTokenFrom, transferRemainingGasFrom, convertToGas } from "./sweep";
-import { RainDataFetcher } from "sushi";
-import { maxUint256 } from "viem";
 
 vi.mock("viem", async (importOriginal) => {
     return {
@@ -227,7 +227,6 @@ describe("Test sweep functions", () => {
 
     describe("Test convertToGas", () => {
         const rp4Address = "0xrp4" as `0x${string}`;
-        let mockState: SharedState;
         let mockRouter: RainDataFetcher;
         let mockToken: TokenDetails;
 
@@ -248,7 +247,7 @@ describe("Test sweep functions", () => {
             } as any;
 
             // setup mock state
-            mockState = {
+            mockFromSigner.state = {
                 chainConfig: {
                     id: 1,
                     routeProcessors: {
@@ -263,7 +262,7 @@ describe("Test sweep functions", () => {
 
         it("should return early if token balance is zero", async () => {
             (mockFromSigner.readContract as Mock).mockResolvedValueOnce(0n); // balance check
-            const result = await convertToGas(mockFromSigner, mockToken, mockState);
+            const result = await convertToGas(mockFromSigner, mockToken);
 
             expect(result).toEqual({
                 amount: 0n,
@@ -299,7 +298,7 @@ describe("Test sweep functions", () => {
             // mock successful swap
             (mockFromSigner.sendTx as Mock).mockResolvedValue("0xswap");
 
-            await convertToGas(mockFromSigner, mockToken, mockState);
+            await convertToGas(mockFromSigner, mockToken);
 
             // verify approval transaction
             expect(mockFromSigner.writeContract).toHaveBeenCalledWith({
@@ -338,7 +337,6 @@ describe("Test sweep functions", () => {
             const result = await convertToGas(
                 mockFromSigner,
                 mockToken,
-                mockState,
                 2n, // set multiplier to 2 to make sure 50n * 2n > 100n (amountOutBI)
             );
 
@@ -382,7 +380,7 @@ describe("Test sweep functions", () => {
                 status: "success",
             });
 
-            const result = await convertToGas(mockFromSigner, mockToken, mockState);
+            const result = await convertToGas(mockFromSigner, mockToken);
 
             expect(result.status).toBe("Successfully swapped");
             expect(result.txHash).toBe("0xswap");
@@ -422,7 +420,7 @@ describe("Test sweep functions", () => {
                 status: "reverted",
             });
 
-            await expect(convertToGas(mockFromSigner, mockToken, mockState)).rejects.toMatchObject({
+            await expect(convertToGas(mockFromSigner, mockToken)).rejects.toMatchObject({
                 txHash: "0xfailed",
                 error: new Error(
                     "Failed to swap token to gas, reason: transaction reverted onchain",
@@ -465,7 +463,6 @@ describe("Test sweep functions", () => {
             const result = await convertToGas(
                 mockFromSigner,
                 mockToken,
-                mockState,
                 4n, // set multiplier to 4: 100n * 4n < 500n (amountOutBI), so swap should execute
             );
 

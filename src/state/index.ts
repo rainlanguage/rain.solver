@@ -187,6 +187,8 @@ export class SharedState {
     writeRpc?: RpcState;
     /** RainDataFetcher instance */
     dataFetcher: RainDataFetcher;
+    /** List of latest successful transactions gas costs */
+    gasCosts: bigint[] = [];
 
     private gasPriceWatcher: NodeJS.Timeout | undefined;
 
@@ -225,6 +227,11 @@ export class SharedState {
     get isWatchingGasPrice(): boolean {
         if (this.gasPriceWatcher) return true;
         else return false;
+    }
+
+    /** Returns the average gas cost of the successful transactions */
+    get avgGasCost(): bigint {
+        return this.gasCosts.reduce((a, b) => a + b, 0n) / BigInt(this.gasCosts.length || 1);
     }
 
     /**

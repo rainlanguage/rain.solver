@@ -1,20 +1,23 @@
 import assert from "assert";
 import { formatUnits } from "viem";
-import { SharedState, TokenDetails } from "../state";
 import { RainSolverSigner } from "../signer";
 import { PreAssembledSpan } from "../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
+import { SharedState, TokenDetails } from "../state";
 import { ErrorSeverity, errorSnapshot } from "../error";
 import { WalletConfig, WalletType, MainAccountDerivationIndex } from "./config";
+import { transferTokenFrom, transferRemainingGasFrom, convertToGas } from "./sweep";
 import {
     HDAccount,
     mnemonicToAccount,
     PrivateKeyAccount,
     privateKeyToAccount,
 } from "viem/accounts";
-import { transferTokenFrom, transferRemainingGasFrom, convertToGas } from "./sweep";
 
 export * from "./config";
+
+/** Specifies the number of sweep retries that need to take place for a wallet before being disposed */
+export const SWEEP_RETRY_COUNT = 3 as const;
 
 /**
  * Provides functionalities to manages wallet operations for RainSolver during runtime, such as:
@@ -33,12 +36,26 @@ export * from "./config";
  * - Each worker wallet is funded from the main wallet
  */
 export class WalletManager {
+    /** The shared state instance */
     readonly state: SharedState;
+    /** Wallet manager configurations*/
     readonly config: WalletConfig;
+    /** The main wallet signer */
     readonly mainSigner: RainSolverSigner;
+    /** The main wallet in viem account format */
     readonly mainWallet: HDAccount | PrivateKeyAccount;
+    /**
+     * Contains details of the worker wallets that include maps of worker
+     * wallets in circulation, pending add list, and pending remove list
+     */
     readonly workers: {
+        /** Active worker wallets in circulation */
         readonly signers: Map<string, RainSolverSigner>;
+        /** Wallets to be added in circulation that require funding to then go under active workers */
+        readonly pendingAdd: Map<string, RainSolverSigner>;
+        /** Disposed wallets that still have some token holdings that need to be swept before being completely disposed */
+        readonly pendingRemove: Map<RainSolverSigner, number>;
+        /** The last derivation index used for worker wallets */
         lastUsedDerivationIndex: number;
     };
 
@@ -50,6 +67,8 @@ export class WalletManager {
             // set workers to an empty frozen obj when in single wallet mode
             this.workers = Object.freeze({
                 signers: Object.freeze(new Map()),
+                pendingAdd: Object.freeze(new Map()),
+                pendingRemove: Object.freeze(new Map()),
                 lastUsedDerivationIndex: NaN,
             });
         } else {
@@ -69,6 +88,8 @@ export class WalletManager {
             }
             this.workers = {
                 signers,
+                pendingAdd: new Map(),
+                pendingRemove: new Map(),
                 lastUsedDerivationIndex,
             };
             assert(
@@ -353,6 +374,11 @@ export class WalletManager {
                 code: SpanStatusCode.ERROR,
                 message: "Failed to sweep some tokens, it will try again later",
             });
+        } else {
+            report.setStatus({
+                code: SpanStatusCode.OK,
+                message: "Successfully swept wallet tokens",
+            });
         }
 
         report.end();
@@ -368,7 +394,7 @@ export class WalletManager {
      * received amount min, status, and expected gas cost
      */
     async convertToGas(token: TokenDetails, swapCostMultiplier?: bigint) {
-        return convertToGas(this.mainSigner, token, this.state, swapCostMultiplier);
+        return convertToGas(this.mainSigner, token, swapCostMultiplier);
     }
 
     /**
@@ -453,5 +479,119 @@ export class WalletManager {
 
         report.end();
         return report;
+    }
+
+    /**
+     * Sweeps the given wallet's tokens back to the main wallet, if the sweep fails,
+     * the wallet goes into pending remove list for future retries
+     * @param worker - The worker wallet to remove
+     * @returns The report of the removal process
+     */
+    async tryRemoveWorker(worker: RainSolverSigner): Promise<PreAssembledSpan> {
+        const report = await this.sweepWallet(worker);
+        report.name = "remove-wallet";
+        if (report.status?.code === SpanStatusCode.ERROR) {
+            const tryCount = this.workers.pendingRemove.get(worker);
+            if (typeof tryCount === "number") {
+                if (tryCount >= SWEEP_RETRY_COUNT) {
+                    this.workers.pendingRemove.delete(worker);
+                } else {
+                    this.workers.pendingRemove.set(worker, tryCount + 1);
+                }
+            } else {
+                this.workers.pendingRemove.set(worker, 1);
+            }
+        }
+
+        return report;
+    }
+
+    /**
+     * Adds a new worker wallet into circulation, if funding the new wallet
+     * fails, it goes into workers pending add list for funding retry
+     * @param worker - The worker wallet to add
+     * @returns The report of the addition process
+     */
+    async tryAddWorker(worker: RainSolverSigner): Promise<PreAssembledSpan> {
+        const report = await this.fundWallet(worker.account.address)
+            .then((report) => {
+                this.workers.signers.set(worker.account.address.toLowerCase(), worker);
+                return report;
+            })
+            .catch((report) => {
+                this.workers.pendingAdd.set(worker.account.address.toLowerCase(), worker);
+                return report as PreAssembledSpan;
+            });
+        report.name = "add-wallet";
+
+        return report;
+    }
+
+    /**
+     * Retries to resolve the pending workers for removal and add lists
+     * @returns The reports of the retry process
+     */
+    async retryPendingAddWorkers(): Promise<PreAssembledSpan[]> {
+        const pendingAddReports = [];
+        for (const [, worker] of this.workers.pendingAdd) {
+            pendingAddReports.push(await this.tryAddWorker(worker));
+        }
+
+        return pendingAddReports;
+    }
+
+    /**
+     * Retries to resolve the pending workers for removal and add lists
+     * @returns The reports of the retry process
+     */
+    async retryPendingRemoveWorkers(): Promise<PreAssembledSpan[]> {
+        const pendingRemoveReports = [];
+        for (const [worker] of this.workers.pendingRemove) {
+            pendingRemoveReports.push(await this.tryRemoveWorker(worker));
+        }
+
+        return pendingRemoveReports;
+    }
+
+    /**
+     * Identifies wallets that need to be removed from circulation and replaces them with new ones
+     * @returns The reports of the removal and addition processes
+     */
+    async assessWorkers(): Promise<
+        {
+            removeWorkerReport: PreAssembledSpan;
+            addWorkerReport: PreAssembledSpan;
+        }[]
+    > {
+        // identify wallets that need to be removed from cisrculation
+        // thie criteria is if their current gas balance is below avg tx gas cost
+        const removeList = [];
+        for (const [, worker] of this.workers.signers) {
+            const balance = await worker.getSelfBalance();
+            if (balance < this.state.avgGasCost * 4n) {
+                removeList.push(worker);
+            }
+        }
+
+        // remove the identified wallet and replace them with new ones
+        const reports = [];
+        for (const worker of removeList) {
+            this.workers.signers.delete(worker.account.address.toLowerCase());
+
+            // handle the worker removal
+            const removeWorkerReport = await this.tryRemoveWorker(worker);
+
+            // handle adding the new wallet
+            const wallet = mnemonicToAccount(this.config.key, {
+                addressIndex: ++this.workers.lastUsedDerivationIndex,
+            });
+            const newWorker = RainSolverSigner.create(wallet, this.state);
+            const addWorkerReport = await this.tryAddWorker(newWorker);
+
+            // push the reports into the list
+            reports.push({ removeWorkerReport, addWorkerReport });
+        }
+
+        return reports;
     }
 }

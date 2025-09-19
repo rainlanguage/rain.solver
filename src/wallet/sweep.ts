@@ -1,8 +1,8 @@
 import { RPoolFilter } from "../utils";
+import { TokenDetails } from "../state";
 import { ChainId, Router } from "sushi";
 import { RainSolverSigner } from "../signer";
 import { Native, Token } from "sushi/currency";
-import { SharedState, TokenDetails } from "../state";
 import { encodeFunctionData, erc20Abi, maxUint256 } from "viem";
 
 /**
@@ -125,13 +125,12 @@ export async function transferRemainingGasFrom(from: RainSolverSigner, to: `0x${
 export async function convertToGas(
     from: RainSolverSigner,
     token: TokenDetails,
-    state: SharedState,
     swapCostMultiplier = 25n, // defaults to 25 times greater than swap transaction gas cost
 ) {
-    const rp4Address = state.chainConfig.routeProcessors["4"] as `0x${string}`;
-    const buyToken = Native.onChain(state.chainConfig.id);
+    const rp4Address = from.state.chainConfig.routeProcessors["4"] as `0x${string}`;
+    const buyToken = Native.onChain(from.state.chainConfig.id);
     const sellToken = new Token({
-        chainId: state.chainConfig.id,
+        chainId: from.state.chainConfig.id,
         decimals: token.decimals,
         address: token.address,
         symbol: token.symbol,
@@ -173,15 +172,15 @@ export async function convertToGas(
     }
 
     // find best route and build swap contract call params
-    const { pcMap, route } = await state.dataFetcher.findBestRoute(
-        state.chainConfig.id as ChainId,
+    const { pcMap, route } = await from.state.dataFetcher.findBestRoute(
+        from.state.chainConfig.id as ChainId,
         sellToken,
         buyToken,
         balance,
-        state.gasPrice,
+        from.state.gasPrice,
         true,
         undefined,
-        state.liquidityProviders,
+        from.state.liquidityProviders,
         RPoolFilter,
     );
     const rpParams = Router.routeProcessor4Params(
