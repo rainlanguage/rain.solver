@@ -32,6 +32,28 @@ export const PANIC_REASONS = {
     0x51: "called a zero-initialized variable of internal function type",
 } as const;
 
+/**
+ * Represents a custom error type for the Rain Solver system.
+ *
+ * This error class extends the native `Error` object, providing additional context
+ * through a specific error type and an optional cause.
+ * The optional `cause` property can be used to attach the original error or any
+ * relevant context that led to this error.
+ *
+ * @example
+ * ```typescript
+ * throw new RainSolverError("msg", originalError);
+ * ```
+ */
+export class RainSolverBaseError extends Error {
+    cause?: any;
+    constructor(message: string, cause?: any) {
+        super(message);
+        this.cause = cause;
+        this.name = "RainSolverBaseError";
+    }
+}
+
 /** Specifies error severity for otel reports */
 export enum ErrorSeverity {
     LOW = "LOW",
