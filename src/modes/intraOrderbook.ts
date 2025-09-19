@@ -5,14 +5,8 @@ import { containsNodeError, errorSnapshot } from "../error";
 import { getWithdrawEnsureRainlang, parseRainlang } from "../task";
 import { BaseError, erc20Abi, ExecutionRevertedError, PublicClient } from "viem";
 import { estimateProfit, scale18, withBigintSerializer, extendSpanAttributes } from "../utils";
-import {
-    SpanAttrs,
-    BotConfig,
-    ViemClient,
-    DryrunResult,
-    BundledOrders,
-    TakeOrderDetails,
-} from "../types";
+import { SpanAttrs, BotConfig, ViemClient, DryrunResult } from "../types";
+import { BundledOrders, TakeOrderDetails } from "../order";
 
 const obInterface = new ethers.utils.Interface(orderbookAbi);
 
@@ -351,10 +345,11 @@ export async function findOpp({
                 v.takeOrder.order.owner.toLowerCase() !==
                     orderPairObject.takeOrders[0].takeOrder.order.owner.toLowerCase() &&
                 // only orders that (priceA x priceB < 1) can be profitbale
-                v.quote!.ratio.mul(orderPairObject.takeOrders[0].quote!.ratio).div(ONE).lt(ONE),
+                (v.quote!.ratio * orderPairObject.takeOrders[0].quote!.ratio) / ONE.toBigInt() <
+                    ONE.toBigInt(),
         )
         .sort((a, b) =>
-            a.quote!.ratio.lt(b.quote!.ratio) ? -1 : a.quote!.ratio.gt(b.quote!.ratio) ? 1 : 0,
+            a.quote!.ratio < b.quote!.ratio ? -1 : a.quote!.ratio > b.quote!.ratio ? 1 : 0,
         );
     if (!opposingOrders || !opposingOrders.length) throw undefined;
 

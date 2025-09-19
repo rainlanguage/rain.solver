@@ -22,7 +22,7 @@ const { publicActions, walletActions, createPublicClient } = require("viem");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
 const { SEMRESATTRS_SERVICE_NAME } = require("@opentelemetry/semantic-conventions");
 const { BasicTracerProvider, BatchSpanProcessor } = require("@opentelemetry/sdk-trace-base");
-const { prepareOrdersForRound, getOrderbookOwnersProfileMapFromSg } = require("../../src/order");
+const { OrderManager } = require("../../src/order");
 const {
     arbDeploy,
     encodeMeta,
@@ -36,6 +36,7 @@ const {
     rainterpreterParserNPE2Deploy,
     rainterpreterExpressionDeployerNPE2Deploy,
 } = require("../utils");
+const { SharedState } = require("../../src/state");
 
 // run tests on each network in the provided data
 for (let i = 0; i < testData.length; i++) {
@@ -80,7 +81,19 @@ for (let i = 0; i < testData.length; i++) {
 
         config.rpc = [rpc];
         const rpcState = new RpcState(config.rpc.map((v) => ({ url: v })));
-        const state = { rpc: rpcState };
+        const state = new SharedState({
+            chainConfig: config,
+            client: {},
+            dispair: {},
+            rpcState,
+            subgraphConfig: {
+                subgraphs: [],
+            },
+            orderManagerConfig: {
+                ownerLimits: {},
+                quoteGas: 1_000_000n,
+            },
+        });
         const dataFetcherPromise = RainDataFetcher.init(
             chainId,
             createPublicClient({
@@ -263,10 +276,11 @@ for (let i = 0; i < testData.length; i++) {
                     store: store.address,
                     deployer: deployer.address,
                 };
-                orders = prepareOrdersForRound(
-                    await getOrderbookOwnersProfileMapFromSg(orders, viemClient, []),
-                    false,
-                );
+
+                const orderManager = new OrderManager(state);
+                await orderManager.addOrders(orders);
+                orders = orderManager.getNextRoundOrders(false);
+
                 state.gasPrice = await bot.getGasPrice();
                 const { reports } = await clear(config, orders, state, tracer, ctx);
 
@@ -572,23 +586,25 @@ for (let i = 0; i < testData.length; i++) {
                     store: store.address,
                     deployer: deployer.address,
                 };
-                orders = prepareOrdersForRound(
-                    await getOrderbookOwnersProfileMapFromSg(orders, viemClient, []),
-                    false,
-                );
+
+                const orderManager = new OrderManager(state);
+                await orderManager.addOrders(orders);
+                orders = orderManager.getNextRoundOrders(false);
+
                 // mock init quotes
                 orders.forEach((ob) => {
                     ob.forEach((pair) => {
                         pair.takeOrders.forEach((takeOrder) => {
                             takeOrder.quote = {
-                                ratio: ethers.constants.Zero,
+                                ratio: ethers.constants.Zero.toBigInt(),
                                 maxOutput: tokens
                                     .find(
                                         (t) =>
                                             t.contract.address.toLowerCase() ===
                                             pair.sellToken.toLowerCase(),
                                     )
-                                    ?.depositAmount.mul("1" + "0".repeat(18 - ob.decimals)),
+                                    ?.depositAmount.mul("1" + "0".repeat(18 - ob.decimals))
+                                    .toBigInt(),
                             };
                         });
                     });
@@ -921,24 +937,25 @@ for (let i = 0; i < testData.length; i++) {
                     store: store.address,
                     deployer: deployer.address,
                 };
-                orders = prepareOrdersForRound(
-                    await getOrderbookOwnersProfileMapFromSg(orders, viemClient, []),
-                    false,
-                );
+
+                const orderManager = new OrderManager(state);
+                await orderManager.addOrders(orders);
+                orders = orderManager.getNextRoundOrders(false);
 
                 // mock init quotes
                 orders.forEach((ob) => {
                     ob.forEach((pair) => {
                         pair.takeOrders.forEach((takeOrder) => {
                             takeOrder.quote = {
-                                ratio: ethers.constants.Zero,
+                                ratio: ethers.constants.Zero.toBigInt(),
                                 maxOutput: tokens
                                     .find(
                                         (t) =>
                                             t.contract.address.toLowerCase() ===
                                             pair.sellToken.toLowerCase(),
                                     )
-                                    ?.depositAmount.mul("1" + "0".repeat(18 - ob.decimals)),
+                                    ?.depositAmount.mul("1" + "0".repeat(18 - ob.decimals))
+                                    .toBigInt(),
                             };
                         });
                     });

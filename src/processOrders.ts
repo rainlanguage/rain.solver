@@ -3,7 +3,6 @@ import { PublicClient } from "viem";
 import { getQuoteGas } from "./gas";
 import { SharedState } from "./state";
 import { Token } from "sushi/currency";
-import { quoteSingleOrder } from "./order";
 import { createViemClient } from "./client";
 import { arbAbis, orderbookAbi } from "./abis";
 import { getSigner, handleTransaction } from "./tx";
@@ -15,14 +14,8 @@ import { ChainId, RainDataFetcher, RainDataFetcherOptions } from "sushi";
 import { ErrorSeverity, errorSnapshot, isTimeout, KnownErrors } from "./error";
 import { toNumber, getEthPrice, PoolBlackList, getMarketQuote } from "./utils";
 import { BotConfig, ProcessPairHaltReason, ProcessPairReportStatus } from "./types";
-import {
-    Report,
-    SpanAttrs,
-    ViemClient,
-    RoundReport,
-    BundledOrders,
-    ProcessPairResult,
-} from "./types";
+import { Report, SpanAttrs, ViemClient, RoundReport, ProcessPairResult } from "./types";
+import { BundledOrders, quoteSingleOrder } from "./order";
 
 /**
  * Main function that processes all given orders and tries clearing them against onchain liquidity and reports the result
@@ -437,11 +430,11 @@ export async function processPair(args: {
     try {
         await quoteSingleOrder(
             orderPairObject,
-            viemClient as any as ViemClient,
+            viemClient,
             undefined,
             isE2eTest ? config.quoteGas : await getQuoteGas(config, orderPairObject),
         );
-        if (orderPairObject.takeOrders[0].quote?.maxOutput.isZero()) {
+        if (orderPairObject.takeOrders[0].quote?.maxOutput === 0n) {
             result.report = {
                 status: ProcessPairReportStatus.ZeroOutput,
                 tokenPair: pair,

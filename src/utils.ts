@@ -6,7 +6,7 @@ import BlackList from "./pool-blacklist.json";
 import { isBytes, isHexString } from "ethers/lib/utils";
 import { BigNumber, BigNumberish, ethers } from "ethers";
 import { erc20Abi, parseEventLogs, TransactionReceipt } from "viem";
-import { TakeOrderDetails, ViemClient, BotConfig } from "./types";
+import { ViemClient, BotConfig } from "./types";
 import { RainDataFetcher, DataFetcherOptions, LiquidityProviders, Router } from "sushi/router";
 import { TokenDetails } from "./state";
 
@@ -443,42 +443,6 @@ export function shuffleArray(array: any[]) {
 }
 
 /**
- * Get a TakeOrder type consumable by orderbook Quote lib for quoting orders
- */
-export function getQuoteConfig(orderDetails: TakeOrderDetails) {
-    return {
-        order: {
-            owner: orderDetails.takeOrder.order.owner as `0x${string}`,
-            nonce: orderDetails.takeOrder.order.nonce as `0x${string}`,
-            evaluable: {
-                interpreter: orderDetails.takeOrder.order.evaluable.interpreter as `0x${string}`,
-                store: orderDetails.takeOrder.order.evaluable.store as `0x${string}`,
-                bytecode: orderDetails.takeOrder.order.evaluable.bytecode as `0x${string}`,
-            },
-            validInputs: orderDetails.takeOrder.order.validInputs.map((input: any) => ({
-                token: input.token as `0x${string}`,
-                decimals: input.decimals,
-                vaultId: BigInt(
-                    typeof input.vaultId == "string" ? input.vaultId : input.vaultId.toHexString(),
-                ),
-            })),
-            validOutputs: orderDetails.takeOrder.order.validOutputs.map((output: any) => ({
-                token: output.token as `0x${string}`,
-                decimals: output.decimals,
-                vaultId: BigInt(
-                    typeof output.vaultId == "string"
-                        ? output.vaultId
-                        : output.vaultId.toHexString(),
-                ),
-            })),
-        },
-        inputIOIndex: BigInt(orderDetails.takeOrder.inputIOIndex),
-        outputIOIndex: BigInt(orderDetails.takeOrder.outputIOIndex),
-        signedContext: orderDetails.takeOrder.signedContext,
-    };
-}
-
-/**
  * Clones the given object
  * @param obj - Object to clone
  * @returns A new copy of the object
@@ -571,12 +535,14 @@ export function estimateProfit(
             const orderOutput = maxInput;
             const orderInput = maxInput!.mul(orderPairObject.takeOrders[0].quote.ratio).div(One);
 
-            let opposingMaxInput = orderPairObject.takeOrders[0].quote.ratio.isZero()
-                ? ethers.constants.MaxUint256
-                : maxInput!.mul(orderPairObject.takeOrders[0].quote.ratio).div(One);
-            const opposingMaxIORatio = orderPairObject.takeOrders[0].quote.ratio.isZero()
-                ? ethers.constants.MaxUint256
-                : One.mul(One).div(orderPairObject.takeOrders[0].quote.ratio);
+            let opposingMaxInput =
+                orderPairObject.takeOrders[0].quote.ratio === 0n
+                    ? ethers.constants.MaxUint256
+                    : maxInput!.mul(orderPairObject.takeOrders[0].quote.ratio).div(One);
+            const opposingMaxIORatio =
+                orderPairObject.takeOrders[0].quote.ratio === 0n
+                    ? ethers.constants.MaxUint256
+                    : One.mul(One).div(orderPairObject.takeOrders[0].quote.ratio);
 
             let opposingInput = ethers.constants.Zero;
             let opposingOutput = ethers.constants.Zero;
@@ -586,7 +552,7 @@ export function estimateProfit(
                 if (opposingMaxIORatio.gte(order.ratio)) {
                     const maxOut = opposingMaxInput.lt(order.maxOutput)
                         ? opposingMaxInput
-                        : order.maxOutput;
+                        : BigNumber.from(order.maxOutput);
                     opposingOutput = opposingOutput.add(maxOut);
                     opposingInput = opposingInput.add(maxOut.mul(order.ratio).div(One));
                     opposingMaxInput = opposingMaxInput.sub(maxOut);
@@ -598,30 +564,34 @@ export function estimateProfit(
         }
         // intra orderbook
         else {
-            const orderMaxInput = orderPairObject.takeOrders[0].quote.maxOutput
+            const orderMaxInput = BigNumber.from(orderPairObject.takeOrders[0].quote.maxOutput)
                 .mul(orderPairObject.takeOrders[0].quote.ratio)
                 .div(One);
-            const opposingMaxInput = opposingOrders.quote.maxOutput
+            const opposingMaxInput = BigNumber.from(opposingOrders.quote.maxOutput)
                 .mul(opposingOrders.quote.ratio)
                 .div(One);
 
-            const orderOutput = opposingOrders.quote.ratio.isZero()
-                ? orderPairObject.takeOrders[0].quote.maxOutput
-                : orderPairObject.takeOrders[0].quote.maxOutput.lte(opposingMaxInput)
-                  ? orderPairObject.takeOrders[0].quote.maxOutput
-                  : opposingMaxInput;
+            const orderOutput =
+                opposingOrders.quote.ratio === 0n
+                    ? BigNumber.from(orderPairObject.takeOrders[0].quote.maxOutput)
+                    : BigNumber.from(orderPairObject.takeOrders[0].quote.maxOutput).lte(
+                            opposingMaxInput,
+                        )
+                      ? BigNumber.from(orderPairObject.takeOrders[0].quote.maxOutput)
+                      : opposingMaxInput;
             const orderInput = orderOutput.mul(orderPairObject.takeOrders[0].quote.ratio).div(One);
 
-            const opposingOutput = opposingOrders.quote.ratio.isZero()
-                ? opposingOrders.quote.maxOutput
-                : orderMaxInput.lte(opposingOrders.quote.maxOutput)
-                  ? orderMaxInput
-                  : opposingOrders.quote.maxOutput;
+            const opposingOutput =
+                opposingOrders.quote.ratio === 0n
+                    ? BigNumber.from(opposingOrders.quote.maxOutput)
+                    : orderMaxInput.lte(opposingOrders.quote.maxOutput)
+                      ? orderMaxInput
+                      : BigNumber.from(opposingOrders.quote.maxOutput);
             const opposingInput = opposingOutput.mul(opposingOrders.quote.ratio).div(One);
 
             let outputProfit = orderOutput.sub(opposingInput);
             if (outputProfit.lt(0)) outputProfit = ethers.constants.Zero;
-            outputProfit = outputProfit.mul(outputToEthPrice).div(One);
+            outputProfit = outputProfit.mul(outputToEthPrice!).div(One);
 
             let inputProfit = opposingOutput.sub(orderInput);
             if (inputProfit.lt(0)) inputProfit = ethers.constants.Zero;

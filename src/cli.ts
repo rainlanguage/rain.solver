@@ -8,18 +8,11 @@ import { sleep, withBigintSerializer } from "./utils";
 import { ErrorSeverity, errorSnapshot } from "./error";
 import { getDataFetcher, getMetaInfo } from "./client";
 import { SharedState, SharedStateConfig } from "./state";
-import { SgOrder, SubgraphManager, SubgraphConfig } from "./subgraph";
+import { BotConfig, ViemClient, ProcessPairReportStatus } from "./types";
+import { OrderManager, BundledOrders } from "./order";
+import { SubgraphManager, SubgraphConfig } from "./subgraph";
 import { trace, Tracer, context, Context, SpanStatusCode } from "@opentelemetry/api";
-import { BotConfig, ViemClient, BundledOrders, ProcessPairReportStatus } from "./types";
 import { sweepToEth, manageAccounts, sweepToMainWallet, getBatchEthBalance } from "./account";
-import {
-    getOrdersTokens,
-    downscaleProtection,
-    prepareOrdersForRound,
-    getOrderbookOwnersProfileMapFromSg,
-    handleAddOrderbookOwnersProfileMap,
-    handleRemoveOrderbookOwnersProfileMap,
-} from "./order";
 
 config();
 
@@ -166,8 +159,7 @@ export const main = async (argv: any, version?: string) => {
             }
         });
 
-    // init subgraph manager and check status and fetch all orders
-    let ordersDetails: SgOrder[] = [];
+    // init subgraph manager and check status
     const sgManagerConfig = SubgraphConfig.tryFromAppOptions(options);
     const subgraphManager = new SubgraphManager(sgManagerConfig);
     try {
@@ -178,24 +170,19 @@ export const main = async (argv: any, version?: string) => {
         error.forEach((statusReport: any) => logger.exportPreAssembledSpan(statusReport));
         throw new Error("All subgraphs have indexing error");
     }
-    try {
-        const { orders, report } = await subgraphManager.fetchAll();
-        const tokens = getOrdersTokens(orders);
-        ordersDetails = orders;
-        config.watchedTokens = tokens;
-        logger.exportPreAssembledSpan(report);
-    } catch (error: any) {
-        // export the report and throw
-        logger.exportPreAssembledSpan(error);
-        throw new Error("Failed to get order details from subgraphs");
-    }
 
-    const orderbooksOwnersProfileMap = await getOrderbookOwnersProfileMapFromSg(
-        ordersDetails,
-        config.viemClient as any as ViemClient,
-        config.watchedTokens!,
-        options.ownerProfile,
-    );
+    // init order manager
+    const orderManager = await (async () => {
+        try {
+            const { orderManager, report } = await OrderManager.init(state, subgraphManager);
+            logger.exportPreAssembledSpan(report);
+            return orderManager;
+        } catch (error: any) {
+            // export the report and throw
+            logger.exportPreAssembledSpan(error);
+            throw new Error("Failed to get order details from subgraphs");
+        }
+    })();
 
     const day = 24 * 60 * 60 * 1000;
     let lastGasReset = Date.now() + day;
@@ -280,7 +267,7 @@ export const main = async (argv: any, version?: string) => {
                 update = true;
             }
             try {
-                const bundledOrders = prepareOrdersForRound(orderbooksOwnersProfileMap, true);
+                const bundledOrders = orderManager.getNextRoundOrders();
                 if (update) {
                     config.dataFetcher = await getDataFetcher(state);
                 }
@@ -429,36 +416,8 @@ export const main = async (argv: any, version?: string) => {
             }
 
             try {
-                const { result, report } = await subgraphManager.syncOrders();
+                const report = await orderManager.sync();
                 logger.exportPreAssembledSpan(report, roundCtx); // export sync report
-
-                let ordersDidChange = false;
-                for (const key in result) {
-                    const res = result[key];
-                    if (res.addOrders.length || res.removeOrders.length) {
-                        ordersDidChange = true;
-                    }
-                    await handleAddOrderbookOwnersProfileMap(
-                        orderbooksOwnersProfileMap,
-                        res.addOrders.map((v) => v.order),
-                        config.viemClient as any as ViemClient,
-                        config.watchedTokens!,
-                        options.ownerProfile,
-                    );
-                    await handleRemoveOrderbookOwnersProfileMap(
-                        orderbooksOwnersProfileMap,
-                        res.removeOrders.map((v) => v.order),
-                    );
-                }
-
-                // in case there are new orders or removed order, re evaluate owners limits
-                if (ordersDidChange) {
-                    await downscaleProtection(
-                        orderbooksOwnersProfileMap,
-                        config.viemClient as any as ViemClient,
-                        options.ownerProfile,
-                    );
-                }
             } catch {
                 /**/
             }

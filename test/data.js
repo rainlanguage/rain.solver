@@ -88,8 +88,8 @@ const orderPairObject2 = {
         {
             id: hexlify(randomBytes(32)),
             quote: {
-                maxOutput: vaultBalance1,
-                ratio: ethers.constants.Zero,
+                maxOutput: vaultBalance1.toBigInt(),
+                ratio: ethers.constants.Zero.toBigInt(),
             },
             takeOrder: {
                 order: {
@@ -123,8 +123,8 @@ const orderPairObject2 = {
         {
             id: hexlify(randomBytes(32)),
             quote: {
-                maxOutput: vaultBalance2,
-                ratio: ethers.constants.Zero,
+                maxOutput: vaultBalance2.toBigInt(),
+                ratio: ethers.constants.Zero.toBigInt(),
             },
             takeOrder: {
                 order: {
@@ -171,8 +171,8 @@ const orderPairObject1 = {
         {
             id: hexlify(randomBytes(32)),
             quote: {
-                maxOutput: vaultBalance,
-                ratio: ethers.utils.parseUnits("0.4"),
+                maxOutput: vaultBalance.toBigInt(),
+                ratio: ethers.utils.parseUnits("0.4").toBigInt(),
             },
             takeOrder: {
                 order: {
@@ -219,8 +219,8 @@ const opposingOrderPairObject = {
         {
             id: hexlify(randomBytes(32)),
             quote: {
-                maxOutput: vaultBalance,
-                ratio: ethers.utils.parseUnits("1.5"),
+                maxOutput: vaultBalance.toBigInt(),
+                ratio: ethers.utils.parseUnits("1.5").toBigInt(),
             },
             takeOrder: {
                 order: {

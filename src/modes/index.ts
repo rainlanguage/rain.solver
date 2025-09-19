@@ -6,7 +6,8 @@ import { extendSpanAttributes } from "../utils";
 import { findOpp as findInterObOpp } from "./interOrderbook";
 import { findOpp as findIntraObOpp } from "./intraOrderbook";
 import { findOppWithRetries as findRpOpp } from "./routeProcessor";
-import { BotConfig, BundledOrders, ViemClient, DryrunResult, SpanAttrs } from "../types";
+import { BotConfig, ViemClient, DryrunResult, SpanAttrs } from "../types";
+import { BundledOrders } from "../order";
 
 /**
  * The main entrypoint for the main logic to find opps.

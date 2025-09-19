@@ -4,7 +4,7 @@ import { BigNumber, Contract, ethers } from "ethers";
 import { containsNodeError, errorSnapshot } from "../error";
 import { getBountyEnsureRainlang, parseRainlang } from "../task";
 import { BaseError, ExecutionRevertedError, PublicClient } from "viem";
-import { BotConfig, BundledOrders, ViemClient, DryrunResult, SpanAttrs } from "../types";
+import { BotConfig, ViemClient, DryrunResult, SpanAttrs } from "../types";
 import {
     ONE18,
     scale18To,
@@ -12,6 +12,7 @@ import {
     withBigintSerializer,
     extendSpanAttributes,
 } from "../utils";
+import { BundledOrders } from "../order";
 
 const obInterface = new ethers.utils.Interface(orderbookAbi);
 
@@ -53,18 +54,20 @@ export async function dryrun({
     const maximumInput = scale18To(maximumInputFixed, orderPairObject.sellTokenDecimals);
     spanAttributes["maxInput"] = maximumInput.toString();
 
-    const opposingMaxInput = orderPairObject.takeOrders[0].quote!.ratio.isZero()
-        ? ethers.constants.MaxUint256
-        : scale18To(
-              maximumInputFixed.mul(orderPairObject.takeOrders[0].quote!.ratio).div(ONE18),
-              orderPairObject.buyTokenDecimals,
-          );
+    const opposingMaxInput =
+        orderPairObject.takeOrders[0].quote!.ratio === 0n
+            ? ethers.constants.MaxUint256
+            : scale18To(
+                  maximumInputFixed.mul(orderPairObject.takeOrders[0].quote!.ratio).div(ONE18),
+                  orderPairObject.buyTokenDecimals,
+              );
 
-    const opposingMaxIORatio = orderPairObject.takeOrders[0].quote!.ratio.isZero()
-        ? ethers.constants.MaxUint256
-        : ethers.BigNumber.from(`1${"0".repeat(36)}`).div(
-              orderPairObject.takeOrders[0].quote!.ratio,
-          );
+    const opposingMaxIORatio =
+        orderPairObject.takeOrders[0].quote!.ratio === 0n
+            ? ethers.constants.MaxUint256
+            : ethers.BigNumber.from(`1${"0".repeat(36)}`).div(
+                  orderPairObject.takeOrders[0].quote!.ratio,
+              );
 
     // encode takeOrders2()
     const encodedFN = obInterface.encodeFunctionData("takeOrders2", [
@@ -362,12 +365,12 @@ export async function findOpp({
                                 e.takeOrder.order.owner.toLowerCase() !==
                                     orderPairObject.takeOrders[0].takeOrder.order.owner.toLowerCase() &&
                                 e.quote &&
-                                e.quote.maxOutput.gt(0),
+                                e.quote.maxOutput > 0n,
                         )
                         .sort((a, b) =>
-                            a.quote!.ratio.lt(b.quote!.ratio)
+                            a.quote!.ratio < b.quote!.ratio
                                 ? -1
-                                : a.quote!.ratio.gt(b.quote!.ratio)
+                                : a.quote!.ratio > b.quote!.ratio
                                   ? 1
                                   : 0,
                         ),

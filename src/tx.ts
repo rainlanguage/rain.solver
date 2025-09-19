@@ -7,7 +7,6 @@ import {
     RawTx,
     BotConfig,
     ViemClient,
-    BundledOrders,
     ProcessPairResult,
     ProcessPairHaltReason,
     ProcessPairReportStatus,
@@ -22,6 +21,7 @@ import {
     withBigintSerializer,
     getActualClearAmount,
 } from "./utils";
+import { BundledOrders } from "./order";
 
 /**
  * Handles the given transaction, starts by sending the transaction and

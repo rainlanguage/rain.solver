@@ -6,7 +6,8 @@ import { getDataFetcher } from "./client";
 import { processOrders } from "./processOrders";
 import { publicClientConfig } from "sushi/config";
 import { Context, Tracer } from "@opentelemetry/api";
-import { RoundReport, BundledOrders, BotConfig } from "./types";
+import { RoundReport, BotConfig } from "./types";
+import { BundledOrders } from "./order";
 
 /**
  * @deprecated

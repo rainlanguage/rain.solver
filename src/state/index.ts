@@ -10,6 +10,7 @@ import { rainSolverTransport } from "../transport";
 import { SubgraphConfig } from "../subgraph/config";
 import { ChainConfig, getChainConfig } from "./chain";
 import { createPublicClient, PublicClient } from "viem";
+import { OrderManagerConfig } from "../order/config";
 
 /**
  * Rain dispair contracts, deployer, store and interpreter
@@ -54,6 +55,8 @@ export type SharedStateConfig = {
     gasPriceMultiplier?: number;
     /** Subgraph configurations */
     subgraphConfig: SubgraphConfig;
+    /** OrderManager configurations */
+    orderManagerConfig: OrderManagerConfig;
 };
 export namespace SharedStateConfig {
     export async function tryFromAppOptions(options: AppOptions): Promise<SharedStateConfig> {
@@ -100,6 +103,7 @@ export namespace SharedStateConfig {
             walletKey: (options.key ?? options.mnemonic)!,
             gasPriceMultiplier: options.gasPriceMultiplier,
             subgraphConfig: SubgraphConfig.tryFromAppOptions(options),
+            orderManagerConfig: OrderManagerConfig.tryFromAppOptions(options),
             liquidityProviders: processLiquidityProviders(options.liquidityProviders),
             dispair: {
                 interpreter,
@@ -149,6 +153,8 @@ export class SharedState {
     readonly gasPriceMultiplier: number = 100;
     /** Subgraph configurations */
     readonly subgraphConfig: SubgraphConfig;
+    /** OrderManager configurations */
+    readonly orderManagerConfig: OrderManagerConfig;
 
     /** Current gas price of the operating chain */
     gasPrice = 0n;
@@ -168,6 +174,7 @@ export class SharedState {
         this.chainConfig = config.chainConfig;
         this.subgraphConfig = config.subgraphConfig;
         this.liquidityProviders = config.liquidityProviders;
+        this.orderManagerConfig = config.orderManagerConfig;
         this.rpc = config.rpcState;
         this.writeRpc = config.writeRpcState;
         if (typeof config.gasPriceMultiplier === "number") {

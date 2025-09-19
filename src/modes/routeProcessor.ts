@@ -5,7 +5,7 @@ import { BigNumber, Contract, ethers } from "ethers";
 import { containsNodeError, errorSnapshot } from "../error";
 import { getBountyEnsureRainlang, parseRainlang } from "../task";
 import { BaseError, ExecutionRevertedError, PublicClient } from "viem";
-import { SpanAttrs, BotConfig, ViemClient, DryrunResult, BundledOrders } from "../types";
+import { SpanAttrs, BotConfig, ViemClient, DryrunResult } from "../types";
 import {
     ONE18,
     scale18,
@@ -16,6 +16,7 @@ import {
     withBigintSerializer,
     extendSpanAttributes,
 } from "../utils";
+import { BundledOrders } from "../order";
 
 /**
  * Specifies the reason that dryrun failed
@@ -67,7 +68,8 @@ export async function dryrun({
     };
 
     // determines if amount is partial derived from binary search or not
-    const isPartial = !orderPairObject.takeOrders[0].quote!.maxOutput.eq(maximumInputFixed);
+    const isPartial =
+        orderPairObject.takeOrders[0].quote!.maxOutput != maximumInputFixed.toBigInt();
 
     const maximumInput = scale18To(maximumInputFixed, orderPairObject.sellTokenDecimals);
     spanAttributes["amountIn"] = ethers.utils.formatUnits(maximumInputFixed);

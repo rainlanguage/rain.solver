@@ -1,10 +1,10 @@
 import { ChainId } from "sushi";
 import { BigNumber } from "ethers";
-import { getQuoteConfig } from "./utils";
 import { publicActionsL2 } from "viem/op-stack";
 import { encodeFunctionData, multicall3Abi } from "viem";
-import { BundledOrders, RawTx, ViemClient, BotConfig } from "./types";
+import { RawTx, ViemClient, BotConfig } from "./types";
 import { ArbitrumNodeInterfaceAbi, ArbitrumNodeInterfaceAddress, OrderbookQuoteAbi } from "./abis";
+import { BundledOrders, TakeOrder } from "./order";
 
 // default gas price for bsc chain, 1 gwei
 export const BSC_DEFAULT_GAS_PRICE = 1_000_000_000n as const;
@@ -81,7 +81,7 @@ export async function getQuoteGas(
 ): Promise<bigint> {
     if (config.chain.id === ChainId.ARBITRUM) {
         // build the calldata of a quote call
-        const quoteConfig = getQuoteConfig(orderDetails.takeOrders[0]);
+        const quoteConfig = TakeOrder.getQuoteConfig(orderDetails.takeOrders[0].takeOrder);
         const multicallConfig = {
             target: orderDetails.orderbook as `0x${string}`,
             allowFailure: true,

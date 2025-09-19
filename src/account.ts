@@ -10,9 +10,10 @@ import { Native, Token, WNATIVE } from "sushi/currency";
 import { ROUTE_PROCESSOR_4_ADDRESS } from "sushi/config";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 import { getRpSwap, PoolBlackList, sleep, addWatchedToken } from "./utils";
-import { BotConfig, ViemClient, OwnedOrder, BundledOrders } from "./types";
+import { BotConfig, ViemClient, OwnedOrder } from "./types";
 import { context, Context, SpanStatusCode, trace, Tracer } from "@opentelemetry/api";
 import { MulticallAbi, orderbookAbi, routeProcessor3Abi, VaultBalanceAbi } from "./abis";
+import { BundledOrders } from "./order";
 
 /** Standard base path for eth accounts */
 export const BasePath = "m/44'/60'/0'/0/" as const;
