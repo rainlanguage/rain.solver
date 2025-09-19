@@ -541,7 +541,7 @@ describe("Test OrderManager", () => {
         const roundOrders = orderManager.getNextRoundOrders(false);
 
         // should find orderB as opposing order for orderA in the same orderbook
-        const opposing = orderManager.getOpposingOrders(roundOrders[0][0], true);
+        const opposing = orderManager.getCounterpartyOrders(roundOrders[0][0], true);
         expect(Array.isArray(opposing)).toBe(true);
         expect(opposing.length).toBe(1);
         expect(opposing[0].buyToken).toBe("0xoutput");
@@ -582,11 +582,13 @@ describe("Test OrderManager", () => {
         const roundOrders = orderManager.getNextRoundOrders(false);
 
         // should find orderB as opposing order for orderA across orderbooks
-        const opposing = orderManager.getOpposingOrders(roundOrders[0][0], false);
-        expect(Array.isArray(opposing)).toBe(true);
-        expect(opposing.length).toBe(1);
-        expect(opposing[0].buyToken).toBe("0xoutput");
-        expect(opposing[0].sellToken).toBe("0xinput");
-        expect(opposing[0].takeOrder.id).toBe("0xhashb");
+        const opposing = orderManager.getCounterpartyOrders(roundOrders[0][0], false);
+        for (const counteryparties of opposing) {
+            expect(Array.isArray(counteryparties)).toBe(true);
+            expect(counteryparties.length).toBe(1);
+            expect(counteryparties[0].buyToken).toBe("0xoutput");
+            expect(counteryparties[0].sellToken).toBe("0xinput");
+            expect(counteryparties[0].takeOrder.id).toBe("0xhashb");
+        }
     });
 });
