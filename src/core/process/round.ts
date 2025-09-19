@@ -1,5 +1,6 @@
 import { RainSolver } from "..";
-import { Result } from "../../common";
+import { Pair } from "../../order";
+import { iterRandom, Result } from "../../common";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { PreAssembledSpan, SpanWithContext } from "../../logger";
 import { ErrorSeverity, errorSnapshot, isTimeout, KnownErrors } from "../../error";
@@ -21,11 +22,16 @@ export type Settlement = {
 /**
  * Initializes a new round of processing orders
  */
-export async function initializeRound(this: RainSolver, roundSpanCtx?: SpanWithContext) {
-    const orders = this.orderManager.getNextRoundOrders(true);
+export async function initializeRound(
+    this: RainSolver,
+    roundSpanCtx?: SpanWithContext,
+    shuffle = true,
+) {
+    const orders = [...this.orderManager.getNextRoundOrders()];
     const settlements: Settlement[] = [];
     const checkpointReports: PreAssembledSpan[] = [];
-    for (const orderDetails of orders) {
+
+    for (const orderDetails of iterOrders(orders, shuffle)) {
         const pair = `${orderDetails.buyTokenSymbol}/${orderDetails.sellTokenSymbol}`;
         const report = new PreAssembledSpan(`checkpoint_${pair}`);
         const owner = orderDetails.takeOrder.takeOrder.order.owner.toLowerCase();
@@ -330,4 +336,20 @@ export async function finalizeRound(
     }
 
     return { results, reports };
+}
+
+/**
+ * Iterates over orders, optionally shuffling them.
+ * @param orders - Array of orders to iterate over
+ * @param shuffle - Whether to shuffle the orders (default: true)
+ * @returns A generator that yields each order
+ */
+export function* iterOrders(orders: Pair[], shuffle = true): Generator<Pair> {
+    if (shuffle) {
+        // iterate randomly
+        for (const orderDetails of iterRandom(orders)) yield orderDetails;
+    } else {
+        // iterate orders in the same order as they if no shuffle
+        for (const orderDetails of orders) yield orderDetails;
+    }
 }

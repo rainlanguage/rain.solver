@@ -289,7 +289,7 @@ describe("Test OrderManager", () => {
         };
         await orderManager.addOrders([mockOrder as any]);
 
-        const result = orderManager.getNextRoundOrders(false);
+        const result = orderManager.getNextRoundOrders();
         expect(Array.isArray(result)).toBe(true);
         expect(result.length).toBeGreaterThan(0);
 
@@ -489,7 +489,7 @@ describe("Test OrderManager", () => {
 
         // helper to get the order hashes returned in the round
         const getRoundHashes = () => {
-            const roundOrders = orderManager.getNextRoundOrders(false);
+            const roundOrders = orderManager.getNextRoundOrders();
             return roundOrders.map((o) => o.takeOrder.id);
         };
 
@@ -517,7 +517,7 @@ describe("Test OrderManager", () => {
         await orderManager.addOrders([mockOrder as any]);
 
         // get the takeOrder object from getNextRoundOrders
-        const roundOrders = orderManager.getNextRoundOrders(false);
+        const roundOrders = orderManager.getNextRoundOrders();
         const orderDetails = roundOrders[0];
 
         // update the quote field via the object from getNextRoundOrders
@@ -577,7 +577,7 @@ describe("Test OrderManager", () => {
         await orderManager.addOrders([orderA as any, orderB as any]);
 
         // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)
-        const roundOrders = orderManager.getNextRoundOrders(false);
+        const roundOrders = orderManager.getNextRoundOrders();
 
         // should find orderB as opposing order for orderA in the same orderbook
         const opposing = orderManager.getCounterpartyOrders(
@@ -625,7 +625,7 @@ describe("Test OrderManager", () => {
         await orderManager.addOrders([orderA as any, orderB as any]);
 
         // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)
-        const roundOrders = orderManager.getNextRoundOrders(false);
+        const roundOrders = orderManager.getNextRoundOrders();
 
         // should find orderB as opposing order for orderA across orderbooks
         const opposing = orderManager.getCounterpartyOrders(
