@@ -1,7 +1,7 @@
 # Rain Solver
 Rain Solver (also known as Rain Orderbook Arbitrage Bot) is a NodeJS app that solves (clears) Rain orderbook orders against major DeFi platforms liquidity, other Rain Orderbooks and opposite orders of the same Rain Orderbook, by finding arbitrage trades for token pairs of the active orders that are queried from a subgraph, once an opportunity is found a transaction is submitted to one of [Rain Arb Contracts](https://github.com/rainprotocol/rain.orderbook/tree/main/src/concrete) which handles the clearing process from there.
 
-This app requires NodeJS v18 or higher to run and is docker ready.
+This app requires NodeJS v22 or higher to run and is docker ready.
 This app can also be run in Github Actions with a cron job, please read below for more details.
 
 ## The Case for Profitability
@@ -47,7 +47,7 @@ pnpm install --frozen-lockfile
 pnpm exec turbo run build --filter=./packages/sushi
 cd ../..
 ```
-and then install the dependencies, requires `>= nodejs v18`:
+and then install the dependencies, requires `>= nodejs v22`:
 ```bash
 npm install
 npm run build
@@ -65,21 +65,21 @@ nix develop
 ```
 and then:
 ```bash
-node arb-bot <OPTIONS>
+node rain-solver <OPTIONS>
 ```
 
 out of nix shell:
 
 run the following if you don't want to enter nix shell
 ```bash
-nix develop -c node arb-bot <OPTIONS>
+nix develop -c node rain-solver <OPTIONS>
 ```
 <br>
 
-- without nix package manager (requires `>= nodejs v18`):
+- without nix package manager (requires `>= nodejs v22`):
 
 ```bash
-node arb-bot <OPTIONS>
+node rain-solver <OPTIONS>
 ```
 
 <br>
@@ -137,7 +137,7 @@ The app requires a config yaml file to operate and by default it looks in `./con
 
 CLI options can be viewed by running:
 ```bash
-node arb-bot -h
+node rain-solver -h
 ```
 <br>
 
@@ -152,7 +152,7 @@ DOCKER_CHANNEL=master
 # api key for heyperDx platfomr to send spans to, if not set will send traces to localhost
 HYPERDX_API_KEY=""
 
-# trace/spans service name, defaults to "arb-bot" if not set
+# trace/spans service name, defaults to "rain-solver" if not set
 TRACER_SERVICE_NAME=""
 ```
 If both env variables and CLI argument are set, the CLI arguments will be prioritized and override the env variables.
@@ -160,7 +160,7 @@ If both env variables and CLI argument are set, the CLI arguments will be priori
 If you install this app as a dependency for your project you can run it by (All the above arguments apply here as well):
 
 ```bash
-arb-bot <OPTIONS>
+rain-solver <OPTIONS>
 ```
 
 <br>

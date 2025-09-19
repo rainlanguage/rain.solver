@@ -17,5 +17,5 @@ docs
 mem-cache
 diag/out
 dist
-test/*.test.yaml
+*.test.yaml
 chains.json

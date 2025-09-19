@@ -1,396 +1,186 @@
 /* eslint-disable no-console */
-import { ethers } from "ethers";
-import { ViemClient } from "../dist/types";
-import { TokenDetails } from "../src/types";
-import { errorSnapshot } from "../src/error";
-import { routeProcessor3Abi } from "../src/abis";
-import { ChainId, DataFetcher } from "sushi";
-import { setWatchedTokens } from "../src/account";
-import { Native, Token, WNATIVE } from "sushi/currency";
-import { getRpSwap, PoolBlackList, sleep } from "../src/utils";
-import { publicClientConfig, ROUTE_PROCESSOR_4_ADDRESS } from "sushi/config";
-import { HDAccount, mnemonicToAccount, PrivateKeyAccount } from "viem/accounts";
-import { PublicClient, createWalletClient, erc20Abi, http, publicActions } from "viem";
+import assert from "assert";
+import { Command } from "commander";
+import { createPublicClient } from "viem";
+import { AppOptions } from "../src/config";
+import { ChainId, RainDataFetcher } from "sushi";
+import { sleep, TokenDetails } from "../src/common";
+import { getChainConfig } from "../src/state/chain";
+import { rainSolverTransport, RpcState } from "../src/rpc";
+import { WalletConfig, WalletManager } from "../src/wallet";
+import { SharedState, SharedStateConfig } from "../src/state";
+import { OrderManager, OrderManagerConfig } from "../src/order";
+import { SubgraphConfig, SubgraphManager } from "../src/subgraph";
 
 /**
- * Sweep wallet's tokens
+ * Command-line interface for the sweep script
+ * @param argv - The cli arguments.
  */
-export async function sweepWalletTokens(
+export async function main(argv: any[]) {
+    if (argv.length < 3) {
+        throw new Error("Expected required arguments, use --help or -h to see usage");
+    }
+    const params = new Command("npm run sweep --")
+        .option("-m, --mnemonic <mnemonic phrase>", "Mnemonic phrase of the wallet")
+        .option("-s, --sg <url...>", "Subgraph URL(s) to fetch token list from for sweeping")
+        .option("-r, --rpc <url>", "RPC URL used to perform transactions")
+        .option("-l, --length <integer>", "Wallet count to derive and sweep", (val: string) => {
+            const parsed = parseInt(val);
+            assert(!isNaN(parsed), "Wallet length must be an integer greater than 1");
+            assert(parsed > 1, "Wallet length must be an integer greater than 1");
+            return parsed;
+        })
+        .option(
+            "-t, --token <address,symbol,decimals...>",
+            "Additional tokens to sweep",
+            (tokenStr: string, previous: TokenDetails[] = []): TokenDetails[] => {
+                const parts = tokenStr.split(",");
+                assert(
+                    parts.length === 3,
+                    "Token details must be in the format of: address,symbol,decimals",
+                );
+                const [address, symbol, decimalsStr] = parts;
+                const decimals = parseInt(decimalsStr);
+                assert(
+                    !isNaN(decimals) && decimals > 0,
+                    `Invalid decimals value: ${decimalsStr} in token: ${tokenStr}, must be a positive integer`,
+                );
+                return [...previous, { address, symbol, decimals }];
+            },
+        )
+        .description(
+            "Sweep funds from multiple wallets derived from a mnemonic to the main wallet and convert all of them to gas",
+        )
+        .parse(argv)
+        .opts();
+
+    // run sweep with the given params
+    await sweepFunds(params.mnemonic, params.subgraph, params.rpc, params.length, params.token);
+}
+
+/**
+ * A script to sweep tokens from multiple wallets derived from a mnemonic to the main wallet and convert all of them to gas.
+ * Main wallet is the first wallet derived from the mnemonic (index 0). other wallets start from index 1 to length-1 are the ones that will be swept to main wallet.
+ * @param mnemonic - The mnemonic to derive wallets from
+ * @param subgraph - The subgraph urls to fetch token lists from
+ * @param rpc - The RPC url to use
+ * @param length - The number of wallets to derive and sweep their funds, starts from index 1, index 0 is the main wallet and is the one that the funds are swept to
+ * @param tokens - Additional token details to sweep, it wont duplicate if already fetched from subgraph
+ */
+export async function sweepFunds(
     mnemonic: string,
-    tokens: TokenDetails[],
-    chainId: ChainId,
+    subgraph: string[],
     rpc: string,
     length: number,
+    tokens: TokenDetails[] = [],
 ) {
-    let walletIndex = 1;
-    const transport = http(rpc, { timeout: 60_000 });
+    // build app options, not all fields are used
+    const options: AppOptions = {
+        rpc: [{ url: rpc }],
+        mnemonic,
+        walletCount: length,
+        subgraph,
+        gasLimitMultiplier: 100,
+        gasPriceMultiplier: 107,
 
-    const toWallet = createWalletClient({
-        account: mnemonicToAccount(mnemonic, { addressIndex: 0 }),
-        chain: publicClientConfig[chainId]?.chain,
-        transport,
-    }).extend(publicActions) as any as ViemClient;
+        // unused fields but need to be defined
+        arbAddress: "",
+        maxRatio: false,
+        rpOnly: false,
+        sleep: 0,
+        gasCoveragePercentage: "",
+        timeout: 15,
+        hops: 0,
+        retries: 0,
+        botMinBalance: "0",
+        poolUpdateInterval: 0,
+        route: "single",
+        quoteGas: 0n,
+        topupAmount: "0",
+        dispair: "",
+    };
 
-    console.log("main wallet ", toWallet.account.address);
-    const gasPrice = ethers.BigNumber.from(await toWallet.getGasPrice())
-        .mul(107)
-        .div(100)
-        .toBigInt();
-    for (let j = 0; j < length; j++) {
-        const fromWallet = createWalletClient({
-            account: mnemonicToAccount(mnemonic, { addressIndex: walletIndex++ }),
-            chain: publicClientConfig[chainId]?.chain,
-            transport,
-        }).extend(publicActions) as any as ViemClient;
-        setWatchedTokens(fromWallet, tokens);
-        console.log("wallet index", walletIndex - 1, fromWallet.account.address);
-
-        // from wallet gas balance
-        for (let i = 0; i < 5; i++) {
-            try {
-                fromWallet.BALANCE = ethers.BigNumber.from(
-                    await fromWallet.getBalance({ address: fromWallet.account.address }),
-                );
-                break;
-            } catch (error) {
-                if (i === 4) throw "Failed to get gas balance";
-                else await sleep(i * 10000);
-            }
-        }
-
-        const erc20 = new ethers.utils.Interface(erc20Abi);
-        const txs: {
-            bounty: TokenDetails;
-            balance: string;
-            tx: {
-                to: `0x${string}`;
-                data: `0x${string}`;
-            };
-        }[] = [];
-        const failedBounties: TokenDetails[] = [];
-        let cumulativeGasLimit = ethers.constants.Zero;
-        for (let i = 0; i < fromWallet.BOUNTY.length; i++) {
-            const bounty = fromWallet.BOUNTY[i];
-            if (!bounty.decimals) {
-                bounty.decimals = await fromWallet.readContract({
-                    address: bounty.address as any,
-                    abi: erc20Abi,
-                    functionName: "decimals",
-                });
-            }
-            if (!bounty.symbol) {
-                bounty.symbol = await fromWallet.readContract({
-                    address: bounty.address as any,
-                    abi: erc20Abi,
-                    functionName: "symbol",
-                });
-            }
-            try {
-                const balance = ethers.BigNumber.from(
-                    (
-                        await fromWallet.call({
-                            to: bounty.address as `0x${string}`,
-                            data: erc20.encodeFunctionData("balanceOf", [
-                                fromWallet.account.address,
-                            ]) as `0x${string}`,
-                        })
-                    ).data,
-                );
-                if (balance.isZero()) {
-                    continue;
-                }
-                const tx = {
-                    to: bounty.address as `0x${string}`,
-                    data: erc20.encodeFunctionData("transfer", [
-                        toWallet.account.address,
-                        balance,
-                    ]) as `0x${string}`,
-                };
-                txs.push({
-                    tx,
-                    bounty,
-                    balance: ethers.utils.formatUnits(balance, bounty.decimals),
-                });
-                const gas = await fromWallet.estimateGas(tx);
-                cumulativeGasLimit = cumulativeGasLimit.add(gas);
-            } catch (e) {
-                failedBounties.push(bounty);
-                console.log("Failed to get balance " + errorSnapshot("", e));
-            }
-        }
-
-        if (cumulativeGasLimit.mul(gasPrice).gt(fromWallet.BALANCE)) {
-            try {
-                const transferAmount = cumulativeGasLimit.mul(gasPrice).sub(fromWallet.BALANCE);
-                console.log("gas amount ", ethers.utils.formatUnits(transferAmount));
-                const hash = await toWallet.sendTransaction({
-                    to: fromWallet.account.address,
-                    value: transferAmount.toBigInt(),
-                });
-                const receipt = await toWallet.waitForTransactionReceipt({
-                    hash,
-                    confirmations: 2,
-                    timeout: 100_000,
-                });
-                if (receipt.status === "success") {
-                    console.log("Successfully topped up");
-                } else {
-                    console.log(
-                        "Failed topping up wallet for sweeping tokens back to main wallet: reverted",
-                    );
-                }
-            } catch (error) {
-                console.log(
-                    "Failed topping up wallet for sweeping tokens back to main wallet: " +
-                        errorSnapshot("", error),
-                );
-            }
-        }
-
-        for (let i = 0; i < txs.length; i++) {
-            console.log("token ", txs[i].bounty.symbol);
-            console.log("tokenAddress ", txs[i].bounty.address);
-            console.log("balance ", txs[i].balance);
-            try {
-                const hash = await fromWallet.sendTransaction(txs[i].tx);
-                const receipt = await fromWallet.waitForTransactionReceipt({
-                    hash,
-                    confirmations: 2,
-                    timeout: 100_000,
-                });
-                if (receipt.status === "success") {
-                    console.log("Successfully swept back to main wallet");
-                } else {
-                    failedBounties.push(txs[i].bounty);
-                    console.log("Failed to sweep back to main wallet: reverted");
-                }
-            } catch (error) {
-                failedBounties.push(txs[i].bounty);
-                console.log("Failed to sweep back to main wallet: " + errorSnapshot("", error));
-            }
-        }
-
-        // empty gas if all tokens are swept
-        if (!failedBounties.length) {
-            try {
-                const gasLimit = ethers.BigNumber.from(
-                    await fromWallet.estimateGas({
-                        to: toWallet.account.address,
-                        value: 0n,
-                    }),
-                );
-                const remainingGas = ethers.BigNumber.from(
-                    await fromWallet.getBalance({ address: fromWallet.account.address }),
-                );
-                const transferAmount = remainingGas.sub(gasLimit.mul(gasPrice));
-                if (transferAmount.gt(0)) {
-                    console.log("remaining gas amount ", ethers.utils.formatUnits(transferAmount));
-                    const hash = await fromWallet.sendTransaction({
-                        to: toWallet.account.address,
-                        value: (transferAmount.toBigInt() * 99n) / 100n,
-                        gas: gasLimit.toBigInt(),
-                    });
-                    const receipt = await fromWallet.waitForTransactionReceipt({
-                        hash,
-                        confirmations: 2,
-                        timeout: 100_000,
-                    });
-                    if (receipt.status === "success") {
-                        console.log("Successfully swept gas tokens back to main wallet");
-                    } else {
-                        console.log("Failed to sweep gas tokens back to main wallet: reverted");
-                    }
-                } else {
-                    console.log("Transfer amount lower than gas cost");
-                }
-            } catch (error) {
-                console.log(
-                    "Failed to sweep gas tokens back to main wallet: " + errorSnapshot("", error),
-                );
-            }
-        } else {
-            console.log("not all tokens were swept, so did not sweep the remaining gas");
-        }
-        console.log("\n---\n");
+    // prepare state config fields
+    const rainSolverTransportConfig = { timeout: options.timeout };
+    const rpcState = new RpcState(options.rpc);
+    // use temp client to get chain id
+    let client = createPublicClient({
+        transport: rainSolverTransport(rpcState, rainSolverTransportConfig),
+    }) as any;
+    // get chain config
+    const chainId = await client.getChainId();
+    const chainConfigResult = getChainConfig(chainId as ChainId);
+    if (chainConfigResult.isErr()) {
+        throw chainConfigResult.error;
     }
+    const chainConfig = chainConfigResult.value;
+    client = createPublicClient({
+        chain: chainConfig,
+        transport: rainSolverTransport(rpcState, rainSolverTransportConfig),
+    });
+    const dataFetcher = await RainDataFetcher.init(chainConfig.id as ChainId, client);
+
+    // start state
+    const stateConfig: SharedStateConfig = {
+        client,
+        rpcState,
+        chainConfig,
+        dataFetcher,
+        rainSolverTransportConfig,
+        transactionGas: options.txGas,
+        gasPriceMultiplier: options.gasPriceMultiplier,
+        walletConfig: WalletConfig.tryFromAppOptions(options),
+        subgraphConfig: SubgraphConfig.tryFromAppOptions(options),
+        orderManagerConfig: OrderManagerConfig.tryFromAppOptions(options),
+        dispair: {
+            interpreter: "0x",
+            store: "0x",
+            deployer: "0x",
+        },
+    };
+    const state = new SharedState(stateConfig);
+
+    // start sg and order managers to capture tokens list to sweep
+    const subgraphManager = new SubgraphManager(stateConfig.subgraphConfig);
+    await OrderManager.init(state, subgraphManager);
+
+    // add additional tokens to sweep
+    tokens.forEach((t) => state.watchToken(t));
+
+    // start gas price watcher and wait a bit for initial gas price fetch
+    state.unwatchGasPrice();
+    state.watchGasPrice(5_000);
+    await sleep(6_000);
+
+    // start wallet manager and sweep wallets
+    // failures here is unlikely because it is just a simple "send" tx
+    // but sometimes it can happen, if so, repeat the process to sweep the
+    // missing tokens, the logged report will show if there are any failures
+    const walletManager: WalletManager = new (WalletManager as any)(state);
+    let c = 1;
+    for (const [, wallet] of walletManager.workers.signers) {
+        const report = await walletManager.sweepWallet(wallet);
+        console.log(report);
+        console.log("done wallet count:", c++);
+        await sleep(2000);
+    }
+
+    // convert all holdings of the main wallet to gas
+    // some token swaps in this process might fail due to normal onchain tx failures,
+    // so we repeat the process until all tokens are converted or max attempts reached
+    // the logged report will show if there are any failures
+    const convertHoldingsToGasReport = await walletManager.convertHoldingsToGas();
+    console.log(convertHoldingsToGasReport);
 }
 
-/**
- * Sweeps the given tokens to the chain's gas token
- */
-export async function sweepToGas(
-    account: HDAccount | PrivateKeyAccount,
-    tokens: TokenDetails[],
-    chainId: ChainId,
-    rpc: string,
-) {
-    const rp4Address = ROUTE_PROCESSOR_4_ADDRESS[
-        chainId as keyof typeof ROUTE_PROCESSOR_4_ADDRESS
-    ] as `0x${string}`;
-    const rp = new ethers.utils.Interface(routeProcessor3Abi);
-    const erc20 = new ethers.utils.Interface(erc20Abi);
-
-    const transport = http(rpc, { timeout: 60_000 });
-    const mainAccount = createWalletClient({
-        account,
-        chain: publicClientConfig[chainId]?.chain,
-        transport,
-    }).extend(publicActions) as any as ViemClient;
-    setWatchedTokens(mainAccount, tokens);
-    const dataFetcher = new DataFetcher(chainId, mainAccount as any as PublicClient);
-
-    const gasPrice = ethers.BigNumber.from(await mainAccount.getGasPrice())
-        .mul(107)
-        .div(100);
-    for (let i = 0; i < mainAccount.BOUNTY.length; i++) {
-        const bounty = mainAccount.BOUNTY[i];
-        if (!bounty.decimals) {
-            bounty.decimals = await mainAccount.readContract({
-                address: bounty.address as any,
-                abi: erc20Abi,
-                functionName: "decimals",
-            });
-        }
-        if (!bounty.symbol) {
-            bounty.symbol = await mainAccount.readContract({
-                address: bounty.address as any,
-                abi: erc20Abi,
-                functionName: "symbol",
-            });
-        }
-        console.log("token", bounty.symbol);
-        console.log("tokenAddress", bounty.address);
-        try {
-            const balance = ethers.BigNumber.from(
-                (
-                    await mainAccount.call({
-                        to: bounty.address as `0x${string}`,
-                        data: erc20.encodeFunctionData("balanceOf", [
-                            mainAccount.account.address,
-                        ]) as `0x${string}`,
-                    })
-                ).data,
-            );
-            console.log("balance", ethers.utils.formatUnits(balance, bounty.decimals));
-            if (balance.isZero()) {
-                console.log("\n---\n");
-                continue;
-            }
-            const token = new Token({
-                chainId: chainId,
-                decimals: bounty.decimals,
-                address: bounty.address,
-                symbol: bounty.symbol,
-            });
-            await dataFetcher.fetchPoolsForToken(token, WNATIVE[chainId], PoolBlackList);
-            const { rpParams, route } = await getRpSwap(
-                chainId,
-                balance,
-                token,
-                Native.onChain(chainId),
-                mainAccount.account.address,
-                rp4Address,
-                dataFetcher as any,
-                gasPrice,
-            );
-            let routeText = "";
-            route.legs.forEach((v, i) => {
-                if (i === 0)
-                    routeText =
-                        routeText +
-                        (v?.tokenTo?.symbol ?? "") +
-                        "/" +
-                        (v?.tokenFrom?.symbol ?? "") +
-                        "(" +
-                        ((v as any)?.poolName ?? "") +
-                        " " +
-                        (v?.poolAddress ?? "") +
-                        ")";
-                else
-                    routeText =
-                        routeText +
-                        " + " +
-                        (v?.tokenTo?.symbol ?? "") +
-                        "/" +
-                        (v?.tokenFrom?.symbol ?? "") +
-                        "(" +
-                        ((v as any)?.poolName ?? "") +
-                        " " +
-                        (v?.poolAddress ?? "") +
-                        ")";
-            });
-            console.log("Route portions: ", routeText, "\n");
-            const allowance = (
-                await mainAccount.call({
-                    to: bounty.address as `0x${string}`,
-                    data: erc20.encodeFunctionData("allowance", [
-                        mainAccount.account.address,
-                        rp4Address,
-                    ]) as `0x${string}`,
-                })
-            ).data;
-            if (allowance && balance.gt(allowance)) {
-                console.log("Approving spend limit");
-                const hash = await mainAccount.sendTransaction({
-                    to: bounty.address as `0x${string}`,
-                    data: erc20.encodeFunctionData("approve", [
-                        rp4Address,
-                        balance.mul(100),
-                    ]) as `0x${string}`,
-                });
-                await mainAccount.waitForTransactionReceipt({
-                    hash,
-                    confirmations: 2,
-                    timeout: 100_000,
-                });
-            }
-            console.log("rp4 ", rp4Address);
-            const rawtx = { to: rp4Address, data: "0x" as `0x${string}` };
-            let gas = 0n;
-            let amountOutMin = ethers.constants.Zero;
-            for (let j = 20; j > 0; j--) {
-                amountOutMin = ethers.BigNumber.from(rpParams.amountOutMin)
-                    .mul(5 * j)
-                    .div(100);
-                rawtx.data = rp.encodeFunctionData("processRoute", [
-                    rpParams.tokenIn,
-                    rpParams.amountIn,
-                    rpParams.tokenOut,
-                    amountOutMin,
-                    rpParams.to,
-                    rpParams.routeCode,
-                ]) as `0x${string}`;
-                try {
-                    gas = await mainAccount.estimateGas(rawtx);
-                    break;
-                } catch (error) {
-                    if (j === 1) throw error;
-                }
-            }
-            const gasCost = gasPrice.mul(gas).mul(15).div(10);
-            console.log("gas cost: ", ethers.utils.formatUnits(gasCost));
-            if (gasCost.mul(10).gte(amountOutMin)) {
-                console.log("Skipped, balance not large enough to justify sweeping");
-                console.log("\n---\n");
-                continue;
-            } else {
-                const hash = await mainAccount.sendTransaction(rawtx);
-                console.log("tx hash: ", hash);
-                const receipt = await mainAccount.waitForTransactionReceipt({
-                    hash,
-                    confirmations: 2,
-                    timeout: 100_000,
-                });
-                if (receipt.status === "success") {
-                    console.log("Successfully swept to eth");
-                } else {
-                    console.log(`Failed to sweep ${bounty.symbol} to eth: tx reverted`);
-                }
-            }
-        } catch (e) {
-            console.log(`Failed to sweep ${bounty.symbol} to eth: ` + errorSnapshot("", e));
-        }
-        await sleep(5000);
-        console.log("\n---\n");
-    }
-}
+// run main
+main(process.argv)
+    .then(() => {
+        console.log("\x1b[32m%s\x1b[0m", "Sweep process finished successfully!");
+        process.exit(0);
+    })
+    .catch((v) => {
+        console.log("\x1b[31m%s\x1b[0m", "An error occured during execution: ");
+        console.log(v);
+        process.exit(1);
+    });

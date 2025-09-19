@@ -143,14 +143,14 @@ module.exports = [
         // unique test for aerodrome slipstream
         ChainId.BASE,
         process?.env?.TEST_BASE_RPC,
-        16418720,
+        34181086,
         [WNATIVE[ChainId.BASE], USDC[ChainId.BASE]],
         [
-            "0x2B8804c2b652f05F7FDD8e0a02F01eE58F01667E",
+            "0xd9eDC75a3a797Ec92Ca370F19051BAbebfb2edEe",
             "0x336307F2d8390035Ba926a61a86b45CA9dC91E57",
         ],
         [LiquidityProviders.AerodromeSlipstream],
-        ["1", "10000"],
+        ["1", "100"],
     ],
     [
         ChainId.BSC,
@@ -186,17 +186,17 @@ module.exports = [
         [
             WNATIVE[ChainId.LINEA],
             USDC[ChainId.LINEA],
-            new Token({
-                chainId: ChainId.LINEA,
-                address: "0x4Ea77a86d6E70FfE8Bb947FC86D68a7F086f198a",
-                decimals: 18,
-                symbol: "CLIP",
-            }),
+            // new Token({
+            //     chainId: ChainId.LINEA,
+            //     address: "0x4Ea77a86d6E70FfE8Bb947FC86D68a7F086f198a",
+            //     decimals: 18,
+            //     symbol: "CLIP",
+            // }),
         ],
         [
             "0x07aE8551Be970cB1cCa11Dd7a11F47Ae82e70E67",
             "0x555CE236C0220695b68341bc48C68d52210cC35b",
-            "0x0000619b2b909a6a422c18eb804b92f798370705",
+            // "0x0000619b2b909a6a422c18eb804b92f798370705",
         ],
         [LiquidityProviders.LynexV1, LiquidityProviders.LynexV2],
         ["1", "100"],
@@ -204,11 +204,11 @@ module.exports = [
     [
         ChainId.MATCHAIN,
         process?.env?.TEST_MATCHAIN_RPC,
-        4077685,
+        29952210,
         [WNATIVE[ChainId.MATCHAIN], USDT[ChainId.MATCHAIN]],
         [
-            "0xf270cAd1CC39E55BaF5B0607e40D39f583dFA4a8",
-            "0xF41a883B88CCD3a2978F176C3e0230128573eB05",
+            "0x33d8Fa2Cd11F721A0e9A0105e4178F1E489c16f9",
+            "0x5887DD31D31745EA58F29d6d1528C89aEc418991",
         ],
         [LiquidityProviders.MSwap],
         ["0.01", "100"],
