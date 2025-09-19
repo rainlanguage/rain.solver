@@ -7,6 +7,7 @@ import { Token } from "sushi/currency";
 import { SimulationResult } from "../../types";
 import { Result, toFloat } from "../../../common";
 import { getEnsureBountyTaskBytecode } from "../../../task";
+import { encodeAbiParameters, encodeFunctionData } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
     trySimulateTrade,
