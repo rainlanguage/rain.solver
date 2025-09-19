@@ -1,12 +1,12 @@
 import { Token } from "sushi/currency";
-import { TokenDetails } from "../state";
+import { Result, TokenDetails } from "../../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
     BalancerRouter,
     BalancerRouterPath,
     BalancerRouterError,
     BalancerRouterErrorType,
-} from "./balancer";
+} from ".";
 
 vi.mock("@balancer/sdk", async (importOriginal) => {
     return {
@@ -1000,6 +1000,112 @@ describe("test BalancerRouter", () => {
             expect(result[0].steps[1].pool).toBe("0xpool2");
             expect(result[0].steps[1].tokenOut).toBe("0xa1b86a33e6c0c536b5e9f9de9c2c4b6d5e9c2c4b");
             expect(result[0].steps[1].isBuffer).toBe(true);
+        });
+    });
+
+    describe("test getMarketPrice method", () => {
+        let router: BalancerRouter;
+        const mockSwapAmount = 1000000000000000000n; // 1 WETH
+        const mockTokenIn: TokenDetails = {
+            address: "0xa0b86a33e6c0c536b5e9f9de9c2c4b6d5e9c2c4b" as `0x${string}`,
+            decimals: 18,
+            symbol: "WETH",
+        };
+        const mockTokenOut: TokenDetails = {
+            address: "0xa1b86a33e6c0c536b5e9f9de9c2c4b6d5e9c2c4b" as `0x${string}`,
+            decimals: 6,
+            symbol: "USDC",
+        };
+
+        beforeEach(() => {
+            const routerResult = BalancerRouter.init(1); // Ethereum mainnet
+            if (routerResult.isOk()) {
+                router = routerResult.value;
+            }
+        });
+
+        it("should successfully get market price", async () => {
+            const getBestRouteSpy = vi.spyOn(router, "getBestRoute");
+
+            // onchain price
+            getBestRouteSpy.mockResolvedValueOnce(
+                Result.ok({
+                    price: 3100000000000000000n,
+                    route: [],
+                    altRoutes: [],
+                    onchainPrice: 3200000000000000000n,
+                    validUntil: 1,
+                }),
+            );
+            let result = await router.getMarketPrice({
+                tokenIn: mockTokenIn,
+                tokenOut: mockTokenOut,
+                swapAmount: mockSwapAmount,
+                ignoreCache: true,
+            });
+            assert(result.isOk());
+            let marketPrice = result.value;
+            expect(marketPrice.price).toBe("3.2");
+            expect(getBestRouteSpy).toHaveBeenCalledTimes(1);
+            expect(getBestRouteSpy).toHaveBeenCalledWith({
+                tokenIn: mockTokenIn,
+                tokenOut: mockTokenOut,
+                swapAmount: mockSwapAmount,
+                ignoreCache: true,
+            });
+
+            // api price
+            getBestRouteSpy.mockResolvedValueOnce(
+                Result.ok({
+                    price: 3100000000000000000n,
+                    route: [],
+                    altRoutes: [],
+                    validUntil: 1,
+                }),
+            );
+            result = await router.getMarketPrice({
+                tokenIn: mockTokenIn,
+                tokenOut: mockTokenOut,
+                swapAmount: mockSwapAmount,
+                ignoreCache: false,
+            });
+            assert(result.isOk());
+            marketPrice = result.value;
+            expect(marketPrice.price).toBe("3.1");
+            expect(getBestRouteSpy).toHaveBeenCalledTimes(2);
+            expect(getBestRouteSpy).toHaveBeenCalledWith({
+                tokenIn: mockTokenIn,
+                tokenOut: mockTokenOut,
+                swapAmount: mockSwapAmount,
+                ignoreCache: false,
+            });
+
+            getBestRouteSpy.mockRestore();
+        });
+
+        it("should return err when getBestRoute fails", async () => {
+            const getBestRouteSpy = vi.spyOn(router, "getBestRoute");
+            getBestRouteSpy.mockResolvedValue(
+                Result.err(new BalancerRouterError("msg", BalancerRouterErrorType.FetchFailed)),
+            );
+
+            const result = await router.getMarketPrice({
+                tokenIn: mockTokenIn,
+                tokenOut: mockTokenOut,
+                swapAmount: mockSwapAmount,
+                ignoreCache: false,
+            });
+            assert(result.isErr());
+            expect(result.error.message).toBe("msg");
+            expect(getBestRouteSpy).toHaveBeenCalledTimes(1);
+            expect(getBestRouteSpy).toHaveBeenCalledWith({
+                tokenIn: mockTokenIn,
+                tokenOut: mockTokenOut,
+                swapAmount: mockSwapAmount,
+                ignoreCache: false,
+            });
+
+            getBestRouteSpy.mockRestore();
         });
     });
 });

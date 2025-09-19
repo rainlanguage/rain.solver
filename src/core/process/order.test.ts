@@ -99,6 +99,7 @@ describe("Test processOrder", () => {
         expect(result.value.sellToken).toBe("0xSELL");
         expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.value.endTime).toBeTypeOf("number");
 
         // ensure pair maps are updated on quote 0
         expect(mockOrderManager.removeFromPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
@@ -123,6 +124,7 @@ describe("Test processOrder", () => {
         expect(result.error.status).toBe(ProcessOrderStatus.NoOpportunity);
         expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.error.endTime).toBeTypeOf("number");
 
         // ensure pair maps are updated on quote failure
         expect(mockOrderManager.removeFromPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
@@ -150,6 +152,7 @@ describe("Test processOrder", () => {
         );
         expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.error.endTime).toBeTypeOf("number");
 
         // ensure pair maps are updated success quote
         expect(mockOrderManager.addToPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
@@ -177,6 +180,7 @@ describe("Test processOrder", () => {
         );
         expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.error.endTime).toBeTypeOf("number");
     });
 
     it('should set outputToEthPrice to "" if getMarketPrice returns undefined for output and gasCoveragePercentage is not "0"', async () => {
@@ -206,6 +210,7 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
         expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.outputToEthPrice"]).toBe("no-way");
+        expect(result.value.endTime).toBeTypeOf("number");
     });
 
     it('should set outputToEthPrice to "0" if getMarketPrice returns undefined for output and gasCoveragePercentage is "0"', async () => {
@@ -235,6 +240,7 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
         expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.outputToEthPrice"]).toBe("0");
+        expect(result.value.endTime).toBeTypeOf("number");
     });
 
     it('should return FailedToGetEthPrice if getMarketPrice returns undefined and gasCoveragePercentage is not "0"', async () => {
@@ -258,6 +264,7 @@ describe("Test processOrder", () => {
         );
         expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.error.endTime).toBeTypeOf("number");
     });
 
     it('should set input/outputToEthPrice to "0" if getMarketPrice returns undefined and gasCoveragePercentage is "0"', async () => {
@@ -283,6 +290,7 @@ describe("Test processOrder", () => {
         );
         expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.value.endTime).toBeTypeOf("number");
     });
 
     it("should return ok result if findBestTrade throws with noneNodeError", async () => {
@@ -313,6 +321,7 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.gasPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.noneNodeError"]).toBe(true);
         expect(result.value.spanAttributes["details.test"]).toBe("something");
+        expect(result.value.endTime).toBeTypeOf("number");
     });
 
     it("should return ok result if findBestTrade throws without noneNodeError", async () => {
@@ -343,6 +352,7 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.gasPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.noneNodeError"]).toBe(false);
         expect(result.value.spanAttributes["details.test"]).toBe("something");
+        expect(result.value.endTime).toBeTypeOf("number");
     });
 
     it("should proceed to processTransaction if all steps succeed (happy path)", async () => {
@@ -357,7 +367,7 @@ describe("Test processOrder", () => {
         );
         // mock processTransaction to return a function
         (processTransaction as Mock).mockReturnValue(async () =>
-            Result.ok({ status: ProcessOrderStatus.FoundOpportunity }),
+            Result.ok({ status: ProcessOrderStatus.FoundOpportunity, endTime: 123 }),
         );
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
@@ -368,5 +378,6 @@ describe("Test processOrder", () => {
 
         assert(result.isOk());
         expect(result.value.status).toBe(ProcessOrderStatus.FoundOpportunity);
+        expect(result.value.endTime).toBeTypeOf("number");
     });
 });

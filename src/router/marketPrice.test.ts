@@ -59,7 +59,13 @@ describe("Test getMarketPrice", () => {
 
     describe("happy", () => {
         it("should return 1 if from/to tokens are the same", async () => {
-            const result = await getMarketPrice.call(mockSharedState, mockFromToken, mockFromToken);
+            const result = await getMarketPrice(
+                mockSharedState.chainConfig.id,
+                mockDataFetcher,
+                mockFromToken,
+                mockFromToken,
+                mockSharedState.gasPrice,
+            );
             expect(result).toEqual({ price: "1" });
         });
 
@@ -69,7 +75,13 @@ describe("Test getMarketPrice", () => {
                 amountOutBI: parseUnits("2000", 6),
             };
             (Router.findBestRoute as Mock).mockReturnValue(mockRoute as any);
-            await getMarketPrice.call(mockSharedState, mockFromToken, mockToToken);
+            await getMarketPrice(
+                mockSharedState.chainConfig.id,
+                mockDataFetcher,
+                mockFromToken,
+                mockToToken,
+                mockSharedState.gasPrice,
+            );
 
             expect(mockDataFetcher.fetchPoolsForToken).toHaveBeenCalledWith(
                 mockFromToken,
@@ -89,7 +101,13 @@ describe("Test getMarketPrice", () => {
                 amountOutBI: parseUnits("2000", 6),
             };
             (Router.findBestRoute as Mock).mockReturnValue(mockRoute as any);
-            await getMarketPrice.call(mockSharedState, mockFromToken, mockToToken);
+            await getMarketPrice(
+                mockSharedState.chainConfig.id,
+                mockDataFetcher,
+                mockFromToken,
+                mockToToken,
+                mockSharedState.gasPrice,
+            );
 
             expect(Router.findBestRoute).toHaveBeenCalledWith(
                 mockPoolCodeMap,
@@ -109,7 +127,13 @@ describe("Test getMarketPrice", () => {
                 amountOutBI: parseUnits("2000", 6),
             };
             (Router.findBestRoute as Mock).mockReturnValue(mockRoute as any);
-            const result = await getMarketPrice.call(mockSharedState, mockFromToken, mockToToken);
+            const result = await getMarketPrice(
+                mockSharedState.chainConfig.id,
+                mockDataFetcher,
+                mockFromToken,
+                mockToToken,
+                mockSharedState.gasPrice,
+            );
 
             expect(result).toHaveProperty("price");
             expect(typeof result?.price).toBe("string");
@@ -123,7 +147,14 @@ describe("Test getMarketPrice", () => {
                 amountOutBI: parseUnits("1800", 6),
             };
             (Router.findBestRoute as Mock).mockReturnValue(mockRoute as any);
-            await getMarketPrice.call(mockSharedState, mockFromToken, mockToToken, blockNumber);
+            await getMarketPrice(
+                mockSharedState.chainConfig.id,
+                mockDataFetcher,
+                mockFromToken,
+                mockToToken,
+                mockSharedState.gasPrice,
+                blockNumber,
+            );
 
             expect(mockDataFetcher.fetchPoolsForToken).toHaveBeenCalledWith(
                 mockFromToken,
@@ -140,7 +171,13 @@ describe("Test getMarketPrice", () => {
                 status: "NoWay",
             };
             (Router.findBestRoute as Mock).mockReturnValue(mockRoute as any);
-            const result = await getMarketPrice.call(mockSharedState, mockFromToken, mockToToken);
+            const result = await getMarketPrice(
+                mockSharedState.chainConfig.id,
+                mockDataFetcher,
+                mockFromToken,
+                mockToToken,
+                mockSharedState.gasPrice,
+            );
 
             expect(result).toBeUndefined();
         });

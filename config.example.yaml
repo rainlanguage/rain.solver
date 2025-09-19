@@ -86,12 +86,6 @@ gasLimitMultiplier: 100
 # Optional seconds to wait for the transaction to mine before disregarding it, default is 15
 timeout: 15
 
-# number of hops of binary search, if left unspecified will be 1 by default
-hops: 1
-
-# The amount of retries for the same order, maximum allowed 3, minimum allowed 1, default is 1
-retries: 1
-
 # Option to maximize maxIORatio, default true
 maxRatio: true
 

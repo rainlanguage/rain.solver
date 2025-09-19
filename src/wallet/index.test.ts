@@ -1,13 +1,13 @@
-import { ABI } from "../common";
 import { parseUnits } from "viem";
 import * as common from "../common";
 import * as sweepFns from "./sweep";
 import { WalletType } from "./config";
+import { SharedState } from "../state";
 import { ErrorSeverity } from "../error";
 import * as fundVault from "./fundVault";
 import { RainSolverSigner } from "../signer";
+import { ABI, TokenDetails } from "../common";
 import { SpanStatusCode } from "@opentelemetry/api";
-import { SharedState, TokenDetails } from "../state";
 import { SWEEP_RETRY_COUNT, WalletManager } from "./index";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";

@@ -4,9 +4,10 @@ import { ONE18 } from "../../../math";
 import { Pair } from "../../../order";
 import { ABI, Result } from "../../../common";
 import { SimulationResult } from "../../types";
+import { getEnsureBountyTaskBytecode } from "../../../task";
 import { encodeFunctionData, encodeAbiParameters } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import { BalancerRouterError, BalancerRouterErrorType } from "../../../router/balancer";
+import { BalancerRouterError, BalancerRouterErrorType } from "../../../router";
 import {
     trySimulateTrade,
     SimulateBalancerTradeArgs,
@@ -19,13 +20,13 @@ vi.mock("viem", async (importOriginal) => ({
     encodeAbiParameters: vi.fn().mockReturnValue("0xparams"),
 }));
 
-vi.mock("../rp/utils", () => ({
+vi.mock("../router/utils", () => ({
     estimateProfit: vi.fn().mockReturnValue(123n),
 }));
 
-vi.mock("../../../task", () => ({
-    parseRainlang: vi.fn().mockResolvedValue("0xbytecode"),
-    getBountyEnsureRainlang: vi.fn().mockResolvedValue("rainlang"),
+vi.mock("../../../task", async (importOriginal) => ({
+    ...(await importOriginal()),
+    getEnsureBountyTaskBytecode: vi.fn().mockResolvedValue(Result.ok("0xbytecode")),
 }));
 
 vi.mock("../dryrun", () => ({
@@ -314,5 +315,25 @@ describe("Test trySimulateTrade", () => {
         // verify encodeFunctionData was called twice (for both dryruns)
         expect(encodeFunctionData).toHaveBeenCalledTimes(2);
         expect(encodeAbiParameters).toHaveBeenCalledTimes(1);
+    });
+
+    it("should return error when getEnsureBountyTaskBytecode fails", async () => {
+        (solver.state.balancerRouter?.tryQuote as Mock).mockReturnValueOnce(
+            Result.ok({
+                route: [],
+                amountOut: 20n * ONE18,
+                price: 20n * ONE18,
+            }),
+        );
+        args.orderDetails = makeOrderDetails(1n * ONE18);
+        (getEnsureBountyTaskBytecode as Mock).mockResolvedValue(Result.err("error"));
+
+        const result: SimulationResult = await trySimulateTrade.call(solver, args);
+
+        assert(result.isErr());
+        expect(result.error).toHaveProperty("spanAttributes");
+        expect(result.error).toHaveProperty("reason");
+        expect(result.error.reason).toBe(BalancerRouterSimulationHaltReason.NoOpportunity);
+        expect(result.error.type).toBe("balancer");
     });
 });

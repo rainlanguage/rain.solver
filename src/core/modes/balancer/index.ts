@@ -18,6 +18,7 @@ import { trySimulateTrade } from "./simulate";
  * @param ethPrice - The current ETH price
  * @param toToken - The token to trade to
  * @param fromToken - The token to trade from
+ * @param blockNumber - The current block number
  */
 export async function findBestBalancerTrade(
     this: RainSolver,
@@ -26,6 +27,7 @@ export async function findBestBalancerTrade(
     ethPrice: string,
     toToken: Token,
     fromToken: Token,
+    blockNumber: bigint,
 ): Promise<SimulationResult> {
     const spanAttributes: Attributes = {};
 
@@ -39,7 +41,6 @@ export async function findBestBalancerTrade(
     }
 
     const maximumInput = orderDetails.takeOrder.quote!.maxOutput;
-    const blockNumber = await this.state.client.getBlockNumber();
 
     // try simulation for full trade size and return if succeeds
     const simResult = await trySimulateTrade.call(this, {

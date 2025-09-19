@@ -1,8 +1,16 @@
 import { getLocal } from "mockttp";
 import { randomBytes } from "crypto";
-import { describe, it, assert } from "vitest";
-import { getBountyEnsureRainlang, getWithdrawEnsureRainlang, parseRainlang } from ".";
+import { describe, it, assert, expect } from "vitest";
 import { createPublicClient, encodeAbiParameters, formatUnits, http, toHex } from "viem";
+import {
+    parseRainlang,
+    EnsureBountyTaskType,
+    EnsureBountyTaskParams,
+    getBountyEnsureRainlang,
+    getWithdrawEnsureRainlang,
+    getEnsureBountyTaskBytecode,
+    EnsureBountyTaskErrorType,
+} from ".";
 
 describe("Test task", async function () {
     const mockServer = getLocal();
@@ -105,5 +113,149 @@ total-bounty-eth: add(
         const result = await parseRainlang(rainlang, viemClient, dispair);
 
         assert.equal(result, expected);
+    });
+
+    it("test getEnsureBountyTaskBytecode success external type", async function () {
+        const inputToEthPrice = 10n;
+        const outputToEthPrice = 20n;
+        const minimumExpected = 15n;
+        const sender = toHex(randomBytes(20));
+
+        const params: EnsureBountyTaskParams = {
+            type: EnsureBountyTaskType.External,
+            inputToEthPrice,
+            outputToEthPrice,
+            minimumExpected,
+            sender,
+        };
+        const viemClient = createPublicClient({
+            transport: http(mockServer.url + "/rpc"),
+        });
+        const dispair = {
+            interpreter: toHex(randomBytes(20)),
+            store: toHex(randomBytes(20)),
+            deployer: toHex(randomBytes(20)),
+        };
+
+        const expected = toHex(randomBytes(32)) as `0x${string}`;
+        const callResult = encodeAbiParameters([{ type: "bytes" }], [expected]);
+
+        // mock call
+        await mockServer
+            .forPost("/rpc")
+            .withBodyIncluding("0xa3869e14")
+            .thenSendJsonRpcResult(callResult);
+        const result = await getEnsureBountyTaskBytecode(params, viemClient, dispair);
+
+        assert(result.isOk());
+        assert.equal(result.value, expected);
+    });
+
+    it("test getEnsureBountyTaskBytecode success internal type", async function () {
+        const inputToEthPrice = 10n;
+        const outputToEthPrice = 20n;
+        const minimumExpected = 15n;
+        const sender = toHex(randomBytes(20));
+        const botAddress = toHex(randomBytes(20));
+        const inputToken = toHex(randomBytes(20));
+        const outputToken = toHex(randomBytes(20));
+        const orgInputBalance = 45n;
+        const orgOutputBalance = 55n;
+
+        const params: EnsureBountyTaskParams = {
+            type: EnsureBountyTaskType.Internal,
+            botAddress,
+            inputToken,
+            outputToken,
+            orgInputBalance,
+            orgOutputBalance,
+            inputToEthPrice,
+            outputToEthPrice,
+            minimumExpected,
+            sender,
+        };
+        const viemClient = createPublicClient({
+            transport: http(mockServer.url + "/rpc"),
+        });
+        const dispair = {
+            interpreter: toHex(randomBytes(20)),
+            store: toHex(randomBytes(20)),
+            deployer: toHex(randomBytes(20)),
+        };
+
+        const expected = toHex(randomBytes(32)) as `0x${string}`;
+        const callResult = encodeAbiParameters([{ type: "bytes" }], [expected]);
+
+        // mock call
+        await mockServer
+            .forPost("/rpc")
+            .withBodyIncluding("0xa3869e14")
+            .thenSendJsonRpcResult(callResult);
+        const result = await getEnsureBountyTaskBytecode(params, viemClient, dispair);
+
+        assert(result.isOk());
+        assert.equal(result.value, expected);
+    });
+
+    it("test getEnsureBountyTaskBytecode compose error", async function () {
+        const inputToEthPrice = 10n;
+        const outputToEthPrice = 20n;
+        const minimumExpected = 15n;
+        const sender = ""; // bad sender
+
+        const params: EnsureBountyTaskParams = {
+            type: EnsureBountyTaskType.External,
+            inputToEthPrice,
+            outputToEthPrice,
+            minimumExpected,
+            sender,
+        };
+        const viemClient = createPublicClient({
+            transport: http(mockServer.url + "/rpc"),
+        });
+        const dispair = {
+            interpreter: toHex(randomBytes(20)),
+            store: toHex(randomBytes(20)),
+            deployer: toHex(randomBytes(20)),
+        };
+
+        const result = await getEnsureBountyTaskBytecode(params, viemClient, dispair);
+
+        assert(result.isErr());
+        expect(result.error.type).toBe(EnsureBountyTaskErrorType.ComposeError);
+    });
+
+    it("test getEnsureBountyTaskBytecode parse error", async function () {
+        const inputToEthPrice = 10n;
+        const outputToEthPrice = 20n;
+        const minimumExpected = 15n;
+        const sender = toHex(randomBytes(20));
+
+        const params: EnsureBountyTaskParams = {
+            type: EnsureBountyTaskType.External,
+            inputToEthPrice,
+            outputToEthPrice,
+            minimumExpected,
+            sender,
+        };
+        const viemClient = createPublicClient({
+            transport: http(mockServer.url + "/rpc"),
+        });
+        const dispair = {
+            interpreter: toHex(randomBytes(20)),
+            store: toHex(randomBytes(20)),
+            deployer: toHex(randomBytes(20)),
+        };
+
+        // mock call
+        await mockServer
+            .forPost("/rpc")
+            .withBodyIncluding("0xa3869e14")
+            .thenSendJsonRpcError({ code: -32000, message: "bad rainlang" });
+        const result = await getEnsureBountyTaskBytecode(params, viemClient, dispair);
+
+        assert(result.isErr());
+        expect(result.error.type).toBe(EnsureBountyTaskErrorType.ParseError);
+        expect(result.error.cause?.message).toContain("bad rainlang");
     });
 });

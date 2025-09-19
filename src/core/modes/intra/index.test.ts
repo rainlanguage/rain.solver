@@ -32,6 +32,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
     let signer: RainSolverSigner;
     let inputToEthPrice: string;
     let outputToEthPrice: string;
+    let blockNumber: bigint;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -70,6 +71,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
         signer = { account: { address: "0xsigner" } } as any;
         inputToEthPrice = "0.5";
         outputToEthPrice = "2.0";
+        blockNumber = 123n;
     });
 
     it("should return success result with highest profit when simulations succeed", async () => {
@@ -143,6 +145,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         assert(result.isOk());
@@ -209,6 +212,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         assert(result.isOk());
@@ -268,6 +272,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         assert(result.isErr());
@@ -328,6 +333,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         // should only call trySimulateTrade once (filtered out same ID order)
@@ -377,6 +383,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         // should only call trySimulateTrade once (filtered out same owner order)
@@ -426,6 +433,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         // should only call trySimulateTrade once (filtered out high ratio order)
@@ -475,6 +483,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         // should only call trySimulateTrade once (filtered out order without quote)
@@ -545,6 +554,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         // should only call trySimulateTrade 3 times (top 3 orders)
@@ -582,6 +592,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         expect(trySimulateTrade).toHaveBeenCalledWith({
@@ -620,6 +631,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         assert(result.isErr());
@@ -653,7 +665,14 @@ describe("Test findBestIntraOrderbookTrade", () => {
             }),
         );
 
-        await findBestIntraOrderbookTrade.call(mockRainSolver, orderDetails, signer, "", "");
+        await findBestIntraOrderbookTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            "",
+            "",
+            blockNumber,
+        );
 
         expect(trySimulateTrade).toHaveBeenCalledWith({
             orderDetails,
@@ -667,5 +686,55 @@ describe("Test findBestIntraOrderbookTrade", () => {
         });
         expect(fallbackEthPrice).toHaveBeenCalledWith(1000000000000000000n, 2n, ""); // first call for inputToEthPrice
         expect(fallbackEthPrice).toHaveBeenCalledWith(2n, 1000000000000000000n, ""); // second call for outputToEthPrice
+    });
+
+    it("should return error if getting input/output balance fails", async () => {
+        const mockCounterpartyOrders = [
+            {
+                takeOrder: {
+                    id: "order2",
+                    struct: {
+                        order: {
+                            owner: "0xowner2",
+                        },
+                    },
+                    quote: { ratio: 2n, maxOutput: 1n },
+                },
+            },
+        ];
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
+        mockRainSolver.state.client.readContract = vi
+            .fn()
+            .mockRejectedValueOnce(new Error("some error")) // reject input call
+            .mockResolvedValueOnce(5000000000000000000n) // pass input balance
+            .mockRejectedValueOnce(new Error("some error")); /// reject output call
+
+        const inputResult: SimulationResult = await findBestIntraOrderbookTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            inputToEthPrice,
+            outputToEthPrice,
+            blockNumber,
+        );
+        assert(inputResult.isErr());
+        expect(inputResult.error.noneNodeError).toContain("some error");
+        expect(inputResult.error.noneNodeError).toContain("Failed to get input token balance");
+        expect(inputResult.error.type).toBe("intraOrderbook");
+
+        const outputResult: SimulationResult = await findBestIntraOrderbookTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            inputToEthPrice,
+            outputToEthPrice,
+            blockNumber,
+        );
+        assert(outputResult.isErr());
+        expect(outputResult.error.noneNodeError).toContain("some error");
+        expect(outputResult.error.noneNodeError).toContain("Failed to get output token balance");
+        expect(outputResult.error.type).toBe("intraOrderbook");
     });
 });

@@ -1,7 +1,7 @@
-import { Result } from "../common";
 import { Evaluable, TakeOrder } from "../order";
 import { Attributes } from "@opentelemetry/api";
-import { EstimateGasCostResult, RawTransaction } from "../signer";
+import { Result, RawTransaction } from "../common";
+import { EstimateGasCostResult } from "../signer";
 
 /** Specifies reason that order process halted with failure */
 export enum ProcessOrderHaltReason {
@@ -42,6 +42,7 @@ export type ProcessOrderResultBase = {
 
 /** Successful process order result */
 export type ProcessOrderSuccess = ProcessOrderResultBase & {
+    endTime: number;
     txUrl?: string;
     clearedAmount?: string;
     inputTokenIncome?: string;
@@ -54,6 +55,7 @@ export type ProcessOrderSuccess = ProcessOrderResultBase & {
 
 /** Failed process order result */
 export type ProcessOrderFailure = ProcessOrderResultBase & {
+    endTime: number;
     reason: ProcessOrderHaltReason;
     error?: any;
     txUrl?: string;

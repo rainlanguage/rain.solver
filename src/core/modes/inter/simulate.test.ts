@@ -4,6 +4,7 @@ import { ONE18 } from "../../../math";
 import { Pair } from "../../../order";
 import { Result } from "../../../common";
 import { SimulationResult } from "../../types";
+import { getEnsureBountyTaskBytecode } from "../../../task";
 import { encodeFunctionData, encodeAbiParameters } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { trySimulateTrade, SimulateInterOrderbookTradeArgs } from "./simulate";
@@ -18,9 +19,9 @@ vi.mock("./utils", () => ({
     estimateProfit: vi.fn().mockReturnValue(150n),
 }));
 
-vi.mock("../../../task", () => ({
-    parseRainlang: vi.fn().mockResolvedValue("0xbytecode"),
-    getBountyEnsureRainlang: vi.fn().mockResolvedValue("rainlang"),
+vi.mock("../../../task", async (importOriginal) => ({
+    ...(await importOriginal()),
+    getEnsureBountyTaskBytecode: vi.fn().mockResolvedValue(Result.ok("0xbytecode")),
 }));
 
 vi.mock("../dryrun", () => ({
@@ -292,5 +293,16 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.spanAttributes.maxInput).toBe("10000000"); // scaled to 6 decimals
         expect(result.value.type).toBe("interOrderbook");
+    });
+
+    it("should return error when getEnsureBountyTaskBytecode fails", async () => {
+        args.orderDetails = makeOrderDetails(1n * ONE18);
+        (getEnsureBountyTaskBytecode as Mock).mockResolvedValue(Result.err("error"));
+
+        const result: SimulationResult = await trySimulateTrade.call(solver, args);
+
+        assert(result.isErr());
+        expect(result.error).toHaveProperty("spanAttributes");
+        expect(result.error.type).toBe("interOrderbook");
     });
 });

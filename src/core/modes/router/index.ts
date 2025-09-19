@@ -22,6 +22,7 @@ import {
  * @param ethPrice - The current ETH price
  * @param toToken - The token to trade to
  * @param fromToken - The token to trade from
+ * @param blockNumber - The current block number
  */
 export async function findBestRouteProcessorTrade(
     this: RainSolver,
@@ -30,6 +31,7 @@ export async function findBestRouteProcessorTrade(
     ethPrice: string,
     toToken: Token,
     fromToken: Token,
+    blockNumber: bigint,
 ): Promise<SimulationResult> {
     const spanAttributes: Attributes = {};
 
@@ -43,7 +45,6 @@ export async function findBestRouteProcessorTrade(
     }
 
     const maximumInput = orderDetails.takeOrder.quote!.maxOutput;
-    const blockNumber = await this.state.client.getBlockNumber();
 
     // try simulation for full trade size and return if succeeds
     const fullTradeSizeSimResult = await trySimulateTrade.call(this, {

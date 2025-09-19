@@ -1,5 +1,4 @@
-import { ABI, Result } from "../common";
-import { TokenDetails } from "../state";
+import { ABI, Result, TokenDetails } from "../common";
 import { decodeAbiParameters, DecodeAbiParametersErrorType } from "viem";
 
 export type TakeOrderDetails = {

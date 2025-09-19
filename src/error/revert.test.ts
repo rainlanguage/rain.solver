@@ -1,8 +1,9 @@
-import { ABI } from "../common";
 import { isDeepStrictEqual } from "util";
-import { RawTransaction } from "../signer";
+import { tryDecodeError } from "./decoder";
+import { getRpcError } from "../rpc/helpers";
+import { ABI, RawTransaction } from "../common";
+import { errorSnapshot, containsNodeError } from "./common";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
-import { getRpcError, errorSnapshot, tryDecodeError, containsNodeError } from ".";
 import { BaseError, decodeFunctionData, Hex, isHex, TransactionReceipt } from "viem";
 import {
     handleRevert,
@@ -15,17 +16,24 @@ vi.mock("util", () => ({
     isDeepStrictEqual: vi.fn(),
 }));
 
+vi.mock("./decoder", () => ({
+    tryDecodeError: vi.fn(),
+}));
+
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
     decodeFunctionData: vi.fn(),
     isHex: vi.fn(),
 }));
 
-vi.mock(".", () => ({
-    getRpcError: vi.fn(),
+vi.mock("./common", () => ({
     errorSnapshot: vi.fn(),
-    tryDecodeError: vi.fn(),
     containsNodeError: vi.fn(),
+}));
+
+vi.mock("../rpc/helpers", async (importOriginal) => ({
+    ...(await importOriginal()),
+    getRpcError: vi.fn(),
 }));
 
 describe("Test revert error handling functions", () => {

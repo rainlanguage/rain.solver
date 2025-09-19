@@ -1,10 +1,10 @@
 import { BaseError } from "viem";
 import { Result } from "../../common";
 import { Token } from "sushi/currency";
+import { RainSolverSigner } from "../../signer";
 import { containsNodeError } from "../../error";
-import { sleep, withBigintSerializer } from "../../common";
 import { processReceipt, tryGetReceipt } from "./receipt";
-import { RainSolverSigner, RawTransaction } from "../../signer";
+import { withBigintSerializer, RawTransaction } from "../../common";
 import {
     ProcessOrderSuccess,
     ProcessOrderFailure,
@@ -46,7 +46,7 @@ export async function processTransaction({
     // submit the tx
     let txhash: `0x${string}`, txUrl: string;
     let txSendTime = 0;
-    const sendTx = async () => {
+    try {
         txhash = await signer.asWriteSigner().sendTx({
             ...rawtx,
             type: "legacy",
@@ -56,33 +56,24 @@ export async function processTransaction({
         // eslint-disable-next-line no-console
         console.log("\x1b[33m%s\x1b[0m", txUrl, "\n");
         baseResult.spanAttributes["details.txUrl"] = txUrl;
-    };
-    try {
-        await sendTx();
     } catch (e) {
-        try {
-            // retry again after 5 seconds if first attempt failed
-            await sleep(5000);
-            await sendTx();
-        } catch {
-            // record rawtx in logs
-            baseResult.spanAttributes["details.rawTx"] = JSON.stringify(
-                {
-                    ...rawtx,
-                    from: signer.account.address,
-                },
-                withBigintSerializer,
-            );
-            baseResult.spanAttributes["txNoneNodeError"] = !(await containsNodeError(
-                e as BaseError,
-            ));
-            return async () =>
-                Result.err({
-                    ...baseResult,
-                    error: e,
-                    reason: ProcessOrderHaltReason.TxFailed,
-                });
-        }
+        // record rawtx in logs
+        baseResult.spanAttributes["details.rawTx"] = JSON.stringify(
+            {
+                ...rawtx,
+                from: signer.account.address,
+            },
+            withBigintSerializer,
+        );
+        baseResult.spanAttributes["txNoneNodeError"] = !(await containsNodeError(e as BaseError));
+        const endTime = performance.now();
+        return async () =>
+            Result.err({
+                ...baseResult,
+                error: e,
+                reason: ProcessOrderHaltReason.TxFailed,
+                endTime,
+            });
     }
 
     // start getting tx receipt in background and return the settler fn
@@ -118,6 +109,7 @@ export async function processTransaction({
                 txUrl,
                 reason: ProcessOrderHaltReason.TxMineFailed,
                 error: e,
+                endTime: performance.now(),
             });
         }
     };

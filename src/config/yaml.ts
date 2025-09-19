@@ -52,10 +52,6 @@ export type AppOptions = {
     gasCoveragePercentage: string;
     /** Optional seconds to wait for the transaction to mine before disregarding it, default is 15 */
     timeout: number;
-    /** Number of hops of binary search, if left unspecified will be 1 by default */
-    hops: number;
-    /** The amount of retries for the same order, maximum allowed 3, minimum allowed 1, default is 1 */
-    retries: number;
     /** Option to specify time (in minutes) between pools data resets, default is 0 minutes */
     poolUpdateInterval: number;
     /** Minimum bot's wallet gas token balance required for operating, required */
@@ -243,27 +239,6 @@ export namespace AppOptions {
                     undefined,
                     (timeout) =>
                         assert(timeout > 0, "invalid timeout, must be an integer greater than 0"),
-                ),
-                hops: Validator.resolveNumericValue(
-                    input.hops,
-                    INT_PATTERN,
-                    "invalid hops value, must be an integer greater than 0",
-                    "1",
-                    undefined,
-                    (hops) =>
-                        assert(hops > 0, "invalid hops value, must be an integer greater than 0"),
-                ),
-                retries: Validator.resolveNumericValue(
-                    input.retries,
-                    INT_PATTERN,
-                    "invalid retries value, must be an integer between 1 - 3",
-                    "1",
-                    undefined,
-                    (retries) =>
-                        assert(
-                            retries >= 1 && retries <= 3,
-                            "invalid retries value, must be an integer between 1 - 3",
-                        ),
                 ),
             } as AppOptions);
         } catch (error: any) {
