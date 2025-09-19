@@ -138,41 +138,37 @@ export async function processOrder(
 
     // get in/out tokens to eth price
     spanAttributes["event.getEthMarketPrice"] = Date.now();
-    let inputToEthPrice, outputToEthPrice;
+    let inputToEthPrice = "";
+    let outputToEthPrice = "";
     try {
-        inputToEthPrice = (
-            await this.state.getMarketPrice(
-                toToken,
-                this.state.chainConfig.nativeWrappedToken,
-                dataFetcherBlockNumber,
-            )
-        )?.price;
-        outputToEthPrice = (
-            await this.state.getMarketPrice(
-                fromToken,
-                this.state.chainConfig.nativeWrappedToken,
-                dataFetcherBlockNumber,
-            )
-        )?.price;
-        if (!inputToEthPrice || !outputToEthPrice) {
-            if (this.appOptions.gasCoveragePercentage === "0") {
-                inputToEthPrice = "0";
-                outputToEthPrice = "0";
-            } else {
-                return async () => {
-                    return Result.err({
-                        ...baseResult,
-                        reason: ProcessOrderHaltReason.FailedToGetEthPrice,
-                        error: "no-route",
-                    });
-                };
-            }
+        inputToEthPrice =
+            (
+                await this.state.getMarketPrice(
+                    toToken,
+                    this.state.chainConfig.nativeWrappedToken,
+                    dataFetcherBlockNumber,
+                )
+            )?.price ?? (this.appOptions.gasCoveragePercentage === "0" ? "0" : "");
+        outputToEthPrice =
+            (
+                await this.state.getMarketPrice(
+                    fromToken,
+                    this.state.chainConfig.nativeWrappedToken,
+                    dataFetcherBlockNumber,
+                )
+            )?.price ?? (this.appOptions.gasCoveragePercentage === "0" ? "0" : "");
+
+        if (!inputToEthPrice && !outputToEthPrice) {
+            return async () => {
+                return Result.err({
+                    ...baseResult,
+                    reason: ProcessOrderHaltReason.FailedToGetEthPrice,
+                    error: "no-route for both in/out tokens",
+                });
+            };
         }
     } catch (e) {
-        if (this.appOptions.gasCoveragePercentage === "0") {
-            inputToEthPrice = "0";
-            outputToEthPrice = "0";
-        } else {
+        if (!inputToEthPrice && !outputToEthPrice) {
             return async () => {
                 return Result.err({
                     ...baseResult,
@@ -184,8 +180,8 @@ export async function processOrder(
     }
 
     // record in/out tokens to eth price andgas price for otel
-    spanAttributes["details.inputToEthPrice"] = inputToEthPrice;
-    spanAttributes["details.outputToEthPrice"] = outputToEthPrice;
+    spanAttributes["details.inputToEthPrice"] = inputToEthPrice || "no-way";
+    spanAttributes["details.outputToEthPrice"] = outputToEthPrice || "no-way";
     spanAttributes["details.gasPrice"] = this.state.gasPrice.toString();
     if (this.state.l1GasPrice) {
         spanAttributes["details.gasPriceL1"] = this.state.l1GasPrice.toString();

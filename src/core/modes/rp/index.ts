@@ -32,6 +32,16 @@ export async function findBestRouteProcessorTrade(
     fromToken: Token,
 ): Promise<SimulationResult> {
     const spanAttributes: Attributes = {};
+
+    // exit early if eth price is unknown
+    if (!ethPrice) {
+        spanAttributes["error"] = "no route to get price of input token to eth";
+        return Result.err({
+            type: TradeType.RouteProcessor,
+            spanAttributes,
+        });
+    }
+
     const maximumInput = orderDetails.takeOrders.reduce((a, b) => a + b.quote!.maxOutput, 0n);
     const blockNumber = await this.state.client.getBlockNumber();
 

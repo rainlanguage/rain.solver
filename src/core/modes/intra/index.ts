@@ -7,6 +7,7 @@ import { ONE18, scale18 } from "../../../math";
 import { Attributes } from "@opentelemetry/api";
 import { trySimulateTrade } from "./simulation";
 import { RainSolverSigner } from "../../../signer";
+import { fallbackEthPrice } from "../../../router";
 import { extendObjectWithHeader } from "../../../logger";
 import { SimulationResult, TradeType } from "../../types";
 
@@ -67,8 +68,20 @@ export async function findBestIntraOrderbookTrade(
             orderDetails,
             counterpartyOrderDetails: counterparty.takeOrder,
             signer,
-            inputToEthPrice,
-            outputToEthPrice,
+            inputToEthPrice:
+                inputToEthPrice ||
+                fallbackEthPrice(
+                    orderDetails.takeOrders[0].quote!.ratio,
+                    counterparty.takeOrder.quote!.ratio,
+                    outputToEthPrice,
+                ),
+            outputToEthPrice:
+                outputToEthPrice ||
+                fallbackEthPrice(
+                    counterparty.takeOrder.quote!.ratio,
+                    orderDetails.takeOrders[0].quote!.ratio,
+                    inputToEthPrice,
+                ),
             blockNumber,
             inputBalance,
             outputBalance,
