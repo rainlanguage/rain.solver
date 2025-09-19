@@ -10,7 +10,7 @@ import { RainDataFetcherOptions } from "sushi";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../signer";
 import { processTransaction } from "./transaction";
-import { PoolBlackList, toNumber } from "../../utils";
+import { PoolBlackList } from "../../utils";
 import {
     ProcessOrderStatus,
     ProcessOrderSuccess,
@@ -18,6 +18,7 @@ import {
     ProcessOrderHaltReason,
     ProcessOrderResultBase,
 } from "../types";
+import { toNumber } from "../../math";
 
 /** Arguments for processing an order */
 export type ProcessOrderArgs = {

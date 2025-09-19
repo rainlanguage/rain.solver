@@ -4,7 +4,7 @@ import { ethers } from "ethers";
 import { readFileSync } from "fs";
 import { RpcConfig } from "../rpc";
 import { SelfFundVault } from "../types";
-import { isBigNumberish } from "../utils";
+import { isBigNumberish } from "../math";
 import { SgFilter } from "../subgraph/filter";
 
 /** Integer pattern */

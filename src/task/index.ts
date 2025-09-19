@@ -1,8 +1,7 @@
 import fs from "fs";
-import { Dispair } from "./state";
-import { DeployerAbi } from "./abis";
-import { BigNumber, utils } from "ethers";
-import { PublicClient, stringToHex } from "viem";
+import { Dispair } from "../state";
+import { DeployerAbi } from "../abis";
+import { formatUnits, PublicClient, stringToHex } from "viem";
 import { MetaStore, RainDocument } from "@rainlanguage/dotrain";
 
 const metaStore = new MetaStore(false);
@@ -22,9 +21,9 @@ export const WithdrawEnsureBountyDotrain = fs.readFileSync("./tasks/withdraw-ens
  * @param sender - The msg sender
  */
 export async function getBountyEnsureRainlang(
-    inputToEthPrice: BigNumber,
-    outputToEthPrice: BigNumber,
-    minimumExpected: BigNumber,
+    inputToEthPrice: bigint,
+    outputToEthPrice: bigint,
+    minimumExpected: bigint,
     sender: string,
 ): Promise<string> {
     return await RainDocument.composeText(
@@ -33,9 +32,9 @@ export async function getBountyEnsureRainlang(
         metaStore,
         [
             ["sender", sender],
-            ["input-to-eth-price", utils.formatUnits(inputToEthPrice)],
-            ["output-to-eth-price", utils.formatUnits(outputToEthPrice)],
-            ["minimum-expected", utils.formatUnits(minimumExpected)],
+            ["input-to-eth-price", formatUnits(inputToEthPrice, 18)],
+            ["output-to-eth-price", formatUnits(outputToEthPrice, 18)],
+            ["minimum-expected", formatUnits(minimumExpected, 18)],
         ],
     );
 }
@@ -56,11 +55,11 @@ export async function getWithdrawEnsureRainlang(
     botAddress: string,
     inputToken: string,
     outputToken: string,
-    orgInputBalance: BigNumber,
-    orgOutputBalance: BigNumber,
-    inputToEthPrice: BigNumber,
-    outputToEthPrice: BigNumber,
-    minimumExpected: BigNumber,
+    orgInputBalance: bigint,
+    orgOutputBalance: bigint,
+    inputToEthPrice: bigint,
+    outputToEthPrice: bigint,
+    minimumExpected: bigint,
     sender: string,
 ): Promise<string> {
     return await RainDocument.composeText(
@@ -72,11 +71,11 @@ export async function getWithdrawEnsureRainlang(
             ["bot-address", botAddress],
             ["input-token", inputToken],
             ["output-token", outputToken],
-            ["minimum-expected", utils.formatUnits(minimumExpected)],
-            ["input-to-eth-price", utils.formatUnits(inputToEthPrice)],
-            ["output-to-eth-price", utils.formatUnits(outputToEthPrice)],
-            ["org-input-balance", utils.formatUnits(orgInputBalance)],
-            ["org-output-balance", utils.formatUnits(orgOutputBalance)],
+            ["minimum-expected", formatUnits(minimumExpected, 18)],
+            ["input-to-eth-price", formatUnits(inputToEthPrice, 18)],
+            ["output-to-eth-price", formatUnits(outputToEthPrice, 18)],
+            ["org-input-balance", formatUnits(orgInputBalance, 18)],
+            ["org-output-balance", formatUnits(orgOutputBalance, 18)],
         ],
     );
 }
