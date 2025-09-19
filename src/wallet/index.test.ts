@@ -1,9 +1,11 @@
 import { parseUnits } from "viem";
+import * as sweepFns from "./sweep";
 import { WalletType } from "./config";
-import { SharedState } from "../state";
 import { WalletManager } from "./index";
 import { ErrorSeverity } from "../error";
+import { RainSolverSigner } from "../signer";
 import { SpanStatusCode } from "@opentelemetry/api";
+import { SharedState, TokenDetails } from "../state";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 
@@ -22,9 +24,15 @@ vi.mock("../signer", () => ({
 describe("Test WalletManager", () => {
     const testPrivateKey = "0x1234567890123456789012345678901234567890123456789012345678901234";
     const testMnemonic = "test test test test test test test test test test test junk";
+    const mockToken: TokenDetails = {
+        address: "0xtoken" as `0x${string}`,
+        symbol: "TEST",
+        decimals: 18,
+    };
 
     let singleWalletState: SharedState;
     let multiWalletState: SharedState;
+    let workerSigner: RainSolverSigner;
 
     beforeEach(() => {
         singleWalletState = new SharedState({
@@ -37,6 +45,9 @@ describe("Test WalletManager", () => {
             chainConfig: {
                 id: 1,
                 isSpecialL2: false,
+                blockExplorers: {
+                    default: { url: "https://explorer.test" },
+                },
             },
         } as any);
 
@@ -52,8 +63,18 @@ describe("Test WalletManager", () => {
             chainConfig: {
                 id: 1,
                 isSpecialL2: false,
+                blockExplorers: {
+                    default: { url: "https://explorer.test" },
+                },
             },
         } as any);
+
+        workerSigner = RainSolverSigner.create(
+            privateKeyToAccount(
+                "0x2234567890123456789012345678901234567890123456789012345678901234",
+            ),
+            singleWalletState,
+        );
     });
 
     describe("Test init", () => {
@@ -268,6 +289,240 @@ describe("Test WalletManager", () => {
             expect(getSelfBalanceSpy).toHaveBeenCalledTimes(1);
 
             getSelfBalanceSpy.mockRestore();
+        });
+    });
+
+    describe("Test sweepWallet", () => {
+        beforeEach(() => {
+            vi.clearAllMocks();
+
+            // add watched token to state
+            (singleWalletState as any).watchedTokens = new Map([["TEST", mockToken]]);
+        });
+
+        it("should successfully sweep all tokens and gas", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+
+            // mock successful token transfer
+            const transferTokenFromSpy = vi
+                .spyOn(walletManager, "transferTokenFrom")
+                .mockResolvedValue({
+                    amount: parseUnits("1", 18),
+                    txHash: "0xtoken_hash",
+                });
+
+            // mock successful gas transfer
+            const transferRemainingGasFromSpy = vi
+                .spyOn(walletManager, "transferRemainingGasFrom")
+                .mockResolvedValue({
+                    amount: parseUnits("0.1", 18),
+                    txHash: "0xgas_hash",
+                });
+
+            const report = await walletManager.sweepWallet(workerSigner);
+
+            // verify report attributes
+            expect(report.name).toBe("sweep-wallet");
+            expect(report.attributes["details.wallet"]).toBe(workerSigner.account.address);
+            expect(report.attributes["details.destination"]).toBe(walletManager.mainWallet.address);
+
+            // verify token transfer details
+            expect(report.attributes["details.transfers.TEST.token"]).toBe(mockToken.address);
+            expect(report.attributes["details.transfers.TEST.tx"]).toBe(
+                "https://explorer.test/tx/0xtoken_hash",
+            );
+            expect(report.attributes["details.transfers.TEST.status"]).toBe(
+                "Transferred successfully",
+            );
+            expect(report.attributes["details.transfers.TEST.amount"]).toBe("1");
+
+            // verify gas transfer details
+            expect(report.attributes["details.transfers.remainingGas.tx"]).toBe(
+                "https://explorer.test/tx/0xgas_hash",
+            );
+            expect(report.attributes["details.transfers.remainingGas.status"]).toBe(
+                "Transferred successfully",
+            );
+            expect(report.attributes["details.transfers.remainingGas.amount"]).toBe("0.1");
+
+            // verify no failures were recorded
+            expect(report.status?.code).not.toBe(SpanStatusCode.ERROR);
+
+            transferTokenFromSpy.mockRestore();
+            transferRemainingGasFromSpy.mockRestore();
+        });
+
+        it("should handle token transfer failures", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+
+            // mock failed token transfer with transaction hash
+            const transferTokenFromSpy = vi
+                .spyOn(walletManager, "transferTokenFrom")
+                .mockRejectedValue({
+                    txHash: "0xfailed_token",
+                    error: new Error("Token transfer failed"),
+                });
+
+            // mock successful gas transfer
+            const transferRemainingGasFromSpy = vi
+                .spyOn(walletManager, "transferRemainingGasFrom")
+                .mockResolvedValue({
+                    amount: parseUnits("0.1", 18),
+                    txHash: "0xgas_hash",
+                });
+
+            const report = await walletManager.sweepWallet(workerSigner);
+
+            // verify failure was recorded
+            expect(report.status?.code).toBe(SpanStatusCode.ERROR);
+            expect(report.attributes["severity"]).toBe(ErrorSeverity.LOW);
+            expect(report.status?.message).toBe(
+                "Failed to sweep some tokens, it will try again later",
+            );
+
+            // verify token failure details
+            expect(report.attributes["details.transfers.TEST.tx"]).toBe(
+                "https://explorer.test/tx/0xfailed_token",
+            );
+            expect(report.attributes["details.transfers.TEST.status"]).toContain(
+                "Token transfer failed",
+            );
+
+            transferTokenFromSpy.mockRestore();
+            transferRemainingGasFromSpy.mockRestore();
+        });
+
+        it("should handle gas transfer failures", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+
+            // mock successful token transfer
+            const transferTokenFromSpy = vi
+                .spyOn(walletManager, "transferTokenFrom")
+                .mockResolvedValue({
+                    amount: parseUnits("1", 18),
+                    txHash: "0xtoken_hash",
+                });
+
+            // mock failed gas transfer without transaction hash
+            const transferRemainingGasFromSpy = vi
+                .spyOn(walletManager, "transferRemainingGasFrom")
+                .mockRejectedValue(new Error("Gas transfer failed"));
+
+            const report = await walletManager.sweepWallet(workerSigner);
+
+            // verify failure was recorded
+            expect(report.status?.code).toBe(SpanStatusCode.ERROR);
+            expect(report.attributes["severity"]).toBe(ErrorSeverity.LOW);
+
+            // verify gas failure details
+            expect(report.attributes["details.transfers.remainingGas.status"]).toContain(
+                "Gas transfer failed",
+            );
+
+            transferTokenFromSpy.mockRestore();
+            transferRemainingGasFromSpy.mockRestore();
+        });
+
+        it("should handle both token and gas transfer failures", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+
+            // mock failed token transfer without transaction hash
+            const transferTokenFromSpy = vi
+                .spyOn(walletManager, "transferTokenFrom")
+                .mockRejectedValue(new Error("Token transfer failed"));
+
+            // mock failed gas transfer with transaction hash
+            const transferRemainingGasFromSpy = vi
+                .spyOn(walletManager, "transferRemainingGasFrom")
+                .mockRejectedValue({
+                    txHash: "0xfailed_gas",
+                    error: new Error("Gas transfer failed"),
+                });
+
+            const report = await walletManager.sweepWallet(workerSigner);
+
+            // verify failures were recorded
+            expect(report.status?.code).toBe(SpanStatusCode.ERROR);
+            expect(report.attributes["severity"]).toBe(ErrorSeverity.LOW);
+            expect(report.status?.message).toBe(
+                "Failed to sweep some tokens, it will try again later",
+            );
+
+            // verify token failure details
+            expect(report.attributes["details.transfers.TEST.status"]).toContain(
+                "Failed to transfer",
+            );
+
+            // verify gas failure details
+            expect(report.attributes["details.transfers.remainingGas.tx"]).toBe(
+                "https://explorer.test/tx/0xfailed_gas",
+            );
+            expect(report.attributes["details.transfers.remainingGas.status"]).toContain(
+                "Gas transfer failed",
+            );
+
+            transferTokenFromSpy.mockRestore();
+            transferRemainingGasFromSpy.mockRestore();
+        });
+
+        it("should handle empty watched tokens list", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+
+            // clear watched tokens
+            (singleWalletState as any).watchedTokens = new Map();
+
+            const transferRemainingGasFromSpy = vi
+                .spyOn(walletManager, "transferRemainingGasFrom")
+                .mockResolvedValue({
+                    amount: parseUnits("0.1", 18),
+                    txHash: "0xgas_hash",
+                });
+            const transferTokenFromSpy = vi
+                .spyOn(walletManager, "transferTokenFrom")
+                .mockResolvedValue({
+                    amount: parseUnits("0.1", 18),
+                    txHash: "0xtoken_hash",
+                });
+
+            const report = await walletManager.sweepWallet(workerSigner);
+
+            // verify no token transfers were attempted
+            expect(transferRemainingGasFromSpy).toHaveBeenCalledTimes(1);
+            expect(transferTokenFromSpy).not.toHaveBeenCalled();
+
+            // verify gas transfer was still attempted and successful
+            expect(report.attributes["details.transfers.remainingGas.status"]).toBe(
+                "Transferred successfully",
+            );
+
+            transferRemainingGasFromSpy.mockRestore();
+            transferTokenFromSpy.mockRestore();
+        });
+    });
+
+    describe("Test transferTokenFrom", () => {
+        it("should call transferTokenFrom function with this", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+            const spy = vi.spyOn(sweepFns, "transferTokenFrom");
+            walletManager.transferTokenFrom(workerSigner, mockToken).catch(() => {});
+
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(spy).toHaveBeenCalledWith(workerSigner, walletManager.mainSigner, mockToken);
+
+            spy.mockRestore();
+        });
+    });
+
+    describe("Test transferRemainingGasFrom", () => {
+        it("should call transferRemainingGasFrom function with this", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+            const spy = vi.spyOn(sweepFns, "transferRemainingGasFrom");
+            walletManager.transferRemainingGasFrom(workerSigner).catch(() => {});
+
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(spy).toHaveBeenCalledWith(workerSigner, walletManager.mainWallet.address);
+
+            spy.mockRestore();
         });
     });
 });

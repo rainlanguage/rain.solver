@@ -1,6 +1,6 @@
 import assert from "assert";
 import { formatUnits } from "viem";
-import { SharedState } from "../state";
+import { SharedState, TokenDetails } from "../state";
 import { RainSolverSigner } from "../signer";
 import { PreAssembledSpan } from "../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -12,6 +12,7 @@ import {
     PrivateKeyAccount,
     privateKeyToAccount,
 } from "viem/accounts";
+import { transferTokenFrom, transferRemainingGasFrom } from "./sweep";
 
 export * from "./config";
 
@@ -241,6 +242,117 @@ export class WalletManager {
                 message: errorSnapshot("Failed to check main wallet balance", error),
             });
             report.setAttr("severity", ErrorSeverity.LOW);
+        }
+
+        report.end();
+        return report;
+    }
+
+    /**
+     * Transfers the given token from the given wallet to the main wallet
+     * @param wallet - The wallet to transfer the token from
+     * @param token - The token to transfer
+     * @returns An object containing transaction hash and transferred amount
+     */
+    async transferTokenFrom(wallet: RainSolverSigner, token: TokenDetails) {
+        return transferTokenFrom(wallet, this.mainSigner, token);
+    }
+
+    /**
+     * Transfers the remaining gas from the given wallet to the main wallet
+     * @param wallet - The wallet to transfer the remaining gas from
+     * @returns An object containing transaction hash and transferred amount
+     */
+    async transferRemainingGasFrom(wallet: RainSolverSigner) {
+        return transferRemainingGasFrom(wallet, this.mainWallet.address);
+    }
+
+    /**
+     * Sweeps the given wallet's erc20 token holdings (from state's watched tokens list) to the main wallet,
+     * this function is fully instrumented for opentelemetry and will return a report of the sweep process
+     * @param wallet - The wallet to sweep
+     * @returns The report of the sweep process
+     */
+    async sweepWallet(wallet: RainSolverSigner): Promise<PreAssembledSpan> {
+        const report = new PreAssembledSpan("sweep-wallet");
+        report.setAttr("details.wallet", wallet.account.address);
+        report.setAttr("details.destination", this.mainWallet.address);
+
+        let hadFailures = false;
+
+        // sweep erc20 tokens from the wallet
+        for (const [, tokenDetails] of this.state.watchedTokens) {
+            report.setAttr(`details.transfers.${tokenDetails.symbol}.token`, tokenDetails.address);
+            try {
+                const { amount, txHash } = await this.transferTokenFrom(wallet, tokenDetails);
+                if (txHash) {
+                    report.setAttr(
+                        `details.transfers.${tokenDetails.symbol}.tx`,
+                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + txHash,
+                    );
+                }
+                report.setAttr(
+                    `details.transfers.${tokenDetails.symbol}.status`,
+                    "Transferred successfully",
+                );
+                report.setAttr(
+                    `details.transfers.${tokenDetails.symbol}.amount`,
+                    formatUnits(amount, tokenDetails.decimals),
+                );
+            } catch (error: any) {
+                hadFailures = true;
+                if ("txHash" in error) {
+                    report.setAttr(
+                        `details.transfers.${tokenDetails.symbol}.tx`,
+                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + error.txHash,
+                    );
+                    report.setAttr(
+                        `details.transfers.${tokenDetails.symbol}.status`,
+                        errorSnapshot("", error.error),
+                    );
+                } else {
+                    report.setAttr(
+                        `details.transfers.${tokenDetails.symbol}.status`,
+                        errorSnapshot("Failed to transfer", error),
+                    );
+                }
+            }
+        }
+
+        // sweep remaining gas from the wallet
+        try {
+            const { amount, txHash } = await this.transferRemainingGasFrom(wallet);
+            if (txHash) {
+                report.setAttr(
+                    `details.transfers.remainingGas.tx`,
+                    this.state.chainConfig.blockExplorers?.default.url + "/tx/" + txHash,
+                );
+            }
+            report.setAttr(`details.transfers.remainingGas.status`, "Transferred successfully");
+            report.setAttr(`details.transfers.remainingGas.amount`, formatUnits(amount, 18));
+        } catch (error: any) {
+            hadFailures = true;
+            if ("txHash" in error) {
+                report.setAttr(
+                    `details.transfers.remainingGas.tx`,
+                    this.state.chainConfig.blockExplorers?.default.url + "/tx/" + error.txHash,
+                );
+                report.setAttr(
+                    `details.transfers.remainingGas.status`,
+                    errorSnapshot("", error.error),
+                );
+            } else {
+                report.setAttr(`details.transfers.remainingGas.status`, errorSnapshot("", error));
+            }
+        }
+
+        // if there were failures, set the severity to low and set the status to error
+        if (hadFailures) {
+            report.setAttr("severity", ErrorSeverity.LOW);
+            report.setStatus({
+                code: SpanStatusCode.ERROR,
+                message: "Failed to sweep some tokens, it will try again later",
+            });
         }
 
         report.end();
