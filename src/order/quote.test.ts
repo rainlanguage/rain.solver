@@ -1,8 +1,8 @@
+import { ChainId } from "sushi";
 import { PublicClient } from "viem";
+import { BundledOrders } from "./types";
 import { getQuoteGas, quoteSingleOrder } from "./quote";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
-import { BundledOrders } from "./types";
-import { ChainId } from "sushi";
 
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
@@ -61,22 +61,21 @@ describe("Test getQuoteGas", () => {
             takeOrders: [{ takeOrder: {} }],
         } as any as BundledOrders;
         const config = {
-            chain: {
+            chainConfig: {
                 id: ChainId.ARBITRUM,
             },
-            quoteGas: limitGas,
-            viemClient: {
+            client: {
                 simulateContract: async () => ({ result: [arbitrumL1Gas, 1_500_000n, 123_000n] }),
             },
         } as any;
 
         // arbitrum chain
-        let result = await getQuoteGas(config, orderDetails);
+        let result = await getQuoteGas(config, orderDetails, { quoteGas: limitGas } as any);
         expect(result).toEqual(limitGas + arbitrumL1Gas);
 
         // other chains
-        config.chain.id = 1;
-        result = await getQuoteGas(config, orderDetails);
+        config.chainConfig.id = 1;
+        result = await getQuoteGas(config, orderDetails, { quoteGas: limitGas } as any);
         expect(result).toEqual(limitGas);
     });
 });

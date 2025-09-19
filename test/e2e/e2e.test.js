@@ -1,19 +1,18 @@
 require("dotenv").config();
 const { assert } = require("chai");
 const testData = require("./data");
-const { RainSolver } = require("../../src/solver");
+const { RainSolver } = require("../../src/core");
 const { arbAbis } = require("../../src/abis");
 const { RpcState } = require("../../src/rpc");
 const mockServer = require("mockttp").getLocal();
-const { publicRpcs } = require("../../src/client");
 const { sendTx, waitUntilFree, estimateGasCost } = require("../../src/signer/actions");
 const { ethers, viem, network } = require("hardhat");
 const { ChainKey, RainDataFetcher } = require("sushi");
 const { publicClientConfig } = require("sushi/config");
 const { Resource } = require("@opentelemetry/resources");
 const { getChainConfig } = require("../../src/state/chain");
-const { rainSolverTransport } = require("../../src/transport");
-const { ProcessOrderStatus } = require("../../src/solver/types");
+const { rainSolverTransport } = require("../../src/rpc");
+const { ProcessOrderStatus } = require("../../src/core/types");
 const ERC20Artifact = require("../abis/ERC20Upgradeable.json");
 const { abi: orderbookAbi } = require("../abis/OrderBook.json");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -98,7 +97,7 @@ for (let i = 0; i < testData.length; i++) {
             createPublicClient({
                 chain: publicClientConfig[chainId].chain,
                 transport: rainSolverTransport(rpcState, {
-                    retryCountNext: Math.max(publicRpcs[chainId] * 2, 50),
+                    retryCountNext: 50,
                     timeout: 600_000,
                 }),
             }),

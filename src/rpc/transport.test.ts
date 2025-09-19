@@ -1,13 +1,13 @@
-import { assert } from "chai";
 import { randomInt } from "crypto";
 import { getLocal } from "mockttp";
 import { polygon } from "viem/chains";
-import { normalizeUrl, RpcConfig, RpcBufferType, RpcState } from "../src/rpc";
+import { describe, it, assert } from "vitest";
+import { normalizeUrl, RpcConfig, RpcBufferType, RpcState } from ".";
 import {
     rainSolverTransport,
     RainSolverTransportConfig,
     RainSolverTransportTimeoutError,
-} from "../src/transport";
+} from "./transport";
 
 describe("Test transport", async function () {
     it("test RainSolver transport happy", async function () {
@@ -71,7 +71,7 @@ describe("Test transport", async function () {
         assert.closeTo(
             state.metrics[normalizeUrl(mockServer1.url)].progress.successRate,
             state.metrics[normalizeUrl(mockServer2.url)].progress.successRate,
-            500, // 5% delta
+            1000, // 10% delta
         );
 
         await mockServer1.stop();

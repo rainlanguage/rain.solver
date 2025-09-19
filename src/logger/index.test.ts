@@ -1,8 +1,7 @@
 /* eslint-disable no-console */
-import { extendObjectWithHeader } from "./logger";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { describe, it, assert, expect } from "vitest";
-import { PreAssembledSpan, RainSolverLogger } from "./logger";
+import { PreAssembledSpan, RainSolverLogger, extendObjectWithHeader } from ".";
 
 describe("Test RainSolverLogger", async function () {
     it("should successfully collect data and logs and export to otel channel", async function () {

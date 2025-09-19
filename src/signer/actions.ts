@@ -1,7 +1,6 @@
 import { sleep } from "../common";
-import { BigNumber } from "ethers";
+import { SharedState } from "../state";
 import { publicActionsL2 } from "viem/op-stack";
-import { SharedState, TokenDetails } from "../state";
 import { RainSolverSigner, EstimateGasCostResult } from ".";
 import {
     Chain,
@@ -34,11 +33,6 @@ import {
 export type RainSolverSignerActions<
     account extends HDAccount | PrivateKeyAccount = HDAccount | PrivateKeyAccount,
 > = {
-    /** @deprecated */
-    BALANCE: BigNumber;
-    /** @deprecated */
-    BOUNTY: TokenDetails[];
-
     /** A SharedState instance containing shared configuration and state */
     state: SharedState;
 
@@ -81,8 +75,6 @@ export namespace RainSolverSignerActions {
         return (client) => ({
             state,
             busy: false,
-            BALANCE: BigNumber.from(0),
-            BOUNTY: Array.from(state.watchedTokens.values()),
             sendTx: (tx) => sendTx(client, tx),
             waitUntilFree: () => waitUntilFree(client),
             getSelfBalance: () => getSelfBalance(client),
