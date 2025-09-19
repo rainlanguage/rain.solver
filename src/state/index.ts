@@ -5,14 +5,13 @@ import { AppOptions } from "../config";
 import { Token } from "sushi/currency";
 import { errorSnapshot } from "../error";
 import { getGasPrice } from "./gasPrice";
-import { getMarketPrice } from "./marketPrice";
 import { WalletConfig } from "../wallet/config";
-import { processLiquidityProviders } from "./lps";
 import { SubgraphConfig } from "../subgraph/config";
 import { OrderManagerConfig } from "../order/config";
 import { ChainConfig, getChainConfig } from "./chain";
 import { createPublicClient, PublicClient } from "viem";
 import { LiquidityProviders, RainDataFetcher } from "sushi";
+import { getMarketPrice, processLiquidityProviders } from "../router";
 import { rainSolverTransport, RainSolverTransportConfig } from "../transport";
 
 /**

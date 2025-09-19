@@ -15,7 +15,6 @@ import {
     RouteProcessorSimulationHaltReason,
 } from "./simulate";
 
-// Mocks
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
     encodeFunctionData: vi.fn().mockReturnValue("0xdata"),
@@ -23,8 +22,12 @@ vi.mock("viem", async (importOriginal) => ({
 }));
 
 vi.mock("./utils", () => ({
-    visualizeRoute: vi.fn().mockReturnValue(["routeVisual"]),
     estimateProfit: vi.fn().mockReturnValue(123n),
+}));
+
+vi.mock("../../../router", async (importOriginal) => ({
+    ...(await importOriginal()),
+    visualizeRoute: vi.fn().mockReturnValue(["routeVisual"]),
 }));
 
 vi.mock("../../../task", () => ({
@@ -36,7 +39,8 @@ vi.mock("../dryrun", () => ({
     dryrun: vi.fn(),
 }));
 
-vi.mock("sushi", () => ({
+vi.mock("sushi", async (importOriginal) => ({
+    ...(await importOriginal()),
     Router: {
         findBestRoute: vi.fn(),
         routeProcessor4Params: vi.fn().mockReturnValue({ routeCode: "0xroute" }),
