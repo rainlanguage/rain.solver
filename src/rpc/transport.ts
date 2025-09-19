@@ -6,12 +6,11 @@ import { BaseError, createTransport, Transport, TransportConfig } from "viem";
  * RainSolver transport default configurations
  */
 export namespace RainSolverTransportDefaults {
-    export const DEDUPE = true as const;
     export const RETRY_COUNT = 1 as const;
     export const TIMEOUT = 10_000 as const;
     export const RETRY_DELAY = 150 as const;
     export const RETRY_COUNT_NEXT = 1 as const;
-    export const POLLING_INTERVAL = 50 as const;
+    export const POLLING_INTERVAL = 100 as const;
     export const POLLING_TIMEOUT = 10_000 as const;
     export const KEY = "RainSolverTransport" as const;
     export const NAME = "Rain Solver Transport" as const;
@@ -35,8 +34,6 @@ export type RainSolverTransportConfig = {
     pollingInterval?: number;
     /** The max number of times to retry with next rpc, default: 1 */
     retryCountNext?: number;
-    /** Whether to deduplicate in-flight requests, default: true */
-    dedupe?: boolean;
 };
 
 /**
@@ -77,7 +74,6 @@ export function rainSolverTransport(
     const {
         key = RainSolverTransportDefaults.KEY,
         name = RainSolverTransportDefaults.NAME,
-        dedupe = RainSolverTransportDefaults.DEDUPE,
         timeout = RainSolverTransportDefaults.TIMEOUT,
         retryCount = RainSolverTransportDefaults.RETRY_COUNT,
         retryDelay = RainSolverTransportDefaults.RETRY_DELAY,
@@ -93,7 +89,7 @@ export function rainSolverTransport(
             retryDelay,
             retryCount: 0,
             type: "RainSolverTransport",
-            async request(args, options) {
+            async request(args) {
                 const req = async (tryNextCount: number): Promise<any> => {
                     try {
                         const transport = await state.nextRpc({
@@ -109,10 +105,7 @@ export function rainSolverTransport(
                         return await transport({
                             chain,
                             retryCount: resolvedRetryCount,
-                        }).request(args, {
-                            ...options,
-                            dedupe,
-                        });
+                        }).request(args);
                     } catch (error: any) {
                         if (shouldThrow(error)) throw error;
                         if (tryNextCount) return req(tryNextCount - 1);
