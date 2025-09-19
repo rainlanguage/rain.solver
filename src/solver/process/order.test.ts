@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { RainSolver } from "..";
 import { Result } from "../../result";
-import { findOpp } from "../../modes";
+import { findBestTrade } from "../modes";
 import { SharedState } from "../../state";
 import { OrderManager } from "../../order";
 import { processTransaction } from "./transaction";
@@ -9,8 +9,8 @@ import { processOrder, ProcessOrderArgs } from "./order";
 import { ProcessOrderStatus, ProcessOrderHaltReason } from "../types";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
-vi.mock("../../modes", () => ({
-    findOpp: vi.fn(),
+vi.mock("../modes", () => ({
+    findBestTrade: vi.fn(),
 }));
 
 vi.mock("./transaction", () => ({
@@ -33,8 +33,6 @@ describe("Test processOrder", () => {
     let mockArgs: ProcessOrderArgs;
     let mockOrderManager: OrderManager;
     let mockState: SharedState;
-    let mockOrderbook: any;
-    let mockArb: any;
 
     beforeEach(() => {
         mockOrderManager = {
@@ -55,8 +53,6 @@ describe("Test processOrder", () => {
             getMarketPrice: vi.fn().mockResolvedValue({ price: "100", amountOut: "100" }),
             gasPrice: 100n,
         } as any;
-        mockOrderbook = { address: "0xORDERBOOK" };
-        mockArb = {};
         mockArgs = {
             orderDetails: {
                 sellTokenDecimals: 18,
@@ -74,16 +70,12 @@ describe("Test processOrder", () => {
                 ],
             },
             signer: {},
-            arb: mockArb,
-            genericArb: undefined,
-            orderbook: mockOrderbook,
-            orderbooksOrders: [],
         } as any;
         mockRainSolver = {
             state: mockState,
             orderManager: mockOrderManager,
-            config: {},
             appOptions: {},
+            findBestTrade,
         } as any;
     });
 
@@ -201,6 +193,7 @@ describe("Test processOrder", () => {
 
     it('should set input/outputToEthPrice to "0" if getMarketPrice throws and gasCoveragePercentage is "0"', async () => {
         (mockState.getMarketPrice as Mock).mockRejectedValue(new Error("no route"));
+        (findBestTrade as Mock).mockResolvedValue(Result.err({ spanAttributes: {} }));
         mockRainSolver.appOptions.gasCoveragePercentage = "0";
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
@@ -247,6 +240,7 @@ describe("Test processOrder", () => {
 
     it('should set input/outputToEthPrice to "0" if getMarketPrice returns undefined and gasCoveragePercentage is "0"', async () => {
         (mockState.getMarketPrice as Mock).mockResolvedValue(undefined);
+        (findBestTrade as Mock).mockResolvedValue(Result.err({ spanAttributes: {} }));
         mockRainSolver.appOptions.gasCoveragePercentage = "0";
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
@@ -269,9 +263,9 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
     });
 
-    it("should return ok result if findOpp throws with noneNodeError", async () => {
+    it("should return ok result if findBestTrade throws with noneNodeError", async () => {
         const error = { spanAttributes: { test: "something" }, noneNodeError: "some error" };
-        (findOpp as Mock) = vi.fn().mockRejectedValue(error);
+        (findBestTrade as Mock).mockResolvedValue(Result.err(error));
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
             mockRainSolver,
@@ -299,9 +293,9 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.test"]).toBe("something");
     });
 
-    it("should return ok result if findOpp throws without noneNodeError", async () => {
+    it("should return ok result if findBestTrade throws without noneNodeError", async () => {
         const error = { spanAttributes: { test: "something" } };
-        (findOpp as Mock) = vi.fn().mockRejectedValue(error);
+        (findBestTrade as Mock).mockResolvedValue(Result.err(error));
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
             mockRainSolver,
@@ -330,21 +324,19 @@ describe("Test processOrder", () => {
     });
 
     it("should proceed to processTransaction if all steps succeed (happy path)", async () => {
-        // mock findOpp to return a valid opportunity
-        (findOpp as Mock) = vi.fn().mockResolvedValue({
-            value: {
+        // mock findBestTrade to return a valid opportunity
+        (findBestTrade as Mock).mockResolvedValue(
+            Result.ok({
                 rawtx: { to: "0xRAW" },
                 oppBlockNumber: 100,
                 estimatedProfit: 123n,
-            },
-            spanAttributes: {},
-        });
+                spanAttributes: {},
+            }),
+        );
         // mock processTransaction to return a function
-        (processTransaction as Mock) = vi
-            .fn()
-            .mockReturnValue(async () =>
-                Result.ok({ status: ProcessOrderStatus.FoundOpportunity }),
-            );
+        (processTransaction as Mock).mockReturnValue(async () =>
+            Result.ok({ status: ProcessOrderStatus.FoundOpportunity }),
+        );
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
             mockRainSolver,

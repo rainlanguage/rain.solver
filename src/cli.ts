@@ -135,7 +135,7 @@ export const main = async (argv: any, version?: string) => {
     config.mainAccount = walletManager.mainSigner;
     config.accounts = Array.from(walletManager.workers.signers.values());
 
-    const rainSolver = new RainSolver(state, options, orderManager, walletManager, config);
+    const rainSolver = new RainSolver(state, options, orderManager, walletManager);
 
     const day = 24 * 60 * 60 * 1000;
     let lastGasReset = Date.now() + day;

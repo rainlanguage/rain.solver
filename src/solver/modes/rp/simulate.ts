@@ -4,16 +4,16 @@ import { Token } from "sushi/currency";
 import { ArbAbi } from "../../../abis";
 import { ChainId, Router } from "sushi";
 import { Result } from "../../../result";
+import { RPoolFilter } from "../../../utils";
 import { BundledOrders } from "../../../order";
 import { Attributes } from "@opentelemetry/api";
-import { RainSolverSigner, RawTransaction } from "../../../signer";
+import { extendObjectWithHeader } from "../../../logger";
 import { estimateProfit, visualizeRoute } from "./utils";
 import { ONE18, scale18, scale18To } from "../../../math";
-import { RPoolFilter } from "../../../utils";
-import { TakeOrdersConfigType, SimulationResult } from "../../types";
+import { RainSolverSigner, RawTransaction } from "../../../signer";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
+import { TakeOrdersConfigType, SimulationResult, TradeType, FailedSimulation } from "../../types";
 import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
-import { extendObjectWithHeader } from "../../../logger";
 
 /** Specifies the reason that route processor simulation failed */
 export enum RouteProcessorSimulationHaltReason {
@@ -86,6 +86,7 @@ export async function trySimulateTrade(
     if (route.status == "NoWay") {
         spanAttributes["route"] = "no-way";
         const result = {
+            type: TradeType.RouteProcessor,
             spanAttributes,
             reason: RouteProcessorSimulationHaltReason.NoRoute,
         };
@@ -111,6 +112,7 @@ export async function trySimulateTrade(
     if (price < orderDetails.takeOrders[0].quote!.ratio) {
         spanAttributes["error"] = "Order's ratio greater than market price";
         const result = {
+            type: TradeType.RouteProcessor,
             spanAttributes,
             reason: RouteProcessorSimulationHaltReason.OrderRatioGreaterThanMarketPrice,
         };
@@ -176,7 +178,8 @@ export async function trySimulateTrade(
         spanAttributes["stage"] = 1;
         Object.assign(initDryrunResult.error.spanAttributes, spanAttributes);
         initDryrunResult.error.reason = RouteProcessorSimulationHaltReason.NoOpportunity;
-        return Result.err(initDryrunResult.error);
+        (initDryrunResult.error as FailedSimulation).type = TradeType.RouteProcessor;
+        return Result.err(initDryrunResult.error as FailedSimulation);
     }
 
     let { estimation, estimatedGasCost } = initDryrunResult.value;
@@ -233,7 +236,8 @@ export async function trySimulateTrade(
             spanAttributes["stage"] = 2;
             Object.assign(finalDryrunResult.error.spanAttributes, spanAttributes);
             finalDryrunResult.error.reason = RouteProcessorSimulationHaltReason.NoOpportunity;
-            return Result.err(finalDryrunResult.error);
+            (finalDryrunResult.error as FailedSimulation).type = TradeType.RouteProcessor;
+            return Result.err(finalDryrunResult.error as FailedSimulation);
         }
 
         ({ estimation, estimatedGasCost } = finalDryrunResult.value);
@@ -279,6 +283,7 @@ export async function trySimulateTrade(
     // if reached here, it means there was a success and found opp
     spanAttributes["foundOpp"] = true;
     const result = {
+        type: TradeType.RouteProcessor,
         spanAttributes,
         rawtx,
         estimatedGasCost,

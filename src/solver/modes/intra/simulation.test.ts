@@ -105,6 +105,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error).toHaveProperty("spanAttributes");
         expect(result.error.spanAttributes.stage).toBe(1);
         expect(result.error.spanAttributes.oppBlockNumber).toBe(123);
+        expect(result.error.type).toBe("intraOrderbook");
     });
 
     it("should return ok result if all steps succeed with gasCoveragePercentage 0", async () => {
@@ -133,6 +134,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.rawtx).toHaveProperty("data", "0xdata");
         expect(result.value.rawtx).toHaveProperty("to", "0xorderbook");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
+        expect(result.value.type).toBe("intraOrderbook");
 
         // assert encodeFunctionData was called correctly for multicall
         expect(encodeFunctionData).toHaveBeenCalledWith({
@@ -212,6 +214,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.rawtx).toHaveProperty("data", "0xdata");
         expect(result.value.rawtx).toHaveProperty("to", "0xorderbook");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
+        expect(result.value.type).toBe("intraOrderbook");
 
         // verify encodeFunctionData called multiple times (initial, final, and last)
         expect(encodeFunctionData).toHaveBeenCalledTimes(8); // 4 calls * 2 dryruns
@@ -244,6 +247,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.spanAttributes["gasEst.initial.totalCost"]).toBe("200");
         expect(result.error.spanAttributes["gasEst.initial.gasPrice"]).toBe("1");
         expect(result.error.spanAttributes["gasEst.initial.minBountyExpected"]).toBe("206");
+        expect(result.error.type).toBe("intraOrderbook");
 
         // verify encodeFunctionData was called for both dryruns
         expect(encodeFunctionData).toHaveBeenCalledTimes(6); // 3 calls * 2 dryruns

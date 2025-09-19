@@ -4,11 +4,11 @@ import { RainSolver } from "../..";
 import { Result } from "../../../result";
 import { BundledOrders } from "../../../order";
 import { ONE18, scale18 } from "../../../math";
-import { SimulationResult } from "../../types";
 import { Attributes } from "@opentelemetry/api";
 import { trySimulateTrade } from "./simulation";
 import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
+import { SimulationResult, TradeType } from "../../types";
 
 /**
  * Tries to find the best trade against opposite orders of the same orderbook (intra-orderbook) for
@@ -97,6 +97,7 @@ export async function findBestIntraOrderbookTrade(
             allNoneNodeErrors.push(res.error.noneNodeError);
         }
         return Result.err({
+            type: TradeType.IntraOrderbook,
             spanAttributes,
             noneNodeError: allNoneNodeErrors[0],
         });

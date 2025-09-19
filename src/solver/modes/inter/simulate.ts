@@ -9,8 +9,14 @@ import { extendObjectWithHeader } from "../../../logger";
 import { ArbAbi, TakeOrdersV2Abi } from "../../../abis";
 import { RainSolverSigner, RawTransaction } from "../../../signer";
 import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
-import { SimulationResult, TakeOrdersConfigType, TaskType } from "../../types";
 import { encodeAbiParameters, encodeFunctionData, maxUint256, parseUnits } from "viem";
+import {
+    TaskType,
+    TradeType,
+    FailedSimulation,
+    SimulationResult,
+    TakeOrdersConfigType,
+} from "../../types";
 
 /** Arguments for simulating inter-orderbook trade */
 export type SimulateInterOrderbookTradeArgs = {
@@ -137,7 +143,8 @@ export async function trySimulateTrade(
     if (initDryrunResult.isErr()) {
         spanAttributes["stage"] = 1;
         Object.assign(initDryrunResult.error.spanAttributes, spanAttributes);
-        return Result.err(initDryrunResult.error);
+        (initDryrunResult.error as FailedSimulation).type = TradeType.InterOrderbook;
+        return Result.err(initDryrunResult.error as FailedSimulation);
     }
 
     let { estimation, estimatedGasCost } = initDryrunResult.value;
@@ -193,7 +200,8 @@ export async function trySimulateTrade(
         if (finalDryrunResult.isErr()) {
             spanAttributes["stage"] = 2;
             Object.assign(finalDryrunResult.error.spanAttributes, spanAttributes);
-            return Result.err(finalDryrunResult.error);
+            (finalDryrunResult.error as FailedSimulation).type = TradeType.InterOrderbook;
+            return Result.err(finalDryrunResult.error as FailedSimulation);
         }
 
         ({ estimation, estimatedGasCost } = finalDryrunResult.value);
@@ -239,6 +247,7 @@ export async function trySimulateTrade(
     // if reached here, it means there was a success and found opp
     spanAttributes["foundOpp"] = true;
     const result = {
+        type: TradeType.InterOrderbook,
         spanAttributes,
         rawtx,
         estimatedGasCost,

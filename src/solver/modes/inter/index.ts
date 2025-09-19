@@ -2,11 +2,11 @@ import assert from "assert";
 import { RainSolver } from "../..";
 import { Result } from "../../../result";
 import { trySimulateTrade } from "./simulate";
-import { SimulationResult } from "../../types";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { BundledOrders, Pair } from "../../../order";
 import { extendObjectWithHeader } from "../../../logger";
+import { SimulationResult, TradeType } from "../../types";
 
 /**
  * Tries to find the best trade against order orderbooks (inter-orderbook) for the given order,
@@ -28,6 +28,7 @@ export async function findBestInterOrderbookTrade(
     // bail early if generic arb address is not set
     if (!this.appOptions.genericArbAddress) {
         return Result.err({
+            type: TradeType.InterOrderbook,
             spanAttributes: {
                 error: "No generic arb address was set in config, cannot perform inter-orderbook trades",
             },
@@ -83,6 +84,7 @@ export async function findBestInterOrderbookTrade(
             allNoneNodeErrors.push(res.error.noneNodeError);
         }
         return Result.err({
+            type: TradeType.InterOrderbook,
             spanAttributes,
             noneNodeError: allNoneNodeErrors[0],
         });
