@@ -1,13 +1,9 @@
 import { ChainId } from "sushi";
+import { ABI } from "../common";
 import { SharedState } from "../state";
 import { AppOptions } from "../config";
 import { BundledOrders, Pair, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData, PublicClient } from "viem";
-import {
-    OrderbookQuoteAbi,
-    ArbitrumNodeInterfaceAbi,
-    ArbitrumNodeInterfaceAddress,
-} from "../common";
 
 /**
  * Quotes a single order
@@ -26,7 +22,7 @@ export async function quoteSingleOrder(
         .call({
             to: orderDetails.orderbook as `0x${string}`,
             data: encodeFunctionData({
-                abi: OrderbookQuoteAbi,
+                abi: ABI.Orderbook.Primary.Orderbook,
                 functionName: "quote",
                 args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.takeOrder)],
             }),
@@ -39,7 +35,7 @@ export async function quoteSingleOrder(
         });
     if (typeof data !== "undefined") {
         const quoteResult = decodeFunctionResult({
-            abi: OrderbookQuoteAbi,
+            abi: [ABI.Orderbook.Primary.Orderbook[14]],
             functionName: "quote",
             data,
         });
@@ -65,15 +61,15 @@ export async function getQuoteGas(
     if (state.chainConfig.id === ChainId.ARBITRUM) {
         // build the calldata of a quote call
         const calldata = encodeFunctionData({
-            abi: OrderbookQuoteAbi,
+            abi: ABI.Orderbook.Primary.Orderbook,
             functionName: "quote",
             args: [TakeOrder.getQuoteConfig(orderDetails.takeOrders[0].takeOrder)],
         });
 
         // call Arbitrum Node Interface for the calldata to get L1 gas
         const result = await state.client.simulateContract({
-            abi: ArbitrumNodeInterfaceAbi,
-            address: ArbitrumNodeInterfaceAddress,
+            abi: ABI.ArbitrumNodeInterface.Abi,
+            address: ABI.ArbitrumNodeInterface.Address,
             functionName: "gasEstimateL1Component",
             args: [orderDetails.orderbook as `0x${string}`, false, calldata],
         });

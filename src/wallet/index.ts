@@ -5,8 +5,8 @@ import { RainSolverSigner } from "../signer";
 import { PreAssembledSpan } from "../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { SharedState, TokenDetails } from "../state";
+import { shuffleArray, sleep, ABI } from "../common";
 import { ErrorSeverity, errorSnapshot } from "../error";
-import { shuffleArray, sleep, MulticallAbi } from "../common";
 import { WalletConfig, WalletType, MainAccountDerivationIndex } from "./config";
 import { transferTokenFrom, transferRemainingGasFrom, convertToGas } from "./sweep";
 import {
@@ -697,7 +697,7 @@ export class WalletManager {
                     address: this.state.client.chain?.contracts?.multicall3
                         ?.address as `0x${string}`,
                     allowFailure: false,
-                    abi: MulticallAbi,
+                    abi: ABI.Multicall3.Primary.Multicall,
                     functionName: "getEthBalance",
                     args: [v.account.address],
                 })),

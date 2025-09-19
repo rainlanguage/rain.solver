@@ -2,7 +2,7 @@ require("dotenv").config();
 const { assert } = require("chai");
 const testData = require("./data");
 const { RainSolver } = require("../../src/core");
-const { arbAbis } = require("../../src/common");
+const { ABI } = require("../../src/common");
 const { RpcState } = require("../../src/rpc");
 const mockServer = require("mockttp").getLocal();
 const { sendTx, waitUntilFree, estimateGasCost } = require("../../src/signer/actions");
@@ -167,7 +167,7 @@ for (let i = 0; i < testData.length; i++) {
 
                 const arb = !arbAddress
                     ? await arbDeploy(orderbook.address, config.routeProcessors[rpVersion])
-                    : await ethers.getContractAt(arbAbis, arbAddress);
+                    : await ethers.getContractAt(ABI.Orderbook.Primary.Arb, arbAddress);
 
                 state.dispair = {
                     interpreter: interpreter.address,
@@ -420,7 +420,7 @@ for (let i = 0; i < testData.length; i++) {
                 const genericArb = await genericArbrbDeploy(orderbook2.address);
                 const arb = !arbAddress
                     ? await arbDeploy(orderbook1.address, config.routeProcessors[rpVersion])
-                    : await ethers.getContractAt(arbAbis, arbAddress);
+                    : await ethers.getContractAt(ABI.Orderbook.Primary.Arb, arbAddress);
 
                 state.dispair = {
                     interpreter: interpreter.address,
@@ -761,7 +761,7 @@ for (let i = 0; i < testData.length; i++) {
                     : await ethers.getContractAt(orderbookAbi, orderbookAddress);
                 const arb = !arbAddress
                     ? await arbDeploy(orderbook.address, config.routeProcessors[rpVersion])
-                    : await ethers.getContractAt(arbAbis, arbAddress);
+                    : await ethers.getContractAt(ABI.Orderbook.Primary.Arb, arbAddress);
 
                 state.dispair = {
                     interpreter: interpreter.address,

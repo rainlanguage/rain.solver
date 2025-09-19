@@ -1,7 +1,6 @@
 const { assert } = require("chai");
 const { ethers } = require("hardhat");
-const { OrderV3 } = require("../src/common");
-const { DefaultArbEvaluable } = require("../src/common");
+const { ABI } = require("../src/common");
 const OrderbookArtifact = require("./abis/OrderBook.json");
 const RainterpreterNPE2Artifact = require("./abis/RainterpreterNPE2.json");
 const RainterpreterStoreNPE2Artifact = require("./abis/RainterpreterStoreNPE2.json");
@@ -28,7 +27,7 @@ exports.arbDeploy = async (orderbookAddress, rpAddress) => {
     return await this.basicDeploy(RouteProcessorOrderBookV4ArbOrderTakerArtifact, {
         orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
         task: {
-            evaluable: DefaultArbEvaluable,
+            evaluable: ABI.Orderbook.DefaultArbEvaluable,
             signedContext: [],
         },
         implementationData: ethers.utils.defaultAbiCoder.encode(["address"], [rpAddress]),
@@ -39,7 +38,7 @@ exports.genericArbrbDeploy = async (orderbookAddress) => {
     return await this.basicDeploy(GenericPoolOrderBookV4ArbOrderTakerArtifact, {
         orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
         task: {
-            evaluable: DefaultArbEvaluable,
+            evaluable: ABI.Orderbook.DefaultArbEvaluable,
             signedContext: [],
         },
         implementationData: "0x",
@@ -200,7 +199,10 @@ exports.mockSgFromEvent = async (eventArgs, orderbook, tokens) => {
             typeof eventArgs.orderHash === "string"
                 ? eventArgs.orderHash.toLowerCase()
                 : eventArgs.orderHash.toHexString().toLowerCase(),
-        orderBytes: ethers.utils.defaultAbiCoder.encode([OrderV3], [eventArgs.order]),
+        orderBytes: ethers.utils.defaultAbiCoder.encode(
+            [ABI.Orderbook.Structs.OrderV3],
+            [eventArgs.order],
+        ),
         active: true,
         nonce: eventArgs.order.nonce,
         orderbook: {

@@ -1,6 +1,6 @@
 import fs from "fs";
+import { ABI } from "../common";
 import { Dispair } from "../state";
-import { DeployerAbi } from "../common";
 import { formatUnits, PublicClient, stringToHex } from "viem";
 import { MetaStore, RainDocument } from "@rainlanguage/dotrain";
 
@@ -90,7 +90,7 @@ export async function parseRainlang(
 ): Promise<string> {
     return await client.readContract({
         address: dispair.deployer as `0x${string}`,
-        abi: DeployerAbi,
+        abi: ABI.Deployer.Primary.Deployer,
         functionName: "parse2",
         args: [stringToHex(rainlang)],
     });
