@@ -128,7 +128,7 @@ export async function trySimulateTrade(
         this.state.chainConfig.routeProcessors["4"],
     );
 
-    const orders = [orderDetails.takeOrder.takeOrder];
+    const orders = [orderDetails.takeOrder.struct];
     const takeOrdersConfigStruct: TakeOrdersConfigType = {
         minimumInput: 1n,
         maximumInput: isPartial ? maximumInput : maxUint256,

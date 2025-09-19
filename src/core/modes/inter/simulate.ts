@@ -89,7 +89,7 @@ export async function trySimulateTrade(
                 minimumInput: 1n,
                 maximumInput: opposingMaxInput, // main maxout * main ratio
                 maximumIORatio: opposingMaxIORatio, // inverse of main ratio (1 / ratio)
-                orders: [counterpartyOrderDetails.takeOrder.takeOrder], // opposing orders
+                orders: [counterpartyOrderDetails.takeOrder.struct], // opposing orders
                 data: "0x",
             },
         ],
@@ -98,7 +98,7 @@ export async function trySimulateTrade(
         minimumInput: 1n,
         maximumInput: maxUint256,
         maximumIORatio: maxUint256,
-        orders: [orderDetails.takeOrder.takeOrder],
+        orders: [orderDetails.takeOrder.struct],
         data: encodeAbiParameters(
             [{ type: "address" }, { type: "address" }, { type: "bytes" }],
             [

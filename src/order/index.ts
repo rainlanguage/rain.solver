@@ -8,10 +8,9 @@ import { downscaleProtection } from "./protection";
 import { SharedState, TokenDetails } from "../state";
 import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
 import {
+    IO,
     Pair,
     Order,
-    OrdersProfileMap,
-    OwnersProfileMap,
     OrderbooksPairMap,
     CounterpartySource,
     OrderbooksOwnersProfileMap,
@@ -119,55 +118,41 @@ export class OrderManager {
             const orderDetails = ordersDetails[i];
             const orderHash = orderDetails.orderHash.toLowerCase();
             const orderbook = orderDetails.orderbook.id.toLowerCase();
-            const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
-            if (orderStructResult.isErr()) return;
 
+            const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
+            if (orderStructResult.isErr()) continue;
             const orderStruct = orderStructResult.value;
 
             const pairs = await this.getOrderPairs(orderHash, orderStruct, orderDetails);
 
             // add to the owners map
-            const orderbookOwnerProfileItem = this.ownersMap.get(orderbook);
-            if (orderbookOwnerProfileItem) {
-                const ownerProfile = orderbookOwnerProfileItem.get(orderStruct.owner);
-                if (ownerProfile) {
-                    const order = ownerProfile.orders.get(orderHash);
-                    if (!order) {
-                        ownerProfile.orders.set(orderHash, {
-                            active: true,
-                            order: orderStruct,
-                            takeOrders: pairs,
-                        });
-                    } else {
-                        if (!order.active) order.active = true;
-                    }
-                } else {
-                    const ordersProfileMap: OrdersProfileMap = new Map();
-                    ordersProfileMap.set(orderHash, {
-                        active: true,
-                        order: orderStruct,
-                        takeOrders: pairs,
-                    });
-                    orderbookOwnerProfileItem.set(orderStruct.owner, {
-                        limit: this.ownerLimits[orderStruct.owner] ?? DEFAULT_OWNER_LIMIT,
-                        orders: ordersProfileMap,
-                        lastIndex: 0,
-                    });
-                }
-            } else {
-                const ordersProfileMap: OrdersProfileMap = new Map();
-                ordersProfileMap.set(orderHash, {
+            if (!this.ownersMap.has(orderbook)) {
+                this.ownersMap.set(orderbook, new Map());
+            }
+            const orderbookOwnerProfileItem = this.ownersMap.get(orderbook)!;
+
+            if (!orderbookOwnerProfileItem.has(orderStruct.owner)) {
+                const order = {
+                    active: true,
+                    order: orderStruct,
+                    takeOrders: pairs,
+                };
+                orderbookOwnerProfileItem.set(orderStruct.owner, {
+                    limit: this.ownerLimits[orderStruct.owner] ?? DEFAULT_OWNER_LIMIT,
+                    orders: new Map([[orderHash, order]]),
+                    lastIndex: 0,
+                });
+            }
+            const ownerProfile = orderbookOwnerProfileItem.get(orderStruct.owner)!;
+            const order = ownerProfile.orders.get(orderHash);
+            if (!order) {
+                ownerProfile.orders.set(orderHash, {
                     active: true,
                     order: orderStruct,
                     takeOrders: pairs,
                 });
-                const ownerProfileMap: OwnersProfileMap = new Map();
-                ownerProfileMap.set(orderStruct.owner, {
-                    limit: this.ownerLimits[orderStruct.owner] ?? DEFAULT_OWNER_LIMIT,
-                    orders: ordersProfileMap,
-                    lastIndex: 0,
-                });
-                this.ownersMap.set(orderbook, ownerProfileMap);
+            } else {
+                if (!order.active) order.active = true;
             }
 
             // add to the pair maps
@@ -200,11 +185,11 @@ export class OrderManager {
      */
     addToTokenVaultsMap(pair: Pair) {
         const orderbook = pair.orderbook.toLowerCase();
-        const owner = pair.takeOrder.takeOrder.order.owner.toLowerCase();
+        const owner = pair.takeOrder.struct.order.owner.toLowerCase();
         const outputVault =
-            pair.takeOrder.takeOrder.order.validOutputs[pair.takeOrder.takeOrder.outputIOIndex];
+            pair.takeOrder.struct.order.validOutputs[pair.takeOrder.struct.outputIOIndex];
         const inputVault =
-            pair.takeOrder.takeOrder.order.validInputs[pair.takeOrder.takeOrder.inputIOIndex];
+            pair.takeOrder.struct.order.validInputs[pair.takeOrder.struct.inputIOIndex];
 
         this.updateVault(
             orderbook,
@@ -285,7 +270,7 @@ export class OrderManager {
             const orderHash = orderDetails.orderHash.toLowerCase();
 
             const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
-            if (orderStructResult.isErr()) return;
+            if (orderStructResult.isErr()) continue;
 
             const orderStruct = orderStructResult.value;
 
@@ -343,77 +328,78 @@ export class OrderManager {
         orderDetails: SgOrder,
     ): Promise<Pair[]> {
         const pairs: Pair[] = [];
-        for (let j = 0; j < orderStruct.validOutputs.length; j++) {
-            const _output = orderStruct.validOutputs[j];
-            let _outputSymbol = orderDetails.outputs.find(
-                (v) => v.token.address.toLowerCase() === _output.token.toLowerCase(),
-            )?.token?.symbol;
-            if (!_outputSymbol) {
-                _outputSymbol = this.state.watchedTokens.get(_output.token.toLowerCase())?.symbol;
-                if (!_outputSymbol) {
-                    _outputSymbol = await this.state.client
-                        .readContract({
-                            address: _output.token as `0x${string}`,
-                            abi: erc20Abi,
-                            functionName: "symbol",
-                        })
-                        .catch(() => "UnknownSymbol");
+        // helper iterator function
+        function* iterIO() {
+            for (let i = 0; i < orderStruct.validOutputs.length; i++) {
+                for (let j = 0; j < orderStruct.validInputs.length; j++) {
+                    yield {
+                        outputIOIndex: i,
+                        inputIOIndex: j,
+                        output: orderStruct.validOutputs[i],
+                        input: orderStruct.validInputs[j],
+                    };
                 }
-            }
-            // add to watched tokens
-            this.state.watchToken({
-                address: _output.token.toLowerCase(),
-                symbol: _outputSymbol,
-                decimals: _output.decimals,
-            });
-
-            for (let k = 0; k < orderStruct.validInputs.length; k++) {
-                const _input = orderStruct.validInputs[k];
-                let _inputSymbol = orderDetails.inputs.find(
-                    (v) => v.token.address.toLowerCase() === _input.token.toLowerCase(),
-                )?.token?.symbol;
-                if (!_inputSymbol) {
-                    _inputSymbol = this.state.watchedTokens.get(_input.token.toLowerCase())?.symbol;
-                    if (!_inputSymbol) {
-                        _inputSymbol = await this.state.client
-                            .readContract({
-                                address: _input.token as `0x${string}`,
-                                abi: erc20Abi,
-                                functionName: "symbol",
-                            })
-                            .catch(() => "UnknownSymbol");
-                    }
-                }
-                // add to watched tokens
-                this.state.watchToken({
-                    address: _input.token.toLowerCase(),
-                    symbol: _inputSymbol,
-                    decimals: _input.decimals,
-                });
-
-                if (_input.token.toLowerCase() !== _output.token.toLowerCase())
-                    pairs.push({
-                        orderbook: orderDetails.orderbook.id.toLowerCase(),
-                        buyToken: _input.token.toLowerCase(),
-                        buyTokenSymbol: _inputSymbol,
-                        buyTokenDecimals: _input.decimals,
-                        buyTokenVaultBalance: BigInt(orderDetails.inputs[k].balance),
-                        sellToken: _output.token.toLowerCase(),
-                        sellTokenSymbol: _outputSymbol,
-                        sellTokenDecimals: _output.decimals,
-                        sellTokenVaultBalance: BigInt(orderDetails.outputs[j].balance),
-                        takeOrder: {
-                            id: orderHash,
-                            takeOrder: {
-                                order: orderStruct,
-                                inputIOIndex: k,
-                                outputIOIndex: j,
-                                signedContext: [],
-                            },
-                        },
-                    });
             }
         }
+
+        // helper function to handle token details
+        const handleToken = async (io: IO, tokensList: SgOrder["outputs"]) => {
+            const address = io.token.toLowerCase() as `0x${string}`;
+            const cached = this.state.watchedTokens.get(address);
+            const sgOrderIO = tokensList.find((v) => v.token.address.toLowerCase() === address)!;
+            const symbol =
+                cached?.symbol ?? // from cache
+                sgOrderIO?.token.symbol ?? // from sg tokens list
+                (await this.state.client // from contract call
+                    .readContract({
+                        address,
+                        abi: erc20Abi,
+                        functionName: "symbol",
+                    })
+                    .catch(() => "UnknownSymbol")); // fallback to unknown symbol if all fail
+            // add to watched tokens
+            this.state.watchToken({
+                symbol,
+                address,
+                decimals: io.decimals,
+            });
+            return { symbol, balance: sgOrderIO.balance };
+        };
+
+        for (const { output, input, outputIOIndex, inputIOIndex } of iterIO()) {
+            const { symbol: inputSymbol, balance: inputBalance } = await handleToken(
+                input,
+                orderDetails.inputs,
+            );
+            const { symbol: outputSymbol, balance: outputBalance } = await handleToken(
+                output,
+                orderDetails.outputs,
+            );
+
+            if (input.token.toLowerCase() !== output.token.toLowerCase()) {
+                pairs.push({
+                    orderbook: orderDetails.orderbook.id.toLowerCase(),
+                    buyToken: input.token.toLowerCase(),
+                    buyTokenSymbol: inputSymbol,
+                    buyTokenDecimals: input.decimals,
+                    buyTokenVaultBalance: BigInt(inputBalance),
+                    sellToken: output.token.toLowerCase(),
+                    sellTokenSymbol: outputSymbol,
+                    sellTokenDecimals: output.decimals,
+                    sellTokenVaultBalance: BigInt(outputBalance),
+                    takeOrder: {
+                        id: orderHash,
+                        struct: {
+                            order: orderStruct,
+                            inputIOIndex,
+                            outputIOIndex,
+                            signedContext: [],
+                        },
+                    },
+                });
+            }
+        }
+
         return pairs;
     }
 

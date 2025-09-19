@@ -1,7 +1,11 @@
 import { RainSolver } from "..";
 import { TimeoutError } from "viem";
 import { Result } from "../../common";
+import { SharedState } from "../../state";
+import { AppOptions } from "../../config";
+import { OrderManager } from "../../order";
 import { ErrorSeverity } from "../../error";
+import { WalletManager } from "../../wallet";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { PreAssembledSpan, RainSolverLogger } from "../../logger";
 import { ProcessOrderStatus, ProcessOrderHaltReason } from "../types";
@@ -11,10 +15,10 @@ import { finalizeRound, initializeRound, iterOrders, Settlement } from "./round"
 describe("Test initializeRound", () => {
     type initializeRoundType = Awaited<ReturnType<typeof initializeRound>>;
     let mockSolver: RainSolver;
-    let mockOrderManager: any;
-    let mockWalletManager: any;
-    let mockState: any;
-    let mockAppOptions: any;
+    let mockOrderManager: OrderManager;
+    let mockWalletManager: WalletManager;
+    let mockState: SharedState;
+    let mockAppOptions: AppOptions;
     const mockSigner = { account: { address: "0xSigner123" } };
 
     beforeEach(() => {
@@ -24,24 +28,24 @@ describe("Test initializeRound", () => {
         mockOrderManager = {
             getNextRoundOrders: vi.fn(),
             ownerTokenVaultMap: new Map(),
-        };
+        } as any;
 
         // mock wallet manager
         mockWalletManager = {
             getRandomSigner: vi.fn(),
-        };
+        } as any;
 
         // mock state
         mockState = {
             client: { name: "viem-client" },
             dataFetcher: { name: "data-fetcher" },
-        };
+        } as any;
 
         // mock app options
         mockAppOptions = {
             arbAddress: "0x1111111111111111111111111111111111111111",
             genericArbAddress: "0x2222222222222222222222222222222222222222",
-        };
+        } as any;
 
         // mock RainSolver
         mockSolver = {
@@ -62,14 +66,14 @@ describe("Test initializeRound", () => {
                     sellTokenSymbol: "USDC",
                     takeOrder: {
                         id: "0xOrder123",
-                        takeOrder: { order: { owner: "0xOwner123" } },
+                        struct: { order: { owner: "0xOwner123" } },
                     },
                 },
             ];
 
             const mockSettleFn = vi.fn();
-            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
-            mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
             (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
 
             const result: initializeRoundType = await initializeRound.call(mockSolver);
@@ -99,24 +103,24 @@ describe("Test initializeRound", () => {
                     orderbook: "0x5555555555555555555555555555555555555555",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
-                    takeOrder: { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                    takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
                 {
                     orderbook: "0x5555555555555555555555555555555555555555",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
-                    takeOrder: { id: "0xOrder2", takeOrder: { order: { owner: "0xOwner2" } } },
+                    takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
                 },
                 {
                     orderbook: "0x6666666666666666666666666666666666666666",
                     buyTokenSymbol: "BTC",
                     sellTokenSymbol: "USDT",
-                    takeOrder: { id: "0xOrder3", takeOrder: { order: { owner: "0xOwner3" } } },
+                    takeOrder: { id: "0xOrder3", struct: { order: { owner: "0xOwner3" } } },
                 },
             ];
 
-            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
-            mockWalletManager.getRandomSigner.mockResolvedValue({
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
                 account: { address: "0xSigner" },
             });
 
@@ -161,13 +165,13 @@ describe("Test initializeRound", () => {
                     sellTokenSymbol: "USDC",
                     takeOrder: {
                         id: "0xOrder123",
-                        takeOrder: { order: { owner: "0xOwner123" } },
+                        struct: { order: { owner: "0xOwner123" } },
                     },
                 },
             ];
 
-            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
-            mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
 
             const result: initializeRoundType = await initializeRound.call(mockSolver);
 
@@ -182,7 +186,7 @@ describe("Test initializeRound", () => {
 
     describe("empty orders handling", () => {
         it("should return empty settlements and checkpointReports for empty orders", async () => {
-            mockOrderManager.getNextRoundOrders.mockReturnValue([]);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue([]);
 
             const result: initializeRoundType = await initializeRound.call(mockSolver);
 
@@ -195,7 +199,7 @@ describe("Test initializeRound", () => {
 
     describe("method call verification", () => {
         it("should call getNextRoundOrders with correct parameter", async () => {
-            mockOrderManager.getNextRoundOrders.mockReturnValue([]);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue([]);
 
             await initializeRound.call(mockSolver, undefined, false);
 
@@ -208,18 +212,18 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
-                    takeOrder: { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                    takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
                 {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
-                    takeOrder: { id: "0xOrder2", takeOrder: { order: { owner: "0xOwner2" } } },
+                    takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
                 },
             ];
 
-            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
-            mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
 
             await initializeRound.call(mockSolver);
 
@@ -236,12 +240,12 @@ describe("Test initializeRound", () => {
                 sellToken: "0xUSDC",
                 sellTokenSymbol: "USDC",
                 sellTokenDecimals: 6,
-                takeOrder: { id: "0xOrder123", takeOrder: { order: { owner: "0xOwner123" } } },
+                takeOrder: { id: "0xOrder123", struct: { order: { owner: "0xOwner123" } } },
             };
             const mockOrders = [orderDetails];
 
-            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
-            mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
 
             await initializeRound.call(mockSolver);
 
@@ -259,12 +263,12 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "WETH",
                     sellTokenSymbol: "DAI",
-                    takeOrder: { id: "0xOrderABC", takeOrder: { order: { owner: "0xOwnerXYZ" } } },
+                    takeOrder: { id: "0xOrderABC", struct: { order: { owner: "0xOwnerXYZ" } } },
                 },
             ];
 
-            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
-            mockWalletManager.getRandomSigner.mockResolvedValue({
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
                 account: { address: "0xSignerDEF" },
             });
 
@@ -285,24 +289,24 @@ describe("Test initializeRound", () => {
                     orderbook: "0x1111111111111111111111111111111111111111",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
-                    takeOrder: { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                    takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
                 {
                     orderbook: "0x1111111111111111111111111111111111111111",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
-                    takeOrder: { id: "0xOrder2", takeOrder: { order: { owner: "0xOwner2" } } },
+                    takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
                 },
                 {
                     orderbook: "0x1111111111111111111111111111111111111111",
                     buyTokenSymbol: "BTC",
                     sellTokenSymbol: "USDT",
-                    takeOrder: { id: "0xOrder3", takeOrder: { order: { owner: "0xOwner3" } } },
+                    takeOrder: { id: "0xOrder3", struct: { order: { owner: "0xOwner3" } } },
                 },
             ];
 
-            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
-            mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
 
             const result: initializeRoundType = await initializeRound.call(
                 mockSolver,
@@ -329,18 +333,18 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
-                    takeOrder: { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                    takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
                 {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
-                    takeOrder: { id: "0xOrder2", takeOrder: { order: { owner: "0xOwner2" } } },
+                    takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
                 },
             ];
 
-            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
-            mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
 
             const result: initializeRoundType = await initializeRound.call(mockSolver);
 
@@ -357,11 +361,11 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
-                    takeOrder: { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                    takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
             ];
-            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
-            mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
             (mockSolver as any).logger = {
                 exportPreAssembledSpan: vi.fn(),
             } as any;
@@ -383,11 +387,11 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
-                    takeOrder: { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                    takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
             ];
-            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
-            mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
             const loggerExportReport = vi.spyOn(
                 RainSolverLogger.prototype,
                 "exportPreAssembledSpan",
@@ -401,7 +405,7 @@ describe("Test initializeRound", () => {
 
     describe("return value structure", () => {
         it("should always return object with settlements and checkpointReports arrays", async () => {
-            mockOrderManager.getNextRoundOrders.mockReturnValue([]);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue([]);
 
             const result: initializeRoundType = await initializeRound.call(mockSolver);
 
@@ -419,12 +423,12 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
-                    takeOrder: { id: "0xOrder123", takeOrder: { order: { owner: "0xOwner123" } } },
+                    takeOrder: { id: "0xOrder123", struct: { order: { owner: "0xOwner123" } } },
                 },
             ];
 
-            mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
-            mockWalletManager.getRandomSigner.mockResolvedValue({
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
                 account: { address: "0xSigner" },
             });
 
@@ -444,7 +448,7 @@ describe("Test initializeRound", () => {
                 sellTokenSymbol: "USDC",
                 sellToken: "0xSellToken1",
                 sellTokenVaultBalance: 0n, // zero balance - should be skipped
-                takeOrder: { id: "0xOrder1", takeOrder: { order: { owner: "0xOwner1" } } },
+                takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
             },
             {
                 orderbook: "0x4444444444444444444444444444444444444444",
@@ -452,12 +456,12 @@ describe("Test initializeRound", () => {
                 buyToken: "0xBuyToken2",
                 sellTokenSymbol: "USDT",
                 sellToken: "0xSellToken2",
-                takeOrder: { id: "0xOrder2", takeOrder: { order: { owner: "0xOwner2" } } },
+                takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
             },
         ];
         const mockSettleFn = vi.fn();
-        mockOrderManager.getNextRoundOrders.mockReturnValue(mockOrders);
-        mockWalletManager.getRandomSigner.mockResolvedValue(mockSigner);
+        (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+        (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
         (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
 
         const result: initializeRoundType = await initializeRound.call(

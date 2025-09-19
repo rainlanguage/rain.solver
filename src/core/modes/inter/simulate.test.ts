@@ -34,7 +34,7 @@ function makeOrderDetails(ratio = 1n * ONE18): Pair {
         buyToken: "0xbuytoken",
         sellTokenDecimals: 18,
         buyTokenDecimals: 18,
-        takeOrder: { takeOrder: {}, quote: { ratio } },
+        takeOrder: { struct: {}, quote: { ratio } },
     } as Pair;
 }
 
