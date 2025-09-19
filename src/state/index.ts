@@ -2,8 +2,10 @@ import { RpcState } from "../rpc";
 import { ChainId } from "sushi/chain";
 import { DeployerAbi } from "../abis";
 import { AppOptions } from "../config";
+import { Token } from "sushi/currency";
 import { errorSnapshot } from "../error";
 import { getGasPrice } from "./gasPrice";
+import { getMarketPrice } from "./marketPrice";
 import { WalletConfig } from "../wallet/config";
 import { processLiquidityProviders } from "./lps";
 import { SubgraphConfig } from "../subgraph/config";
@@ -272,5 +274,16 @@ export class SharedState {
         if (!this.watchedTokens.has(tokenDetails.address.toLowerCase())) {
             this.watchedTokens.set(tokenDetails.address.toLowerCase(), tokenDetails);
         }
+    }
+
+    /**
+     * Get the market price for a token pair
+     * @param fromToken - The token to sell
+     * @param toToken - The token to buy
+     * @param blockNumber - (optional) The block number to fetch the price at
+     * @returns The market price for the token pair or undefined if no route were found
+     */
+    getMarketPrice(fromToken: Token, toToken: Token, blockNumber?: bigint) {
+        return getMarketPrice.call(this, fromToken, toToken, blockNumber);
     }
 }
