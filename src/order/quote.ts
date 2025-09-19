@@ -1,6 +1,8 @@
-import { OrderbookQuoteAbi } from "../abis";
+import { ChainId } from "sushi";
+import { ArbitrumNodeInterfaceAbi, ArbitrumNodeInterfaceAddress, OrderbookQuoteAbi } from "../abis";
 import { BundledOrders, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData, PublicClient } from "viem";
+import { BotConfig } from "../types";
 
 /**
  * Quotes a single order
@@ -38,5 +40,31 @@ export async function quoteSingleOrder(
         return;
     } else {
         return Promise.reject(`Failed to quote order, reason: required no data`);
+    }
+}
+
+/**
+ * Calculates the gas limit that used for quoting orders
+ */
+export async function getQuoteGas(config: BotConfig, orderDetails: BundledOrders): Promise<bigint> {
+    // currently only arbitrum needs extra calculations for quote gas limit
+    if (config.chain.id === ChainId.ARBITRUM) {
+        // build the calldata of a quote call
+        const calldata = encodeFunctionData({
+            abi: OrderbookQuoteAbi,
+            functionName: "quote",
+            args: [TakeOrder.getQuoteConfig(orderDetails.takeOrders[0].takeOrder)],
+        });
+
+        // call Arbitrum Node Interface for the calldata to get L1 gas
+        const result = await config.viemClient.simulateContract({
+            abi: ArbitrumNodeInterfaceAbi,
+            address: ArbitrumNodeInterfaceAddress,
+            functionName: "gasEstimateL1Component",
+            args: [orderDetails.orderbook as `0x${string}`, false, calldata],
+        });
+        return config.quoteGas + result.result[0];
+    } else {
+        return config.quoteGas;
     }
 }

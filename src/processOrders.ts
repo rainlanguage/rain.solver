@@ -1,6 +1,6 @@
 import { findOpp } from "./modes";
 import { PublicClient } from "viem";
-import { getQuoteGas } from "./gas";
+import { getQuoteGas } from "./order/quote";
 import { SharedState } from "./state";
 import { Token } from "sushi/currency";
 import { createViemClient } from "./client";
