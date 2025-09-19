@@ -1,12 +1,12 @@
 import { erc20Abi } from "viem";
-import { Result } from "../common";
 import { syncOrders } from "./sync";
 import { SgOrder } from "../subgraph";
+import { SharedState } from "../state";
 import { quoteSingleOrder } from "./quote";
 import { PreAssembledSpan } from "../logger";
 import { SubgraphManager } from "../subgraph";
+import { Result, TokenDetails } from "../common";
 import { downscaleProtection } from "./protection";
-import { SharedState, TokenDetails } from "../state";
 import { errorSnapshot, RainSolverBaseError } from "../error";
 import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
 import {

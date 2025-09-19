@@ -1,22 +1,20 @@
 import { BaseError } from "viem";
 import { AxiosError } from "axios";
 import { RainSolverBaseError } from "./types";
-import { evaluateGasSufficiency, parseRevertError } from ".";
+import { evaluateGasSufficiency, parseRevertError } from "./revert";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
-import { errorSnapshot, getRpcError, containsNodeError, isTimeout, shouldThrow } from "./common";
+import { errorSnapshot, containsNodeError, isTimeout } from "./common";
 import {
     TimeoutError,
     FeeCapTooLowError,
     ExecutionRevertedError,
     InsufficientFundsError,
     TransactionNotFoundError,
-    UserRejectedRequestError,
-    TransactionRejectedRpcError,
     TransactionReceiptNotFoundError,
     WaitForTransactionReceiptTimeoutError,
 } from "viem";
 
-vi.mock(".", () => ({
+vi.mock("./revert", () => ({
     parseRevertError: vi.fn(),
     evaluateGasSufficiency: vi.fn(),
 }));
@@ -207,63 +205,6 @@ describe("Test common error utilities", () => {
         });
     });
 
-    describe("Test getRpcError", () => {
-        it("should extract RPC error from nested cause", () => {
-            const mockError = new Error("Outer error") as any;
-            mockError.cause = {
-                code: -32000,
-                message: "execution reverted",
-                data: "0x08c379a0",
-            };
-            const result = getRpcError(mockError);
-            expect(result).toEqual({
-                code: -32000,
-                message: "execution reverted",
-                data: "0x08c379a0",
-            });
-        });
-
-        it("should extract RPC error from direct properties", () => {
-            const mockError = {
-                code: -32603,
-                message: "Internal error",
-                data: "0x12345678",
-            } as any;
-            const result = getRpcError(mockError);
-            expect(result).toEqual({
-                code: -32603,
-                message: "Internal error",
-                data: "0x12345678",
-            });
-        });
-
-        it("should handle deeply nested causes", () => {
-            const mockError = new Error("Level 1") as any;
-            mockError.cause = {
-                cause: {
-                    cause: {
-                        code: -32000,
-                        message: "Deep nested error",
-                        data: "0xdeep",
-                    },
-                },
-            };
-            const result = getRpcError(mockError);
-            expect(result).toEqual({
-                code: -32000,
-                message: "Deep nested error",
-                data: "0xdeep",
-            });
-        });
-
-        it("should handle breaker limit to prevent infinite recursion", () => {
-            const mockError = new Error("Recursive error") as any;
-            mockError.cause = mockError; // circular reference
-            const result = getRpcError(mockError);
-            expect(result.message).toBe("Found no rpc error in the given viem error");
-        });
-    });
-
     describe("Test containsNodeError", () => {
         it("should return true for ExecutionRevertedError", async () => {
             const mockError = new ExecutionRevertedError({
@@ -420,90 +361,6 @@ describe("Test common error utilities", () => {
             } as any;
             const result = isTimeout(mockError);
             expect(result).toBe(false);
-        });
-    });
-
-    describe("Test shouldThrow", () => {
-        it("should return true for execution reverted message", () => {
-            const mockError = new BaseError("Transaction execution reverted") as any;
-            mockError.name = "ExecutionError";
-            const result = shouldThrow(mockError);
-            expect(result).toBe(true);
-        });
-
-        it("should return true for unknown reason message", () => {
-            const mockError = new BaseError("Transaction failed for unknown reason") as any;
-            const result = shouldThrow(mockError);
-            expect(result).toBe(true);
-        });
-
-        it("should return true when RPC error has data", () => {
-            const mockError = new Error("Test error") as any;
-            mockError.cause = {
-                data: "0x08c379a0",
-            };
-            const result = shouldThrow(mockError);
-            expect(result).toBe(true);
-        });
-
-        it("should return true for ExecutionRevertedError instance", () => {
-            const mockError = new ExecutionRevertedError({
-                cause: new BaseError("Execution reverted"),
-            });
-            const result = shouldThrow(mockError);
-            expect(result).toBe(true);
-        });
-
-        it("should return true for UserRejectedRequestError code", () => {
-            const mockError = new Error("User rejected") as any;
-            mockError.code = UserRejectedRequestError.code;
-            const result = shouldThrow(mockError);
-            expect(result).toBe(true);
-        });
-
-        it("should return true for TransactionRejectedRpcError code", () => {
-            const mockError = new Error("Transaction rejected") as any;
-            mockError.code = TransactionRejectedRpcError.code;
-            const result = shouldThrow(mockError);
-            expect(result).toBe(true);
-        });
-
-        it("should return true for UserRejectedRequestError code (5000)", () => {
-            const mockError = new Error("User rejected CAIP") as any;
-            mockError.code = 5000;
-            const result = shouldThrow(mockError);
-            expect(result).toBe(true);
-        });
-
-        it("should return false for generic network errors", () => {
-            const mockError = new Error("Network timeout");
-            const result = shouldThrow(mockError);
-            expect(result).toBe(false);
-        });
-
-        it("should check error details and shortMessage", () => {
-            const mockError = new Error("Test error") as any;
-            mockError.details = "execution reverted: insufficient balance";
-            mockError.shortMessage = "Call failed";
-            const result = shouldThrow(mockError);
-            expect(result).toBe(true);
-        });
-
-        it("should handle missing properties gracefully", () => {
-            const mockError = new Error("Test error") as any;
-            // Intentionally not setting name, details, shortMessage
-            const result = shouldThrow(mockError);
-            expect(result).toBe(false);
-        });
-
-        it("should check nested cause for execution reverted", () => {
-            const mockError = new BaseError("Outer error") as any;
-            mockError.cause = {
-                code: 1,
-                message: "inner execution reverted",
-            };
-            const result = shouldThrow(mockError);
-            expect(result).toBe(true);
         });
     });
 });

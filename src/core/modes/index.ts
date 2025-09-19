@@ -6,7 +6,7 @@ import { Token } from "sushi/currency";
 import { FindBestTradeResult } from "../types";
 import { RainSolverSigner } from "../../signer";
 import { Attributes } from "@opentelemetry/api";
-import { findBestRouteProcessorTrade } from "./rp";
+import { findBestRouteProcessorTrade } from "./router";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
 import { extendObjectWithHeader } from "../../logger";

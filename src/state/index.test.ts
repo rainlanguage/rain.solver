@@ -1,10 +1,10 @@
-import { Result, sleep } from "../common";
 import { getGasPrice } from "./gasPrice";
 import { getChainConfig } from "./chain";
 import { createPublicClient } from "viem";
 import { LiquidityProviders } from "sushi";
+import { Result, sleep, TokenDetails } from "../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import { SharedState, SharedStateConfig, SharedStateErrorType, TokenDetails } from "./index";
+import { SharedState, SharedStateConfig, SharedStateErrorType } from ".";
 
 vi.mock("./gasPrice", () => ({
     getGasPrice: vi.fn().mockResolvedValue({
@@ -22,15 +22,7 @@ vi.mock("viem", async (importOriginal) => ({
 }));
 
 vi.mock("./chain", () => ({
-    getChainConfig: vi.fn().mockReturnValue(
-        Result.ok({
-            id: 1,
-            isSpecialL2: false,
-            nativeWrappedToken: "0xwrapped",
-            routeProcessors: {},
-            stableTokens: [],
-        }),
-    ),
+    getChainConfig: vi.fn(),
 }));
 
 describe("Test SharedStateConfig tryFromAppOptions", () => {
@@ -57,6 +49,15 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
                 .mockImplementationOnce(() => Promise.resolve("0xinterpreter"))
                 .mockImplementationOnce(() => Promise.resolve("0xstore")),
         };
+        (getChainConfig as Mock).mockReturnValue(
+            Result.ok({
+                id: 1,
+                isSpecialL2: false,
+                nativeWrappedToken: "0xwrapped",
+                routeProcessors: {},
+                stableTokens: [],
+            }),
+        );
         (createPublicClient as Mock).mockReturnValue(mockClient);
     });
 

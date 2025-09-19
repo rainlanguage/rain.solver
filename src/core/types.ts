@@ -1,7 +1,7 @@
-import { Result } from "../common";
 import { Evaluable, TakeOrder } from "../order";
 import { Attributes } from "@opentelemetry/api";
-import { EstimateGasCostResult, RawTransaction } from "../signer";
+import { Result, RawTransaction } from "../common";
+import { EstimateGasCostResult } from "../signer";
 
 /** Specifies reason that order process halted with failure */
 export enum ProcessOrderHaltReason {

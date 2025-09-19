@@ -6,7 +6,7 @@ import { ABI, Result } from "../../../common";
 import { SimulationResult } from "../../types";
 import { encodeFunctionData, encodeAbiParameters, maxUint256 } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import { BalancerRouterError, BalancerRouterErrorType } from "../../../router/balancer";
+import { BalancerRouterError, BalancerRouterErrorType } from "../../../router";
 import {
     trySimulateTrade,
     SimulateBalancerTradeArgs,
@@ -19,7 +19,7 @@ vi.mock("viem", async (importOriginal) => ({
     encodeAbiParameters: vi.fn().mockReturnValue("0xparams"),
 }));
 
-vi.mock("../rp/utils", () => ({
+vi.mock("../router/utils", () => ({
     estimateProfit: vi.fn().mockReturnValue(123n),
 }));
 

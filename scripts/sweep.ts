@@ -1,16 +1,16 @@
 /* eslint-disable no-console */
 import assert from "assert";
 import { Command } from "commander";
-import { sleep } from "../src/common";
 import { createPublicClient } from "viem";
 import { AppOptions } from "../src/config";
 import { ChainId, RainDataFetcher } from "sushi";
+import { sleep, TokenDetails } from "../src/common";
 import { getChainConfig } from "../src/state/chain";
 import { rainSolverTransport, RpcState } from "../src/rpc";
 import { WalletConfig, WalletManager } from "../src/wallet";
+import { SharedState, SharedStateConfig } from "../src/state";
 import { OrderManager, OrderManagerConfig } from "../src/order";
 import { SubgraphConfig, SubgraphManager } from "../src/subgraph";
-import { SharedState, SharedStateConfig, TokenDetails } from "../src/state";
 
 /**
  * Command-line interface for the sweep script
@@ -109,10 +109,11 @@ export async function sweepFunds(
     }) as any;
     // get chain config
     const chainId = await client.getChainId();
-    const chainConfig = getChainConfig(chainId as ChainId);
-    if (!chainConfig) {
-        throw `Cannot find configuration for the network with chain id: ${chainId}`;
+    const chainConfigResult = getChainConfig(chainId as ChainId);
+    if (chainConfigResult.isErr()) {
+        throw chainConfigResult.error;
     }
+    const chainConfig = chainConfigResult.value;
     client = createPublicClient({
         chain: chainConfig,
         transport: rainSolverTransport(rpcState, rainSolverTransportConfig),
@@ -132,9 +133,9 @@ export async function sweepFunds(
         subgraphConfig: SubgraphConfig.tryFromAppOptions(options),
         orderManagerConfig: OrderManagerConfig.tryFromAppOptions(options),
         dispair: {
-            interpreter: "",
-            store: "",
-            deployer: "",
+            interpreter: "0x",
+            store: "0x",
+            deployer: "0x",
         },
     };
     const state = new SharedState(stateConfig);

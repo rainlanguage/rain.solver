@@ -1,34 +1,18 @@
-import { RpcState } from "../rpc";
 import { ChainId } from "sushi/chain";
 import { AppOptions } from "../config";
 import { Token } from "sushi/currency";
-import { ABI, Result } from "../common";
 import { getGasPrice } from "./gasPrice";
 import { BalancerRouter } from "../router";
-import { RainSolverBaseError } from "../error";
 import { WalletConfig } from "../wallet/config";
 import { SubgraphConfig } from "../subgraph/config";
+import { RainSolverBaseError } from "../error/types";
 import { OrderManagerConfig } from "../order/config";
 import { LiquidityProviders, RainDataFetcher } from "sushi";
+import { ABI, Result, TokenDetails, Dispair } from "../common";
 import { getMarketPrice, processLiquidityProviders } from "../router";
-import { rainSolverTransport, RainSolverTransportConfig } from "../rpc";
 import { ChainConfig, ChainConfigError, getChainConfig } from "./chain";
 import { createPublicClient, PublicClient, ReadContractErrorType } from "viem";
-
-/**
- * Rain dispair contracts, deployer, store and interpreter
- */
-export type Dispair = {
-    deployer: string;
-    interpreter: string;
-    store: string;
-};
-
-export type TokenDetails = {
-    address: string;
-    decimals: number;
-    symbol: string;
-};
+import { RpcState, rainSolverTransport, RainSolverTransportConfig } from "../rpc";
 
 /** Enumerates the possible error types that can occur within the chain config */
 export enum SharedStateErrorType {
@@ -138,11 +122,11 @@ export namespace SharedStateConfig {
 
         const getDispairAddress = async (
             functionName: "iInterpreter" | "iStore",
-        ): Promise<Result<string, SharedStateError>> => {
+        ): Promise<Result<`0x${string}`, SharedStateError>> => {
             try {
                 return Result.ok(
                     await client.readContract({
-                        address: options.dispair as `0x${string}`,
+                        address: options.dispair,
                         abi: ABI.Deployer.Primary.Deployer,
                         functionName,
                     }),
@@ -218,7 +202,7 @@ export namespace SharedStateConfig {
             dispair: {
                 interpreter,
                 store,
-                deployer: options.dispair,
+                deployer: options.dispair as `0x${string}`,
             },
             balancerRouter,
         };
@@ -379,6 +363,14 @@ export class SharedState {
      * @returns The market price for the token pair or undefined if no route were found
      */
     getMarketPrice(fromToken: Token, toToken: Token, blockNumber?: bigint) {
-        return getMarketPrice.call(this, fromToken, toToken, blockNumber);
+        return getMarketPrice(
+            this.chainConfig.id,
+            this.dataFetcher,
+            fromToken,
+            toToken,
+            this.gasPrice,
+            blockNumber,
+            this.balancerRouter,
+        );
     }
 }

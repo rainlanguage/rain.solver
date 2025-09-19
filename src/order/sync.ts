@@ -1,7 +1,7 @@
 import { OrderManager } from ".";
 import { errorSnapshot } from "../error";
-import { SgTransaction } from "../subgraph";
 import { PreAssembledSpan } from "../logger";
+import { SgTransaction } from "../subgraph/types";
 import { applyFilters } from "../subgraph/filter";
 
 /** Syncs orders and vaults to upstream changes since the last fetch */

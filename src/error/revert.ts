@@ -1,15 +1,19 @@
-import { ABI } from "../common";
 import { isDeepStrictEqual } from "util";
-import { RainSolverSigner, RawTransaction } from "../signer";
-import { BaseError, decodeFunctionData, isHex, TransactionReceipt } from "viem";
+import { tryDecodeError } from "./decoder";
+import { getRpcError } from "../rpc/helpers";
+import { ABI, RawTransaction } from "../common";
+import { TxRevertError, DecodedErrorType } from "./types";
+import { errorSnapshot, containsNodeError } from "./common";
 import {
-    getRpcError,
-    TxRevertError,
-    errorSnapshot,
-    tryDecodeError,
-    DecodedErrorType,
-    containsNodeError,
-} from ".";
+    Chain,
+    isHex,
+    Account,
+    Transport,
+    BaseError,
+    PublicClient,
+    TransactionReceipt,
+    decodeFunctionData,
+} from "viem";
 
 /**
  * Handles a reverted transaction by simulating to figure out the revert reason,
@@ -25,7 +29,7 @@ import {
  * @param orderbook - The orderbook address to filter logs
  */
 export async function handleRevert(
-    viemClient: RainSolverSigner,
+    viemClient: PublicClient<Transport, Chain | undefined, Account | undefined>,
     hash: `0x${string}`,
     receipt: TransactionReceipt,
     rawtx: RawTransaction,
@@ -134,7 +138,7 @@ export function evaluateGasSufficiency(
  * @returns the transaction hash of the frontrun if detected, otherwise undefined
  */
 export async function tryDetectFrontrun(
-    viemClient: RainSolverSigner,
+    viemClient: PublicClient<Transport, Chain | undefined, Account | undefined>,
     rawtx: RawTransaction,
     receipt: TransactionReceipt,
     orderbook: `0x${string}`,

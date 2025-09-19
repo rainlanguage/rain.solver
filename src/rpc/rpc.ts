@@ -1,7 +1,8 @@
 import { promiseTimeout, sleep } from "../common";
+import { onFetchRequest, onFetchResponse } from "./hooks";
 import { http, Transport, HttpTransportConfig } from "viem";
+import { normalizeUrl, probablyPicksFrom } from "./helpers";
 import { RainSolverTransportTimeoutError } from "./transport";
-import { normalizeUrl, onFetchRequest, onFetchResponse, probablyPicksFrom } from ".";
 
 /** The rpc configurations */
 export type RpcConfig = {
@@ -71,7 +72,7 @@ export class RpcState {
      */
     async nextRpc({
         timeout = 10_000,
-        pollingInterval = 250,
+        pollingInterval = 25,
     }: {
         timeout?: number;
         pollingInterval?: number;

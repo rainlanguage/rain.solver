@@ -1,10 +1,10 @@
-import { sleep } from "../../common";
-import { Result } from "../../common";
+import { toNumber } from "../../math";
 import { Token } from "sushi/currency";
 import { handleRevert } from "../../error";
+import { RainSolverSigner } from "../../signer";
 import { formatUnits, TransactionReceipt } from "viem";
 import { OpStackTransactionReceipt } from "viem/chains";
-import { RainSolverSigner, RawTransaction } from "../../signer";
+import { Result, sleep, RawTransaction } from "../../common";
 import { getIncome, getTotalIncome, getActualClearAmount } from "./log";
 import {
     ProcessOrderFailure,
@@ -12,7 +12,6 @@ import {
     ProcessOrderHaltReason,
     ProcessOrderResultBase,
 } from "../types";
-import { toNumber } from "../../math";
 
 /** Arguments for processing a transaction receipt */
 export type ProcessReceiptArgs = {

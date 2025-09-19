@@ -1,7 +1,8 @@
 import { AxiosError } from "axios";
+import { getRpcError } from "../rpc/helpers";
 import { RainSolverBaseError } from "./types";
-import { RawTransaction } from "../signer";
-import { evaluateGasSufficiency, parseRevertError, RawRpcError } from ".";
+import { withBigintSerializer, RawTransaction } from "../common";
+import { evaluateGasSufficiency, parseRevertError } from "./revert";
 import {
     BaseError,
     TimeoutError,
@@ -10,12 +11,9 @@ import {
     ExecutionRevertedError,
     InsufficientFundsError,
     TransactionNotFoundError,
-    UserRejectedRequestError,
-    TransactionRejectedRpcError,
     TransactionReceiptNotFoundError,
     WaitForTransactionReceiptTimeoutError,
 } from "viem";
-import { withBigintSerializer } from "../common";
 
 /**
  * Constructs a snapshot from the given error which is mainly used for reporting
@@ -101,58 +99,6 @@ export async function errorSnapshot(
 }
 
 /**
- * Extracts original rpc error from the viem error
- * @param error - The error
- */
-export function getRpcError(error: Error, breaker = 0): RawRpcError {
-    const result: RawRpcError = {
-        data: undefined,
-        code: undefined,
-        message: undefined,
-    } as any;
-    if (breaker > 10) {
-        result.message = "Found no rpc error in the given viem error";
-        return result;
-    }
-    if ("cause" in error) {
-        const org = getRpcError(error.cause as any, breaker + 1);
-        if ("code" in org && typeof org.code === "number") {
-            result.code = org.code;
-        }
-        if ("message" in org && typeof org.message === "string") {
-            result.message = org.message;
-        }
-        if ("data" in org && (typeof org.data === "string" || typeof org.data === "number")) {
-            result.data = org.data;
-        }
-    } else {
-        if ("code" in error && typeof error.code === "number" && result.code === undefined) {
-            result.code = error.code;
-            // include msg only if code exists
-            if (
-                "message" in error &&
-                typeof error.message === "string" &&
-                result.message === undefined
-            ) {
-                result.message = error.message;
-            }
-        }
-        if ("data" in error && (typeof error.data === "string" || typeof error.data === "number")) {
-            result.data = error.data;
-            // include msg only if data exists
-            if (
-                "message" in error &&
-                typeof error.message === "string" &&
-                result.message === undefined
-            ) {
-                result.message = error.message;
-            }
-        }
-    }
-    return result;
-}
-
-/**
  * Checks if a viem BaseError is from eth node
  * @param err - The viem error
  */
@@ -193,34 +139,4 @@ export function isTimeout(err: BaseError, breaker = 0): boolean {
     } catch (error) {
         return false;
     }
-}
-
-/**
- * Determines if this fetch reponse is a throwable node error, this
- * is mainly used for determining success and failure rates of a rpc
- * @param error - The error thrown from rpc fetch hook
- */
-export function shouldThrow(error: Error) {
-    const msg: string[] = [];
-    const org = getRpcError(error);
-    if (typeof org.message === "string") {
-        msg.push(org.message.toLowerCase());
-    }
-    msg.push(((error as any)?.name ?? "").toLowerCase());
-    msg.push(((error as any)?.details ?? "").toLowerCase());
-    msg.push(((error as any)?.shortMessage ?? "").toLowerCase());
-    if (msg.some((v) => v.includes("execution reverted") || v.includes("unknown reason"))) {
-        return true;
-    }
-    if (org.data !== undefined) return true;
-    if (error instanceof ExecutionRevertedError) return true;
-    if ("code" in error && typeof error.code === "number") {
-        if (
-            error.code === UserRejectedRequestError.code ||
-            error.code === TransactionRejectedRpcError.code ||
-            error.code === 5000 // CAIP UserRejectedRequestError
-        )
-            return true;
-    }
-    return false;
 }

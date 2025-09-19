@@ -1,12 +1,12 @@
 import assert from "assert";
 import { formatUnits } from "viem";
+import { SharedState } from "../state";
 import { fundVault } from "./fundVault";
 import { RainSolverSigner } from "../signer";
 import { PreAssembledSpan } from "../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
-import { SharedState, TokenDetails } from "../state";
 import { ErrorSeverity, errorSnapshot } from "../error";
-import { shuffleArray, sleep, ABI, Result } from "../common";
+import { shuffleArray, sleep, ABI, Result, TokenDetails } from "../common";
 import { WalletConfig, WalletType, MainAccountDerivationIndex } from "./config";
 import { transferTokenFrom, transferRemainingGasFrom, convertToGas } from "./sweep";
 import {

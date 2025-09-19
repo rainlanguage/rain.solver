@@ -1,5 +1,5 @@
 import { RPoolFilter } from "../router";
-import { TokenDetails } from "../state";
+import { TokenDetails } from "../common";
 import { ChainId, Router } from "sushi";
 import { RainSolverSigner } from "../signer";
 import { Native, Token } from "sushi/currency";
