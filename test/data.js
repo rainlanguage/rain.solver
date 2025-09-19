@@ -1,5 +1,5 @@
 const { Token } = require("sushi/currency");
-const { visualizeRoute } = require("../src/utils");
+const { visualizeRoute } = require("../src/solver/modes/rp/utils");
 const { ConstantProductRPool } = require("sushi/tines");
 const { arbAbis, orderbookAbi } = require("../src/abis");
 const { ConstantProductPoolCode, Router } = require("sushi");

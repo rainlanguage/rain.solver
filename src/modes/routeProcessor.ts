@@ -5,17 +5,12 @@ import { containsNodeError, errorSnapshot } from "../error";
 import { getBountyEnsureRainlang, parseRainlang } from "../task";
 import { BaseError, ExecutionRevertedError, PublicClient } from "viem";
 import { BotConfig, DryrunResult } from "../types";
-import {
-    RPoolFilter,
-    estimateProfit,
-    visualizeRoute,
-    withBigintSerializer,
-    extendSpanAttributes,
-} from "../utils";
+import { RPoolFilter, estimateProfit, withBigintSerializer, extendSpanAttributes } from "../utils";
 import { BundledOrders } from "../order";
 import { RainSolverSigner } from "../signer";
 import { Attributes } from "@opentelemetry/api";
 import { ONE18, scale18, scale18To } from "../math";
+import { visualizeRoute } from "../solver/modes/rp/utils";
 
 /**
  * Specifies the reason that dryrun failed

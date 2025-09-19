@@ -76,15 +76,15 @@ export const deployerAbi = [
  */
 export const arbAbis = [
     `function arb2(${TakeOrdersConfigV3} calldata takeOrders, uint256 minimumSenderOutput, ${EvaluableV3} calldata evaluable) external payable`,
-    `function arb3(address orderBook, ${TakeOrdersConfigV3} calldata takeOrders, ${TaskV1} calldata task)`,
+    `function arb3(address orderBook, ${TakeOrdersConfigV3} calldata takeOrders, ${TaskV1} calldata task) external payable`,
     "function iRouteProcessor() external view returns (address)",
 ] as const;
 
 export const Call3 = "(address target, bool allowFailure, bytes callData)" as const;
-export const Result = "(bool success, bytes returnData)" as const;
+export const MulticallResult = "(bool success, bytes returnData)" as const;
 export const multicall3Abi = [
     "function getEthBalance(address addr) external view returns (uint256 balance)",
-    `function aggregate3(${Call3}[] calldata calls) external payable returns (${Result}[] memory returnData)`,
+    `function aggregate3(${Call3}[] calldata calls) external payable returns (${MulticallResult}[] memory returnData)`,
 ] as const;
 
 // an empty evaluable mainly used as default evaluable for arb contracts
@@ -101,6 +101,7 @@ export const AfterClearAbi = parseAbi([orderbookAbi[2]]);
 export const DeployerAbi = parseAbi(deployerAbi);
 export const MulticallAbi = parseAbi(multicall3Abi);
 export const Deposit2Abi = parseAbi([orderbookAbi[4]]);
+export const ArbAbi = parseAbi(arbAbis);
 
 /**
  * Arbitrum node interface address, used to get L1 gas limit.
