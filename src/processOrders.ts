@@ -6,7 +6,6 @@ import { Token } from "sushi/currency";
 import { arbAbis, orderbookAbi } from "./abis";
 import { getSigner, handleTransaction } from "./tx";
 import { BigNumber, Contract, ethers } from "ethers";
-import { fundOwnedOrders, checkOwnedOrders } from "./account";
 import { Context, SpanStatusCode, Tracer } from "@opentelemetry/api";
 import { RainDataFetcher, RainDataFetcherOptions } from "sushi";
 import { ErrorSeverity, errorSnapshot, isTimeout, KnownErrors } from "./error";
@@ -41,73 +40,6 @@ export const processOrders = async (
     if (config.genericArbAddress) {
         genericArb = new ethers.Contract(config.genericArbAddress, arbAbis);
     }
-
-    // check owned vaults and top them up if necessary
-    await tracer.startActiveSpan("handle-owned-vaults", {}, ctx, async (span) => {
-        try {
-            const ownedOrders = await checkOwnedOrders(config, bundledOrders);
-            if (ownedOrders.length) {
-                const failedFundings = await fundOwnedOrders(ownedOrders, config, state);
-                const emptyOrders = ownedOrders.filter((v) => v.vaultBalance.isZero());
-                if (failedFundings.length || emptyOrders.length) {
-                    const message: string[] = [];
-                    if (emptyOrders.length) {
-                        message.push(
-                            "Reason: following owned vaults are empty:",
-                            ...emptyOrders.map(
-                                (v) => `\ntoken: ${v.symbol},\nvaultId: ${v.vaultId}`,
-                            ),
-                        );
-                    }
-                    if (failedFundings.length) {
-                        failedFundings.forEach((v) => {
-                            let msg = v.error;
-                            if (v.ownedOrder) {
-                                const vaultId =
-                                    (v.ownedOrder.vaultId as any) instanceof BigNumber
-                                        ? (v.ownedOrder.vaultId as any as BigNumber).toHexString()
-                                        : v.ownedOrder.vaultId;
-                                msg = `\ntoken: ${v.ownedOrder.symbol},\nvaultId: ${vaultId}\n`;
-                            }
-                            message.push(msg);
-                        });
-                        span.setAttribute(
-                            "failedFundings",
-                            failedFundings.map((v) =>
-                                JSON.stringify({
-                                    error: v.error,
-                                    ...(v.ownedOrder
-                                        ? {
-                                              orderId: v.ownedOrder.id,
-                                              orderbook: v.ownedOrder.orderbook,
-                                              vaultId: v.ownedOrder.vaultId,
-                                              token: v.ownedOrder.token,
-                                              symbol: v.ownedOrder.symbol,
-                                          }
-                                        : {}),
-                                }),
-                            ),
-                        );
-                    }
-                    span.setAttribute("severity", ErrorSeverity.MEDIUM);
-                    span.setStatus({
-                        code: SpanStatusCode.ERROR,
-                        message: message.join("\n"),
-                    });
-                } else {
-                    span.setStatus({ code: SpanStatusCode.OK, message: "All good!" });
-                }
-            }
-        } catch (error: any) {
-            span.setAttribute("severity", ErrorSeverity.HIGH);
-            span.setStatus({
-                code: SpanStatusCode.ERROR,
-                message: errorSnapshot("Failed to check owned vaults", error),
-            });
-            span.recordException(error);
-        }
-        span.end();
-    });
 
     const txGasCosts: BigNumber[] = [];
     const reports: Report[] = [];

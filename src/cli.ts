@@ -12,9 +12,9 @@ import { SubgraphManager, SubgraphConfig } from "./subgraph";
 import { BotConfig, ProcessPairReportStatus } from "./types";
 import { OrderManager, BundledOrders } from "./order";
 import { trace, Tracer, context, Context, SpanStatusCode } from "@opentelemetry/api";
-import { getBatchEthBalance } from "./account";
 import { WalletManager, WalletType } from "./wallet";
 import { publicClientConfig } from "sushi/config";
+import { MulticallAbi } from "./abis";
 
 config();
 
@@ -243,6 +243,12 @@ export const main = async (argv: any, version?: string) => {
                 update = true;
             }
             try {
+                // try funding owned vaults and report
+                const fundOwnedVaultsReport = await walletManager.fundOwnedVaults();
+                fundOwnedVaultsReport.forEach((report) => {
+                    logger.exportPreAssembledSpan(report, roundCtx);
+                });
+
                 const bundledOrders = orderManager.getNextRoundOrders();
                 if (update) {
                     const freshdataFetcher = await getDataFetcher(state);
@@ -282,10 +288,22 @@ export const main = async (argv: any, version?: string) => {
                 // fecth account's balances
                 if (foundOpp && config.accounts.length) {
                     try {
-                        const balances = await getBatchEthBalance(
-                            config.accounts.map((v) => v.account.address),
-                            state.client,
-                        );
+                        const balances = (
+                            await state.client.multicall({
+                                multicallAddress: state.client.chain?.contracts?.multicall3
+                                    ?.address as `0x${string}`,
+                                allowFailure: false,
+                                contracts: config.accounts.map((v) => ({
+                                    address: state.client.chain?.contracts?.multicall3
+                                        ?.address as `0x${string}`,
+                                    allowFailure: false,
+                                    chainId: state.client.chain?.id,
+                                    abi: MulticallAbi,
+                                    functionName: "getEthBalance",
+                                    args: [v.account.address],
+                                })),
+                            })
+                        ).map((v) => ethers.BigNumber.from(v));
                         config.accounts.forEach((v, i) => (v.BALANCE = balances[i]));
                     } catch {
                         /**/

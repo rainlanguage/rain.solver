@@ -38,15 +38,17 @@ retries: 3
 maxRatio: true
 rpOnly: false
 ownerProfile: $OWNER_PROFILE
-selfFundOrders:
+selfFundVaults:
   - token: "0x6666666666666666666666666666666666666666"
     vaultId: "1"
     threshold: "0.5"
     topupAmount: "2.5"
+    orderbook: "0x1234567890123456789012345678901234567890"
   - token: "0x7777777777777777777777777777777777777777"
     vaultId: "2"
     threshold: "1.0"
     topupAmount: "3.5"
+    orderbook: "0x1234567890123456789012345678901234567890"
 sgFilter:
   includeOrders:
     - "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -89,18 +91,20 @@ sgFilter:
                 "0x4444444444444444444444444444444444444444": 100,
                 "0x5555555555555555555555555555555555555555": Number.MAX_SAFE_INTEGER,
             },
-            selfFundOrders: [
+            selfFundVaults: [
                 {
                     token: "0x6666666666666666666666666666666666666666",
                     vaultId: "1",
                     threshold: "0.5",
                     topupAmount: "2.5",
+                    orderbook: "0x1234567890123456789012345678901234567890",
                 },
                 {
                     token: "0x7777777777777777777777777777777777777777",
                     vaultId: "2",
                     threshold: "1.0",
                     topupAmount: "3.5",
+                    orderbook: "0x1234567890123456789012345678901234567890",
                 },
             ],
             sgFilter: {
@@ -155,18 +159,20 @@ sgFilter:
                 { "0x4444444444444444444444444444444444444444": "100" },
                 { "0x5555555555555555555555555555555555555555": "max" },
             ],
-            selfFundOrders: [
+            selfFundVaults: [
                 {
                     token: "0x6666666666666666666666666666666666666666",
                     vaultId: "1",
                     threshold: "0.5",
                     topupAmount: "2.5",
+                    orderbook: "0x1234567890123456789012345678901234567890",
                 },
                 {
                     token: "0x7777777777777777777777777777777777777777",
                     vaultId: "2",
                     threshold: "1.0",
                     topupAmount: "3.5",
+                    orderbook: "0x1234567890123456789012345678901234567890",
                 },
             ],
             sgFilter: {
@@ -230,22 +236,24 @@ sgFilter:
         };
         assert.deepEqual(result.ownerProfile, expectedOwnerProfile);
 
-        // selfFundOrders
-        const expectedSelfFundOrders = [
+        // selfFundVaults
+        const expectedselfFundVaults = [
             {
                 token: "0x6666666666666666666666666666666666666666".toLowerCase(),
                 vaultId: "1",
                 threshold: "0.5",
                 topupAmount: "2.5",
+                orderbook: "0x1234567890123456789012345678901234567890",
             },
             {
                 token: "0x7777777777777777777777777777777777777777".toLowerCase(),
                 vaultId: "2",
                 threshold: "1.0",
                 topupAmount: "3.5",
+                orderbook: "0x1234567890123456789012345678901234567890",
             },
         ];
-        assert.deepEqual(result.selfFundOrders, expectedSelfFundOrders);
+        assert.deepEqual(result.selfFundVaults, expectedselfFundVaults);
 
         // sgFilter
         const expectedSgFilter = {
@@ -635,11 +643,12 @@ sgFilter:
         );
     });
 
-    it("test AppOptions resolveSelfFundOrders", async function () {
+    it("test AppOptions resolveSelfFundVaults", async function () {
         const address1 = `0x${"1".repeat(40)}`;
         const address2 = `0x${"2".repeat(40)}`;
         const address3 = `0x${"3".repeat(40)}`;
         const address4 = `0x${"4".repeat(40)}`;
+        const orderbookAddress = "0x1234567890123456789012345678901234567890";
 
         // happy path using direct object input:
         const inputOrders = [
@@ -648,80 +657,86 @@ sgFilter:
                 vaultId: "1",
                 threshold: "0.5",
                 topupAmount: "2.5",
+                orderbook: orderbookAddress,
             },
             {
                 token: address2,
                 vaultId: "2",
                 threshold: "1.0",
                 topupAmount: "3.5",
+                orderbook: orderbookAddress,
             },
         ];
-        const resultOrders = AppOptions.resolveSelfFundOrders(inputOrders);
+        const resultOrders = AppOptions.resolveSelfFundVaults(inputOrders);
         const expectedOrders = [
             {
                 token: address1,
                 vaultId: "1",
                 threshold: "0.5",
                 topupAmount: "2.5",
+                orderbook: orderbookAddress,
             },
             {
                 token: address2,
                 vaultId: "2",
                 threshold: "1.0",
                 topupAmount: "3.5",
+                orderbook: orderbookAddress,
             },
         ];
         assert.deepEqual(resultOrders, expectedOrders);
 
         // happy path using env variable:
-        process.env.SELF_FUND = `token=${address3},vaultId=3,threshold=1.5,topupAmount=2.5,token=${address4},vaultId=4,threshold=2.0,topupAmount=3.0`;
+        process.env.SELF_FUND = `token=${address3},orderbook=${orderbookAddress},vaultId=3,threshold=1.5,topupAmount=2.5,token=${address4},orderbook=${orderbookAddress},vaultId=4,threshold=2.0,topupAmount=3.0`;
         const envInput = "$SELF_FUND";
-        const resultEnv = AppOptions.resolveSelfFundOrders(envInput);
+        const resultEnv = AppOptions.resolveSelfFundVaults(envInput);
         const expectedEnv = [
             {
                 token: address3,
                 vaultId: "3",
                 threshold: "1.5",
                 topupAmount: "2.5",
+                orderbook: orderbookAddress,
             },
             {
                 token: address4,
                 vaultId: "4",
                 threshold: "2.0",
                 topupAmount: "3.0",
+                orderbook: orderbookAddress,
             },
         ];
         assert.deepEqual(resultEnv, expectedEnv);
 
         // unhappy: Env input with extra key
-        process.env.SELF_FUND = `token=${address1},vaultId=5,threshold=1.5,topupAmount=2.5,extra=123`;
+        process.env.SELF_FUND = `token=${address1},orderbook=${orderbookAddress},vaultId=5,threshold=1.5,topupAmount=2.5,extra=123`;
         assert.throws(
-            () => AppOptions.resolveSelfFundOrders("$SELF_FUND"),
+            () => AppOptions.resolveSelfFundVaults("$SELF_FUND"),
             /unknown key\/value: extra=123/,
         );
 
         // unhappy: Env input with undefined value
-        process.env.SELF_FUND = `token=${address1},vaultId=5,threshold=1.5,topupAmount=`;
+        process.env.SELF_FUND = `token=${address1},orderbook=${orderbookAddress},vaultId=5,threshold=1.5,topupAmount=`;
         assert.throws(
-            () => AppOptions.resolveSelfFundOrders("$SELF_FUND"),
+            () => AppOptions.resolveSelfFundVaults("$SELF_FUND"),
             /expected value after topupAmount=/,
         );
 
         // unhappy: Env input with extra argument
-        process.env.SELF_FUND = `token=${address1}=extra,vaultId=5,threshold=1.5,topupAmount=`;
+        process.env.SELF_FUND = `token=${address1}=extra,orderbook=${orderbookAddress},vaultId=5,threshold=1.5,topupAmount=`;
         assert.throws(
-            () => AppOptions.resolveSelfFundOrders("$SELF_FUND"),
+            () => AppOptions.resolveSelfFundVaults("$SELF_FUND"),
             /unexpected arguments: extra/,
         );
 
         // unhappy: Env input with extra argument
-        process.env.SELF_FUND = `token=${address1},vaultId=5,threshold=1.5,threshold=2`;
-        assert.throws(() => AppOptions.resolveSelfFundOrders("$SELF_FUND"), /duplicate threshold/);
+        process.env.SELF_FUND = `token=${address1},orderbook=${orderbookAddress},vaultId=5,threshold=1.5,threshold=2`;
+        assert.throws(() => AppOptions.resolveSelfFundVaults("$SELF_FUND"), /duplicate threshold/);
 
         // Test case for partial self fund order
-        process.env.SELF_FUND = `token=${address1},vaultId=5,threshold=1.5`;
+        process.env.SELF_FUND = `token=${address1},orderbook=${orderbookAddress},vaultId=5,threshold=1.5`;
         assert.throws(
-            () => AppOptions.resolveSelfFundOrders("$SELF_FUND"),
+            () => AppOptions.resolveSelfFundVaults("$SELF_FUND"),
             "expected a number greater than equal to 0 for topupAmount",
         );
 
@@ -731,10 +746,11 @@ sgFilter:
             vaultId: "6",
             threshold: "1.0",
             topupAmount: "2.0",
+            orderbook: orderbookAddress,
         };
         assert.throws(
-            () => AppOptions.resolveSelfFundOrders(badInput),
-            "expected array of SelfFundOrder",
+            () => AppOptions.resolveSelfFundVaults(badInput),
+            "expected array of SelfFundVault",
         );
 
         // unhappy: Invalid token address format in direct input
@@ -744,9 +760,25 @@ sgFilter:
                 vaultId: "7",
                 threshold: "1.2",
                 topupAmount: "2.2",
+                orderbook: orderbookAddress,
             },
         ];
-        assert.throws(() => AppOptions.resolveSelfFundOrders(badInput2), /invalid token address/);
+        assert.throws(() => AppOptions.resolveSelfFundVaults(badInput2), /invalid token address/);
+
+        // unhappy: Invalid orderbook address format in direct input
+        const badInput3 = [
+            {
+                token: address1,
+                vaultId: "7",
+                threshold: "1.2",
+                topupAmount: "2.2",
+                orderbook: "invalid",
+            },
+        ];
+        assert.throws(
+            () => AppOptions.resolveSelfFundVaults(badInput3),
+            /invalid orderbook address/,
+        );
     });
 
     it("test AppOptions resolveSgFilters", async function () {

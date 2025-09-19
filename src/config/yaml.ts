@@ -3,7 +3,7 @@ import { parse } from "yaml";
 import { ethers } from "ethers";
 import { readFileSync } from "fs";
 import { RpcConfig } from "../rpc";
-import { SelfFundOrder } from "../types";
+import { SelfFundVault } from "../types";
 import { isBigNumberish } from "../utils";
 import { SgFilter } from "../subgraph/filter";
 
@@ -68,8 +68,8 @@ export type AppOptions = {
     txGas?: string;
     /** Option to set a static gas limit for quote read calls, default is 1 million */
     quoteGas: bigint;
-    /** Optional list of orders to self-fund when vault balance falls below specified threshold */
-    selfFundOrders?: SelfFundOrder[];
+    /** Optional list owned vaults to fund when their balance falls below specified threshold */
+    selfFundVaults?: SelfFundVault[];
     /** Option that specifies the owner limit in form of key/value */
     ownerProfile?: Record<string, number>;
     /** Optional filters for inc/exc orders, owner and orderbooks */
@@ -114,7 +114,7 @@ export namespace AppOptions {
             liquidityProviders: AppOptions.resolveLiquidityProviders(input.liquidityProviders),
             route: AppOptions.resolveRouteType(input.route),
             ownerProfile: AppOptions.resolveOwnerProfile(input.ownerProfile),
-            selfFundOrders: AppOptions.resolveSelfFundOrders(input.selfFundOrders),
+            selfFundVaults: AppOptions.resolveSelfFundVaults(input.selfFundVaults),
             sgFilter: AppOptions.resolveSgFilters(input.sgFilter),
             rpOnly: AppOptions.resolveBool(
                 input.rpOnly,
@@ -501,17 +501,19 @@ export namespace AppOptions {
         return Object.keys(profiles).length ? profiles : undefined;
     }
 
-    /** Resolves config's bot self funding orders/vaults */
-    export function resolveSelfFundOrders(input: any) {
-        const selfFundOrders = readValue(input);
+    /** Resolves config's bot self funding vaults */
+    export function resolveSelfFundVaults(input: any) {
+        const selfFundVaults = readValue(input);
         const validate = (details: any) => {
             const {
                 token = undefined,
                 vaultId = undefined,
+                orderbook = undefined,
                 threshold = undefined,
                 topupAmount = undefined,
             } = details;
             assert(token && ethers.utils.isAddress(token), "invalid token address");
+            assert(orderbook && ethers.utils.isAddress(orderbook), "invalid orderbook address");
             assert(vaultId && isBigNumberish(vaultId), "invalid vault id");
             assert(
                 threshold && FLOAT_PATTERN.test(threshold),
@@ -523,29 +525,30 @@ export namespace AppOptions {
             );
             return true;
         };
-        if (selfFundOrders.isEnv) {
-            if (typeof selfFundOrders.value === "undefined") return;
-            selfFundOrders.value = tryIntoArray(selfFundOrders.value);
+        if (selfFundVaults.isEnv) {
+            if (typeof selfFundVaults.value === "undefined") return;
+            selfFundVaults.value = tryIntoArray(selfFundVaults.value);
             assert(
-                Array.isArray(selfFundOrders.value) &&
-                    selfFundOrders.value.every((v: any) => typeof v === "string"),
-                "expected array of vault funding details in key=value, example: token=0xabc...123,vaultId=0x123...456,threshold=0.5,topupAmount=10",
+                Array.isArray(selfFundVaults.value) &&
+                    selfFundVaults.value.every((v: any) => typeof v === "string"),
+                "expected array of vault funding details in key=value, example: token=0xabc...123,orderbook=0x123...,vaultId=0x123...456,threshold=0.5,topupAmount=10",
             );
 
-            // build  array of SelfFundOrder from the inputs
+            // build  array of SelfFundVault from the inputs
             const result: Record<string, any>[] = [];
-            for (const item of selfFundOrders.value) {
+            for (const item of selfFundVaults.value) {
                 // should contain known keys
                 assert(
                     item.startsWith("token=") ||
                         item.startsWith("vaultId=") ||
                         item.startsWith("threshold=") ||
+                        item.startsWith("orderbook=") ||
                         item.startsWith("topupAmount="),
                     `unknown key/value: ${item}`,
                 );
 
                 // insert empty next
-                if (!result.length || Object.keys(result[result.length - 1]).length === 4) {
+                if (!result.length || Object.keys(result[result.length - 1]).length === 5) {
                     result.push({});
                 }
 
@@ -554,18 +557,18 @@ export namespace AppOptions {
                 assert(rest.length === 0, `unexpected arguments: ${rest}`);
                 assert(!(key in result[result.length - 1]), `duplicate ${key}`);
 
-                result[result.length - 1][key as keyof SelfFundOrder] = value;
+                result[result.length - 1][key as keyof SelfFundVault] = value;
             }
 
             // validate built array values and return
             result.every(validate);
-            return result as SelfFundOrder[];
+            return result as SelfFundVault[];
         } else if (input) {
             assert(
                 Array.isArray(input) && input.every(validate),
-                "expected array of SelfFundOrder",
+                "expected array of SelfFundVault",
             );
-            return input as SelfFundOrder[];
+            return input as SelfFundVault[];
         }
     }
 

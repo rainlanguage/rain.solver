@@ -1,5 +1,6 @@
 import { parseUnits } from "viem";
 import { AppOptions } from "../config";
+import { SelfFundVault } from "../types";
 
 /** Standard base path for eth accounts */
 export const BasePath = "m/44'/60'/0'/0/" as const;
@@ -37,6 +38,8 @@ export type MultiWalletConfig = {
 export type WalletConfig = (SingleWalletConfig | MultiWalletConfig) & {
     /** Minimum balance that main wallet needs to have before alerting */
     minBalance: bigint;
+    /** Main wallet owned vaults to fund during runtime when they go below specified threshold */
+    selfFundVaults?: SelfFundVault[];
 };
 
 export namespace WalletConfig {
@@ -48,6 +51,7 @@ export namespace WalletConfig {
                     : `0x${options.key}`) as `0x${string}`,
                 type: WalletType.PrivateKey,
                 minBalance: parseUnits(options.botMinBalance, 18),
+                selfFundVaults: options.selfFundVaults,
             };
         } else {
             return {
@@ -56,6 +60,7 @@ export namespace WalletConfig {
                 count: options.walletCount!,
                 minBalance: parseUnits(options.botMinBalance, 18),
                 topupAmount: parseUnits(options.topupAmount!, 18),
+                selfFundVaults: options.selfFundVaults,
             };
         }
     }

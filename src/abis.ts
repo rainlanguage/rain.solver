@@ -100,6 +100,7 @@ export const VaultBalanceAbi = parseAbi([orderbookAbi[3]]);
 export const AfterClearAbi = parseAbi([orderbookAbi[2]]);
 export const DeployerAbi = parseAbi(deployerAbi);
 export const MulticallAbi = parseAbi(multicall3Abi);
+export const Deposit2Abi = parseAbi([orderbookAbi[4]]);
 
 /**
  * Arbitrum node interface address, used to get L1 gas limit.

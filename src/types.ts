@@ -98,9 +98,10 @@ export type DryrunResult = {
     spanAttributes: SpanAttrs;
 };
 
-export type SelfFundOrder = {
+export type SelfFundVault = {
     token: string;
     vaultId: string;
+    orderbook: string;
     threshold: string;
     topupAmount: string;
 };

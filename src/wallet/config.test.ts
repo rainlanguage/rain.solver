@@ -7,6 +7,7 @@ describe("Test WalletConfig tryFromAppOptions", () => {
         const options = {
             key: "1234567890123456789012345678901234567890123456789012345678901234",
             botMinBalance: "1.5",
+            selfFundVaults: [],
         } as any;
 
         const config = WalletConfig.tryFromAppOptions(options);
@@ -15,6 +16,7 @@ describe("Test WalletConfig tryFromAppOptions", () => {
             key: `0x${options.key}`,
             type: WalletType.PrivateKey,
             minBalance: parseUnits("1.5", 18),
+            selfFundVaults: [],
         });
     });
 

@@ -1,5 +1,6 @@
 import assert from "assert";
 import { formatUnits } from "viem";
+import { fundVault } from "./fundVault";
 import { RainSolverSigner } from "../signer";
 import { PreAssembledSpan } from "../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -590,6 +591,61 @@ export class WalletManager {
 
             // push the reports into the list
             reports.push({ removeWorkerReport, addWorkerReport });
+        }
+
+        return reports;
+    }
+
+    /**
+     * Funds the vaults that are owned by the main wallet, this function is fully
+     * instrumented for opentelemetry and will return a report of the funding process
+     */
+    async fundOwnedVaults(): Promise<PreAssembledSpan[]> {
+        const reports = [];
+        if (this.config.selfFundVaults) {
+            for (const vaultDetails of this.config.selfFundVaults) {
+                // start a report with details
+                const report = new PreAssembledSpan("fund-owned-vaults");
+                report.setAttr("details.wallet", this.mainWallet.address);
+                report.setAttr("details.vault", vaultDetails.vaultId);
+                report.setAttr("details.token", vaultDetails.token);
+                report.setAttr("details.orderbook", vaultDetails.orderbook);
+                report.setAttr("details.topupAmount", vaultDetails.topupAmount);
+                report.setAttr("details.threshold", vaultDetails.threshold);
+                try {
+                    const result = await fundVault(vaultDetails, this.mainSigner);
+                    if (!result) continue;
+                    const { txHash } = result;
+
+                    // record funding results
+                    report.setAttr(
+                        "details.tx",
+                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + txHash,
+                    );
+                    report.setStatus({
+                        code: SpanStatusCode.OK,
+                        message: "Successfully funded vault",
+                    });
+                } catch (error: any) {
+                    // record funding results
+                    let message = "";
+                    if ("txHash" in error) {
+                        message = errorSnapshot("Failed to fund vault", error.error);
+                        report.setAttr(
+                            "details.tx",
+                            this.state.chainConfig.blockExplorers?.default.url +
+                                "/tx/" +
+                                error.txHash,
+                        );
+                    } else {
+                        message = errorSnapshot("Failed to fund vault", error);
+                    }
+                    report.setAttr("severity", ErrorSeverity.MEDIUM);
+                    report.setStatus({ code: SpanStatusCode.ERROR, message });
+                }
+                report.end();
+                reports.push(report);
+            }
         }
 
         return reports;

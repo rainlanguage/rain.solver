@@ -2,6 +2,7 @@ import { parseUnits } from "viem";
 import * as sweepFns from "./sweep";
 import { WalletType } from "./config";
 import { ErrorSeverity } from "../error";
+import * as fundVault from "./fundVault";
 import { RainSolverSigner } from "../signer";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { SharedState, TokenDetails } from "../state";
@@ -1129,6 +1130,224 @@ describe("Test WalletManager", () => {
 
             expect(reports).toHaveLength(0);
             expect(walletManager.workers.lastUsedDerivationIndex).toBe(3);
+        });
+    });
+
+    describe("Test fundOwnedVaults", () => {
+        beforeEach(() => {
+            vi.clearAllMocks();
+        });
+
+        it("should return empty array when no self fund vaults configured", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+            walletManager.config.selfFundVaults = undefined;
+
+            const reports = await walletManager.fundOwnedVaults();
+
+            expect(reports).toEqual([]);
+        });
+
+        it("should successfully fund multiple vaults", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            walletManager.config.selfFundVaults = [
+                {
+                    token: "0xtoken1",
+                    vaultId: "1",
+                    orderbook: "0xorderbook1",
+                    threshold: "100",
+                    topupAmount: "1000",
+                },
+                {
+                    token: "0xtoken2",
+                    vaultId: "2",
+                    orderbook: "0xorderbook2",
+                    threshold: "200",
+                    topupAmount: "2000",
+                },
+            ];
+
+            // mock fundVault to return success for both vaults
+            const fundVaultSpy = vi
+                .spyOn(fundVault, "fundVault")
+                .mockResolvedValueOnce({ txHash: "0xtx1" })
+                .mockResolvedValueOnce({ txHash: "0xtx2" });
+
+            const reports = await walletManager.fundOwnedVaults();
+
+            expect(reports).toHaveLength(2);
+
+            // verify first vault report
+            expect(reports[0].name).toBe("fund-owned-vaults");
+            expect(reports[0].attributes).toMatchObject({
+                "details.wallet": walletManager.mainWallet.address,
+                "details.vault": "1",
+                "details.token": "0xtoken1",
+                "details.orderbook": "0xorderbook1",
+                "details.topupAmount": "1000",
+                "details.threshold": "100",
+                "details.tx": "https://explorer.test/tx/0xtx1",
+            });
+            expect(reports[0].status).toEqual({
+                code: SpanStatusCode.OK,
+                message: "Successfully funded vault",
+            });
+
+            // verify second vault report
+            expect(reports[1].name).toBe("fund-owned-vaults");
+            expect(reports[1].attributes).toMatchObject({
+                "details.wallet": walletManager.mainWallet.address,
+                "details.vault": "2",
+                "details.token": "0xtoken2",
+                "details.orderbook": "0xorderbook2",
+                "details.topupAmount": "2000",
+                "details.threshold": "200",
+                "details.tx": "https://explorer.test/tx/0xtx2",
+            });
+            expect(reports[1].status).toEqual({
+                code: SpanStatusCode.OK,
+                message: "Successfully funded vault",
+            });
+
+            fundVaultSpy.mockRestore();
+        });
+
+        it("should handle funding failure with transaction hash", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            walletManager.config.selfFundVaults = [
+                {
+                    token: "0xtoken1",
+                    vaultId: "1",
+                    orderbook: "0xorderbook1",
+                    threshold: "100",
+                    topupAmount: "1000",
+                },
+            ];
+
+            // mock fundVault to throw error with transaction hash
+            const fundVaultSpy = vi.spyOn(fundVault, "fundVault").mockRejectedValue({
+                txHash: "0xfailed",
+                error: new Error("Transaction reverted"),
+            });
+
+            const reports = await walletManager.fundOwnedVaults();
+
+            expect(reports).toHaveLength(1);
+            expect(reports[0].attributes).toMatchObject({
+                "details.wallet": walletManager.mainWallet.address,
+                "details.vault": "1",
+                "details.token": "0xtoken1",
+                "details.tx": "https://explorer.test/tx/0xfailed",
+                severity: ErrorSeverity.MEDIUM,
+            });
+            expect(reports[0].status).toEqual({
+                code: SpanStatusCode.ERROR,
+                message: expect.stringContaining("Transaction reverted"),
+            });
+
+            fundVaultSpy.mockRestore();
+        });
+
+        it("should handle funding failure without transaction hash", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            walletManager.config.selfFundVaults = [
+                {
+                    token: "0xtoken1",
+                    vaultId: "1",
+                    orderbook: "0xorderbook1",
+                    threshold: "100",
+                    topupAmount: "1000",
+                },
+            ];
+
+            // mock fundVault to throw error without transaction hash
+            const fundVaultSpy = vi
+                .spyOn(fundVault, "fundVault")
+                .mockRejectedValue(new Error("Failed to fetch balance"));
+
+            const reports = await walletManager.fundOwnedVaults();
+
+            expect(reports).toHaveLength(1);
+            expect(reports[0].attributes).toMatchObject({
+                "details.wallet": walletManager.mainWallet.address,
+                "details.vault": "1",
+                "details.token": "0xtoken1",
+                severity: ErrorSeverity.MEDIUM,
+            });
+            expect(reports[0].status).toEqual({
+                code: SpanStatusCode.ERROR,
+                message: expect.stringContaining("Failed to fetch balance"),
+            });
+            expect(reports[0].attributes).not.toHaveProperty("details.tx");
+
+            fundVaultSpy.mockRestore();
+        });
+
+        it("should handle mixed success and failure cases", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            walletManager.config.selfFundVaults = [
+                {
+                    token: "0xtoken1",
+                    vaultId: "1",
+                    orderbook: "0xorderbook1",
+                    threshold: "100",
+                    topupAmount: "1000",
+                },
+                {
+                    token: "0xtoken2",
+                    vaultId: "2",
+                    orderbook: "0xorderbook2",
+                    threshold: "200",
+                    topupAmount: "2000",
+                },
+            ];
+
+            // mock fundVault to succeed for first vault and fail for second
+            const fundVaultSpy = vi
+                .spyOn(fundVault, "fundVault")
+                .mockResolvedValueOnce({ txHash: "0xsuccess" })
+                .mockRejectedValue(new Error("Funding failed"));
+
+            const reports = await walletManager.fundOwnedVaults();
+
+            expect(reports).toHaveLength(2);
+
+            // verify successful vault report
+            expect(reports[0].status).toEqual({
+                code: SpanStatusCode.OK,
+                message: "Successfully funded vault",
+            });
+            expect(reports[0].attributes["details.tx"]).toBe("https://explorer.test/tx/0xsuccess");
+
+            // verify failed vault report
+            expect(reports[1].status).toEqual({
+                code: SpanStatusCode.ERROR,
+                message: expect.stringContaining("Funding failed"),
+            });
+            expect(reports[1].attributes.severity).toBe(ErrorSeverity.MEDIUM);
+
+            fundVaultSpy.mockRestore();
+        });
+
+        it("should skip funding when vault balance is sufficient", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            walletManager.config.selfFundVaults = [
+                {
+                    token: "0xtoken1",
+                    vaultId: "1",
+                    orderbook: "0xorderbook1",
+                    threshold: "100",
+                    topupAmount: "1000",
+                },
+            ];
+
+            // mock fundVault to return undefined (indicating skip)
+            const fundVaultSpy = vi.spyOn(fundVault, "fundVault").mockResolvedValue(undefined);
+
+            const reports = await walletManager.fundOwnedVaults();
+
+            expect(reports).toHaveLength(0);
+
+            fundVaultSpy.mockRestore();
         });
     });
 });
