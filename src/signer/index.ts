@@ -100,6 +100,7 @@ export type RainSolverPrivateKeySigner = RainSolverSigner<PrivateKeyAccount>;
 export type RawTransaction = Prettify<
     Omit<TransactionRequestBase, "to"> & {
         to: `0x${string}`;
+        gasPrice?: bigint;
     }
 >;
 
