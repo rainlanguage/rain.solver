@@ -109,7 +109,7 @@ export class SubgraphManager {
                 report.setAttr("severity", ErrorSeverity.MEDIUM);
                 report.setStatus({
                     code: SpanStatusCode.ERROR,
-                    message: errorSnapshot("Subgraph status check query failed", error),
+                    message: await errorSnapshot("Subgraph status check query failed", error),
                 });
                 report.recordException(error as any);
                 report.end();
@@ -173,7 +173,7 @@ export class SubgraphManager {
             } catch (error) {
                 report.setAttr(
                     `fetchStatus.${url}`,
-                    errorSnapshot("Failed to fetch orders", error),
+                    await errorSnapshot("Failed to fetch orders", error),
                 );
                 return Promise.reject();
             }
@@ -229,7 +229,7 @@ export class SubgraphManager {
                     }
                     syncStatus[url].status = "Fully synced";
                 } catch (error) {
-                    syncStatus[url].status = errorSnapshot(
+                    syncStatus[url].status = await errorSnapshot(
                         partiallySynced ? "Partially synced" : "Failed to sync",
                         error,
                     );

@@ -144,7 +144,7 @@ export async function finalizeRound(
                 case ProcessOrderHaltReason.FailedToQuote: {
                     let message = "failed to quote order: " + orderHash;
                     if (err.error) {
-                        message = errorSnapshot(message, err.error);
+                        message = await errorSnapshot(message, err.error);
                     }
                     report.setStatus({ code: SpanStatusCode.OK, message });
                     break;
@@ -152,7 +152,7 @@ export async function finalizeRound(
                 case ProcessOrderHaltReason.FailedToGetPools: {
                     let message = pair + ": failed to get pool details";
                     if (err.error) {
-                        message = errorSnapshot(message, err.error);
+                        message = await errorSnapshot(message, err.error);
                         report.recordException(err.error);
                     }
                     report.setAttr("severity", ErrorSeverity.MEDIUM);
@@ -165,7 +165,7 @@ export async function finalizeRound(
                     // resulting in lots of false positives
                     let message = "failed to get eth price";
                     if (err.error) {
-                        message = errorSnapshot(message, err.error);
+                        message = await errorSnapshot(message, err.error);
                         report.setAttr("errorDetails", message);
                     }
                     report.setStatus({ code: SpanStatusCode.OK, message });
@@ -174,7 +174,7 @@ export async function finalizeRound(
                 case ProcessOrderHaltReason.FailedToUpdatePools: {
                     let message = pair + ": failed to update pool details by event data";
                     if (err.error) {
-                        message = errorSnapshot(message, err.error);
+                        message = await errorSnapshot(message, err.error);
                         report.recordException(err.error);
                     }
                     report.setStatus({ code: SpanStatusCode.ERROR, message });
@@ -185,7 +185,7 @@ export async function finalizeRound(
                     // the tx for example because of low gas or invalid parameters, etc
                     let message = "failed to submit the transaction";
                     if (err.error) {
-                        message = errorSnapshot(message, err.error);
+                        message = await errorSnapshot(message, err.error);
                         report.setAttr("errorDetails", message);
                         if (isTimeout(err.error)) {
                             report.setAttr("severity", ErrorSeverity.LOW);
@@ -208,7 +208,10 @@ export async function finalizeRound(
                         if ("snapshot" in err.error) {
                             message = err.error.snapshot;
                         } else {
-                            message = errorSnapshot("transaction reverted onchain", err.error.err);
+                            message = await errorSnapshot(
+                                "transaction reverted onchain",
+                                err.error.err,
+                            );
                         }
                         report.setAttr("errorDetails", message);
                     }
@@ -227,7 +230,7 @@ export async function finalizeRound(
                     // tx failed to get included onchain, this can happen as result of timeout, rpc dropping the tx, etc
                     let message = "transaction failed";
                     if (err.error) {
-                        message = errorSnapshot(message, err.error);
+                        message = await errorSnapshot(message, err.error);
                         report.setAttr("errorDetails", message);
                         if (isTimeout(err.error)) {
                             report.setAttr("severity", ErrorSeverity.LOW);
@@ -246,7 +249,7 @@ export async function finalizeRound(
                     // record the error for the span
                     let message = "unexpected error";
                     if (err.error) {
-                        message = errorSnapshot(message, err.error);
+                        message = await errorSnapshot(message, err.error);
                         report.recordException(err.error);
                     }
                     // set the span status to unexpected error

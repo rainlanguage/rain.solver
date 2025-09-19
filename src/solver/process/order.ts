@@ -234,7 +234,10 @@ export async function processOrder(
     } catch (e) {
         // dont reject if getting block number fails but just record it,
         // since an opp is found and can ultimately be cleared
-        spanAttributes["details.blockNumberError"] = errorSnapshot("failed to get block number", e);
+        spanAttributes["details.blockNumberError"] = await errorSnapshot(
+            "failed to get block number",
+            e,
+        );
     }
 
     // process the found transaction opportunity

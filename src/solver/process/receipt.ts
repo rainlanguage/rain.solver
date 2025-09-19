@@ -1,4 +1,3 @@
-import { BigNumber } from "ethers";
 import { sleep } from "../../utils";
 import { Result } from "../../result";
 import { Token } from "sushi/currency";
@@ -107,7 +106,7 @@ export async function processReceipt({
         });
     } else {
         const simulation = await (async () => {
-            const signerBalance = BigNumber.from(await signer.getSelfBalance());
+            const signerBalance = await signer.getSelfBalance();
             const result = await handleRevert(
                 signer,
                 receipt.transactionHash,
