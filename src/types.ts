@@ -1,20 +1,21 @@
 import { BigNumber } from "ethers";
-import { Token } from "sushi/currency";
-import { RpcConfig, RpcState } from "./rpc";
+import { LiquidityProviders, RainDataFetcher } from "sushi";
 import { AttributeValue } from "@opentelemetry/api";
-import { RainDataFetcher, LiquidityProviders } from "sushi/router";
 import {
     Chain,
     Account,
     HDAccount,
     TestClient,
     WalletClient,
-    PublicClient,
     PublicActions,
     WalletActions,
     FallbackTransport,
     SendTransactionParameters,
+    PublicClient,
 } from "viem";
+import { AppOptions } from "./config";
+import { Token } from "sushi/currency";
+import { Dispair, TokenDetails } from "./state";
 
 /**
  * Specifies reason that order process halted
@@ -42,12 +43,6 @@ export enum ProcessPairReportStatus {
 export type BotError = {
     snapshot: string;
     error: any;
-};
-
-export type TokenDetails = {
-    address: string;
-    decimals: number;
-    symbol: string;
 };
 
 export type BundledOrders = {
@@ -146,72 +141,21 @@ export type TestViemClient = TestClient<"hardhat"> &
         ) => Promise<`0x${string}`>;
     };
 
-export type BotDataFetcher = RainDataFetcher;
-
-export type ChainConfig = {
+/** @deprecated in favor of SharedState (WIP) */
+export type BotConfig = Omit<AppOptions, "dispair"> & {
     chain: Chain;
     nativeWrappedToken: Token;
     routeProcessors: { [key: string]: `0x${string}` };
     stableTokens?: Token[];
     isSpecialL2: boolean;
-};
-
-export type BotConfig = {
-    chain: Chain;
-    nativeWrappedToken: Token;
-    routeProcessors: { [key: string]: `0x${string}` };
-    stableTokens?: Token[];
-    isSpecialL2: boolean;
-    key?: string;
-    mnemonic?: string;
-    rpc: RpcConfig[];
-    writeRpc?: RpcConfig[];
-    arbAddress: string;
-    genericArbAddress?: string;
     lps: LiquidityProviders[];
-    maxRatio: boolean;
-    timeout?: number;
-    hops: number;
-    retries: number;
-    gasCoveragePercentage: string;
     watchedTokens?: TokenDetails[];
     viemClient: PublicClient;
-    dataFetcher: BotDataFetcher;
+    dataFetcher: RainDataFetcher;
     mainAccount: ViemClient;
     accounts: ViemClient[];
-    selfFundOrders?: SelfFundOrder[];
-    publicRpc: boolean;
-    walletKey: string;
-    route?: "multi" | "single";
-    gasPriceMultiplier: number;
-    gasLimitMultiplier: number;
-    txGas?: string;
-    quoteGas: bigint;
-    rpOnly?: boolean;
     dispair: Dispair;
-    onFetchRequest?: (request: Request) => void;
-    onFetchResponse?: (request: Response) => void;
 };
-
-export type OperationState = {
-    gasPrice: bigint;
-    l1GasPrice: bigint;
-    rpc: RpcState;
-    writeRpc?: RpcState;
-};
-export namespace OperationState {
-    export function init(rpcConfigs: RpcConfig[], writeRpcConfigs?: RpcConfig[]): OperationState {
-        const result: OperationState = {
-            gasPrice: 0n,
-            l1GasPrice: 0n,
-            rpc: new RpcState(rpcConfigs),
-        };
-        if (writeRpcConfigs) {
-            result.writeRpc = new RpcState(writeRpcConfigs);
-        }
-        return result;
-    }
-}
 
 export type Report = {
     status: ProcessPairReportStatus;
@@ -303,12 +247,6 @@ export type SgFilter = {
     includeOrderbooks?: Set<string>;
     /** Orderbook addresses to exclude (takes precedence over includeOrderbooks) */
     excludeOrderbooks?: Set<string>;
-};
-
-export type Dispair = {
-    deployer: string;
-    interpreter: string;
-    store: string;
 };
 
 export type RpcRequest = {

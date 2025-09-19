@@ -6,8 +6,9 @@ import BlackList from "./pool-blacklist.json";
 import { isBytes, isHexString } from "ethers/lib/utils";
 import { BigNumber, BigNumberish, ethers } from "ethers";
 import { erc20Abi, parseEventLogs, TransactionReceipt } from "viem";
-import { BotConfig, TakeOrderDetails, TokenDetails, ViemClient } from "./types";
+import { TakeOrderDetails, ViemClient, BotConfig } from "./types";
 import { RainDataFetcher, DataFetcherOptions, LiquidityProviders, Router } from "sushi/router";
+import { TokenDetails } from "./state";
 
 /**
  * One ether which equals to 1e18

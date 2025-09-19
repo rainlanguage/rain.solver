@@ -1,7 +1,9 @@
 const { assert } = require("chai");
 const { getConfig } = require("../src");
-const { LiquidityProviders } = require("sushi");
 const { RpcState } = require("../src/rpc");
+const { getChainConfig } = require("../src/state/chain");
+const { createPublicClient, http, fallback } = require("viem");
+const { publicClientConfig } = require("sushi/config");
 
 describe("Test app options", async function () {
     it("should use defaults", async function () {
@@ -9,7 +11,6 @@ describe("Test app options", async function () {
         const config = await getConfig(
             {
                 rpc: rpcs,
-                mnemonic: "test test test test test test test test test test test junk",
                 walletcount: 1,
                 topupAmount: "1",
                 arbAddress: "0x" + "1".repeat(64), // wallet key
@@ -19,11 +20,19 @@ describe("Test app options", async function () {
                 hops: 1,
                 retries: 1,
                 gasCoveragePercentage: "100",
+                maxRatio: false,
             },
-            { rpc: new RpcState(rpcs) },
+            {
+                rpc: new RpcState(rpcs),
+                chainConfig: getChainConfig(137),
+                walletKey: "test test test test test test test test test test test junk",
+                client: createPublicClient({
+                    chain: publicClientConfig[137]?.chain,
+                    transport: fallback(rpcs.map((v) => http(v.url))),
+                }),
+            },
         );
 
-        assert.deepEqual(config.lps, [LiquidityProviders.SushiSwapV2, LiquidityProviders.Biswap]);
         assert.equal(config.flashbotRpc, undefined);
         assert.equal(config.maxRatio, false);
         assert.equal(config.hops, 1);

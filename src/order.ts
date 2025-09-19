@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { SgOrder } from "./query";
+import { TokenDetails } from "./state";
 import { Span } from "@opentelemetry/api";
 import { OrderbookQuoteAbi, OrderV3, VaultBalanceAbi } from "./abis";
 import { shuffleArray, sleep, addWatchedToken, getQuoteConfig } from "./utils";
@@ -17,7 +18,6 @@ import {
     OTOVMap,
     ViemClient,
     OwnersVaults,
-    TokenDetails,
     BundledOrders,
     OrdersProfileMap,
     OwnersProfileMap,

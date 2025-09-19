@@ -31,7 +31,7 @@
     "scripts": {
         "prepublish": "npm run build",
         "test": "npm run unit-test && npm run e2e-test",
-        "unit-test": "hardhat test ./test/*.test.*",
+        "unit-test": "hardhat test ./test/*.test.* && npm run vitest",
         "e2e-test": "hardhat test",
         "lint": "eslint ./src ./test ./rain-solver.js",
         "lint-fix": "eslint ./src ./test ./rain-solver.js --fix",

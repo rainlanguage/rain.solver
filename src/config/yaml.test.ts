@@ -1,6 +1,6 @@
-import { assert } from "chai";
+import { describe, it, assert } from "vitest";
 import { writeFileSync, unlinkSync } from "fs";
-import { readValue, AppOptions, tryIntoArray, validateHash, validateAddress } from "../src/yaml";
+import { readValue, AppOptions, tryIntoArray, validateHash, validateAddress } from "./yaml";
 
 describe("Test yaml AppOptions", async function () {
     it("test AppOptions fromYaml", async function () {
@@ -55,7 +55,7 @@ sgFilter:
     - "0x9999999999999999999999999999999999999999"
   `;
 
-        const path = "./test/first.test.yaml";
+        const path = "./first.test.yaml";
         writeFileSync(path, yaml, "utf8");
 
         const result = AppOptions.fromYaml(path);

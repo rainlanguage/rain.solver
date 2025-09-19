@@ -1,22 +1,26 @@
 require("dotenv").config();
 const { assert } = require("chai");
 const testData = require("./data");
-const { ChainKey } = require("sushi");
 const { clear } = require("../../src");
 const { arbAbis } = require("../../src/abis");
+const { RpcState } = require("../../src/rpc");
 const mockServer = require("mockttp").getLocal();
+const { publicRpcs } = require("../../src/client");
 const { sendTransaction } = require("../../src/tx");
 const { ethers, viem, network } = require("hardhat");
+const { ChainKey, RainDataFetcher } = require("sushi");
+const { publicClientConfig } = require("sushi/config");
 const { Resource } = require("@opentelemetry/resources");
 const { trace, context } = require("@opentelemetry/api");
-const { publicActions, walletActions } = require("viem");
+const { getChainConfig } = require("../../src/state/chain");
+const { rainSolverTransport } = require("../../src/transport");
+const { ProcessPairReportStatus } = require("../../src/types");
 const ERC20Artifact = require("../abis/ERC20Upgradeable.json");
 const { abi: orderbookAbi } = require("../abis/OrderBook.json");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { ProcessPairReportStatus, OperationState } = require("../../src/types");
+const { publicActions, walletActions, createPublicClient } = require("viem");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
 const { SEMRESATTRS_SERVICE_NAME } = require("@opentelemetry/semantic-conventions");
-const { getChainConfig, getDataFetcher, publicRpcs } = require("../../src/config");
 const { BasicTracerProvider, BatchSpanProcessor } = require("@opentelemetry/sdk-trace-base");
 const { prepareOrdersForRound, getOrderbookOwnersProfileMapFromSg } = require("../../src/order");
 const {
@@ -57,6 +61,7 @@ for (let i = 0; i < testData.length; i++) {
 
         // get config for the chain
         const config = getChainConfig(chainId);
+        config.chain = publicClientConfig[chainId].chain;
 
         // get available route processor versions for the chain (only RP4)
         const rpVersions = Object.keys(config.routeProcessors).filter((v) => v === "4");
@@ -74,11 +79,19 @@ for (let i = 0; i < testData.length; i++) {
         const tracer = provider.getTracer("rain-solver-tracer");
 
         config.rpc = [rpc];
-        const state = OperationState.init(config.rpc.map((v) => ({ url: v })));
-        const dataFetcherPromise = getDataFetcher(config, state.rpc, liquidityProviders, {
-            retryCountNext: Math.max(publicRpcs[chainId] * 2, 50),
-            timeout: 600_000,
-        });
+        const rpcState = new RpcState(config.rpc.map((v) => ({ url: v })));
+        const state = { rpc: rpcState };
+        const dataFetcherPromise = RainDataFetcher.init(
+            chainId,
+            createPublicClient({
+                chain: publicClientConfig[chainId].chain,
+                transport: rainSolverTransport(rpcState, {
+                    retryCountNext: Math.max(publicRpcs[chainId] * 2, 50),
+                    timeout: 600_000,
+                }),
+            }),
+            liquidityProviders,
+        );
 
         // run tests on each rp version
         for (let j = 0; j < rpVersions.length; j++) {

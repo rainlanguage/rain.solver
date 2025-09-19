@@ -2,9 +2,9 @@ import assert from "assert";
 import { parse } from "yaml";
 import { ethers } from "ethers";
 import { readFileSync } from "fs";
-import { RpcConfig } from "./rpc";
-import { isBigNumberish } from "./utils";
-import { SelfFundOrder, SgFilter } from "./types";
+import { RpcConfig } from "../rpc";
+import { isBigNumberish } from "../utils";
+import { SelfFundOrder, SgFilter } from "../types";
 
 /** Integer pattern */
 export const INT_PATTERN = /^[0-9]+$/;
@@ -15,7 +15,7 @@ export const FLOAT_PATTERN = /^[0-9]+(\.[0-9]+)?$/;
 /** Solidity hash pattern */
 export const HASH_PATTERN = /^(0x)?[a-fA-F0-9]{64}$/;
 
-/** Rain Solver app configurations */
+/** Rain Solver app yaml configurations */
 export type AppOptions = {
     /** Private key of the bot's wallet, only one of this or mnemonic must be set */
     key?: string;
@@ -78,7 +78,7 @@ export type AppOptions = {
 /** Provides methods to instantiate and validate AppOptions */
 export namespace AppOptions {
     /**
-     * Instantiates and validates configurations details from the give yaml file
+     * Instantiates and validates configurations details from the given yaml file
      * @param path - The path to the yaml config file
      */
     export function fromYaml(path: string): AppOptions {
@@ -91,7 +91,7 @@ export namespace AppOptions {
     }
 
     /**
-     * Instantiates and validates configurations details from the give input
+     * Instantiates and validates configurations details from the given input
      * @param input - The configuration object
      */
     export function tryFrom(input: any): AppOptions {

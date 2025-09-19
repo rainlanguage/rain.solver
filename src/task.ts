@@ -1,7 +1,8 @@
 import fs from "fs";
+import { Dispair } from "./state";
+import { ViemClient } from "./types";
 import { DeployerAbi } from "./abis";
 import { BigNumber, utils } from "ethers";
-import { Dispair, ViemClient } from "./types";
 import { PublicClient, stringToHex } from "viem";
 import { MetaStore, RainDocument } from "@rainlanguage/dotrain";
 

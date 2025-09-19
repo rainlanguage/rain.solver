@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import { ethers } from "ethers";
 import { ViemClient } from "../dist/types";
-import { TokenDetails } from "../src/types";
+import { TokenDetails } from "../src/state";
 import { errorSnapshot } from "../src/error";
 import { routeProcessor3Abi } from "../src/abis";
 import { ChainId, DataFetcher } from "sushi";

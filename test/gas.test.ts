@@ -1,8 +1,8 @@
 import { assert } from "chai";
 import { ChainId } from "sushi";
 import { orderPairObject1 } from "./data";
-import { OperationState, ViemClient } from "../src/types";
-import { estimateGasCost, getGasPrice, getL1Fee, getQuoteGas, getTxFee } from "../src/gas";
+import { ViemClient } from "../src/types";
+import { estimateGasCost, getL1Fee, getQuoteGas, getTxFee } from "../src/gas";
 
 describe("Test gas", async function () {
     it("should estimate gas correctly for L1 and L2 chains", async function () {
@@ -95,41 +95,6 @@ describe("Test gas", async function () {
         receipt.l1Fee = 50n;
         result = getTxFee(receipt, config);
         assert.equal(result, 100n);
-    });
-
-    it("should get gas price", async function () {
-        const gasPrice = 10n;
-        const l1GasPrice = 2n;
-        // mock config and viem client
-        const config = {
-            chain: { id: 137 },
-            isSpecialL2: false,
-            gasPriceMultiplier: 100n,
-            viemClient: { getGasPrice: async () => gasPrice },
-        } as any;
-
-        // test L1 chain
-        const state1: OperationState = {
-            gasPrice: 0n,
-            l1GasPrice: 0n,
-            rpc: {} as any,
-        };
-        await getGasPrice(config, state1);
-        assert.equal(state1.gasPrice, gasPrice);
-        assert.equal(state1.l1GasPrice, 0n);
-
-        // test L2 chain
-        config.isSpecialL2 = true;
-        config.viemClient.extend = () => config.viemClient;
-        config.viemClient.getL1BaseFee = async () => l1GasPrice;
-        const state2: OperationState = {
-            gasPrice: 0n,
-            l1GasPrice: 0n,
-            rpc: {} as any,
-        };
-        await getGasPrice(config, state2);
-        assert.equal(state2.gasPrice, gasPrice);
-        assert.equal(state2.l1GasPrice, l1GasPrice);
     });
 
     it("should get quote gas", async function () {

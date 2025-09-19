@@ -1,29 +1,27 @@
 import { findOpp } from "./modes";
 import { PublicClient } from "viem";
+import { getQuoteGas } from "./gas";
+import { SharedState } from "./state";
 import { Token } from "sushi/currency";
 import { quoteSingleOrder } from "./order";
-import { createViemClient } from "./config";
+import { createViemClient } from "./client";
 import { arbAbis, orderbookAbi } from "./abis";
-import { getGasPrice, getQuoteGas } from "./gas";
 import { getSigner, handleTransaction } from "./tx";
 import { privateKeyToAccount } from "viem/accounts";
 import { BigNumber, Contract, ethers } from "ethers";
 import { Tracer } from "@opentelemetry/sdk-trace-base";
-import { ChainId, RainDataFetcherOptions } from "sushi";
 import { Context, SpanStatusCode } from "@opentelemetry/api";
 import { fundOwnedOrders, checkOwnedOrders } from "./account";
-import { ProcessPairHaltReason, ProcessPairReportStatus } from "./types";
+import { ChainId, RainDataFetcher, RainDataFetcherOptions } from "sushi";
 import { ErrorSeverity, errorSnapshot, isTimeout, KnownErrors } from "./error";
 import { toNumber, getEthPrice, PoolBlackList, getMarketQuote } from "./utils";
+import { BotConfig, ProcessPairHaltReason, ProcessPairReportStatus } from "./types";
 import {
     Report,
-    BotConfig,
     SpanAttrs,
     ViemClient,
     RoundReport,
     BundledOrders,
-    BotDataFetcher,
-    OperationState,
     ProcessPairResult,
 } from "./types";
 
@@ -37,7 +35,7 @@ import {
 export const processOrders = async (
     config: BotConfig,
     bundledOrders: BundledOrders[][],
-    state: OperationState,
+    state: SharedState,
     tracer: Tracer,
     ctx: Context,
 ): Promise<RoundReport> => {
@@ -156,9 +154,9 @@ export const processOrders = async (
                                   ? (ethers.utils.hexlify(
                                         signer.account.getHdKey().privateKey!,
                                     ) as `0x${string}`)
-                                  : ((config.walletKey.startsWith("0x")
-                                        ? config.walletKey
-                                        : "0x" + config.walletKey) as `0x${string}`),
+                                  : ((state.walletKey.startsWith("0x")
+                                        ? state.walletKey
+                                        : "0x" + state.walletKey) as `0x${string}`),
                           ),
                           { timeout: config.timeout },
                           undefined,
@@ -383,7 +381,7 @@ export async function processPair(args: {
     config: BotConfig;
     orderPairObject: BundledOrders;
     viemClient: PublicClient;
-    dataFetcher: BotDataFetcher;
+    dataFetcher: RainDataFetcher;
     signer: ViemClient;
     writeSigner: ViemClient | undefined;
     arb: Contract;
@@ -391,7 +389,7 @@ export async function processPair(args: {
     orderbook: Contract;
     pair: string;
     orderbooksOrders: BundledOrders[][];
-    state: OperationState;
+    state: SharedState;
 }): Promise<() => Promise<ProcessPairResult>> {
     const {
         config,
@@ -580,7 +578,6 @@ export async function processPair(args: {
     }
 
     // record gas price for otel
-    await getGasPrice(config, state);
     spanAttributes["details.gasPrice"] = state.gasPrice.toString();
     if (state.l1GasPrice) {
         spanAttributes["details.gasPriceL1"] = state.l1GasPrice.toString();

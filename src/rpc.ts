@@ -1,5 +1,5 @@
 import { promiseTimeout, sleep } from "./utils";
-import { onFetchRequest, onFetchResponse } from "./config";
+import { onFetchRequest, onFetchResponse } from "./client";
 import { http, Transport, HttpTransportConfig } from "viem";
 import { RainSolverTransportTimeoutError } from "./transport";
 

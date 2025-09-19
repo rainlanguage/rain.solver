@@ -3,7 +3,7 @@ import { getLocal } from "mockttp";
 import { RpcState } from "../src/rpc";
 import { BigNumber, utils } from "ethers";
 import { encodeAbiParameters } from "viem";
-import { createViemClient } from "../src/config";
+import { createViemClient } from "../src/client";
 import { getBountyEnsureRainlang, getWithdrawEnsureRainlang, parseRainlang } from "../src/task";
 
 describe("Test task", async function () {
