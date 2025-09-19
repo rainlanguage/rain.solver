@@ -1,5 +1,7 @@
 import { Chain } from "viem";
+import { Result } from "../common";
 import { ChainId } from "sushi/chain";
+import { RainSolverBaseError } from "../error";
 import { Token, WNATIVE } from "sushi/currency";
 import {
     STABLES,
@@ -9,6 +11,33 @@ import {
     ROUTE_PROCESSOR_3_1_ADDRESS,
     ROUTE_PROCESSOR_3_2_ADDRESS,
 } from "sushi/config";
+
+/** Enumerates the possible error types that can occur within the chain config */
+export enum ChainConfigErrorType {
+    UnsupportedChain,
+    MissingNativeWrappedTokenInfo,
+    MissingSushiRouteProcessor4Address,
+}
+
+/**
+ * Represents an error type for the ChainConfig.
+ * This error class extends the `RainSolverError` error class, with the `type`
+ * property indicates the specific category of the error, as defined by the
+ * `ChainConfigErrorType` enum.
+ *
+ * @example
+ * ```typescript
+ * throw new ChainConfigError("msg", ChainConfigErrorType);
+ * ```
+ */
+export class ChainConfigError extends RainSolverBaseError {
+    type: ChainConfigErrorType;
+    constructor(message: string, type: ChainConfigErrorType) {
+        super(message);
+        this.type = type;
+        this.name = "ChainConfigError";
+    }
+}
 
 export type ChainConfig = Chain & {
     nativeWrappedToken: Token;
@@ -21,14 +50,26 @@ export type ChainConfig = Chain & {
  * Get the chain config for a given chain id
  * @param chainId - The chain id
  */
-export function getChainConfig(chainId: ChainId): ChainConfig {
+export function getChainConfig(chainId: ChainId): Result<ChainConfig, ChainConfigError> {
     // get chain config
     const chain = publicClientConfig[chainId]?.chain;
-    if (!chain) throw `network with id ${chainId} is not supported`;
+    if (!chain)
+        return Result.err(
+            new ChainConfigError(
+                `network with id ${chainId} is not supported`,
+                ChainConfigErrorType.UnsupportedChain,
+            ),
+        );
 
     // get native wrapped token details
     const nativeWrappedToken = WNATIVE[chainId];
-    if (!nativeWrappedToken) throw `wrapped native token info missing for chain ${chainId}`;
+    if (!nativeWrappedToken)
+        return Result.err(
+            new ChainConfigError(
+                `wrapped native token info missing for chain ${chainId}`,
+                ChainConfigErrorType.MissingNativeWrappedTokenInfo,
+            ),
+        );
 
     // get route processor addresses
     const routeProcessors: Record<string, `0x${string}`> = {};
@@ -43,18 +84,24 @@ export function getChainConfig(chainId: ChainId): ChainConfig {
             routeProcessors[key] = address;
         }
     });
-    if (!routeProcessors["4"]) throw `missing route processor 4 address for chain ${chainId}`;
+    if (!routeProcessors["4"])
+        return Result.err(
+            new ChainConfigError(
+                `missing route processor 4 address for chain ${chainId}`,
+                ChainConfigErrorType.MissingSushiRouteProcessor4Address,
+            ),
+        );
 
     // get known stable coins of the chain
     const stableTokens = (STABLES as any)[chainId];
 
-    return {
+    return Result.ok({
         ...chain,
         nativeWrappedToken,
         routeProcessors,
         stableTokens,
         isSpecialL2: SpecialL2Chains.is(chain.id),
-    };
+    });
 }
 
 /**

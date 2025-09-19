@@ -182,6 +182,7 @@ export async function trySimulateTrade(
     }
 
     let { estimation, estimatedGasCost } = initDryrunResult.value;
+    delete rawtx.gas; // delete gas to let signer estimate gas again with updated tx data
     // include dryrun initial gas estimation in logs
     Object.assign(spanAttributes, initDryrunResult.value.spanAttributes);
     extendObjectWithHeader(
@@ -204,7 +205,7 @@ export async function trySimulateTrade(
     // coverage is not 0, 0 gas coverage means 0 minimum
     // sender output which is already called above
     if (this.appOptions.gasCoveragePercentage !== "0") {
-        const headroom = BigInt((Number(this.appOptions.gasCoveragePercentage) * 1.03).toFixed());
+        const headroom = BigInt((Number(this.appOptions.gasCoveragePercentage) * 1.01).toFixed());
         spanAttributes["gasEst.initial.minBountyExpected"] = (
             (estimatedGasCost * headroom) /
             100n

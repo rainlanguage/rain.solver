@@ -1,4 +1,5 @@
 import axios from "axios";
+import { Result } from "../common";
 import { SgFilter } from "./filter";
 import { SubgraphConfig } from "./config";
 import { statusCheckQuery } from "./query";
@@ -64,7 +65,7 @@ export class SubgraphManager {
      * Checks the status of the subgraphs for indexing error
      * @returns A Promise that resolves with the status report
      */
-    async statusCheck(): Promise<PreAssembledSpan[]> {
+    async statusCheck(): Promise<Result<PreAssembledSpan[], PreAssembledSpan[]>> {
         const promises = this.subgraphs.map(async (url) => {
             const report = new PreAssembledSpan("subgraph-status-check");
             report.setAttr("url", url);
@@ -114,9 +115,9 @@ export class SubgraphManager {
 
         const result = await Promise.allSettled(promises);
         if (result.every((v) => v.status === "rejected")) {
-            throw result.map((v) => (v as PromiseRejectedResult).reason);
+            return Result.err(result.map((v) => (v as PromiseRejectedResult).reason));
         } else {
-            return result.map((v) => (v.status === "rejected" ? v.reason : v.value));
+            return Result.ok(result.map((v) => (v.status === "rejected" ? v.reason : v.value)));
         }
     }
 
@@ -157,7 +158,12 @@ export class SubgraphManager {
      * Fetches all active orders of all subgraphs
      * @returns A promise that resolves with the fetch status report and list of fetched order details
      */
-    async fetchAll(): Promise<{ orders: SgOrder[]; report: PreAssembledSpan }> {
+    async fetchAll(): Promise<
+        Result<
+            { orders: SgOrder[]; report: PreAssembledSpan },
+            { report: PreAssembledSpan; orders: undefined }
+        >
+    > {
         const report = new PreAssembledSpan("fetch-orders");
         const promises = this.subgraphs.map(async (url) => {
             try {
@@ -177,15 +183,15 @@ export class SubgraphManager {
         report.end();
 
         if (results.every((v) => v.status === "rejected")) {
-            throw { report, orders: undefined };
+            return Result.err({ report, orders: undefined });
         } else {
-            return {
+            return Result.ok({
                 report,
                 orders: results
                     .filter((result) => result.status === "fulfilled")
                     .map((v) => (v as PromiseFulfilledResult<SgOrder[]>).value)
                     .flat(),
-            };
+            });
         }
     }
 

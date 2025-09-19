@@ -1,6 +1,6 @@
-import axios from "axios";
 import assert from "assert";
-import { Result } from "../common";
+import { ABI, Result } from "../common";
+import axios, { AxiosError } from "axios";
 import { balancerBatchRouterAbiExtended } from "@balancer/sdk";
 import {
     isHex,
@@ -8,6 +8,7 @@ import {
     decodeErrorResult,
     toFunctionSelector,
     toFunctionSignature,
+    DecodeErrorResultErrorType,
 } from "viem";
 import {
     PANIC_ABI,
@@ -27,13 +28,22 @@ balancerBatchRouterAbiExtended.forEach((abi: any) => {
     const minimalSig = toFunctionSignature(abi).replace("error ", "");
     SelectorCache.set(toFunctionSelector(minimalSig), [minimalSig]);
 });
+// set route processor error signatures in the cache as they are not available in the registry
+ABI.RouteProcessor.Primary.RouteProcessor4.forEach((abi: any) => {
+    if (abi.type !== "error") return;
+    const minimalSig = toFunctionSignature(abi).replace("error ", "");
+    SelectorCache.set(toFunctionSelector(minimalSig), [minimalSig]);
+});
 
 /**
  * Tries to decode the given error data by running through known matching signatures
  * @param data - the error data
  */
-export async function tryDecodeError(data: any): Promise<Result<DecodedErrorType, any>> {
+export async function tryDecodeError(
+    data: any,
+): Promise<Result<DecodedErrorType, AxiosError | DecodeErrorResultErrorType | Error>> {
     // check for validity of the data
+    if (!data.startsWith("0x")) data = `0x${data}`;
     if (!isHex(data, { strict: true }) || data.length < 10) {
         return Result.err(new Error("invalid data, expected hex string with at least 32 bytes"));
     }
@@ -73,38 +83,40 @@ export async function tryDecodeError(data: any): Promise<Result<DecodedErrorType
  * it and return it
  * @param selector - The selector to search for
  */
-export async function tryGetSignature(selector: string): Promise<Result<string[], any>> {
-    // check validity of the selector
-    selector = selector.toLowerCase();
-    assert(
-        SELECTOR_PATTERN.test(selector),
-        `Invalid selector ${selector}, must be 32 bytes hex string`,
-    );
+export async function tryGetSignature(
+    selector: string,
+): Promise<Result<string[], AxiosError | Error>> {
+    try {
+        // check validity of the selector
+        if (!selector.startsWith("0x")) selector = `0x${selector}`;
+        selector = selector.toLowerCase();
+        assert(
+            SELECTOR_PATTERN.test(selector),
+            `Invalid selector ${selector}, must be 32 bytes hex string`,
+        );
 
-    // check the cache first and try getting it from registry if not already cached
-    const sigabi = SelectorCache.get(selector);
-    if (sigabi) {
-        return Result.ok(sigabi);
-    } else {
-        try {
-            const result = await axios.get(SELECTOR_REGISTRY, {
-                headers: { accept: "application/json" },
-                params: { filter: true, function: selector },
-            });
-
-            // ensure valid, non-empty response
-            const responseData = result?.data?.result?.function?.[selector];
-            assert(Array.isArray(responseData), "Response from registry contains no valid results");
-            assert(!!responseData.length, "Response from registry contains empty results");
-
-            // store in cache
-            const sigs = responseData.map((v: { name: string }) => v.name);
-            SelectorCache.set(selector, sigs);
-
-            return Result.ok(sigs);
-        } catch (error: any) {
-            return Result.err(error);
+        // check the cache first and try getting it from registry if not already cached
+        const cachedSigs = SelectorCache.get(selector);
+        if (cachedSigs) {
+            return Result.ok(cachedSigs);
         }
+        const registryQueryResult = await axios.get(SELECTOR_REGISTRY, {
+            headers: { accept: "application/json" },
+            params: { filter: true, function: selector },
+        });
+
+        // ensure valid, non-empty response
+        const responseData = registryQueryResult?.data?.result?.function?.[selector];
+        assert(Array.isArray(responseData), "Response from registry contains no valid results");
+        assert(!!responseData.length, "Response from registry contains empty results");
+
+        // store in cache
+        const sigs = responseData.map((v: { name: string }) => v.name);
+        SelectorCache.set(selector, sigs);
+
+        return Result.ok(sigs);
+    } catch (error: any) {
+        return Result.err(error);
     }
 }
 
@@ -113,7 +125,9 @@ export async function tryGetSignature(selector: string): Promise<Result<string[]
  * https://docs.soliditylang.org/en/latest/control-structures.html#panic-via-assert-and-error-via-require
  * @param data - The error data
  */
-export function tryDecodePanic(data: `0x${string}`): Result<DecodedErrorType, any> {
+export function tryDecodePanic(
+    data: `0x${string}`,
+): Result<DecodedErrorType, DecodeErrorResultErrorType> {
     try {
         const result = decodeErrorResult({ abi: [PANIC_ABI], data });
         const reason =

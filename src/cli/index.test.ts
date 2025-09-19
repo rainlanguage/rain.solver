@@ -171,6 +171,7 @@ describe("Test RainSolverCli", () => {
         mockOrderManager = {
             sync: vi.fn(),
             downscaleProtection: vi.fn(),
+            getCurrentMetadata: vi.fn().mockReturnValue({ key: "value" }),
         } as any;
 
         mockWalletManager = {
@@ -241,12 +242,16 @@ describe("Test RainSolverCli", () => {
 
             (cmd as Mock).mockResolvedValue(mockCmdOptions);
             (AppOptions.tryFromYamlPath as Mock).mockReturnValue(Result.ok(mockAppOptions));
-            (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(mockStateConfig);
+            (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(
+                Result.ok(mockStateConfig),
+            );
             (SharedState as Mock).mockImplementation(() => mockState);
             (SubgraphConfig.tryFromAppOptions as Mock).mockReturnValue(mockSgManagerConfig);
             (SubgraphManager as Mock).mockImplementation(() => mockSubgraphManager);
-            (mockSubgraphManager.statusCheck as Mock).mockResolvedValue([{ name: "sg-status" }]);
-            (OrderManager.init as Mock).mockResolvedValue(mockOrderManagerResult);
+            (mockSubgraphManager.statusCheck as Mock).mockResolvedValue(
+                Result.ok([{ name: "sg-status" }]),
+            );
+            (OrderManager.init as Mock).mockResolvedValue(Result.ok(mockOrderManagerResult));
             (WalletManager.init as Mock).mockResolvedValue(mockWalletManagerResult);
             (RainSolver as Mock).mockImplementation(() => mockRainSolver);
             (RainSolverLogger as Mock).mockImplementation(() => mockLogger);
@@ -307,11 +312,15 @@ describe("Test RainSolverCli", () => {
 
             (cmd as Mock).mockResolvedValue(mockCmdOptions);
             (AppOptions.tryFromYamlPath as Mock).mockReturnValue(Result.ok(mockAppOptions));
-            (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(mockStateConfig);
+            (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(
+                Result.ok(mockStateConfig),
+            );
             (SharedState as Mock).mockImplementation(() => mockState);
             (SubgraphConfig.tryFromAppOptions as Mock).mockReturnValue(mockSgManagerConfig);
             (SubgraphManager as Mock).mockImplementation(() => mockSubgraphManager);
-            (mockSubgraphManager.statusCheck as Mock).mockRejectedValue([{ name: "sg-error" }]);
+            (mockSubgraphManager.statusCheck as Mock).mockResolvedValue(
+                Result.err([{ name: "sg-error" }]),
+            );
             const mockLogger = {
                 exportPreAssembledSpan: vi.fn(),
                 shutdown: vi.fn(),
@@ -332,12 +341,16 @@ describe("Test RainSolverCli", () => {
 
             (cmd as Mock).mockResolvedValue(mockCmdOptions);
             (AppOptions.tryFromYamlPath as Mock).mockReturnValue(Result.ok(mockAppOptions));
-            (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(mockStateConfig);
+            (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(
+                Result.ok(mockStateConfig),
+            );
             (SharedState as Mock).mockImplementation(() => mockState);
             (SubgraphConfig.tryFromAppOptions as Mock).mockReturnValue(mockSgManagerConfig);
             (SubgraphManager as Mock).mockImplementation(() => mockSubgraphManager);
-            (mockSubgraphManager.statusCheck as Mock).mockResolvedValue([{ name: "sg-status" }]);
-            (OrderManager.init as Mock).mockRejectedValue({ name: "order-error" });
+            (mockSubgraphManager.statusCheck as Mock).mockResolvedValue(
+                Result.ok([{ name: "sg-status" }]),
+            );
+            (OrderManager.init as Mock).mockResolvedValue(Result.err({ name: "order-error" }));
             const mockLogger = {
                 exportPreAssembledSpan: vi.fn(),
                 shutdown: vi.fn(),
@@ -687,6 +700,8 @@ describe("Test RainSolverCli", () => {
                 "https://etherscan.io/tx/0x123",
                 "https://etherscan.io/tx/0x456",
             ]);
+            expect(mockOrderManager.getCurrentMetadata).toHaveBeenCalledTimes(1);
+            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("ordersMetadata.key", "value");
         });
 
         it("should not set foundOpp when no transactions found", async () => {

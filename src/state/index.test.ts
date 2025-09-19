@@ -1,10 +1,10 @@
-import { sleep } from "../common";
+import { Result, sleep } from "../common";
 import { getGasPrice } from "./gasPrice";
 import { getChainConfig } from "./chain";
 import { createPublicClient } from "viem";
 import { LiquidityProviders } from "sushi";
-import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
-import { SharedState, SharedStateConfig, TokenDetails } from "./index";
+import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
+import { SharedState, SharedStateConfig, SharedStateErrorType, TokenDetails } from "./index";
 
 vi.mock("./gasPrice", () => ({
     getGasPrice: vi.fn().mockResolvedValue({
@@ -22,13 +22,15 @@ vi.mock("viem", async (importOriginal) => ({
 }));
 
 vi.mock("./chain", () => ({
-    getChainConfig: vi.fn().mockReturnValue({
-        id: 1,
-        isSpecialL2: false,
-        nativeWrappedToken: "0xwrapped",
-        routeProcessors: {},
-        stableTokens: [],
-    }),
+    getChainConfig: vi.fn().mockReturnValue(
+        Result.ok({
+            id: 1,
+            isSpecialL2: false,
+            nativeWrappedToken: "0xwrapped",
+            routeProcessors: {},
+            stableTokens: [],
+        }),
+    ),
 }));
 
 describe("Test SharedStateConfig tryFromAppOptions", () => {
@@ -59,7 +61,9 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
     });
 
     it("should build SharedStateConfig from AppOptions (happy path)", async () => {
-        const config = await SharedStateConfig.tryFromAppOptions(options);
+        const configResult = await SharedStateConfig.tryFromAppOptions(options);
+        assert(configResult.isOk());
+        const config = configResult.value;
         expect(config.walletConfig).toEqual({ key: "0xkey", minBalance: 100_000_000n, type: 1 });
         expect(config.gasPriceMultiplier).toBe(123);
         expect(config.liquidityProviders).toEqual([LiquidityProviders.UniswapV2]);
@@ -82,9 +86,9 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             .fn()
             .mockRejectedValueOnce(new Error("fail"))
             .mockResolvedValueOnce("0xstore");
-        await expect(SharedStateConfig.tryFromAppOptions(options)).rejects.toMatch(
-            /failed to get dispair iInterpreter address/,
-        );
+        const result = await SharedStateConfig.tryFromAppOptions(options);
+        assert(result.isErr());
+        expect(result.error.type).toBe(SharedStateErrorType.FailedToGetDispairInterpreterAddress);
     });
 
     it("should throw if iStore contract call fails", async () => {
@@ -92,16 +96,16 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             .fn()
             .mockResolvedValueOnce("0xinterpreter")
             .mockRejectedValueOnce(new Error("fail"));
-        await expect(SharedStateConfig.tryFromAppOptions(options)).rejects.toMatch(
-            /failed to get dispair iStore address/,
-        );
+        const result = await SharedStateConfig.tryFromAppOptions(options);
+        assert(result.isErr());
+        expect(result.error.type).toBe(SharedStateErrorType.FailedToGetDispairStoreAddress);
     });
 
     it("should throw if getChainConfig returns undefined", async () => {
-        (getChainConfig as Mock).mockReturnValue(undefined);
-        await expect(SharedStateConfig.tryFromAppOptions(options)).rejects.toMatch(
-            /Cannot find configuration for the network/,
-        );
+        (getChainConfig as Mock).mockReturnValue(Result.err("some err"));
+        const result = await SharedStateConfig.tryFromAppOptions(options);
+        assert(result.isErr());
+        expect(result.error.type).toBe(SharedStateErrorType.ChainConfigError);
     });
 });
 

@@ -5,8 +5,8 @@ import { SharedState } from "../state";
 import { SubgraphManager } from "../subgraph";
 import { downscaleProtection } from "./protection";
 import { CounterpartySource, Order, Pair } from "./types";
-import { OrderManager, DEFAULT_OWNER_LIMIT } from "./index";
-import { describe, it, expect, beforeEach, vi, Mock } from "vitest";
+import { OrderManager, DEFAULT_OWNER_LIMIT, OrderManagerError } from "./index";
+import { describe, it, expect, beforeEach, vi, Mock, assert } from "vitest";
 
 vi.mock("./sync", () => ({
     syncOrders: vi.fn(),
@@ -90,11 +90,15 @@ describe("Test OrderManager", () => {
             outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
             inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
         };
-        (orderManager.subgraphManager.fetchAll as Mock).mockResolvedValueOnce({
-            orders: [mockOrder],
-            report: { status: "ok" },
-        });
-        const report = await orderManager.fetch();
+        (orderManager.subgraphManager.fetchAll as Mock).mockResolvedValueOnce(
+            Result.ok({
+                orders: [mockOrder],
+                report: { status: "ok" },
+            }),
+        );
+        const fetchResult = await orderManager.fetch();
+        assert(fetchResult.isOk());
+        const report = fetchResult.value;
 
         expect(report).toEqual({ status: "ok" });
         expect(orderManager.ownersMap.size).toBe(1);
@@ -109,7 +113,7 @@ describe("Test OrderManager", () => {
     });
 
     it("should correctly sync orders", async () => {
-        // mock syncOrders to return addOrders and removeOrders
+        // mock syncOrders to return addOrder and removeOrders
         (syncOrders as Mock).mockResolvedValueOnce(undefined);
         await orderManager.sync();
 
@@ -133,7 +137,8 @@ describe("Test OrderManager", () => {
                 inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 4n }],
             },
         ];
-        await orderManager.addOrders(orders as any);
+        await orderManager.addOrder(orders[0] as any);
+        await orderManager.addOrder(orders[1] as any);
 
         expect(orderManager.ownersMap.size).toBe(2);
         expect(orderManager.ownersMap.get("0xorderbook1")).toBeDefined();
@@ -250,6 +255,39 @@ describe("Test OrderManager", () => {
         });
     });
 
+    it("should return error when add order fails", async () => {
+        const order = {
+            orderHash: "0xhash1",
+            orderbook: { id: "0xorderbook1" },
+            orderBytes: "0xbytes",
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT" },
+                    balance: 1n,
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN" },
+                    balance: 1n,
+                },
+            ],
+        };
+
+        (Order.tryFromBytes as Mock).mockReturnValueOnce(Result.err("some error"));
+        const result = await orderManager.addOrder(order as any);
+        assert(result.isErr());
+        expect(result.error).instanceOf(OrderManagerError);
+
+        const getOrderPairsSpy = vi.spyOn(orderManager, "getOrderPairs");
+        getOrderPairsSpy.mockResolvedValueOnce(Result.err(new OrderManagerError("err", 1)));
+        const result2 = await orderManager.addOrder(order as any);
+        assert(result2.isErr());
+        expect(result2.error).instanceOf(OrderManagerError);
+
+        getOrderPairsSpy.mockRestore();
+    });
+
     it("should remove orders", async () => {
         const mockOrder = {
             orderHash: "0xhash",
@@ -258,7 +296,7 @@ describe("Test OrderManager", () => {
             outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
             inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
         };
-        await orderManager.addOrders([mockOrder as any]);
+        await orderManager.addOrder(mockOrder as any);
         expect(orderManager.ownersMap.size).toBe(1);
 
         // check pairMap before removal
@@ -287,7 +325,7 @@ describe("Test OrderManager", () => {
             outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
             inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 2n }],
         };
-        await orderManager.addOrders([mockOrder as any]);
+        await orderManager.addOrder(mockOrder as any);
 
         const result = orderManager.getNextRoundOrders();
         expect(Array.isArray(result)).toBe(true);
@@ -336,7 +374,8 @@ describe("Test OrderManager", () => {
             outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
             inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
         };
-        await orderManager.addOrders([mockOrder as any, adminOrder as any]);
+        await orderManager.addOrder(mockOrder as any);
+        await orderManager.addOrder(adminOrder as any);
         await orderManager.resetLimits();
 
         const ownerProfileMap = orderManager.ownersMap.get("0xorderbook");
@@ -367,11 +406,13 @@ describe("Test OrderManager", () => {
                 { token: { address: "0xinput2", symbol: "IN2" }, balance: 1n },
             ],
         };
-        const pairs = await orderManager.getOrderPairs(
+        const pairsResult = await orderManager.getOrderPairs(
             "0xhash",
             orderStruct as any,
             orderDetails as any,
         );
+        assert(pairsResult.isOk());
+        const pairs = pairsResult.value;
 
         // should be 4 pairs (2 inputs x 2 outputs)
         expect(pairs.length).toBe(4);
@@ -417,6 +458,37 @@ describe("Test OrderManager", () => {
                 buyTokenVaultBalance: 1n,
             },
         ]);
+    });
+
+    it("getOrderPairs should return error when fails to get decimals", async () => {
+        const orderStruct = {
+            owner: "0xowner",
+            validInputs: [{ token: "0xinput" }],
+            validOutputs: [{ token: "0xoutput" }],
+        };
+        const orderDetails = {
+            orderbook: { id: "0xorderbook" },
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT1" },
+                    balance: 1n,
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN1" },
+                    balance: 1n,
+                },
+            ],
+        };
+        (orderManager.state.client.readContract as Mock).mockRejectedValueOnce("some error");
+        const pairsResult = await orderManager.getOrderPairs(
+            "0xhash",
+            orderStruct as any,
+            orderDetails as any,
+        );
+        assert(pairsResult.isErr());
+        expect(pairsResult.error).instanceOf(OrderManagerError);
     });
 
     it("quoteOrder should set quote on the takeOrder", async () => {
@@ -481,7 +553,9 @@ describe("Test OrderManager", () => {
                 inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
             },
         ];
-        await orderManager.addOrders(orders as any);
+        for (const order of orders) {
+            await orderManager.addOrder(order as any);
+        }
 
         // set owner limit to 3 so only three orders are returned per round
         const ownerProfileMap = orderManager.ownersMap.get("0xorderbook");
@@ -514,7 +588,7 @@ describe("Test OrderManager", () => {
             outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
             inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
         };
-        await orderManager.addOrders([mockOrder as any]);
+        await orderManager.addOrder(mockOrder as any);
 
         // get the takeOrder object from getNextRoundOrders
         const roundOrders = orderManager.getNextRoundOrders();
@@ -574,7 +648,8 @@ describe("Test OrderManager", () => {
                     validOutputs: [{ token: "0xinput", decimals: 18 }],
                 }),
             );
-        await orderManager.addOrders([orderA as any, orderB as any]);
+        await orderManager.addOrder(orderA as any);
+        await orderManager.addOrder(orderB as any);
 
         // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)
         const roundOrders = orderManager.getNextRoundOrders();
@@ -622,7 +697,8 @@ describe("Test OrderManager", () => {
                     validOutputs: [{ token: "0xinput", decimals: 18 }],
                 }),
             );
-        await orderManager.addOrders([orderA as any, orderB as any]);
+        await orderManager.addOrder(orderA as any);
+        await orderManager.addOrder(orderB as any);
 
         // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)
         const roundOrders = orderManager.getNextRoundOrders();
@@ -920,5 +996,35 @@ describe("Test OrderManager", () => {
         );
 
         resetLimitsSpy.mockRestore();
+    });
+
+    it("test getCurrentMetadata method", async () => {
+        const orders = [
+            {
+                orderHash: "0xhash1",
+                orderbook: { id: "0xorderbook1" },
+                orderBytes: "0xbytes",
+                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
+                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 2n }],
+            },
+            {
+                orderHash: "0xhash2",
+                orderbook: { id: "0xorderbook2" },
+                orderBytes: "0xbytes",
+                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 3n }],
+                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 4n }],
+            },
+        ];
+        await orderManager.addOrder(orders[0] as any);
+        await orderManager.addOrder(orders[1] as any);
+
+        const metadata = orderManager.getCurrentMetadata();
+
+        expect(metadata).toEqual({
+            totalCount: 2,
+            totalOwnersCount: 2,
+            totalPairsCount: 2,
+            totalDistinctPairsCount: 1,
+        });
     });
 });

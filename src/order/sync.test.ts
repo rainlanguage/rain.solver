@@ -1,4 +1,5 @@
 import { OrderManager } from ".";
+import { Result } from "../common";
 import { syncOrders } from "./sync";
 import { PreAssembledSpan } from "../logger";
 import { applyFilters } from "../subgraph/filter";
@@ -20,14 +21,14 @@ describe("Test syncOrders", () => {
     let mockOrderManager: OrderManager;
     let mockSubgraphManager: any;
     let mockUpdateVault: Mock;
-    let mockAddOrders: Mock;
+    let mockAddOrder: Mock;
     let mockRemoveOrders: Mock;
 
     beforeEach(() => {
         vi.clearAllMocks();
 
         mockUpdateVault = vi.fn();
-        mockAddOrders = vi.fn();
+        mockAddOrder = vi.fn();
         mockRemoveOrders = vi.fn();
 
         mockSubgraphManager = {
@@ -38,7 +39,7 @@ describe("Test syncOrders", () => {
         mockOrderManager = {
             subgraphManager: mockSubgraphManager,
             updateVault: mockUpdateVault,
-            addOrders: mockAddOrders,
+            addOrder: mockAddOrder,
             removeOrders: mockRemoveOrders,
         } as any;
     });
@@ -310,13 +311,61 @@ describe("Test syncOrders", () => {
             status: mockSyncStatus,
             result: mockResult,
         });
+        mockAddOrder.mockResolvedValue(Result.ok(undefined));
 
         await syncOrders.call(mockOrderManager);
         expect(applyFilters).toHaveBeenCalledWith(mockOrder, mockSubgraphManager.filters);
-        expect(mockAddOrders).toHaveBeenCalledWith([mockOrder]);
+        expect(mockAddOrder).toHaveBeenCalledWith(mockOrder);
         expect(mockSyncStatus["https://subgraph1.com"]["0xorderbook1"]).toEqual({
             added: ["0xorderhash1"],
             removed: [],
+            failedAdds: {},
+        });
+    });
+
+    it("should handle AddOrder events with failed addOrder and record error in syncStatus", async () => {
+        const mockOrder = {
+            orderHash: "0xorderhash1",
+            orderbook: { id: "0xorderbook1" },
+            active: true,
+        };
+
+        const mockResult = {
+            "https://subgraph1.com": [
+                {
+                    timestamp: "1640995200",
+                    events: [
+                        {
+                            __typename: "AddOrder",
+                            order: mockOrder,
+                        },
+                    ],
+                },
+            ],
+        };
+
+        const mockSyncStatus = {
+            "https://subgraph1.com": {},
+        };
+        const mockError = new Error("Failed to add order to database");
+
+        (applyFilters as Mock).mockReturnValue(true);
+        mockSubgraphManager.getUpstreamEvents.mockResolvedValue({
+            status: mockSyncStatus,
+            result: mockResult,
+        });
+        mockAddOrder.mockResolvedValue(Result.err(mockError));
+
+        await syncOrders.call(mockOrderManager);
+
+        expect(applyFilters).toHaveBeenCalledWith(mockOrder, mockSubgraphManager.filters);
+        expect(mockAddOrder).toHaveBeenCalledWith(mockOrder);
+        expect(mockSyncStatus["https://subgraph1.com"]["0xorderbook1"]).toEqual({
+            added: [],
+            removed: [],
+            failedAdds: {
+                "0xorderhash1": expect.stringContaining(mockError.message),
+            },
         });
     });
 
@@ -375,7 +424,7 @@ describe("Test syncOrders", () => {
 
         await syncOrders.call(mockOrderManager);
         expect(mockUpdateVault).not.toHaveBeenCalled();
-        expect(mockAddOrders).not.toHaveBeenCalled();
+        expect(mockAddOrder).not.toHaveBeenCalled();
         expect(mockRemoveOrders).not.toHaveBeenCalled();
     });
 
@@ -390,6 +439,7 @@ describe("Test syncOrders", () => {
         mockSubgraphManager.getUpstreamEvents.mockResolvedValue({
             status: mockSyncStatus,
             result: {},
+            failedAdds: {},
         });
 
         const result = await syncOrders.call(mockOrderManager);

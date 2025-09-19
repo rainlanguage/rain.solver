@@ -38,7 +38,8 @@
         "rain-solver": "ts-node rain-solver",
         "build": "tsc",
         "vitest:logger": "vitest run ./src/logger/index.test.ts --disableConsoleIntercept",
-        "vitest": "npm run vitest:logger && vitest run --exclude ./src/logger/index.test.ts"
+        "vitest": "npm run vitest:logger && vitest run --exclude ./src/logger/index.test.ts",
+        "sweep": "ts-node ./scripts/sweep.ts"
     },
     "dependencies": {
         "@balancer/sdk": "^4.5.2",

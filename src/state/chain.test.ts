@@ -1,7 +1,7 @@
 import { ChainId } from "sushi/chain";
 import { WNATIVE } from "sushi/currency";
-import { describe, it, expect, vi } from "vitest";
-import { getChainConfig, SpecialL2Chains } from "./chain";
+import { describe, it, expect, vi, assert } from "vitest";
+import { ChainConfigErrorType, getChainConfig, SpecialL2Chains } from "./chain";
 import {
     STABLES,
     publicClientConfig,
@@ -36,7 +36,9 @@ vi.mock("sushi/config", async (importOriginal) => ({
 describe("Test getChainConfig", () => {
     it("should return correct config for a supported chain", () => {
         const chainId = ChainId.ETHEREUM;
-        const config = getChainConfig(chainId);
+        const configResult = getChainConfig(chainId);
+        assert(configResult.isOk());
+        const config = configResult.value;
 
         expect(config.nativeWrappedToken).toEqual(WNATIVE[chainId]);
         expect(config.routeProcessors["3"]).toBe(ROUTE_PROCESSOR_3_ADDRESS[chainId]);
@@ -52,9 +54,9 @@ describe("Test getChainConfig", () => {
 
     it("should throw if chain is not supported", () => {
         const invalidChainId = 999999 as ChainId;
-        expect(() => getChainConfig(invalidChainId)).toThrow(
-            "network with id 999999 is not supported",
-        );
+        const configResult = getChainConfig(invalidChainId);
+        assert(configResult.isErr());
+        expect(configResult.error.type).toBe(ChainConfigErrorType.UnsupportedChain);
     });
 
     it("should throw if native wrapped token is not supported", () => {
@@ -62,23 +64,27 @@ describe("Test getChainConfig", () => {
         (publicClientConfig as any)[fakeChainId] = { chain: { id: fakeChainId } };
         (WNATIVE as any)[fakeChainId] = undefined;
 
-        expect(() => getChainConfig(fakeChainId)).toThrow(
-            "wrapped native token info missing for chain 123456",
-        );
+        const configResult = getChainConfig(fakeChainId);
+        assert(configResult.isErr());
+        expect(configResult.error.type).toBe(ChainConfigErrorType.MissingNativeWrappedTokenInfo);
 
         delete (publicClientConfig as any)[fakeChainId];
     });
 
     it("should throw if rp4 is missing", () => {
         const chainId = ChainId.POLYGON;
-        expect(() => getChainConfig(chainId)).toThrow(
-            "missing route processor 4 address for chain 137",
+        const configResult = getChainConfig(chainId);
+        assert(configResult.isErr());
+        expect(configResult.error.type).toBe(
+            ChainConfigErrorType.MissingSushiRouteProcessor4Address,
         );
     });
 
     it("should only include route processors that exist for the chain", () => {
         const chainId = ChainId.FLARE;
-        const config = getChainConfig(chainId);
+        const configResult = getChainConfig(chainId);
+        assert(configResult.isOk());
+        const config = configResult.value;
         expect(config.routeProcessors["3.1"]).toBeUndefined();
     });
 

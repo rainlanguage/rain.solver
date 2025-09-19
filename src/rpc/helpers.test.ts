@@ -14,10 +14,11 @@ describe("Test rpc helpers", async function () {
 
     it("should test probablyPicksFrom", async function () {
         const selectionRange = [
-            6000, // 60% succes rate, equals to 20% of all probabilities
-            3000, // 30% succes rate, equals to 10% of all probabilities
-            1000, // 10% succes rate, equals to 3.33% of all probabilities
+            6000, // 60% succes rate, equals to 20% of all probabilities adjusted with weights
+            3000, // 30% succes rate, equals to 10% of all probabilities adjusted with weights
+            1000, // 10% succes rate, equals to 4% of all probabilities adjusted with weights
         ];
+        const weights = [1, 1, 0.5]; // weights to adjust the probability of each item being picked
         const result = {
             first: 0,
             second: 0,
@@ -27,7 +28,7 @@ describe("Test rpc helpers", async function () {
 
         // run 10000 times to get a accurate distribution of results for test
         for (let i = 0; i < 10000; i++) {
-            const rand = probablyPicksFrom(selectionRange);
+            const rand = probablyPicksFrom(selectionRange, weights);
             if (rand === 0) result.first++;
             else if (rand === 1) result.second++;
             else if (rand === 2) result.third++;
@@ -40,9 +41,9 @@ describe("Test rpc helpers", async function () {
         result.third /= 100;
         result.outOfRange /= 100;
 
-        assert.closeTo(result.first, 20, 2);
-        assert.closeTo(result.second, 10, 2);
-        assert.closeTo(result.third, 3.33, 2);
-        assert.closeTo(result.outOfRange, 66.66, 2);
+        assert.closeTo(result.first, 24, 2); // has been picked close to 24% of times (60% adjusted with weight of 1)
+        assert.closeTo(result.second, 12, 2); // has been picked close to 12% of times (30% adjusted with weight of 1)
+        assert.closeTo(result.third, 4, 2); // has been picked close to 4% of times (10% adjusted with weight of 0.5)
+        assert.closeTo(result.outOfRange, 60, 2); // has been picked close to 60% of times (out of range)
     });
 });
