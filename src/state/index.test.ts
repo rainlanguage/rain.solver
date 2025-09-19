@@ -37,8 +37,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
 
     beforeEach(() => {
         options = {
-            key: "key",
-            mnemonic: undefined,
+            key: "0xkey",
             rpc: [{ url: "http://example.com" }],
             writeRpc: undefined,
             dispair: "0xdispair",
@@ -46,6 +45,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             liquidityProviders: ["UniswapV2"],
             timeout: 1000,
             txGas: "120%",
+            botMinBalance: "0.0000000001",
         };
         mockClient = {
             getChainId: vi.fn().mockResolvedValue(1),
@@ -59,7 +59,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
 
     it("should build SharedStateConfig from AppOptions (happy path)", async () => {
         const config = await SharedStateConfig.tryFromAppOptions(options);
-        expect(config.walletKey).toBe("key");
+        expect(config.walletConfig).toEqual({ key: "0xkey", minBalance: 100_000_000n, type: 1 });
         expect(config.gasPriceMultiplier).toBe(123);
         expect(config.liquidityProviders).toEqual([LiquidityProviders.UniswapV2]);
         expect(config.client).toBeDefined();
@@ -114,7 +114,9 @@ describe("Test SharedState", () => {
                 store: "0xstore",
                 deployer: "0xdispair",
             },
-            walletKey: "key",
+            walletConfig: {
+                key: "0xkey",
+            },
             liquidityProviders: [LiquidityProviders.UniswapV2],
             client: { dummy: true },
             chainConfig: { id: 1, isSpecialL2: false },
@@ -129,7 +131,7 @@ describe("Test SharedState", () => {
 
     it("should initialize properties from config", () => {
         expect(sharedState.dispair).toEqual(config.dispair);
-        expect(sharedState.walletKey).toBe("key");
+        expect(sharedState.walletConfig).toEqual({ key: "0xkey" });
         expect(sharedState.chainConfig).toEqual(config.chainConfig);
         expect(sharedState.liquidityProviders).toEqual([LiquidityProviders.UniswapV2]);
         expect(sharedState.gasPriceMultiplier).toBe(123);

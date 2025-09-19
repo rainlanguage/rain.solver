@@ -14,6 +14,7 @@ import { OrderManager, BundledOrders } from "./order";
 import { trace, Tracer, context, Context, SpanStatusCode } from "@opentelemetry/api";
 import { sweepToEth, manageAccounts, sweepToMainWallet, getBatchEthBalance } from "./account";
 import { RainSolverSigner } from "./signer";
+import { WalletManager } from "./wallet";
 
 config();
 
@@ -95,7 +96,7 @@ export const arbRound = async (
                 span.setAttribute("severity", ErrorSeverity.LOW);
                 span.setStatus({ code: SpanStatusCode.ERROR, message: e });
             } else {
-                const snapshot = errorSnapshot("Unexpected error occured", e);
+                const snapshot = errorSnapshot("Unexpected error occurred", e);
                 span.setAttribute("severity", ErrorSeverity.HIGH);
                 span.setStatus({ code: SpanStatusCode.ERROR, message: snapshot });
             }
@@ -112,7 +113,7 @@ export const arbRound = async (
  * CLI startup function
  * @param argv - cli args
  */
-export async function startup(argv: any, version?: string, tracer?: Tracer, ctx?: Context) {
+export async function startup(argv: any, version?: string) {
     const cmdOptions = await getOptions(argv, version);
     const options = AppOptions.fromYaml(cmdOptions.config);
     const roundGap = options.sleep;
@@ -122,7 +123,7 @@ export async function startup(argv: any, version?: string, tracer?: Tracer, ctx?
     const state = new SharedState(stateConfig);
 
     // get config
-    const config = await getConfig(options, state, tracer, ctx);
+    const config = await getConfig(options, state);
 
     return {
         roundGap,
@@ -139,9 +140,8 @@ export const main = async (argv: any, version?: string) => {
     // parse cli args and startup bot configuration
     const { roundGap, options, poolUpdateInterval, config, state } =
         await logger.tracer.startActiveSpan("startup", async (startupSpan) => {
-            const ctx = trace.setSpan(context.active(), startupSpan);
             try {
-                const result = await startup(argv, version, logger.tracer, ctx);
+                const result = await startup(argv, version);
                 startupSpan.setStatus({ code: SpanStatusCode.OK });
                 startupSpan.end();
                 return result;
@@ -185,6 +185,13 @@ export const main = async (argv: any, version?: string) => {
         }
     })();
 
+    const { walletManager, reports } = await WalletManager.init(state);
+    reports.forEach((statusReport) => logger.exportPreAssembledSpan(statusReport));
+
+    // set config main acc and workers
+    config.mainAccount = walletManager.mainSigner;
+    config.accounts = Array.from(walletManager.workers.signers.values());
+
     const day = 24 * 60 * 60 * 1000;
     let lastGasReset = Date.now() + day;
     let lastInterval = Date.now() + poolUpdateInterval;
@@ -193,7 +200,6 @@ export const main = async (argv: any, version?: string) => {
     let counter = 1;
     const wgc: RainSolverSigner[] = [];
     const wgcBuffer: { address: string; count: number }[] = [];
-    const botMinBalance = ethers.utils.parseUnits(options.botMinBalance);
 
     // run bot's processing orders in a loop
     // eslint-disable-next-line no-constant-condition
@@ -217,48 +223,10 @@ export const main = async (argv: any, version?: string) => {
                 ),
             });
 
-            await logger.tracer.startActiveSpan(
-                "check-wallet-balance",
-                {},
-                roundCtx,
-                async (walletSpan) => {
-                    try {
-                        const botGasBalance = ethers.BigNumber.from(
-                            await config.viemClient.getBalance({
-                                address: config.mainAccount.account.address,
-                            }),
-                        );
-                        if (botMinBalance.gt(botGasBalance)) {
-                            const header = `bot main wallet ${
-                                config.mainAccount.account.address
-                            } is low on gas, expected at least: ${
-                                options.botMinBalance
-                            }, current: ${ethers.utils.formatUnits(botGasBalance)}, `;
-                            const fill = config.accounts.length
-                                ? `that wallet is the one that funds the multi wallet, there are still ${
-                                      config.accounts.length + 1
-                                  } wallets with enough balance in circulation that clear orders, please consider toping up soon`
-                                : "it will still work with remaining gas as far as it can, please topup as soon as possible";
-                            walletSpan.setStatus({
-                                code: SpanStatusCode.ERROR,
-                                message: header + fill,
-                            });
-                            walletSpan.setAttribute(
-                                "severity",
-                                config.accounts.length ? ErrorSeverity.MEDIUM : ErrorSeverity.HIGH,
-                            );
-                        }
-                    } catch (error) {
-                        walletSpan.setStatus({
-                            code: SpanStatusCode.ERROR,
-                            message:
-                                "Failed to check main wallet balance: " + errorSnapshot("", error),
-                        });
-                        walletSpan.setAttribute("severity", ErrorSeverity.LOW);
-                    }
-                    walletSpan.end();
-                },
-            );
+            // check main wallet balance
+            const checkBalanceReport = await walletManager.checkMainWalletBalance();
+            logger.exportPreAssembledSpan(checkBalanceReport, roundCtx);
+
             // remove pool memoizer cache on each interval
             let update = false;
             const now = Date.now();

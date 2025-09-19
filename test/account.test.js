@@ -6,7 +6,6 @@ const { BridgeUnlimited, ConstantProductRPool } = require("sushi/tines");
 const { WNATIVE, WNATIVE_ADDRESS, Native, DAI } = require("sushi/currency");
 const { NativeWrapBridgePoolCode, LiquidityProviders, ConstantProductPoolCode } = require("sushi");
 const {
-    initAccounts,
     manageAccounts,
     rotateAccounts,
     getBatchEthBalance,
@@ -43,73 +42,6 @@ describe("Test accounts", async function () {
         );
         const expected = balances.map((v) => ethers.BigNumber.from(v));
         assert.deepEqual(result, expected);
-    });
-
-    it("should initiate accounts successfully with mnemonic", async function () {
-        const viemClient = {
-            chain: { id: 137 },
-            multicall: async () => [10000n, 0n, 0n],
-            getGasPrice: async () => 3000000n,
-        };
-        const config = {
-            chain: { id: 31337 },
-            rpc: ["test"],
-            watchedTokens: [],
-            viemClient,
-            testClientViem: viem.getTestClient,
-        };
-        const options = {
-            walletCount: 2,
-            topupAmount: "0.0000000000000001",
-        };
-        const mnemonic = "test test test test test test test test test test test junk";
-        const { mainAccount, accounts } = await initAccounts(
-            mnemonic,
-            config,
-            { watchedTokens: new Map(), client: viemClient },
-            options,
-        );
-
-        const expected = [
-            { address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" },
-            { address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" },
-            { address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" },
-        ];
-        assert.equal(mainAccount.account.address, expected[0].address);
-        assert.equal(accounts[0].account.address, expected[1].address);
-        assert.equal(accounts[1].account.address, expected[2].address);
-    });
-
-    it("should initiate accounts successfully with private key", async function () {
-        const viemClient = {
-            chain: { id: 137 },
-            multicall: async () => [10000n],
-        };
-        const config = {
-            chain: { id: 31337 },
-            rpc: ["test"],
-            watchedTokens: [],
-            viemClient,
-            testClientViem: viem.getTestClient,
-        };
-        const options = {
-            walletCount: 2,
-            topupAmount: "100",
-        };
-        const key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-        const { mainAccount, accounts } = await initAccounts(
-            key,
-            config,
-            { watchedTokens: new Map(), client: viemClient },
-            options,
-        );
-
-        const expected = [
-            { address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", BALANCE: "10000" },
-        ];
-        assert.isEmpty(accounts);
-        assert.equal(mainAccount.account.address, expected[0].address);
-        assert.equal(mainAccount.BALANCE.toString(), expected[0].BALANCE);
     });
 
     it("should manage accounts successfully", async function () {

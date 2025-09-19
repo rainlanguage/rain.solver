@@ -5,6 +5,7 @@ import { AppOptions } from "../config";
 import { errorSnapshot } from "../error";
 import { getGasPrice } from "./gasPrice";
 import { LiquidityProviders } from "sushi";
+import { WalletConfig } from "../wallet/config";
 import { processLiquidityProviders } from "./lps";
 import { SubgraphConfig } from "../subgraph/config";
 import { OrderManagerConfig } from "../order/config";
@@ -33,8 +34,8 @@ export type TokenDetails = {
 export type SharedStateConfig = {
     /** Dispair, deployer, store and interpreter addresses */
     dispair: Dispair;
-    /** Wallet private key or mnemonic key */
-    walletKey: string;
+    /** Wallet configurations */
+    walletConfig: WalletConfig;
     /** List of watched tokens at runtime */
     watchedTokens?: Map<string, TokenDetails>;
     /** List of active liquidity providers */
@@ -107,8 +108,8 @@ export namespace SharedStateConfig {
             chainConfig,
             rainSolverTransportConfig,
             transactionGas: options.txGas,
-            walletKey: (options.key ?? options.mnemonic)!,
             gasPriceMultiplier: options.gasPriceMultiplier,
+            walletConfig: WalletConfig.tryFromAppOptions(options),
             subgraphConfig: SubgraphConfig.tryFromAppOptions(options),
             orderManagerConfig: OrderManagerConfig.tryFromAppOptions(options),
             liquidityProviders: processLiquidityProviders(options.liquidityProviders),
@@ -146,8 +147,8 @@ export namespace SharedStateConfig {
 export class SharedState {
     /** Dispair, deployer, store and interpreter addresses */
     readonly dispair: Dispair;
-    /** Wallet private key or mnemonic key */
-    readonly walletKey: string;
+    /** Wallet configurations */
+    readonly walletConfig: WalletConfig;
     /** Chain configurations */
     readonly chainConfig: ChainConfig;
     /** List of watched tokens at runtime */
@@ -181,7 +182,7 @@ export class SharedState {
     constructor(config: SharedStateConfig) {
         this.client = config.client;
         this.dispair = config.dispair;
-        this.walletKey = config.walletKey;
+        this.walletConfig = config.walletConfig;
         this.chainConfig = config.chainConfig;
         this.subgraphConfig = config.subgraphConfig;
         this.liquidityProviders = config.liquidityProviders;

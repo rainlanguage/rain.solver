@@ -1,7 +1,6 @@
 import { versions } from "process";
 import { AppOptions } from "./config";
 import { SharedState } from "./state";
-import { initAccounts } from "./account";
 import { getDataFetcher } from "./client";
 import { processOrders } from "./processOrders";
 import { publicClientConfig } from "sushi/config";
@@ -17,12 +16,7 @@ import { BundledOrders } from "./order";
  * @param state - App shared state
  * @returns The configuration object
  */
-export async function getConfig(
-    options: AppOptions,
-    state: SharedState,
-    tracer?: Tracer,
-    ctx?: Context,
-): Promise<BotConfig> {
+export async function getConfig(options: AppOptions, state: SharedState): Promise<BotConfig> {
     const config: any = {
         ...options,
         lps: state.liquidityProviders!,
@@ -36,18 +30,6 @@ export async function getConfig(
     };
     const dataFetcher = await getDataFetcher(state);
     config.dataFetcher = dataFetcher;
-
-    // init accounts
-    const { mainAccount, accounts } = await initAccounts(
-        state.walletKey,
-        config,
-        state,
-        options,
-        tracer,
-        ctx,
-    );
-    config.mainAccount = mainAccount;
-    config.accounts = accounts;
 
     return config;
 }

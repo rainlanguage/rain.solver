@@ -7,7 +7,7 @@ import { getTxFee } from "./gas";
 import { ErrorSeverity, errorSnapshot } from "./error";
 import { Native, Token, WNATIVE } from "sushi/currency";
 import { ROUTE_PROCESSOR_4_ADDRESS } from "sushi/config";
-import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
+import { mnemonicToAccount } from "viem/accounts";
 import { addWatchedToken, getRpSwap, PoolBlackList, sleep } from "./utils";
 import { BotConfig, OwnedOrder } from "./types";
 import { context, Context, SpanStatusCode, trace, Tracer } from "@opentelemetry/api";
@@ -20,114 +20,6 @@ export const BasePath = "m/44'/60'/0'/0/" as const;
 
 /** Main account derivation index */
 export const MainAccountDerivationIndex = 0 as const;
-
-/**
- * Generates array of accounts from mnemonic phrase and tops them up from main acount
- * @param mnemonicOrPrivateKey - The mnemonic phrase or private key
- * @param config - The config obj
- * @param state - App operation state
- * @param options - App options
- * @returns Array of ethers Wallets derived from the given menomonic phrase and standard derivation path
- */
-export async function initAccounts(
-    mnemonicOrPrivateKey: string,
-    config: BotConfig,
-    state: SharedState,
-    options: AppOptions,
-    tracer?: Tracer,
-    ctx?: Context,
-): Promise<{ mainAccount: RainSolverSigner; accounts: RainSolverSigner[] }> {
-    const accounts: RainSolverSigner[] = [];
-    const isMnemonic = !/^(0x)?[a-fA-F0-9]{64}$/.test(mnemonicOrPrivateKey);
-    const mainAccount = RainSolverSigner.create(
-        isMnemonic
-            ? mnemonicToAccount(mnemonicOrPrivateKey, {
-                  addressIndex: MainAccountDerivationIndex,
-              })
-            : privateKeyToAccount(
-                  (mnemonicOrPrivateKey.startsWith("0x")
-                      ? mnemonicOrPrivateKey
-                      : "0x" + mnemonicOrPrivateKey) as `0x${string}`,
-              ),
-        state,
-    );
-
-    // if the provided key is mnemonic, generate new accounts
-    if (isMnemonic) {
-        const len = options.walletCount ?? 0;
-        for (let addressIndex = 1; addressIndex <= len; addressIndex++) {
-            accounts.push(
-                RainSolverSigner.create(
-                    mnemonicToAccount(mnemonicOrPrivateKey, {
-                        addressIndex,
-                    }),
-                    state,
-                ),
-            );
-        }
-    }
-
-    // reaed current eth balances of the accounts, this will be
-    // tracked on through the bot's process whenever a tx is submitted
-    const balances = await getBatchEthBalance(
-        [mainAccount.account.address, ...accounts.map((v) => v.account.address)],
-        state.client,
-    );
-    mainAccount.BALANCE = balances[0];
-    setWatchedTokens(mainAccount, Array.from(state.watchedTokens.values()) ?? []);
-
-    // incase of excess accounts, top them up from main account
-    if (accounts.length) {
-        const topupAmountBn = ethers.utils.parseUnits(options.topupAmount!);
-        let cumulativeTopupAmount = ethers.constants.Zero;
-        for (let i = 1; i < balances.length; i++) {
-            if (topupAmountBn.gt(balances[i])) {
-                cumulativeTopupAmount = cumulativeTopupAmount.add(topupAmountBn.sub(balances[i]));
-            }
-        }
-        if (cumulativeTopupAmount.gt(balances[0])) {
-            throw "low on funds to topup excess wallets with specified initial topup amount";
-        } else {
-            for (let i = 0; i < accounts.length; i++) {
-                setWatchedTokens(accounts[i], Array.from(state.watchedTokens.values()) ?? []);
-                accounts[i].BALANCE = balances[i + 1];
-
-                // only topup those accounts that have lower than expected funds
-                const transferAmount = topupAmountBn.sub(balances[i + 1]);
-                if (transferAmount.gt(0)) {
-                    const span = tracer?.startSpan("fund-wallets", undefined, ctx);
-                    span?.setAttribute("details.wallet", accounts[i].account.address);
-                    span?.setAttribute("details.amount", ethers.utils.formatUnits(transferAmount));
-                    try {
-                        const hash = await mainAccount.sendTx({
-                            to: accounts[i].account.address,
-                            value: transferAmount.toBigInt(),
-                        });
-                        const receipt = await mainAccount.waitForTransactionReceipt({
-                            hash,
-                            confirmations: 4,
-                            timeout: 100_000,
-                        });
-                        const txCost = ethers.BigNumber.from(getTxFee(receipt, config));
-                        if (receipt.status === "success") {
-                            accounts[i].BALANCE = topupAmountBn;
-                            mainAccount.BALANCE =
-                                mainAccount.BALANCE.sub(transferAmount).sub(txCost);
-                            span?.addEvent("Successfully topped up");
-                        } else {
-                            span?.addEvent("Failed to topup wallet: tx reverted");
-                            mainAccount.BALANCE = mainAccount.BALANCE.sub(txCost);
-                        }
-                    } catch (error) {
-                        span?.addEvent("Failed to topup wallet: " + errorSnapshot("", error));
-                    }
-                    span?.end();
-                }
-            }
-        }
-    }
-    return { mainAccount, accounts };
-}
 
 /**
  * Manages accounts by removing the ones that are out of gas from circulation
