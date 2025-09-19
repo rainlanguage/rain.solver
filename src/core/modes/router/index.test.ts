@@ -42,6 +42,7 @@ describe("Test findBestRouteProcessorTrade", () => {
     let ethPrice: string;
     let toToken: any;
     let fromToken: any;
+    let blockNumber: bigint;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -62,6 +63,7 @@ describe("Test findBestRouteProcessorTrade", () => {
         ethPrice = "2000";
         toToken = { address: "0xTo", decimals: 18, symbol: "TO" };
         fromToken = { address: "0xFrom", decimals: 18, symbol: "FROM" };
+        blockNumber = 123n;
     });
 
     it("should return success result if full trade size simulation succeeds", async () => {
@@ -80,6 +82,7 @@ describe("Test findBestRouteProcessorTrade", () => {
             ethPrice,
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isOk());
@@ -114,6 +117,7 @@ describe("Test findBestRouteProcessorTrade", () => {
             ethPrice,
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isErr());
@@ -151,6 +155,7 @@ describe("Test findBestRouteProcessorTrade", () => {
             ethPrice,
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isOk());
@@ -188,6 +193,7 @@ describe("Test findBestRouteProcessorTrade", () => {
             ethPrice,
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isErr());
@@ -224,6 +230,7 @@ describe("Test findBestRouteProcessorTrade", () => {
             ethPrice,
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isErr());
@@ -266,6 +273,7 @@ describe("Test findBestRouteProcessorTrade", () => {
             ethPrice,
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isOk());
@@ -300,6 +308,7 @@ describe("Test findBestRouteProcessorTrade", () => {
             "",
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isErr());

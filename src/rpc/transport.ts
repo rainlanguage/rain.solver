@@ -6,11 +6,12 @@ import { BaseError, createTransport, Transport, TransportConfig } from "viem";
  * RainSolver transport default configurations
  */
 export namespace RainSolverTransportDefaults {
+    export const DEDUPE = true as const;
     export const RETRY_COUNT = 1 as const;
     export const TIMEOUT = 10_000 as const;
-    export const RETRY_DELAY = 150 as const;
+    export const RETRY_DELAY = 100 as const;
     export const RETRY_COUNT_NEXT = 1 as const;
-    export const POLLING_INTERVAL = 25 as const;
+    export const POLLING_INTERVAL = 50 as const;
     export const POLLING_TIMEOUT = 10_000 as const;
     export const KEY = "RainSolverTransport" as const;
     export const NAME = "Rain Solver Transport" as const;
@@ -34,6 +35,8 @@ export type RainSolverTransportConfig = {
     pollingInterval?: number;
     /** The max number of times to retry with next rpc, default: 1 */
     retryCountNext?: number;
+    /** Whether to deduplicate in-flight requests, default: true */
+    dedupe?: boolean;
 };
 
 /**
@@ -74,6 +77,7 @@ export function rainSolverTransport(
     const {
         key = RainSolverTransportDefaults.KEY,
         name = RainSolverTransportDefaults.NAME,
+        dedupe = RainSolverTransportDefaults.DEDUPE,
         timeout = RainSolverTransportDefaults.TIMEOUT,
         retryCount = RainSolverTransportDefaults.RETRY_COUNT,
         retryDelay = RainSolverTransportDefaults.RETRY_DELAY,
@@ -81,41 +85,43 @@ export function rainSolverTransport(
         pollingInterval = RainSolverTransportDefaults.POLLING_INTERVAL,
         retryCountNext = RainSolverTransportDefaults.RETRY_COUNT_NEXT,
     } = config;
-    return (({
-        chain,
-        timeout: timeout_,
-        retryCount: retryCount_,
-        pollingInterval: pollingInterval_,
-    }) => {
+    return (({ chain }) => {
         return createTransport({
             key,
             name,
+            timeout,
             retryDelay,
-            retryCount: 0,
+            retryCount,
             type: "RainSolverTransport",
-            timeout: timeout_ ?? timeout,
-            async request(args) {
+            async request(args, options) {
                 const req = async (tryNextCount: number): Promise<any> => {
                     try {
                         const transport = await state.nextRpc({
                             timeout: pollingTimeout,
-                            pollingInterval: pollingInterval_ ?? pollingInterval,
+                            pollingInterval,
                         });
                         // cancel inner transport retry when success rate is below 20% threshold
-                        const shouldRetry =
-                            state.metrics[state.lastUsedUrl].progress.successRate > 2000;
-                        const resolvedRetryCount = shouldRetry ? (retryCount_ ?? retryCount) : 0;
+                        const resolvedRetryCount =
+                            tryNextCount &&
+                            state.metrics[state.lastUsedUrl].progress.successRate > 2000
+                                ? retryCount
+                                : 0;
                         return await transport({
                             chain,
                             retryCount: resolvedRetryCount,
-                        }).request(args);
+                        }).request(args, {
+                            ...options,
+                            dedupe,
+                            retryDelay,
+                            retryCount: resolvedRetryCount,
+                        });
                     } catch (error: any) {
                         if (shouldThrow(error)) throw error;
                         if (tryNextCount) return req(tryNextCount - 1);
                         throw error;
                     }
                 };
-                return req(Math.max(retryCountNext, 1));
+                return req(retryCountNext);
             },
         });
     }) as RainSolverTransport;

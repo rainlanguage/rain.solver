@@ -2,11 +2,11 @@ import { RainSolver } from "../..";
 import { Result } from "../../../common";
 import { trySimulateTrade } from "./simulate";
 import { SimulationResult } from "../../types";
-import { BundledOrders, CounterpartySource } from "../../../order";
 import { fallbackEthPrice } from "../../../router";
 import { RainSolverSigner } from "../../../signer";
 import { findBestInterOrderbookTrade } from "./index";
 import { extendObjectWithHeader } from "../../../logger";
+import { BundledOrders, CounterpartySource } from "../../../order";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
 vi.mock("./simulate", () => ({
@@ -27,6 +27,7 @@ describe("Test findBestInterOrderbookTrade", () => {
     let signer: RainSolverSigner;
     let inputToEthPrice: string;
     let outputToEthPrice: string;
+    let blockNumber: bigint;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -52,6 +53,7 @@ describe("Test findBestInterOrderbookTrade", () => {
         signer = { account: { address: "0xsigner" } } as any;
         inputToEthPrice = "0.5";
         outputToEthPrice = "2.0";
+        blockNumber = 123n;
     });
 
     it("should return success result with highest profit when simulations succeed", async () => {
@@ -97,6 +99,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         assert(result.isOk());
@@ -145,6 +148,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         assert(result.isOk());
@@ -184,6 +188,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         assert(result.isErr());
@@ -213,6 +218,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         assert(result.isErr());
@@ -251,6 +257,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         // Should only call trySimulateTrade 3 times (top 3 orders)
@@ -276,6 +283,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         expect(trySimulateTrade).toHaveBeenCalledWith({
@@ -332,6 +340,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         assert(result.isOk());
@@ -360,7 +369,14 @@ describe("Test findBestInterOrderbookTrade", () => {
             }),
         );
 
-        await findBestInterOrderbookTrade.call(mockRainSolver, orderDetails, signer, "", "");
+        await findBestInterOrderbookTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            "",
+            "",
+            blockNumber,
+        );
 
         expect(trySimulateTrade).toHaveBeenCalledWith({
             orderDetails,

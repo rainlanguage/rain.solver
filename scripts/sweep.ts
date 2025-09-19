@@ -90,8 +90,6 @@ export async function sweepFunds(
         sleep: 0,
         gasCoveragePercentage: "",
         timeout: 15,
-        hops: 0,
-        retries: 0,
         botMinBalance: "0",
         poolUpdateInterval: 0,
         route: "single",
