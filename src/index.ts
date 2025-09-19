@@ -1,4 +1,3 @@
-import axios from "axios";
 import { versions } from "process";
 import { AppOptions } from "./config";
 import { SharedState } from "./state";
@@ -6,61 +5,8 @@ import { initAccounts } from "./account";
 import { getDataFetcher } from "./client";
 import { processOrders } from "./processOrders";
 import { publicClientConfig } from "sushi/config";
-import { checkSgStatus, handleSgResults } from "./sg";
-import { Context, Span, Tracer } from "@opentelemetry/api";
-import { querySgOrders, SgOrder, statusCheckQuery } from "./query";
-import { SgFilter, RoundReport, BundledOrders, BotConfig } from "./types";
-
-/**
- * Get the order details from a source, i.e array of subgraphs and/or a local json file
- * @param sgs - The subgraph endpoint URL(s) to query for orders' details
- * @param json - Path to a json file containing orders structs
- * @param signer - The ethers signer
- * @param sgFilters - The filters for subgraph query
- * @param span
- */
-export async function getOrderDetails(
-    sgs: string[],
-    sgFilters?: SgFilter,
-    span?: Span,
-    timeout?: number,
-): Promise<SgOrder[]> {
-    const hasjson = false;
-    const ordersDetails: SgOrder[] = [];
-    const isInvalidSg = !Array.isArray(sgs) || sgs.length === 0;
-
-    if (isInvalidSg) throw "type of provided sources for reading orders are invalid";
-    else {
-        let availableSgs: string[] = [];
-        const promises: Promise<any>[] = [];
-        if (!isInvalidSg) {
-            const validSgs: string[] = [];
-            const statusCheckPromises: Promise<any>[] = [];
-            sgs.forEach((v) => {
-                if (v && typeof v === "string") {
-                    statusCheckPromises.push(
-                        axios.post(
-                            v,
-                            { query: statusCheckQuery },
-                            { headers: { "Content-Type": "application/json" }, timeout },
-                        ),
-                    );
-                    validSgs.push(v);
-                }
-            });
-            const statusResult = await Promise.allSettled(statusCheckPromises);
-            ({ availableSgs } = checkSgStatus(validSgs, statusResult, span, hasjson));
-
-            availableSgs.forEach((v) => {
-                if (v && typeof v === "string") promises.push(querySgOrders(v, sgFilters));
-            });
-        }
-
-        const responses = await Promise.allSettled(promises);
-        ordersDetails.push(...handleSgResults(availableSgs, responses, span, hasjson));
-    }
-    return ordersDetails;
-}
+import { Context, Tracer } from "@opentelemetry/api";
+import { RoundReport, BundledOrders, BotConfig } from "./types";
 
 /**
  * @deprecated
@@ -109,7 +55,7 @@ export async function getConfig(
  * Method to find and take arbitrage trades for Rain Orderbook orders against some liquidity providers
  * @param config - The configuration object
  * @param ordersDetails - The order details queried from subgraph
- * @param options - The options for clear, such as 'gasCoveragePercentage''
+ * @param options - The options for clear, such as 'gasCoveragePercentage'
  * @param tracer
  * @param ctx
  * @returns The report of details of cleared orders

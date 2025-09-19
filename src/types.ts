@@ -231,24 +231,6 @@ export type OwnedOrder = {
     vaultBalance: BigNumber;
 };
 
-/**
- * Filter criteria for subgraph queries
- */
-export type SgFilter = {
-    /** Order hashes to include */
-    includeOrders?: Set<string>;
-    /** Owner addresses to include */
-    includeOwners?: Set<string>;
-    /** Order hashes to exclude (takes precedence over includeOrders) */
-    excludeOrders?: Set<string>;
-    /** Owner addresses to exclude (takes precedence over includeOwners) */
-    excludeOwners?: Set<string>;
-    /** Orderbook addresses to include */
-    includeOrderbooks?: Set<string>;
-    /** Orderbook addresses to exclude (takes precedence over includeOrderbooks) */
-    excludeOrderbooks?: Set<string>;
-};
-
 export type RpcRequest = {
     jsonrpc: `${number}`;
     method: string;

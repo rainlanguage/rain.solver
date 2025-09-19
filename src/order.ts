@@ -1,7 +1,6 @@
 import { ethers } from "ethers";
-import { SgOrder } from "./query";
+import { SgOrder } from "./subgraph";
 import { TokenDetails } from "./state";
-import { Span } from "@opentelemetry/api";
 import { OrderbookQuoteAbi, OrderV3, VaultBalanceAbi } from "./abis";
 import { shuffleArray, sleep, addWatchedToken, getQuoteConfig } from "./utils";
 import {
@@ -146,9 +145,7 @@ export async function handleAddOrderbookOwnersProfileMap(
     viemClient: ViemClient,
     tokens: TokenDetails[],
     ownerLimits?: Record<string, number>,
-    span?: Span,
 ) {
-    const changes: Record<string, string[]> = {};
     for (let i = 0; i < ordersDetails.length; i++) {
         const orderDetails = ordersDetails[i];
         const orderHash = orderDetails.orderHash.toLowerCase();
@@ -156,12 +153,6 @@ export async function handleAddOrderbookOwnersProfileMap(
         const orderStruct = toOrder(
             decodeAbiParameters(OrderV3Abi, orderDetails.orderBytes as `0x${string}`)[0],
         );
-        if (span) {
-            if (!changes[orderbook]) changes[orderbook] = [];
-            if (!changes[orderbook].includes(orderDetails.orderHash.toLowerCase())) {
-                changes[orderbook].push(orderDetails.orderHash.toLowerCase());
-            }
-        }
         const orderbookOwnerProfileItem = orderbooksOwnersProfileMap.get(orderbook);
         if (orderbookOwnerProfileItem) {
             const ownerProfile = orderbookOwnerProfileItem.get(orderStruct.owner.toLowerCase());
@@ -223,11 +214,6 @@ export async function handleAddOrderbookOwnersProfileMap(
             orderbooksOwnersProfileMap.set(orderbook, ownerProfileMap);
         }
     }
-    if (span) {
-        for (const orderbook in changes) {
-            span.setAttribute(`orderbooksChanges.${orderbook}.addedOrders`, changes[orderbook]);
-        }
-    }
 }
 
 /**
@@ -236,32 +222,19 @@ export async function handleAddOrderbookOwnersProfileMap(
 export async function handleRemoveOrderbookOwnersProfileMap(
     orderbooksOwnersProfileMap: OrderbooksOwnersProfileMap,
     ordersDetails: SgOrder[],
-    span?: Span,
 ) {
-    const changes: Record<string, string[]> = {};
     for (let i = 0; i < ordersDetails.length; i++) {
         const orderDetails = ordersDetails[i];
         const orderbook = orderDetails.orderbook.id.toLowerCase();
         const orderStruct = toOrder(
             decodeAbiParameters(OrderV3Abi, orderDetails.orderBytes as `0x${string}`)[0],
         );
-        if (span) {
-            if (!changes[orderbook]) changes[orderbook] = [];
-            if (!changes[orderbook].includes(orderDetails.orderHash.toLowerCase())) {
-                changes[orderbook].push(orderDetails.orderHash.toLowerCase());
-            }
-        }
         const orderbookOwnerProfileItem = orderbooksOwnersProfileMap.get(orderbook);
         if (orderbookOwnerProfileItem) {
             const ownerProfile = orderbookOwnerProfileItem.get(orderStruct.owner.toLowerCase());
             if (ownerProfile) {
                 ownerProfile.orders.delete(orderDetails.orderHash.toLowerCase());
             }
-        }
-    }
-    if (span) {
-        for (const orderbook in changes) {
-            span.setAttribute(`orderbooksChanges.${orderbook}.removedOrders`, changes[orderbook]);
         }
     }
 }

@@ -1,6 +1,5 @@
 /* eslint-disable no-console */
 import { SharedState } from "./state";
-import { getSgOrderbooks } from "./sg";
 import { sendTransaction } from "./tx";
 import { RainDataFetcher } from "sushi/router";
 import { ViemClient, BotConfig } from "./types";
@@ -16,6 +15,7 @@ import {
     PrivateKeyAccount,
     createWalletClient,
 } from "viem";
+import { SubgraphManager } from "./subgraph";
 
 /**
  * Creates a viem client
@@ -141,23 +141,18 @@ export async function getDataFetcher(state: SharedState): Promise<RainDataFetche
 /**
  * Get meta info for a bot to post on otel
  */
-export async function getMetaInfo(config: BotConfig, sg: string[]): Promise<Record<string, any>> {
-    const obs: string[] = [];
-    for (const s of sg) {
-        try {
-            obs.push(...(await getSgOrderbooks(s)));
-        } catch {
-            /**/
-        }
-    }
+export async function getMetaInfo(
+    config: BotConfig,
+    sgManager: SubgraphManager,
+): Promise<Record<string, any>> {
     try {
         return {
             "meta.chain": ChainKey[config.chain.id as ChainId],
             "meta.chainId": config.chain.id,
-            "meta.sg": sg,
+            "meta.sg": sgManager,
             "meta.rpArb": config.arbAddress,
             "meta.genericArb": config.genericArbAddress,
-            "meta.orderbooks": obs,
+            "meta.orderbooks": await sgManager.getOrderbooks(),
         };
     } catch (e) {
         return {};

@@ -7,6 +7,7 @@ import { getGasPrice } from "./gasPrice";
 import { LiquidityProviders } from "sushi";
 import { processLiquidityProviders } from "./lps";
 import { rainSolverTransport } from "../transport";
+import { SubgraphConfig } from "../subgraph/config";
 import { ChainConfig, getChainConfig } from "./chain";
 import { createPublicClient, PublicClient } from "viem";
 
@@ -51,6 +52,8 @@ export type SharedStateConfig = {
     writeRpcState?: RpcState;
     /** Optional multiplier for gas price */
     gasPriceMultiplier?: number;
+    /** Subgraph configurations */
+    subgraphConfig: SubgraphConfig;
 };
 export namespace SharedStateConfig {
     export async function tryFromAppOptions(options: AppOptions): Promise<SharedStateConfig> {
@@ -96,6 +99,7 @@ export namespace SharedStateConfig {
             chainConfig,
             walletKey: (options.key ?? options.mnemonic)!,
             gasPriceMultiplier: options.gasPriceMultiplier,
+            subgraphConfig: SubgraphConfig.tryFromAppOptions(options),
             liquidityProviders: processLiquidityProviders(options.liquidityProviders),
             dispair: {
                 interpreter,
@@ -143,6 +147,8 @@ export class SharedState {
     readonly client: PublicClient;
     /** Option to multiply the gas price fetched from the rpc as percentage, default is 100, ie no change */
     readonly gasPriceMultiplier: number = 100;
+    /** Subgraph configurations */
+    readonly subgraphConfig: SubgraphConfig;
 
     /** Current gas price of the operating chain */
     gasPrice = 0n;
@@ -160,6 +166,7 @@ export class SharedState {
         this.dispair = config.dispair;
         this.walletKey = config.walletKey;
         this.chainConfig = config.chainConfig;
+        this.subgraphConfig = config.subgraphConfig;
         this.liquidityProviders = config.liquidityProviders;
         this.rpc = config.rpcState;
         this.writeRpc = config.writeRpcState;

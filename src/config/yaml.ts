@@ -3,8 +3,9 @@ import { parse } from "yaml";
 import { ethers } from "ethers";
 import { readFileSync } from "fs";
 import { RpcConfig } from "../rpc";
+import { SelfFundOrder } from "../types";
 import { isBigNumberish } from "../utils";
-import { SelfFundOrder, SgFilter } from "../types";
+import { SgFilter } from "../subgraph/filter";
 
 /** Integer pattern */
 export const INT_PATTERN = /^[0-9]+$/;

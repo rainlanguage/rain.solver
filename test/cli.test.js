@@ -80,7 +80,7 @@ rpc:
     - url: https://polygon.drpc.org
 writeRpc:
     - url: http://write-rpc.example.com
-subgraph: ["http://subgraph.example.com"]
+subgraph: ["${mockServer.url}/sg"]
 arbAddress: "0x${"1".repeat(40)}"
 dispair: "${deployer}"
 liquidityProviders: 
@@ -120,6 +120,15 @@ sgFilter:
 
         const path = "./test/second.test.yaml";
         writeFileSync(path, yaml, "utf8");
+
+        await mockServer
+            .forPost("/sg")
+            .withBodyIncluding("_meta")
+            .thenReply(200, JSON.stringify({ data: { _meta: { hasIndexingErrors: false } } }));
+        await mockServer
+            .forPost("/sg")
+            .withBodyIncluding("orders")
+            .thenReply(200, JSON.stringify({ data: { orders: [] } }));
 
         const result = await startup(["", "", "--config", path]);
         const expected = {

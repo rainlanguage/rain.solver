@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
+import { AxiosError } from "axios";
 import { BigNumber } from "ethers";
 import { isDeepStrictEqual } from "util";
 import { RawTx, ViemClient } from "./types";
@@ -123,6 +124,13 @@ export function errorSnapshot(
             if (data?.frontrun) {
                 message.push("Actual Cause: " + data.frontrun);
             }
+        }
+    } else if (err instanceof AxiosError) {
+        if (err.message) {
+            message.push("Reason: " + err.message);
+        }
+        if (err.code) {
+            message.push("Code: " + err.code);
         }
     } else if (err instanceof Error) {
         if ("reason" in err) message.push("Reason: " + err.reason);
