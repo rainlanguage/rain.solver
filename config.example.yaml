@@ -42,6 +42,9 @@ arbAddress: "0x1234...5678"
 # Generic arb contract address, optional
 genericArbAddress: "0x1234...5678"
 
+# Balancer arb contract address, optional
+balancerArbAddress: "0x1234...5678"
+
 # Dispair contract address, required
 dispair: "0x1234...5678"
 

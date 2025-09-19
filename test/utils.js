@@ -8,6 +8,7 @@ const RainterpreterParserNPE2Artifact = require("./abis/RainterpreterParserNPE2.
 const RainterpreterExpressionDeployerNPE2Artifact = require("./abis/RainterpreterExpressionDeployerNPE2.json");
 const GenericPoolOrderBookV4ArbOrderTakerArtifact = require("./abis/GenericPoolOrderBookV4ArbOrderTaker.json");
 const RouteProcessorOrderBookV4ArbOrderTakerArtifact = require("./abis/RouteProcessorOrderBookV4ArbOrderTaker.json");
+const BalancerRouterOrderBookV4ArbOrderTakerArtifact = require("./abis/BalancerRouterOrderBookV4ArbOrderTaker.json");
 
 /**
  * Deploys a simple contracts that takes no arguments for deployment
@@ -25,6 +26,17 @@ exports.basicDeploy = async (artifact, ...args) => {
 
 exports.arbDeploy = async (orderbookAddress, rpAddress) => {
     return await this.basicDeploy(RouteProcessorOrderBookV4ArbOrderTakerArtifact, {
+        orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
+        task: {
+            evaluable: ABI.Orderbook.DefaultArbEvaluable,
+            signedContext: [],
+        },
+        implementationData: ethers.utils.defaultAbiCoder.encode(["address"], [rpAddress]),
+    });
+};
+
+exports.balancerArbDeploy = async (orderbookAddress, rpAddress) => {
+    return await this.basicDeploy(BalancerRouterOrderBookV4ArbOrderTakerArtifact, {
         orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
         task: {
             evaluable: ABI.Orderbook.DefaultArbEvaluable,

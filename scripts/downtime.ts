@@ -8,7 +8,7 @@ import { DEFAULT_PAGE_SIZE, getTxsQuery } from "../src/subgraph/query";
 
 config();
 
-const DURATION = process.env.DURATION ? parseInt(process.env.DURATION) : 30; // 7 days default
+const DURATION = process.env.DURATION ? parseInt(process.env.DURATION) : 7; // 7 days default
 const THRESHOLD = (process.env.THRESHOLD ? parseInt(process.env.THRESHOLD) : 60) * 60 * 1000; // 60 minutes default
 
 const subgraphs = JSON.parse(process.env.SUBGRAPHS ?? "{}") as Record<string, string>;

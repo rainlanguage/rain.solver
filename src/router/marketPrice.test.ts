@@ -60,10 +60,7 @@ describe("Test getMarketPrice", () => {
     describe("happy", () => {
         it("should return 1 if from/to tokens are the same", async () => {
             const result = await getMarketPrice.call(mockSharedState, mockFromToken, mockFromToken);
-            expect(result).toEqual({
-                price: "1",
-                amountOut: "1",
-            });
+            expect(result).toEqual({ price: "1" });
         });
 
         it("should call dataFetcher methods with correct parameters", async () => {
@@ -115,10 +112,7 @@ describe("Test getMarketPrice", () => {
             const result = await getMarketPrice.call(mockSharedState, mockFromToken, mockToToken);
 
             expect(result).toHaveProperty("price");
-            expect(result).toHaveProperty("amountOut");
             expect(typeof result?.price).toBe("string");
-            expect(typeof result?.amountOut).toBe("string");
-            expect(result?.amountOut).toBe("2000");
             expect(result?.price).toBe("2000");
         });
 

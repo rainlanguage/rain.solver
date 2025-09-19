@@ -27,6 +27,7 @@ export enum TradeType {
     RouteProcessor = "routeProcessor",
     IntraOrderbook = "intraOrderbook",
     InterOrderbook = "interOrderbook",
+    Balancer = "balancer",
 }
 
 /** Base type for process order results containing shared fields */

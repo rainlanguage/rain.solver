@@ -1,7 +1,14 @@
 import axios from "axios";
 import assert from "assert";
 import { Result } from "../common";
-import { decodeErrorResult, isHex, parseAbiItem } from "viem";
+import { balancerBatchRouterAbiExtended } from "@balancer/sdk";
+import {
+    isHex,
+    parseAbiItem,
+    decodeErrorResult,
+    toFunctionSelector,
+    toFunctionSignature,
+} from "viem";
 import {
     PANIC_ABI,
     PANIC_SELECTOR,
@@ -13,6 +20,13 @@ import {
 
 /** Selector abi/sig cache at runtime */
 export const SelectorCache = new Map<string, string[]>();
+
+// set balancer error signatures in the cache as they are not available in the registry
+balancerBatchRouterAbiExtended.forEach((abi: any) => {
+    if (abi.type !== "error") return;
+    const minimalSig = toFunctionSignature(abi).replace("error ", "");
+    SelectorCache.set(toFunctionSelector(minimalSig), [minimalSig]);
+});
 
 /**
  * Tries to decode the given error data by running through known matching signatures

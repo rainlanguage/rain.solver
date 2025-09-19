@@ -1,5 +1,7 @@
+import { RainSolver } from "..";
 import { Result } from "../../common";
 import { findBestTrade } from "./index";
+import { findBestBalancerTrade } from "./balancer";
 import { findBestRouteProcessorTrade } from "./rp";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
@@ -17,8 +19,12 @@ vi.mock("./inter", () => ({
     findBestInterOrderbookTrade: vi.fn(),
 }));
 
+vi.mock("./balancer", () => ({
+    findBestBalancerTrade: vi.fn(),
+}));
+
 describe("Test findBestTrade", () => {
-    let mockRainSolver: any;
+    let mockRainSolver: RainSolver;
     let args: any;
 
     beforeEach(() => {
@@ -27,8 +33,10 @@ describe("Test findBestTrade", () => {
         mockRainSolver = {
             appOptions: {
                 rpOnly: false,
+                balancerArbAddress: "0xBalancerArb",
             },
-        };
+            state: {},
+        } as any;
 
         args = {
             orderDetails: {
@@ -166,6 +174,73 @@ describe("Test findBestTrade", () => {
         );
         expect(findBestIntraOrderbookTrade).not.toHaveBeenCalled();
         expect(findBestInterOrderbookTrade).not.toHaveBeenCalled();
+    });
+
+    it("should only call balancer router when balancerRouter is available", async () => {
+        const mocksolver = structuredClone(mockRainSolver);
+        (mocksolver.state as any).balancerRouter = {};
+
+        const rpResult = Result.ok({
+            type: "routeProcessor",
+            spanAttributes: { foundOpp: true },
+            estimatedProfit: 100n,
+            oppBlockNumber: 123,
+        });
+        const intraResult = Result.ok({
+            type: "intraOrderbook",
+            spanAttributes: { foundOpp: true },
+            estimatedProfit: 150n,
+            oppBlockNumber: 123,
+        });
+        const interResult = Result.ok({
+            type: "interOrderbook",
+            spanAttributes: { foundOpp: true },
+            estimatedProfit: 120n,
+            oppBlockNumber: 123,
+        });
+        const balancerResult = Result.ok({
+            type: "balancer",
+            spanAttributes: { foundOpp: true },
+            estimatedProfit: 120n,
+            oppBlockNumber: 123,
+        });
+
+        (findBestRouteProcessorTrade as Mock).mockResolvedValue(rpResult);
+        (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
+        (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
+        (findBestBalancerTrade as Mock).mockResolvedValue(balancerResult);
+
+        const result = await findBestTrade.call(mocksolver, args);
+
+        assert(result.isOk());
+        expect(result.value.estimatedProfit).toBe(150n); // highest profit
+        expect(result.value.type).toBe("intraOrderbook");
+        expect(findBestRouteProcessorTrade).toHaveBeenCalledWith(
+            args.orderDetails,
+            args.signer,
+            args.inputToEthPrice,
+            args.toToken,
+            args.fromToken,
+        );
+        expect(findBestIntraOrderbookTrade).toHaveBeenCalledWith(
+            args.orderDetails,
+            args.signer,
+            args.inputToEthPrice,
+            args.outputToEthPrice,
+        );
+        expect(findBestInterOrderbookTrade).toHaveBeenCalledWith(
+            args.orderDetails,
+            args.signer,
+            args.inputToEthPrice,
+            args.outputToEthPrice,
+        );
+        expect(findBestBalancerTrade).toHaveBeenCalledWith(
+            args.orderDetails,
+            args.signer,
+            args.inputToEthPrice,
+            args.toToken,
+            args.fromToken,
+        );
     });
 
     it("should call all modes when rpOnly is false", async () => {

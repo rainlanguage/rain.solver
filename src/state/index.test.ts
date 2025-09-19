@@ -74,6 +74,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
         expect(config.initL1GasPrice).toBe(0n);
         expect(config.transactionGas).toBe("120%");
         expect(config.rainSolverTransportConfig).toMatchObject({ timeout: 1000 });
+        expect(config.balancerRouter).toBeDefined();
     });
 
     it("should throw if iInterpreter contract call fails", async () => {
