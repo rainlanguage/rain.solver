@@ -12,7 +12,7 @@ import {
     PrivateKeyAccount,
     privateKeyToAccount,
 } from "viem/accounts";
-import { transferTokenFrom, transferRemainingGasFrom } from "./sweep";
+import { transferTokenFrom, transferRemainingGasFrom, convertToGas } from "./sweep";
 
 export * from "./config";
 
@@ -353,6 +353,102 @@ export class WalletManager {
                 code: SpanStatusCode.ERROR,
                 message: "Failed to sweep some tokens, it will try again later",
             });
+        }
+
+        report.end();
+        return report;
+    }
+
+    /**
+     * Converts the main wallet's balance of the given token to gas if the received
+     * amount is greater than the swap transaction cost * swapCostMultiplier
+     * @param token - The token to swap to gas
+     * @param swapCostMultiplier - The multiplier for the swap cost
+     * @returns An object containing transaction hash, amount, route, received amount,
+     * received amount min, status, and expected gas cost
+     */
+    async convertToGas(token: TokenDetails, swapCostMultiplier?: bigint) {
+        return convertToGas(this.mainSigner, token, this.state, swapCostMultiplier);
+    }
+
+    /**
+     * Converts the main wallet's balance of all watched tokens to gas, this method is fully
+     * instrumented for opentelemetry and will return a report of the conversion process
+     * @param swapCostMultiplier - The multiplier for the swap cost
+     * @returns The report of the conversion process
+     */
+    async convertHoldingsToGas(swapCostMultiplier?: bigint): Promise<PreAssembledSpan> {
+        const report = new PreAssembledSpan("sweep-wallet");
+        report.setAttr("details.wallet", this.mainWallet.address);
+
+        for (const [, tokenDetails] of this.state.watchedTokens) {
+            report.setAttr(`details.swaps.${tokenDetails.symbol}.token`, tokenDetails.address);
+
+            try {
+                const {
+                    route = undefined,
+                    txHash = undefined,
+                    amount = undefined,
+                    status = undefined,
+                    receivedAmount = undefined,
+                    expectedGasCost = undefined,
+                    receivedAmountMin = undefined,
+                } = await this.convertToGas(tokenDetails, swapCostMultiplier);
+
+                // handle the result as report attributes
+                if (txHash) {
+                    report.setAttr(
+                        `details.swaps.${tokenDetails.symbol}.tx`,
+                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + txHash,
+                    );
+                }
+                if (typeof status === "string") {
+                    report.setAttr(`details.swaps.${tokenDetails.symbol}.status`, status);
+                }
+                if (typeof amount === "bigint") {
+                    report.setAttr(
+                        `details.swaps.${tokenDetails.symbol}.amount`,
+                        formatUnits(amount, tokenDetails.decimals),
+                    );
+                }
+                if (typeof receivedAmount === "bigint") {
+                    report.setAttr(
+                        `details.swaps.${tokenDetails.symbol}.receivedAmount`,
+                        formatUnits(receivedAmount, tokenDetails.decimals),
+                    );
+                }
+                if (typeof receivedAmountMin === "bigint") {
+                    report.setAttr(
+                        `details.swaps.${tokenDetails.symbol}.receivedAmountMin`,
+                        formatUnits(receivedAmountMin, tokenDetails.decimals),
+                    );
+                }
+                if (typeof expectedGasCost === "bigint") {
+                    report.setAttr(
+                        `details.swaps.${tokenDetails.symbol}.expectedGasCost`,
+                        formatUnits(expectedGasCost, tokenDetails.decimals),
+                    );
+                }
+                if (typeof route === "string") {
+                    report.setAttr(`details.swaps.${tokenDetails.symbol}.route`, route);
+                }
+            } catch (error: any) {
+                if ("txHash" in error) {
+                    report.setAttr(
+                        `details.swaps.${tokenDetails.symbol}.tx`,
+                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + error.txHash,
+                    );
+                    report.setAttr(
+                        `details.swaps.${tokenDetails.symbol}.status`,
+                        errorSnapshot("", error.error),
+                    );
+                } else {
+                    report.setAttr(
+                        `details.swaps.${tokenDetails.symbol}.status`,
+                        errorSnapshot("Failed to convert token to gas", error),
+                    );
+                }
+            }
         }
 
         report.end();

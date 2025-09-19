@@ -49,6 +49,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
         };
         mockClient = {
             getChainId: vi.fn().mockResolvedValue(1),
+            getBlockNumber: vi.fn().mockResolvedValue(123),
             readContract: vi
                 .fn()
                 .mockImplementationOnce(() => Promise.resolve("0xinterpreter"))

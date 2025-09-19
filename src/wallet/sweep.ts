@@ -1,6 +1,9 @@
-import { TokenDetails } from "../state";
+import { RPoolFilter } from "../utils";
+import { ChainId, Router } from "sushi";
 import { RainSolverSigner } from "../signer";
-import { encodeFunctionData, erc20Abi } from "viem";
+import { Native, Token } from "sushi/currency";
+import { SharedState, TokenDetails } from "../state";
+import { encodeFunctionData, erc20Abi, maxUint256 } from "viem";
 
 /**
  * Transfers the given token from the given wallet to the main wallet
@@ -107,5 +110,145 @@ export async function transferRemainingGasFrom(from: RainSolverSigner, to: `0x${
         }
     } else {
         return { amount: 0n };
+    }
+}
+
+/**
+ * Converts the wallet's balance of the given token to gas, if the received
+ * amount is greater than the swap transaction cost * swapCostMultiplier
+ * @param from - The wallet to convert the token from
+ * @param token - The token to convert
+ * @param swapCostMultiplier - The multiplier for the swap cost
+ * @returns An object containing transaction hash, amount, route, received amount,
+ * received amount min, status, and expected gas cost
+ */
+export async function convertToGas(
+    from: RainSolverSigner,
+    token: TokenDetails,
+    state: SharedState,
+    swapCostMultiplier = 25n, // defaults to 25 times greater than swap transaction gas cost
+) {
+    const rp4Address = state.chainConfig.routeProcessors["4"] as `0x${string}`;
+    const buyToken = Native.onChain(state.chainConfig.id);
+    const sellToken = new Token({
+        chainId: state.chainConfig.id,
+        decimals: token.decimals,
+        address: token.address,
+        symbol: token.symbol,
+    });
+
+    // exit early if the wallet has no balance of the given token
+    const balance = await from.readContract({
+        address: sellToken.address,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [from.account.address],
+    });
+    if (balance <= 0n) {
+        return {
+            amount: 0n,
+            status: "Zero balance",
+        };
+    }
+
+    // check allowance and increase it if neeeded
+    const allowance = await from.readContract({
+        address: sellToken.address,
+        abi: erc20Abi,
+        functionName: "allowance",
+        args: [from.account.address, rp4Address],
+    });
+    if (balance > allowance) {
+        const hash = await from.writeContract({
+            address: sellToken.address,
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [rp4Address, maxUint256],
+        });
+        await from.waitForTransactionReceipt({
+            hash,
+            confirmations: 4,
+            timeout: 100_000,
+        });
+    }
+
+    // find best route and build swap contract call params
+    const { pcMap, route } = await state.dataFetcher.findBestRoute(
+        state.chainConfig.id as ChainId,
+        sellToken,
+        buyToken,
+        balance,
+        state.gasPrice,
+        true,
+        undefined,
+        state.liquidityProviders,
+        RPoolFilter,
+    );
+    const rpParams = Router.routeProcessor4Params(
+        pcMap,
+        route,
+        sellToken,
+        buyToken,
+        from.account.address,
+        rp4Address,
+    );
+    // visualize the route, in other words parse it as a string
+    const visualizedRoute = route.legs
+        .map((v) => {
+            return (
+                (v.tokenTo?.symbol ?? "") +
+                "/" +
+                (v.tokenFrom?.symbol ?? "") +
+                "(" +
+                ((v as any)?.poolName ?? "") +
+                " " +
+                (v.poolAddress ?? "") +
+                ")"
+            );
+        })
+        .join(" --> ");
+
+    // make sure cost of the transaction does not outweigh the received gas amount
+    const cost = await from.estimateGasCost({
+        to: rp4Address,
+        data: rpParams.data as `0x${string}`,
+    });
+    if (rpParams.amountOutMin >= cost.totalGasCost * swapCostMultiplier) {
+        const hash = await from.sendTx({
+            to: rp4Address,
+            data: rpParams.data as `0x${string}`,
+        });
+        const receipt = await from.waitForTransactionReceipt({
+            hash,
+            confirmations: 4,
+            timeout: 100_000,
+        });
+        if (receipt.status === "success") {
+            return {
+                txHash: hash,
+                amount: balance,
+                route: visualizedRoute,
+                receivedAmount: route.amountOutBI,
+                receivedAmountMin: rpParams.amountOutMin,
+                status: "Successfully swapped",
+                expectedGasCost: cost.totalGasCost,
+            };
+        } else {
+            throw {
+                txHash: hash,
+                error: new Error(
+                    "Failed to swap token to gas, reason: transaction reverted onchain",
+                ),
+            };
+        }
+    } else {
+        return {
+            amount: balance,
+            route: visualizedRoute,
+            expectedGasCost: cost.totalGasCost,
+            receivedAmount: route.amountOutBI,
+            receivedAmountMin: rpParams.amountOutMin,
+            status: "Skipped because balance not large enough to justify swapping to gas",
+        };
     }
 }

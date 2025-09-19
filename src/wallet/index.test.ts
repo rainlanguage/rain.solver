@@ -525,4 +525,238 @@ describe("Test WalletManager", () => {
             spy.mockRestore();
         });
     });
+
+    describe("Test convertToGas", () => {
+        it("should call convertToGas function with this", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+            const spy = vi.spyOn(sweepFns, "convertToGas");
+            walletManager.convertToGas(mockToken, 10n).catch(() => {});
+
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(spy).toHaveBeenCalledWith(
+                walletManager.mainSigner,
+                mockToken,
+                singleWalletState,
+                10n,
+            );
+
+            spy.mockRestore();
+        });
+    });
+
+    describe("Test convertHoldingsToGas", () => {
+        beforeEach(() => {
+            vi.clearAllMocks();
+
+            // add watched tokens to state
+            (singleWalletState as any).watchedTokens = new Map([
+                [
+                    "TEST1",
+                    {
+                        address: "0xtoken1" as `0x${string}`,
+                        symbol: "TEST1",
+                        decimals: 18,
+                    },
+                ],
+                [
+                    "TEST2",
+                    {
+                        address: "0xtoken2" as `0x${string}`,
+                        symbol: "TEST2",
+                        decimals: 6,
+                    },
+                ],
+            ]);
+        });
+
+        it("should successfully convert all tokens to gas", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+
+            // mock successful conversions
+            const convertToGasSpy = vi
+                .spyOn(walletManager, "convertToGas")
+                .mockResolvedValueOnce({
+                    txHash: "0xhash1",
+                    amount: parseUnits("100", 18),
+                    route: "TEST1 -> WETH",
+                    receivedAmount: parseUnits("0.1", 18),
+                    receivedAmountMin: parseUnits("0.095", 18),
+                    status: "Successfully swapped",
+                    expectedGasCost: parseUnits("0.01", 18),
+                })
+                .mockResolvedValueOnce({
+                    txHash: "0xhash2",
+                    amount: parseUnits("50", 6),
+                    route: "TEST2 -> WETH",
+                    receivedAmount: parseUnits("0.05", 6),
+                    receivedAmountMin: parseUnits("0.0475", 6),
+                    status: "Successfully swapped",
+                    expectedGasCost: parseUnits("0.01", 6),
+                });
+
+            const report = await walletManager.convertHoldingsToGas(2n);
+
+            // verify report structure
+            expect(report.name).toBe("sweep-wallet");
+            expect(report.attributes["details.wallet"]).toBe(walletManager.mainWallet.address);
+
+            // verify TEST1 conversion details
+            expect(report.attributes["details.swaps.TEST1.token"]).toBe("0xtoken1");
+            expect(report.attributes["details.swaps.TEST1.tx"]).toBe(
+                "https://explorer.test/tx/0xhash1",
+            );
+            expect(report.attributes["details.swaps.TEST1.status"]).toBe("Successfully swapped");
+            expect(report.attributes["details.swaps.TEST1.amount"]).toBe("100");
+            expect(report.attributes["details.swaps.TEST1.receivedAmount"]).toBe("0.1");
+            expect(report.attributes["details.swaps.TEST1.receivedAmountMin"]).toBe("0.095");
+            expect(report.attributes["details.swaps.TEST1.expectedGasCost"]).toBe("0.01");
+            expect(report.attributes["details.swaps.TEST1.route"]).toBe("TEST1 -> WETH");
+
+            // verify TEST2 conversion details
+            expect(report.attributes["details.swaps.TEST2.token"]).toBe("0xtoken2");
+            expect(report.attributes["details.swaps.TEST2.tx"]).toBe(
+                "https://explorer.test/tx/0xhash2",
+            );
+            expect(report.attributes["details.swaps.TEST2.status"]).toBe("Successfully swapped");
+            expect(report.attributes["details.swaps.TEST2.amount"]).toBe("50");
+            expect(report.attributes["details.swaps.TEST2.receivedAmount"]).toBe("0.05");
+            expect(report.attributes["details.swaps.TEST2.receivedAmountMin"]).toBe("0.0475");
+            expect(report.attributes["details.swaps.TEST2.expectedGasCost"]).toBe("0.01");
+            expect(report.attributes["details.swaps.TEST2.route"]).toBe("TEST2 -> WETH");
+
+            // verify spy calls
+            expect(convertToGasSpy).toHaveBeenCalledTimes(2);
+            expect(convertToGasSpy).toHaveBeenNthCalledWith(
+                1,
+                (singleWalletState as any).watchedTokens.get("TEST1"),
+                2n,
+            );
+            expect(convertToGasSpy).toHaveBeenNthCalledWith(
+                2,
+                (singleWalletState as any).watchedTokens.get("TEST2"),
+                2n,
+            );
+
+            convertToGasSpy.mockRestore();
+        });
+
+        it("should handle conversion failures with transaction hash", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+
+            // mock failed conversion with tx hash
+            const convertToGasSpy = vi.spyOn(walletManager, "convertToGas").mockRejectedValue({
+                txHash: "0xfailed",
+                error: new Error("Swap failed due to slippage"),
+            });
+
+            const report = await walletManager.convertHoldingsToGas(2n);
+
+            // verify TEST1 failure details
+            expect(report.attributes["details.swaps.TEST1.tx"]).toBe(
+                "https://explorer.test/tx/0xfailed",
+            );
+            expect(report.attributes["details.swaps.TEST1.status"]).toContain(
+                "Swap failed due to slippage",
+            );
+
+            // verify TEST2 failure details
+            expect(report.attributes["details.swaps.TEST2.tx"]).toBe(
+                "https://explorer.test/tx/0xfailed",
+            );
+            expect(report.attributes["details.swaps.TEST2.status"]).toContain(
+                "Swap failed due to slippage",
+            );
+
+            convertToGasSpy.mockRestore();
+        });
+
+        it("should handle conversion failures without transaction hash", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+
+            // mock failed conversion without tx hash
+            const convertToGasSpy = vi
+                .spyOn(walletManager, "convertToGas")
+                .mockRejectedValue(new Error("No route found"));
+
+            const report = await walletManager.convertHoldingsToGas(2n);
+
+            // verify TEST1 failure details
+            expect(report.attributes["details.swaps.TEST1.status"]).toContain(
+                "Failed to convert token to gas",
+            );
+            expect(report.attributes["details.swaps.TEST1.status"]).toContain("No route found");
+
+            // verify TEST2 failure details
+            expect(report.attributes["details.swaps.TEST2.status"]).toContain(
+                "Failed to convert token to gas",
+            );
+            expect(report.attributes["details.swaps.TEST2.status"]).toContain("No route found");
+
+            convertToGasSpy.mockRestore();
+        });
+
+        it("should handle mixed success and failure cases", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+
+            // mock mixed success/failure
+            const convertToGasSpy = vi
+                .spyOn(walletManager, "convertToGas")
+                .mockResolvedValueOnce({
+                    txHash: "0xsuccess",
+                    amount: parseUnits("100", 18),
+                    route: "TEST1 -> WETH",
+                    receivedAmount: parseUnits("0.1", 18),
+                    receivedAmountMin: parseUnits("0.095", 18),
+                    status: "Successfully swapped",
+                    expectedGasCost: parseUnits("0.01", 18),
+                })
+                .mockRejectedValueOnce(new Error("No route found"));
+
+            const report = await walletManager.convertHoldingsToGas(2n);
+
+            // verify TEST1 success details
+            expect(report.attributes["details.swaps.TEST1.tx"]).toBe(
+                "https://explorer.test/tx/0xsuccess",
+            );
+            expect(report.attributes["details.swaps.TEST1.status"]).toBe("Successfully swapped");
+
+            // verify TEST2 failure details
+            expect(report.attributes["details.swaps.TEST2.status"]).toContain(
+                "Failed to convert token to gas",
+            );
+            expect(report.attributes["details.swaps.TEST2.status"]).toContain("No route found");
+
+            convertToGasSpy.mockRestore();
+        });
+
+        it("should handle empty watched tokens list", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+
+            // clear watched tokens
+            (singleWalletState as any).watchedTokens = new Map();
+
+            const convertToGasSpy = vi.spyOn(walletManager, "convertToGas");
+
+            const report = await walletManager.convertHoldingsToGas(2n);
+
+            // verify no conversions were attempted
+            expect(convertToGasSpy).not.toHaveBeenCalled();
+            expect(Object.keys(report.attributes)).not.toContain("details.swaps");
+
+            convertToGasSpy.mockRestore();
+        });
+
+        it("should pass swapCostMultiplier correctly", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+            const convertToGasSpy = vi.spyOn(walletManager, "convertToGas");
+
+            await walletManager.convertHoldingsToGas(5n);
+
+            // verify multiplier was passed correctly
+            expect(convertToGasSpy).toHaveBeenCalledTimes(2);
+            expect(convertToGasSpy).toHaveBeenCalledWith(expect.any(Object), 5n);
+
+            convertToGasSpy.mockRestore();
+        });
+    });
 });

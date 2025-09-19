@@ -4,13 +4,13 @@ import { DeployerAbi } from "../abis";
 import { AppOptions } from "../config";
 import { errorSnapshot } from "../error";
 import { getGasPrice } from "./gasPrice";
-import { LiquidityProviders } from "sushi";
 import { WalletConfig } from "../wallet/config";
 import { processLiquidityProviders } from "./lps";
 import { SubgraphConfig } from "../subgraph/config";
 import { OrderManagerConfig } from "../order/config";
 import { ChainConfig, getChainConfig } from "./chain";
 import { createPublicClient, PublicClient } from "viem";
+import { LiquidityProviders, RainDataFetcher } from "sushi";
 import { rainSolverTransport, RainSolverTransportConfig } from "../transport";
 
 /**
@@ -62,6 +62,8 @@ export type SharedStateConfig = {
     transactionGas?: string;
     /** RainSolver transport configuration */
     rainSolverTransportConfig?: RainSolverTransportConfig;
+    /** RainDataFetcher instance */
+    dataFetcher: RainDataFetcher;
 };
 export namespace SharedStateConfig {
     export async function tryFromAppOptions(options: AppOptions): Promise<SharedStateConfig> {
@@ -101,18 +103,25 @@ export namespace SharedStateConfig {
         const interpreter = await getDispairAddress("iInterpreter");
         const store = await getDispairAddress("iStore");
 
+        const liquidityProviders = processLiquidityProviders(options.liquidityProviders);
+        const dataFetcher = await RainDataFetcher.init(
+            chainConfig.id as ChainId,
+            client,
+            liquidityProviders,
+        );
         const config: SharedStateConfig = {
             client,
             rpcState,
             writeRpcState,
             chainConfig,
+            dataFetcher,
             rainSolverTransportConfig,
             transactionGas: options.txGas,
             gasPriceMultiplier: options.gasPriceMultiplier,
             walletConfig: WalletConfig.tryFromAppOptions(options),
             subgraphConfig: SubgraphConfig.tryFromAppOptions(options),
             orderManagerConfig: OrderManagerConfig.tryFromAppOptions(options),
-            liquidityProviders: processLiquidityProviders(options.liquidityProviders),
+            liquidityProviders,
             dispair: {
                 interpreter,
                 store,
@@ -176,6 +185,8 @@ export class SharedState {
     rpc: RpcState;
     /** Keeps the app's write RPC state */
     writeRpc?: RpcState;
+    /** RainDataFetcher instance */
+    dataFetcher: RainDataFetcher;
 
     private gasPriceWatcher: NodeJS.Timeout | undefined;
 
@@ -189,6 +200,7 @@ export class SharedState {
         this.orderManagerConfig = config.orderManagerConfig;
         this.rpc = config.rpcState;
         this.writeRpc = config.writeRpcState;
+        this.dataFetcher = config.dataFetcher;
         if (typeof config.gasPriceMultiplier === "number") {
             this.gasPriceMultiplier = config.gasPriceMultiplier;
         }

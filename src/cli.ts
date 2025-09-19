@@ -1,6 +1,6 @@
 import { config } from "dotenv";
 import { Command } from "commander";
-import { clear, getConfig } from ".";
+import { clear } from ".";
 import { AppOptions } from "./config";
 import { BigNumber, ethers } from "ethers";
 import { RainSolverLogger } from "./logger";
@@ -15,6 +15,7 @@ import { trace, Tracer, context, Context, SpanStatusCode } from "@opentelemetry/
 import { sweepToEth, manageAccounts, sweepToMainWallet, getBatchEthBalance } from "./account";
 import { RainSolverSigner } from "./signer";
 import { WalletManager } from "./wallet";
+import { publicClientConfig } from "sushi/config";
 
 config();
 
@@ -123,7 +124,18 @@ export async function startup(argv: any, version?: string) {
     const state = new SharedState(stateConfig);
 
     // get config
-    const config = await getConfig(options, state);
+    const config: BotConfig = {
+        ...options,
+        lps: state.liquidityProviders!,
+        viemClient: state.client,
+        dispair: state.dispair,
+        nativeWrappedToken: state.chainConfig.nativeWrappedToken,
+        routeProcessors: state.chainConfig.routeProcessors,
+        stableTokens: state.chainConfig.stableTokens,
+        isSpecialL2: state.chainConfig.isSpecialL2,
+        chain: publicClientConfig[state.chainConfig.id as keyof typeof publicClientConfig].chain,
+        dataFetcher: state.dataFetcher,
+    } as any;
 
     return {
         roundGap,
@@ -237,7 +249,9 @@ export const main = async (argv: any, version?: string) => {
             try {
                 const bundledOrders = orderManager.getNextRoundOrders();
                 if (update) {
-                    config.dataFetcher = await getDataFetcher(state);
+                    const freshdataFetcher = await getDataFetcher(state);
+                    state.dataFetcher = freshdataFetcher;
+                    config.dataFetcher = state.dataFetcher;
                 }
                 roundSpan.setAttribute("details.rpc", state.rpc.urls);
                 const roundResult = await arbRound(
