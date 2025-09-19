@@ -1,52 +1,5 @@
-import { VaultBalanceAbi } from "../common";
 import { erc20Abi, PublicClient } from "viem";
-import { OrderbooksOwnersProfileMap } from "./types";
-
-export type Vault = { vaultId: bigint; balance: bigint };
-export type OwnerVaults = Map<string, Vault[]>;
-export type TokenOwnerVaults = Map<string, OwnerVaults>;
-export type OrderbookTokenOwnerVaultsMap = Map<string, TokenOwnerVaults>;
-
-/**
- * Builds a map with following form from an `OrderbooksOwnersProfileMap` instance:
- * `orderbook -> token -> owner -> vaults`
- * This is later on used to evaluate the owners limits
- */
-export function buildOrderbookTokenOwnerVaultsMap(
-    orderbooksOwnersProfileMap: OrderbooksOwnersProfileMap,
-): OrderbookTokenOwnerVaultsMap {
-    const result: OrderbookTokenOwnerVaultsMap = new Map();
-    orderbooksOwnersProfileMap.forEach((ownersProfileMap, orderbook) => {
-        const tokensOwnersVaults: TokenOwnerVaults = new Map();
-        ownersProfileMap.forEach((ownerProfile, owner) => {
-            ownerProfile.orders.forEach((orderProfile) => {
-                orderProfile.takeOrders.forEach((pair) => {
-                    const token = pair.sellToken.toLowerCase();
-                    const vaultId =
-                        pair.takeOrder.takeOrder.order.validOutputs[
-                            pair.takeOrder.takeOrder.outputIOIndex
-                        ].vaultId;
-                    const ownersVaults = tokensOwnersVaults.get(token);
-                    if (ownersVaults) {
-                        const vaults = ownersVaults.get(owner.toLowerCase());
-                        if (vaults) {
-                            if (!vaults.find((v) => v.vaultId === vaultId))
-                                vaults.push({ vaultId, balance: 0n });
-                        } else {
-                            ownersVaults.set(owner.toLowerCase(), [{ vaultId, balance: 0n }]);
-                        }
-                    } else {
-                        const newOwnersVaults: OwnerVaults = new Map();
-                        newOwnersVaults.set(owner.toLowerCase(), [{ vaultId, balance: 0n }]);
-                        tokensOwnersVaults.set(token, newOwnersVaults);
-                    }
-                });
-            });
-        });
-        result.set(orderbook, tokensOwnersVaults);
-    });
-    return result;
-}
+import { OrderbookOwnerTokenVaultsMap, OrderbooksOwnersProfileMap } from "./types";
 
 /**
  * Evaluates the owners limits by checking an owner vaults avg balances of a token against
@@ -60,36 +13,39 @@ export function buildOrderbookTokenOwnerVaultsMap(
  */
 export async function downscaleProtection(
     orderbooksOwnersProfileMap: OrderbooksOwnersProfileMap,
-    otovMap: OrderbookTokenOwnerVaultsMap,
+    ownersTokenVaultMap: OrderbookOwnerTokenVaultsMap,
     client: PublicClient,
     ownerLimits?: Record<string, number>,
-    multicallAddressOverride?: string,
 ) {
-    for (const [orderbook, tokensOwnersVaults] of otovMap) {
+    const balanceCache = new Map<string, bigint>();
+    for (const [orderbook, ownerTokenVaultMap] of ownersTokenVaultMap) {
         const ownersProfileMap = orderbooksOwnersProfileMap.get(orderbook);
         if (ownersProfileMap) {
             const ownersCuts: Map<string, number[]> = new Map();
-            for (const [token, ownersVaults] of tokensOwnersVaults) {
-                const obTokenBalance = await client.readContract({
-                    address: token as `0x${string}`,
-                    abi: erc20Abi,
-                    functionName: "balanceOf",
-                    args: [orderbook as `0x${string}`],
-                });
-                for (const [owner, vaults] of ownersVaults) {
-                    // skip if owner limit is set by bot admin
-                    if (typeof ownerLimits?.[owner.toLowerCase()] === "number") continue;
+            for (const [owner, tokenVaults] of ownerTokenVaultMap) {
+                // skip if owner limit is set by bot admin
+                if (typeof ownerLimits?.[owner.toLowerCase()] === "number") continue;
+                for (const [token, vaultsMap] of tokenVaults) {
+                    // get the token balance for the orderbook
+                    // if already cached, use it, otherwise fetch it
+                    // and cache it for future use
+                    const obTokenBalance =
+                        balanceCache.get(`${orderbook}-${token}`) ??
+                        (await client
+                            .readContract({
+                                address: token as `0x${string}`,
+                                abi: erc20Abi,
+                                functionName: "balanceOf",
+                                args: [orderbook as `0x${string}`],
+                            })
+                            .catch(() => undefined));
+                    if (obTokenBalance === undefined) continue;
+                    balanceCache.set(`${orderbook}-${token}`, obTokenBalance);
 
+                    // calculate owner's cut of this token against rest of the owners
+                    const vaults = Array.from(vaultsMap.values());
                     const ownerProfile = ownersProfileMap.get(owner);
                     if (ownerProfile) {
-                        await fetchVaultBalances(
-                            orderbook,
-                            token,
-                            owner,
-                            vaults,
-                            client,
-                            multicallAddressOverride,
-                        );
                         const ownerTotalBalance = vaults.reduce(
                             (a, b) => ({
                                 balance: a.balance + b.balance,
@@ -134,41 +90,9 @@ export async function downscaleProtection(
                 if (cuts?.length) {
                     const avgCut = cuts.reduce((a, b) => a + b, 0) / cuts.length;
                     // round to nearest int, if turned out 0, set it to 1 as minimum
-                    ownerProfile.limit = Math.round(ownerProfile.limit / avgCut);
-                    if (ownerProfile.limit === 0) ownerProfile.limit = 1;
+                    ownerProfile.limit = Math.max(Math.round(ownerProfile.limit / avgCut), 1);
                 }
             });
         }
-    }
-}
-
-/**
- * Gets vault balances of an owner's vaults of a given token
- */
-export async function fetchVaultBalances(
-    orderbook: string,
-    token: string,
-    owner: string,
-    vaults: Vault[],
-    client: PublicClient,
-    multicallAddressOverride?: string,
-) {
-    const multicallResult = await client.multicall({
-        multicallAddress:
-            (multicallAddressOverride as `0x${string}` | undefined) ??
-            client.chain?.contracts?.multicall3?.address,
-        allowFailure: false,
-        contracts: vaults.map((v) => ({
-            address: orderbook as `0x${string}`,
-            allowFailure: false,
-            chainId: client.chain!.id,
-            abi: VaultBalanceAbi,
-            functionName: "vaultBalance",
-            args: [owner, token, v.vaultId],
-        })),
-    });
-
-    for (let i = 0; i < multicallResult.length; i++) {
-        vaults[i].balance = multicallResult[i];
     }
 }

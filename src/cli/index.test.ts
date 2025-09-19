@@ -170,6 +170,7 @@ describe("Test RainSolverCli", () => {
 
         mockOrderManager = {
             sync: vi.fn(),
+            downscaleProtection: vi.fn(),
         } as any;
 
         mockWalletManager = {
@@ -585,6 +586,7 @@ describe("Test RainSolverCli", () => {
                 mockRetryAddReports,
             );
             (mockWalletManager.assessWorkers as Mock).mockResolvedValue(mockAssessReports);
+            (mockOrderManager.downscaleProtection as Mock).mockResolvedValue(undefined);
 
             await rainSolverCli.runWalletOpsForRound(mockRoundCtx as any);
 
@@ -592,6 +594,7 @@ describe("Test RainSolverCli", () => {
             expect(mockWalletManager.assessWorkers).toHaveBeenCalledTimes(1);
             expect(mockWalletManager.retryPendingRemoveWorkers).not.toHaveBeenCalled();
             expect(mockWalletManager.convertHoldingsToGas).not.toHaveBeenCalled();
+            expect(mockOrderManager.downscaleProtection).not.toHaveBeenCalled();
 
             expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
                 { name: "retry-add-1" },
@@ -633,11 +636,13 @@ describe("Test RainSolverCli", () => {
             (mockWalletManager.convertHoldingsToGas as Mock).mockResolvedValue(
                 mockConvertHoldingsReport,
             );
+            (mockOrderManager.downscaleProtection as Mock).mockResolvedValue(undefined);
 
             await rainSolverCli.runWalletOpsForRound(mockRoundCtx as any);
 
             expect(mockWalletManager.retryPendingRemoveWorkers).toHaveBeenCalledTimes(1);
             expect(mockWalletManager.convertHoldingsToGas).toHaveBeenCalledTimes(1);
+            expect(mockOrderManager.downscaleProtection).toHaveBeenCalledOnce();
 
             expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
                 { name: "pending-remove-1" },

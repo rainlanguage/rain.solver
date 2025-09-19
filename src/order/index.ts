@@ -1,21 +1,23 @@
 import { erc20Abi } from "viem";
+import { syncOrders } from "./sync";
 import { SgOrder } from "../subgraph";
-import { SharedState } from "../state";
 import { shuffleArray } from "../common";
 import { quoteSingleOrder } from "./quote";
 import { PreAssembledSpan } from "../logger";
 import { SubgraphManager } from "../subgraph";
-import { buildOrderbookTokenOwnerVaultsMap, downscaleProtection } from "./protection";
+import { downscaleProtection } from "./protection";
+import { SharedState, TokenDetails } from "../state";
+import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
 import {
     Pair,
     Order,
     OrdersProfileMap,
     OwnersProfileMap,
     OrderbooksPairMap,
-    OrderbooksOwnersProfileMap,
     CounterpartySource,
+    OrderbooksOwnersProfileMap,
+    OrderbookOwnerTokenVaultsMap,
 } from "./types";
-import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
 
 export * from "./types";
 export * from "./quote";
@@ -54,6 +56,17 @@ export class OrderManager {
      * Same as oiPairMap but inverted, ie input -> output -> orderhash -> Pair
      */
     ioPairMap: OrderbooksPairMap;
+    /**
+     * Keeps a map of owner token vaults details, this is used to evaluate
+     * owners limits and to keep track of vault balance changes throughout
+     * the runtime, helping us to avoid running order pairs with empty vault
+     * balances.
+     * Vault balances are updated on each order sync operation when the recent
+     * transactions are processed and those that have vault balance changes
+     * are updated in this map.
+     * orderbook -> owner -> token -> vaultsId -> vaultDetails
+     */
+    ownerTokenVaultMap: OrderbookOwnerTokenVaultsMap;
 
     /**
      * Creates a new OrderManager instance
@@ -65,6 +78,7 @@ export class OrderManager {
         this.oiPairMap = new Map();
         this.ownersMap = new Map();
         this.ioPairMap = new Map();
+        this.ownerTokenVaultMap = new Map();
         this.quoteGas = state.orderManagerConfig.quoteGas;
         this.ownerLimits = state.orderManagerConfig.ownerLimits;
         this.subgraphManager = subgraphManager ?? new SubgraphManager(state.subgraphConfig);
@@ -94,20 +108,7 @@ export class OrderManager {
 
     /** Syncs orders to upstream subgraphs */
     async sync(): Promise<PreAssembledSpan> {
-        const { result, report } = await this.subgraphManager.syncOrders();
-        let ordersDidChange = false;
-        for (const key in result) {
-            if (result[key].addOrders.length || result[key].removeOrders.length) {
-                ordersDidChange = true;
-            }
-            await this.addOrders(result[key].addOrders.map((v) => v.order));
-            await this.removeOrders(result[key].removeOrders.map((v) => v.order));
-        }
-
-        // run protection if there has been upstream changes
-        if (ordersDidChange) this.downscaleProtection(true);
-
-        return report;
+        return await syncOrders.call(this);
     }
 
     /**
@@ -173,6 +174,7 @@ export class OrderManager {
             // add to the pair maps
             for (let j = 0; j < pairs.length; j++) {
                 this.addToPairMaps(pairs[j]);
+                this.addToTokenVaultsMap(pairs[j]);
             }
         }
     }
@@ -189,6 +191,88 @@ export class OrderManager {
         const inputKey = pair.buyToken.toLowerCase();
         addToPairMap(this.oiPairMap, orderbook, hash, outputKey, inputKey, pair);
         addToPairMap(this.ioPairMap, orderbook, hash, inputKey, outputKey, pair);
+    }
+
+    /**
+     * Adds the given order pair vault details to the token vaults map, since
+     * vaults dont get destroyed, there is no need to have any remove operation
+     * for this this map
+     * @param pair - The order pair object
+     */
+    addToTokenVaultsMap(pair: Pair) {
+        const orderbook = pair.orderbook.toLowerCase();
+        const owner = pair.takeOrder.takeOrder.order.owner.toLowerCase();
+        const outputVault =
+            pair.takeOrder.takeOrder.order.validOutputs[pair.takeOrder.takeOrder.outputIOIndex];
+        const inputVault =
+            pair.takeOrder.takeOrder.order.validInputs[pair.takeOrder.takeOrder.inputIOIndex];
+
+        this.updateVault(
+            orderbook,
+            owner,
+            {
+                address: outputVault.token.toLowerCase(),
+                decimals: outputVault.decimals,
+                symbol: pair.sellTokenSymbol,
+            },
+            outputVault.vaultId,
+            pair.sellTokenVaultBalance,
+        );
+        this.updateVault(
+            orderbook,
+            owner,
+            {
+                address: inputVault.token.toLowerCase(),
+                decimals: inputVault.decimals,
+                symbol: pair.buyTokenSymbol,
+            },
+            inputVault.vaultId,
+            pair.buyTokenVaultBalance,
+        );
+    }
+
+    /**
+     * Updates the vault balance in the ownerTokenVaultMap
+     * @param orderbook - The orderbook address
+     * @param owner - The owner address
+     * @param token - The token details
+     * @param vaultId - The vault id
+     * @param balance - The new vault balance
+     */
+    updateVault(
+        orderbook: string,
+        owner: string,
+        token: TokenDetails,
+        vaultId: bigint,
+        balance: bigint,
+    ) {
+        // get or create the empty map to store orderbook owner vaults
+        if (!this.ownerTokenVaultMap.has(orderbook)) {
+            this.ownerTokenVaultMap.set(orderbook, new Map());
+        }
+        const ownersTokenVaultsMap = this.ownerTokenVaultMap.get(orderbook)!;
+
+        // get or create the empty map to store owner vaults
+        if (!ownersTokenVaultsMap.has(owner)) {
+            ownersTokenVaultsMap.set(owner, new Map());
+        }
+        const tokenVaultMap = ownersTokenVaultsMap.get(owner)!;
+
+        // get or create the empty map to store output vault details
+        if (!tokenVaultMap.has(token.address)) {
+            tokenVaultMap.set(token.address, new Map());
+        }
+        const vaultsMap = tokenVaultMap.get(token.address)!;
+        const vault = vaultsMap.get(vaultId);
+        if (!vault) {
+            vaultsMap.set(vaultId, {
+                id: vaultId,
+                balance,
+                token,
+            });
+        } else {
+            vault.balance = balance;
+        }
     }
 
     /**
@@ -314,9 +398,11 @@ export class OrderManager {
                         buyToken: _input.token.toLowerCase(),
                         buyTokenSymbol: _inputSymbol,
                         buyTokenDecimals: _input.decimals,
+                        buyTokenVaultBalance: BigInt(orderDetails.inputs[k].balance),
                         sellToken: _output.token.toLowerCase(),
                         sellTokenSymbol: _outputSymbol,
                         sellTokenDecimals: _output.decimals,
+                        sellTokenVaultBalance: BigInt(orderDetails.outputs[j].balance),
                         takeOrder: {
                             id: orderHash,
                             takeOrder: {
@@ -344,8 +430,9 @@ export class OrderManager {
                 let remainingLimit = ownerProfile.limit;
 
                 // consume orders limits
-                const allOrders: Pair[] = [];
-                ownerProfile.orders.forEach((v) => allOrders.push(...v.takeOrders));
+                const allOrders = Array.from(ownerProfile.orders.values()).flatMap(
+                    (profile) => profile.takeOrders,
+                );
                 const consumingOrders = allOrders.splice(ownerProfile.lastIndex, remainingLimit);
                 remainingLimit -= consumingOrders.length;
                 ownerProfile.lastIndex += consumingOrders.length;
@@ -396,17 +483,15 @@ export class OrderManager {
      * all other owners cumulative balances, the calculated ratio is used as a reducing
      * factor for the owner limit when averaged out for all of tokens the owner has
      */
-    async downscaleProtection(reset = true, multicallAddressOverride?: string) {
+    async downscaleProtection(reset = true) {
         if (reset) {
             this.resetLimits();
         }
-        const otovMap = buildOrderbookTokenOwnerVaultsMap(this.ownersMap);
         await downscaleProtection(
             this.ownersMap,
-            otovMap,
+            this.ownerTokenVaultMap,
             this.state.client,
             this.ownerLimits,
-            multicallAddressOverride,
         ).catch(() => {});
     }
 
