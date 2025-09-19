@@ -12,6 +12,7 @@ import {
     BundledOrders,
     OrdersProfileMap,
     OwnersProfileMap,
+    OrderbooksPairMap,
     OrderbooksOwnersProfileMap,
 } from "./types";
 
@@ -36,8 +37,17 @@ export class OrderManager {
     readonly state: SharedState;
     /** Subgraph manager instance */
     readonly subgraphManager: SubgraphManager;
+
     /** Orderbooks owners profile map */
-    orderMap: OrderbooksOwnersProfileMap;
+    ownersMap: OrderbooksOwnersProfileMap;
+    /**
+     * Orderbooks order pairs map, keeps the orders organized by their pairs
+     * for quick access mainly for intra and inter orderbook operations where
+     * opposing orders list needs to be fetched, the data in this map points
+     * to the same data in ownerMap, so it is not a copy (which would increase
+     * overhead and memory usage), but rather a quick access map to the same data
+     */
+    pairMap: OrderbooksPairMap;
 
     /**
      * Creates a new OrderManager instance
@@ -46,7 +56,8 @@ export class OrderManager {
      */
     constructor(state: SharedState, subgraphManager?: SubgraphManager) {
         this.state = state;
-        this.orderMap = new Map();
+        this.pairMap = new Map();
+        this.ownersMap = new Map();
         this.quoteGas = state.orderManagerConfig.quoteGas;
         this.ownerLimits = state.orderManagerConfig.ownerLimits;
         this.subgraphManager = subgraphManager ?? new SubgraphManager(state.subgraphConfig);
@@ -103,8 +114,10 @@ export class OrderManager {
             const orderbook = orderDetails.orderbook.id.toLowerCase();
             const orderStruct = Order.fromBytes(orderDetails.orderBytes);
 
-            // add to the map
-            const orderbookOwnerProfileItem = this.orderMap.get(orderbook);
+            const pairs = await this.getOrderPairs(orderHash, orderStruct, orderDetails);
+
+            // add to the owners map
+            const orderbookOwnerProfileItem = this.ownersMap.get(orderbook);
             if (orderbookOwnerProfileItem) {
                 const ownerProfile = orderbookOwnerProfileItem.get(orderStruct.owner);
                 if (ownerProfile) {
@@ -113,11 +126,7 @@ export class OrderManager {
                         ownerProfile.orders.set(orderHash, {
                             active: true,
                             order: orderStruct,
-                            takeOrders: await this.getOrderPairs(
-                                orderHash,
-                                orderStruct,
-                                orderDetails,
-                            ),
+                            takeOrders: pairs,
                         });
                     } else {
                         if (!order.active) order.active = true;
@@ -127,7 +136,7 @@ export class OrderManager {
                     ordersProfileMap.set(orderHash, {
                         active: true,
                         order: orderStruct,
-                        takeOrders: await this.getOrderPairs(orderHash, orderStruct, orderDetails),
+                        takeOrders: pairs,
                     });
                     orderbookOwnerProfileItem.set(orderStruct.owner, {
                         limit: this.ownerLimits[orderStruct.owner] ?? DEFAULT_OWNER_LIMIT,
@@ -140,7 +149,7 @@ export class OrderManager {
                 ordersProfileMap.set(orderHash, {
                     active: true,
                     order: orderStruct,
-                    takeOrders: await this.getOrderPairs(orderHash, orderStruct, orderDetails),
+                    takeOrders: pairs,
                 });
                 const ownerProfileMap: OwnersProfileMap = new Map();
                 ownerProfileMap.set(orderStruct.owner, {
@@ -148,7 +157,27 @@ export class OrderManager {
                     orders: ordersProfileMap,
                     lastIndex: 0,
                 });
-                this.orderMap.set(orderbook, ownerProfileMap);
+                this.ownersMap.set(orderbook, ownerProfileMap);
+            }
+
+            // add to the pair map
+            for (let j = 0; j < pairs.length; j++) {
+                const pairKey = `${pairs[j].buyToken.toLowerCase()}/${pairs[j].sellToken.toLowerCase()}`;
+                const ob = this.pairMap.get(orderbook);
+                if (ob) {
+                    const existingPairMap = ob.get(pairKey);
+                    if (!existingPairMap) {
+                        ob.set(pairKey, [pairs[j]]);
+                    } else {
+                        // make sure to not duplicate pairs
+                        const hash = pairs[j].takeOrder.id.toLowerCase();
+                        if (!existingPairMap.find((v) => v.takeOrder.id.toLowerCase() === hash)) {
+                            existingPairMap.push(pairs[j]);
+                        }
+                    }
+                } else {
+                    this.pairMap.set(orderbook, new Map([[pairKey, [pairs[j]]]]));
+                }
             }
         }
     }
@@ -162,11 +191,42 @@ export class OrderManager {
             const orderDetails = ordersDetails[i];
             const orderbook = orderDetails.orderbook.id.toLowerCase();
             const orderStruct = Order.fromBytes(orderDetails.orderBytes);
-            const orderbookOwnerProfileItem = this.orderMap.get(orderbook);
+            const orderHash = orderDetails.orderHash.toLowerCase();
+
+            // delete from the owners map
+            const orderbookOwnerProfileItem = this.ownersMap.get(orderbook);
             if (orderbookOwnerProfileItem) {
                 const ownerProfile = orderbookOwnerProfileItem.get(orderStruct.owner);
                 if (ownerProfile) {
-                    ownerProfile.orders.delete(orderDetails.orderHash.toLowerCase());
+                    ownerProfile.orders.delete(orderHash);
+                }
+            }
+
+            // delete from the pair map
+            const pairMap = this.pairMap.get(orderbook);
+            if (pairMap) {
+                for (let j = 0; j < orderDetails.outputs.length; j++) {
+                    for (let k = 0; k < orderDetails.inputs.length; k++) {
+                        // skip same token pairs
+                        const output = orderDetails.outputs[j].token.address;
+                        const input = orderDetails.inputs[k].token.address;
+                        if (input === output) continue;
+
+                        const pairKey = `${input}/${output}`;
+                        const existingPair = pairMap.get(pairKey);
+                        if (existingPair) {
+                            // remove the order from the list
+                            const index = existingPair.findIndex(
+                                (v) => v.takeOrder.id.toLowerCase() === orderHash,
+                            );
+                            if (index !== -1) {
+                                existingPair.splice(index, 1);
+                                if (existingPair.length === 0) {
+                                    pairMap.delete(pairKey);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -235,6 +295,7 @@ export class OrderManager {
 
                 if (_input.token.toLowerCase() !== _output.token.toLowerCase())
                     pairs.push({
+                        orderbook: orderDetails.orderbook.id.toLowerCase(),
                         buyToken: _input.token.toLowerCase(),
                         buyTokenSymbol: _inputSymbol,
                         buyTokenDecimals: _input.decimals,
@@ -263,7 +324,7 @@ export class OrderManager {
      */
     getNextRoundOrders(shuffle = true): BundledOrders[][] {
         const result: BundledOrders[][] = [];
-        this.orderMap.forEach((ownersProfileMap, orderbook) => {
+        this.ownersMap.forEach((ownersProfileMap, orderbook) => {
             const bundledOrders: BundledOrders[] = [];
             ownersProfileMap.forEach((ownerProfile) => {
                 let remainingLimit = ownerProfile.limit;
@@ -336,7 +397,7 @@ export class OrderManager {
      * Skips owners with explicitly configured limits
      */
     async resetLimits() {
-        this.orderMap.forEach((ownersProfileMap) => {
+        this.ownersMap.forEach((ownersProfileMap) => {
             if (ownersProfileMap) {
                 ownersProfileMap.forEach((ownerProfile, owner) => {
                     // skip if owner limit is set by bot admin
@@ -350,20 +411,40 @@ export class OrderManager {
     /**
      * Provides a protection by evaluating and possibly reducing owner's limit,
      * this takes place by checking an owners avg vault balance of a token against
-     * all other owners cumulative balances, the calculated ratio is used a reducing
+     * all other owners cumulative balances, the calculated ratio is used as a reducing
      * factor for the owner limit when averaged out for all of tokens the owner has
      */
     async downscaleProtection(reset = true, multicallAddressOverride?: string) {
         if (reset) {
             this.resetLimits();
         }
-        const otovMap = buildOrderbookTokenOwnerVaultsMap(this.orderMap);
+        const otovMap = buildOrderbookTokenOwnerVaultsMap(this.ownersMap);
         await downscaleProtection(
-            this.orderMap,
+            this.ownersMap,
             otovMap,
             this.state.client,
             this.ownerLimits,
             multicallAddressOverride,
         ).catch(() => {});
+    }
+
+    /**
+     * Gets opposing orders for a given order
+     * @param orderDetails - Details of the order to find opposing orders for
+     * @param sameOrderbook - Whether opposing orders should be in the same orderbook
+     */
+    getOpposingOrders(orderDetails: BundledOrders, sameOrderbook: boolean): Pair[] {
+        const opposingPairKey = `${orderDetails.sellToken.toLowerCase()}/${orderDetails.buyToken.toLowerCase()}`;
+        if (sameOrderbook) {
+            return this.pairMap.get(orderDetails.orderbook)?.get(opposingPairKey) ?? [];
+        } else {
+            const opposingOrders: Pair[] = [];
+            this.pairMap.forEach((pairMap, orderbook) => {
+                // skip same orderbook
+                if (orderbook === orderDetails.orderbook) return;
+                opposingOrders.push(...(pairMap.get(opposingPairKey) ?? []));
+            });
+            return opposingOrders;
+        }
     }
 }

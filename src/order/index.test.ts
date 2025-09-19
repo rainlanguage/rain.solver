@@ -1,3 +1,4 @@
+import { Order } from "./types";
 import { SharedState } from "../state";
 import { SubgraphManager } from "../subgraph";
 import { OrderManager, DEFAULT_OWNER_LIMIT } from "./index";
@@ -73,13 +74,13 @@ describe("Test OrderManager", () => {
         const report = await orderManager.fetch();
 
         expect(report).toEqual({ status: "ok" });
-        expect(orderManager.orderMap.size).toBe(1);
+        expect(orderManager.ownersMap.size).toBe(1);
         expect(
-            orderManager.orderMap.get("0xorderbook")?.get("0xowner")?.orders.get("0xhash")
+            orderManager.ownersMap.get("0xorderbook")?.get("0xowner")?.orders.get("0xhash")
                 ?.takeOrders[0].buyToken,
         ).toBe("0xinput");
         expect(
-            orderManager.orderMap.get("0xorderbook")?.get("0xowner")?.orders.get("0xhash")
+            orderManager.ownersMap.get("0xorderbook")?.get("0xowner")?.orders.get("0xhash")
                 ?.takeOrders[0].sellToken,
         ).toBe("0xoutput");
     });
@@ -168,12 +169,12 @@ describe("Test OrderManager", () => {
         ];
         await orderManager.addOrders(orders as any);
 
-        expect(orderManager.orderMap.size).toBe(2);
-        expect(orderManager.orderMap.get("0xorderbook1")).toBeDefined();
-        expect(orderManager.orderMap.get("0xorderbook2")).toBeDefined();
+        expect(orderManager.ownersMap.size).toBe(2);
+        expect(orderManager.ownersMap.get("0xorderbook1")).toBeDefined();
+        expect(orderManager.ownersMap.get("0xorderbook2")).toBeDefined();
 
-        // check first order
-        const ownerProfileMap1 = orderManager.orderMap.get("0xorderbook1");
+        // check first order in owner map
+        const ownerProfileMap1 = orderManager.ownersMap.get("0xorderbook1");
         expect(ownerProfileMap1).toBeDefined();
         const ownerProfile1 = ownerProfileMap1?.get("0xowner");
         expect(ownerProfile1).toBeDefined();
@@ -185,8 +186,18 @@ describe("Test OrderManager", () => {
         expect(Array.isArray(orderProfile1?.takeOrders)).toBe(true);
         expect(orderProfile1?.takeOrders.length).toBeGreaterThan(0);
 
-        // check second order
-        const ownerProfileMap2 = orderManager.orderMap.get("0xorderbook2");
+        // check pairMap for first order
+        const pairMap1 = orderManager.pairMap.get("0xorderbook1");
+        expect(pairMap1).toBeDefined();
+        const pairArr1 = pairMap1?.get("0xinput/0xoutput");
+        expect(Array.isArray(pairArr1)).toBe(true);
+        expect(pairArr1?.length).toBeGreaterThan(0);
+        expect(pairArr1?.[0].buyToken).toBe("0xinput");
+        expect(pairArr1?.[0].sellToken).toBe("0xoutput");
+        expect(pairArr1?.[0].takeOrder.id).toBe("0xhash1");
+
+        // check second order in owner map
+        const ownerProfileMap2 = orderManager.ownersMap.get("0xorderbook2");
         expect(ownerProfileMap2).toBeDefined();
         const ownerProfile2 = ownerProfileMap2?.get("0xowner");
         expect(ownerProfile2).toBeDefined();
@@ -197,6 +208,16 @@ describe("Test OrderManager", () => {
         expect(orderProfile2?.order).toBeDefined();
         expect(Array.isArray(orderProfile2?.takeOrders)).toBe(true);
         expect(orderProfile2?.takeOrders.length).toBeGreaterThan(0);
+
+        // check pairMap for second order
+        const pairMap2 = orderManager.pairMap.get("0xorderbook2");
+        expect(pairMap2).toBeDefined();
+        const pairArr2 = pairMap2?.get("0xinput/0xoutput");
+        expect(Array.isArray(pairArr2)).toBe(true);
+        expect(pairArr2?.length).toBeGreaterThan(0);
+        expect(pairArr2?.[0].buyToken).toBe("0xinput");
+        expect(pairArr2?.[0].sellToken).toBe("0xoutput");
+        expect(pairArr2?.[0].takeOrder.id).toBe("0xhash2");
     });
 
     it("should remove orders", async () => {
@@ -208,11 +229,24 @@ describe("Test OrderManager", () => {
             inputs: [{ token: { address: "0xinput", symbol: "IN" } }],
         };
         await orderManager.addOrders([mockOrder as any]);
-        expect(orderManager.orderMap.size).toBe(1);
+        expect(orderManager.ownersMap.size).toBe(1);
+
+        // check pairMap before removal
+        const pairMapBefore = orderManager.pairMap.get("0xorderbook");
+        expect(pairMapBefore).toBeDefined();
+        const pairArrBefore = pairMapBefore?.get("0xinput/0xoutput");
+        expect(Array.isArray(pairArrBefore)).toBe(true);
+        expect(pairArrBefore?.length).toBeGreaterThan(0);
+        expect(pairArrBefore?.[0].takeOrder.id).toBe("0xhash");
 
         await orderManager.removeOrders([mockOrder as any]);
-        const ownerProfileMap = orderManager.orderMap.get("0xorderbook");
+        const ownerProfileMap = orderManager.ownersMap.get("0xorderbook");
         expect(ownerProfileMap?.get("0xowner")?.orders.size).toBe(0);
+
+        // check pairMap after removal
+        const pairMapAfter = orderManager.pairMap.get("0xorderbook");
+        // the pair should be deleted from the map after removal
+        expect(pairMapAfter?.get("0xinput/0xoutput")).toBeUndefined();
     });
 
     it("should get next round orders", async () => {
@@ -274,7 +308,7 @@ describe("Test OrderManager", () => {
         await orderManager.addOrders([mockOrder as any, adminOrder as any]);
         await orderManager.resetLimits();
 
-        const ownerProfileMap = orderManager.orderMap.get("0xorderbook");
+        const ownerProfileMap = orderManager.ownersMap.get("0xorderbook");
         expect(ownerProfileMap?.get("0xowner")?.limit).toBe(DEFAULT_OWNER_LIMIT);
         expect(ownerProfileMap?.get("0xadmin")?.limit).toBe(75); // admin set limit should not reset
     });
@@ -376,5 +410,183 @@ describe("Test OrderManager", () => {
             maxOutput: 100n,
             ratio: 2n,
         });
+    });
+
+    it("should rotate owner orders correctly across getNextRoundOrders() calls", async () => {
+        // add four orders for the same owner/orderbook with different hashes
+        const orders = [
+            {
+                orderHash: "0xhash1",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytes1",
+                outputs: [{ token: { address: "0xoutput", symbol: "OUT" } }],
+                inputs: [{ token: { address: "0xinput", symbol: "IN" } }],
+            },
+            {
+                orderHash: "0xhash2",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytes2",
+                outputs: [{ token: { address: "0xoutput", symbol: "OUT" } }],
+                inputs: [{ token: { address: "0xinput", symbol: "IN" } }],
+            },
+            {
+                orderHash: "0xhash3",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytes3",
+                outputs: [{ token: { address: "0xoutput", symbol: "OUT" } }],
+                inputs: [{ token: { address: "0xinput", symbol: "IN" } }],
+            },
+            {
+                orderHash: "0xhash4",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytes4",
+                outputs: [{ token: { address: "0xoutput", symbol: "OUT" } }],
+                inputs: [{ token: { address: "0xinput", symbol: "IN" } }],
+            },
+        ];
+        await orderManager.addOrders(orders as any);
+
+        // set owner limit to 3 so only three orders are returned per round
+        const ownerProfileMap = orderManager.ownersMap.get("0xorderbook");
+        ownerProfileMap!.get("0xowner")!.limit = 3;
+
+        // helper to get the order hashes returned in the round
+        const getRoundHashes = () => {
+            const roundOrders = orderManager.getNextRoundOrders(false);
+            return roundOrders[0][0].takeOrders.map((t) => t.id);
+        };
+
+        // first call: should return the first 3 orders
+        expect(getRoundHashes()).toEqual(["0xhash1", "0xhash2", "0xhash3"]);
+
+        // second call: should return the last order (0xhash4) and then the first two (rotation)
+        expect(getRoundHashes()).toEqual(["0xhash4", "0xhash1", "0xhash2"]);
+
+        // third call: should return the last two and the first one (rotation)
+        expect(getRoundHashes()).toEqual(["0xhash3", "0xhash4", "0xhash1"]);
+
+        // fourth call: should return the next three in rotation
+        expect(getRoundHashes()).toEqual(["0xhash2", "0xhash3", "0xhash4"]);
+    });
+
+    it("should keep quote reference consistent: update quote via getNextRoundOrders and reflect in ownersMap and pairMap", async () => {
+        const mockOrder = {
+            orderHash: "0xhash",
+            orderbook: { id: "0xorderbook" },
+            orderBytes: "0xbytes",
+            outputs: [{ token: { address: "0xoutput", symbol: "OUT" } }],
+            inputs: [{ token: { address: "0xinput", symbol: "IN" } }],
+        };
+        await orderManager.addOrders([mockOrder as any]);
+
+        // get the takeOrder object from getNextRoundOrders
+        const roundOrders = orderManager.getNextRoundOrders(false);
+        const orderDetails = roundOrders[0][0];
+
+        // update the quote field via the object from getNextRoundOrders
+        orderDetails.takeOrders[0].quote = { maxOutput: 999n, ratio: 888n };
+
+        // now check that the update is reflected in both ownersMap and pairMap
+        const orderbookKey = "0xorderbook";
+        const ownerKey = "0xowner";
+        const pairKey = "0xinput/0xoutput";
+        const orderHash = "0xhash";
+
+        const ownersMap = orderManager.ownersMap.get(orderbookKey);
+        const ownerProfile = ownersMap?.get(ownerKey);
+        const orderEntry = ownerProfile?.orders.get(orderHash);
+        const takeOrderFromOwnersMap = orderEntry?.takeOrders[0];
+
+        const pairMap = orderManager.pairMap.get(orderbookKey);
+        const pairArr = pairMap?.get(pairKey);
+        const takeOrderFromPairMap = pairArr?.[0];
+
+        expect(takeOrderFromOwnersMap?.takeOrder.quote).toEqual({ maxOutput: 999n, ratio: 888n });
+        expect(takeOrderFromPairMap?.takeOrder.quote).toEqual({ maxOutput: 999n, ratio: 888n });
+        // and all references are the same object
+        expect(orderDetails.takeOrders[0]).toBe(takeOrderFromOwnersMap?.takeOrder);
+        expect(orderDetails.takeOrders[0]).toBe(takeOrderFromPairMap?.takeOrder);
+    });
+
+    it("should get opposing orders in the same orderbook", async () => {
+        // add two orders in the same orderbook with opposing buy/sell tokens
+        const orderA = {
+            orderHash: "0xhashA",
+            orderbook: { id: "0xorderbook" },
+            orderBytes: "0xbytesA",
+            outputs: [{ token: { address: "0xoutput", symbol: "OUT" } }],
+            inputs: [{ token: { address: "0xinput", symbol: "IN" } }],
+        };
+        const orderB = {
+            orderHash: "0xhashB",
+            orderbook: { id: "0xorderbook" },
+            orderBytes: "0xbytesB",
+            outputs: [{ token: { address: "0xinput", symbol: "IN" } }],
+            inputs: [{ token: { address: "0xoutput", symbol: "OUT" } }],
+        };
+        (Order.fromBytes as Mock)
+            .mockReturnValueOnce({
+                owner: "0xowner",
+                validInputs: [{ token: "0xinput", decimals: 18 }],
+                validOutputs: [{ token: "0xoutput", decimals: 18 }],
+            })
+            .mockReturnValueOnce({
+                owner: "0xowner",
+                validInputs: [{ token: "0xoutput", decimals: 18 }],
+                validOutputs: [{ token: "0xinput", decimals: 18 }],
+            });
+        await orderManager.addOrders([orderA as any, orderB as any]);
+
+        // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)
+        const roundOrders = orderManager.getNextRoundOrders(false);
+
+        // should find orderB as opposing order for orderA in the same orderbook
+        const opposing = orderManager.getOpposingOrders(roundOrders[0][0], true);
+        expect(Array.isArray(opposing)).toBe(true);
+        expect(opposing.length).toBe(1);
+        expect(opposing[0].buyToken).toBe("0xoutput");
+        expect(opposing[0].sellToken).toBe("0xinput");
+        expect(opposing[0].takeOrder.id).toBe("0xhashb");
+    });
+
+    it("should get opposing orders across different orderbooks", async () => {
+        // add two orders in different orderbooks with opposing buy/sell tokens
+        const orderA = {
+            orderHash: "0xhashA",
+            orderbook: { id: "0xorderbookA" },
+            orderBytes: "0xbytesA",
+            outputs: [{ token: { address: "0xoutput", symbol: "OUT" } }],
+            inputs: [{ token: { address: "0xinput", symbol: "IN" } }],
+        };
+        const orderB = {
+            orderHash: "0xhashB",
+            orderbook: { id: "0xorderbookB" },
+            orderBytes: "0xbytesB",
+            outputs: [{ token: { address: "0xinput", symbol: "IN" } }],
+            inputs: [{ token: { address: "0xoutput", symbol: "OUT" } }],
+        };
+        (Order.fromBytes as Mock)
+            .mockReturnValueOnce({
+                owner: "0xowner",
+                validInputs: [{ token: "0xinput", decimals: 18 }],
+                validOutputs: [{ token: "0xoutput", decimals: 18 }],
+            })
+            .mockReturnValueOnce({
+                owner: "0xowner",
+                validInputs: [{ token: "0xoutput", decimals: 18 }],
+                validOutputs: [{ token: "0xinput", decimals: 18 }],
+            });
+        await orderManager.addOrders([orderA as any, orderB as any]);
+
+        // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)
+        const roundOrders = orderManager.getNextRoundOrders(false);
+
+        // should find orderB as opposing order for orderA across orderbooks
+        const opposing = orderManager.getOpposingOrders(roundOrders[0][0], false);
+        expect(Array.isArray(opposing)).toBe(true);
+        expect(opposing.length).toBe(1);
+        expect(opposing[0].buyToken).toBe("0xoutput");
+        expect(opposing[0].sellToken).toBe("0xinput");
+        expect(opposing[0].takeOrder.id).toBe("0xhashb");
     });
 });

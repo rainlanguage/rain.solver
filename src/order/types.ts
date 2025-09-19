@@ -86,6 +86,7 @@ export type BundledOrders = {
 };
 
 export type Pair = {
+    orderbook: string;
     buyToken: string;
     buyTokenDecimals: number;
     buyTokenSymbol: string;
@@ -112,3 +113,7 @@ export type OrdersProfileMap = Map<string, OrderProfile>;
 export type OwnersProfileMap = Map<string, OwnerProfile>;
 
 export type OrderbooksOwnersProfileMap = Map<string, OwnersProfileMap>;
+
+export type OrderbooksPairMap = Map<string, PairMap>;
+
+export type PairMap = Map<string, Pair[]>;
