@@ -110,20 +110,42 @@ export async function sendTx(
 
     // start sending tranaction process
     signer.busy = true;
-    try {
-        const nonce = await signer.getTransactionCount({
-            address: signer.account.address,
-            blockTag: "latest",
-        });
-        if (typeof tx.gas === "bigint") {
-            tx.gas = getTxGas(signer.state, tx.gas);
+    let nonce: number | undefined = undefined;
+
+    // set tx gas
+    if (typeof tx.gas === "bigint") {
+        tx.gas = getTxGas(signer.state, tx.gas);
+    }
+
+    async function send() {
+        if (typeof nonce !== "number") {
+            await signer
+                .getTransactionCount({
+                    address: signer.account.address,
+                    blockTag: "latest",
+                })
+                .then((n) => (nonce = n))
+                .catch((e) => {
+                    nonce = undefined;
+                    throw e;
+                });
         }
-        const result = await signer.sendTransaction({ ...(tx as any), nonce });
+        return await signer.sendTransaction({ ...(tx as any), nonce });
+    }
+    try {
+        const result = await send();
         signer.busy = false;
         return result;
     } catch (error) {
-        signer.busy = false;
-        throw error;
+        await sleep(3_000); // wait 3 secs and retry once more
+        try {
+            const result = await send();
+            signer.busy = false;
+            return result;
+        } catch {
+            signer.busy = false;
+            throw error;
+        }
     }
 }
 
