@@ -1,15 +1,19 @@
-import { ABI } from "../common";
 import { isDeepStrictEqual } from "util";
-import { RainSolverSigner, RawTransaction } from "../signer";
-import { BaseError, decodeFunctionData, isHex, TransactionReceipt } from "viem";
+import { tryDecodeError } from "./decoder";
+import { getRpcError } from "../rpc/helpers";
+import { ABI, RawTransaction } from "../common";
+import { TxRevertError, DecodedErrorType } from "./types";
+import { errorSnapshot, containsNodeError } from "./common";
 import {
-    getRpcError,
-    TxRevertError,
-    errorSnapshot,
-    tryDecodeError,
-    DecodedErrorType,
-    containsNodeError,
-} from ".";
+    Chain,
+    isHex,
+    Account,
+    Transport,
+    BaseError,
+    PublicClient,
+    TransactionReceipt,
+    decodeFunctionData,
+} from "viem";
 
 /**
  * Handles a reverted transaction by simulating to figure out the revert reason,
@@ -25,7 +29,7 @@ import {
  * @param orderbook - The orderbook address to filter logs
  */
 export async function handleRevert(
-    viemClient: RainSolverSigner,
+    viemClient: PublicClient<Transport, Chain | undefined, Account | undefined>,
     hash: `0x${string}`,
     receipt: TransactionReceipt,
     rawtx: RawTransaction,
@@ -134,7 +138,7 @@ export function evaluateGasSufficiency(
  * @returns the transaction hash of the frontrun if detected, otherwise undefined
  */
 export async function tryDetectFrontrun(
-    viemClient: RainSolverSigner,
+    viemClient: PublicClient<Transport, Chain | undefined, Account | undefined>,
     rawtx: RawTransaction,
     receipt: TransactionReceipt,
     orderbook: `0x${string}`,
@@ -143,17 +147,17 @@ export async function tryDetectFrontrun(
         // get the order from the function data
         const orderConfig = (() => {
             try {
-                if (rawtx.data!.toLowerCase().startsWith("0x7ea0b76a")) {
-                    // arb3 trade
+                if (rawtx.data!.toLowerCase().startsWith("0x4ed39461")) {
+                    // arb4 trade
                     const result = decodeFunctionData({
                         abi: [ABI.Orderbook.Primary.Arb[1]],
                         data: rawtx.data!,
                     });
                     return (result?.args?.[1] as any)?.orders?.[0];
                 } else {
-                    // clear2 trade
+                    // clear3 trade
                     const result = decodeFunctionData({
-                        abi: [ABI.Orderbook.Primary.Orderbook[12]],
+                        abi: [ABI.Orderbook.Primary.Orderbook[19]],
                         data: rawtx.data!,
                     });
                     return result?.args?.[1];
@@ -169,8 +173,8 @@ export async function tryDetectFrontrun(
             const logs = (
                 await viemClient.getLogs({
                     events: [
-                        ABI.Orderbook.Primary.Orderbook[13],
-                        ABI.Orderbook.Primary.Orderbook[15],
+                        ABI.Orderbook.Primary.Orderbook[7],
+                        ABI.Orderbook.Primary.Orderbook[8],
                     ],
                     address: orderbook,
                     blockHash: receipt.blockHash,

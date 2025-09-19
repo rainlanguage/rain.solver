@@ -1,7 +1,8 @@
 import { promiseTimeout, sleep } from "../common";
+import { onFetchRequest, onFetchResponse } from "./hooks";
 import { http, Transport, HttpTransportConfig } from "viem";
+import { normalizeUrl, probablyPicksFrom } from "./helpers";
 import { RainSolverTransportTimeoutError } from "./transport";
-import { normalizeUrl, onFetchRequest, onFetchResponse, probablyPicksFrom } from ".";
 
 /** The rpc configurations */
 export type RpcConfig = {
@@ -71,7 +72,7 @@ export class RpcState {
      */
     async nextRpc({
         timeout = 10_000,
-        pollingInterval = 250,
+        pollingInterval = 100,
     }: {
         timeout?: number;
         pollingInterval?: number;
@@ -81,11 +82,12 @@ export class RpcState {
         // point decimals relative to other rpcs sucess rates, so the bigger the rate,
         // the higher chance of being selected
         const rates = this.urls.map((url) => this.metrics[url].progress.selectionRate);
+        const weights = this.urls.map((url) => this.metrics[url].progress.selectionWeight);
         return await promiseTimeout(
             (async () => {
                 for (;;) {
                     // pick a random one
-                    const index = probablyPicksFrom(rates);
+                    const index = probablyPicksFrom(rates, weights);
                     if (isNaN(index)) {
                         await sleep(pollingInterval);
                     } else {

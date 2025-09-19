@@ -18,6 +18,7 @@ import { SimulationResult, TradeType } from "../../types";
  * @param signer - The signer to be used for the trade
  * @param inputToEthPrice - The current price of input token to ETH price
  * @param outputToEthPrice - The current price of output token to ETH price
+ * @param blockNumber - The current block number
  */
 export async function findBestInterOrderbookTrade(
     this: RainSolver,
@@ -25,6 +26,7 @@ export async function findBestInterOrderbookTrade(
     signer: RainSolverSigner,
     inputToEthPrice: string,
     outputToEthPrice: string,
+    blockNumber: bigint,
 ): Promise<SimulationResult> {
     // bail early if generic arb address is not set
     if (!this.appOptions.genericArbAddress) {
@@ -37,7 +39,6 @@ export async function findBestInterOrderbookTrade(
     }
 
     const spanAttributes: Attributes = {};
-    const blockNumber = await this.state.client.getBlockNumber();
     const counterpartyOrders = this.orderManager.getCounterpartyOrders(
         orderDetails,
         CounterpartySource.InterOrderbook,

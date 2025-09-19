@@ -1,48 +1,54 @@
-import { parseAbi } from "viem";
+import { parseAbi, parseAbiParameters } from "viem";
 
 // structs
-const _IO = "(address token, uint8 decimals, uint256 vaultId)" as const;
-const _EvaluableV3 = "(address interpreter, address store, bytes bytecode)" as const;
-const _SignedContextV1 = "(address signer, uint256[] context, bytes signature)" as const;
-const _TaskV1 = `(${_EvaluableV3} evaluable, ${_SignedContextV1}[] signedContext)` as const;
-const _ClearStateChange =
-    "(uint256 aliceOutput, uint256 bobOutput, uint256 aliceInput, uint256 bobInput)" as const;
-const _OrderV3 =
-    `(address owner, ${_EvaluableV3} evaluable, ${_IO}[] validInputs, ${_IO}[] validOutputs, bytes32 nonce)` as const;
-const _TakeOrderConfigV3 =
-    `(${_OrderV3} order, uint256 inputIOIndex, uint256 outputIOIndex, ${_SignedContextV1}[] signedContext)` as const;
-const _OrderConfigV3 =
-    `(${_EvaluableV3} evaluable, ${_IO}[] validInputs, ${_IO}[] validOutputs, bytes32 nonce, bytes32 secret, bytes meta)` as const;
-const _TakeOrdersConfigV3 =
-    `(uint256 minimumInput, uint256 maximumInput, uint256 maximumIORatio, ${_TakeOrderConfigV3}[] orders, bytes data)` as const;
-const _ClearConfig =
-    "(uint256 aliceInputIOIndex, uint256 aliceOutputIOIndex, uint256 bobInputIOIndex, uint256 bobOutputIOIndex, uint256 aliceBountyVaultId, uint256 bobBountyVaultId)" as const;
-const _Quote =
-    `(${_OrderV3} order, uint256 inputIOIndex, uint256 outputIOIndex, ${_SignedContextV1}[] signedContext)` as const;
+const _Float = "bytes32" as const;
+const _IOV2 = `(address token, bytes32 vaultId)` as const;
+const _EvaluableV4 = `(address interpreter, address store, bytes bytecode)` as const;
+const _SignedContextV1 = "(address signer, bytes32[] context, bytes signature)" as const;
+const _TaskV2 = `(${_EvaluableV4} evaluable, ${_SignedContextV1}[] signedContext)` as const;
+const _ClearStateChangeV2 =
+    `(${_Float} aliceOutput, ${_Float} bobOutput, ${_Float} aliceInput, ${_Float} bobInput)` as const;
+const _OrderV4 =
+    `(address owner, ${_EvaluableV4} evaluable, ${_IOV2}[] validInputs, ${_IOV2}[] validOutputs, bytes32 nonce)` as const;
+const _TakeOrderConfigV4 =
+    `(${_OrderV4} order, uint256 inputIOIndex, uint256 outputIOIndex, ${_SignedContextV1}[] signedContext)` as const;
+const _QuoteV2 =
+    `(${_OrderV4} order, uint256 inputIOIndex, uint256 outputIOIndex, ${_SignedContextV1}[] signedContext)` as const;
+const _TakeOrdersConfigV4 =
+    `(${_Float} minimumInput, ${_Float} maximumInput, ${_Float} maximumIORatio, ${_TakeOrderConfigV4}[] orders, bytes data)` as const;
+const _OrderConfigV4 =
+    `(${_EvaluableV4} evaluable, ${_IOV2}[] validInputs, ${_IOV2}[] validOutputs, bytes32 nonce, bytes32 secret, bytes meta)` as const;
+const _ClearConfigV2 =
+    "(uint256 aliceInputIOIndex, uint256 aliceOutputIOIndex, uint256 bobInputIOIndex, uint256 bobOutputIOIndex, bytes32 aliceBountyVaultId, bytes32 bobBountyVaultId)" as const;
 
 // signatures
 const _Orderbook = [
-    `event AddOrderV2(address sender, bytes32 orderHash, ${_OrderV3} order)`,
-    `event RemoveOrderV2(address sender, bytes32 orderHash, ${_OrderV3} order)`,
-    `event AfterClear(address sender, ${_ClearStateChange} clearStateChange)`,
-    "function vaultBalance(address owner, address token, uint256 vaultId) external view returns (uint256 balance)",
-    `function deposit2(address token, uint256 vaultId, uint256 amount, ${_TaskV1}[] calldata tasks) external`,
-    `function addOrder2(${_OrderConfigV3} calldata config, ${_TaskV1}[] calldata tasks) external returns (bool stateChanged)`,
-    `function entask(${_TaskV1}[] calldata tasks) external`,
-    `function withdraw2(address token, uint256 vaultId, uint256 targetAmount, ${_TaskV1}[] calldata tasks) external`,
-    "function orderExists(bytes32 orderHash) external view returns (bool exists)",
-    `function removeOrder2(${_OrderV3} calldata order, ${_TaskV1}[] calldata tasks) external returns (bool stateChanged)`,
+    `event OrderNotFound(address sender, address owner, bytes32 orderHash)` as const,
+    `event AddOrderV3(address sender, bytes32 orderHash, ${_OrderV4} order)` as const,
+    `event OrderZeroAmount(address sender, address owner, bytes32 orderHash)` as const,
+    `event RemoveOrderV3(address sender, bytes32 orderHash, ${_OrderV4} order)` as const,
+    `event AfterClearV2(address sender, ${_ClearStateChangeV2} clearStateChange)` as const,
+    `event OrderExceedsMaxRatio(address sender, address owner, bytes32 orderHash)` as const,
+    `event DepositV2(address sender, address token, bytes32 vaultId, uint256 depositAmountUint256)` as const,
+    `event ClearV3(address sender, ${_OrderV4} alice, ${_OrderV4} bob, ${_ClearConfigV2} clearConfig)` as const,
+    `event TakeOrderV3(address sender, ${_TakeOrderConfigV4} config, ${_Float} input, ${_Float} output)` as const,
+    `event WithdrawV2(address sender, address token, bytes32 vaultId, ${_Float} targetAmount, ${_Float} withdrawAmount, uint256 withdrawAmountUint256)` as const,
+    `function entask2(${_TaskV2}[] calldata tasks) external` as const,
+    `function orderExists(bytes32 orderHash) external view returns (bool exists)` as const,
+    `function vaultBalance2(address owner, address token, bytes32 vaultId) external view returns (${_Float} balance)` as const,
+    `function deposit3(address token, bytes32 vaultId, ${_Float} depositAmount, ${_TaskV2}[] calldata tasks) external` as const,
+    `function withdraw3(address token, bytes32 vaultId, ${_Float} targetAmount, ${_TaskV2}[] calldata tasks) external` as const,
+    `function removeOrder3(${_OrderV4} calldata order, ${_TaskV2}[] calldata tasks) external returns (bool stateChanged)` as const,
+    `function addOrder3(${_OrderConfigV4} calldata config, ${_TaskV2}[] calldata tasks) external returns (bool stateChanged)` as const,
+    `function quote2(${_QuoteV2} calldata quoteConfig) external view returns (bool exists, ${_Float} outputMax, ${_Float} ioRatio)` as const,
+    `function takeOrders3(${_TakeOrdersConfigV4} calldata config) external returns (${_Float} totalTakerInput, ${_Float} totalTakerOutput)` as const,
+    `function clear3(${_OrderV4} memory alice, ${_OrderV4} memory bob, ${_ClearConfigV2} calldata clearConfig, ${_SignedContextV1}[] memory aliceSignedContext, ${_SignedContextV1}[] memory bobSignedContext) external` as const,
     "function multicall(bytes[] calldata data) external returns (bytes[] memory results)",
-    `function takeOrders2(${_TakeOrdersConfigV3} memory config) external returns (uint256 totalInput, uint256 totalOutput)`,
-    `function clear2(${_OrderV3} memory aliceOrder, ${_OrderV3} memory bobOrder, ${_ClearConfig} calldata clearConfig, ${_SignedContextV1}[] memory aliceSignedContext, ${_SignedContextV1}[] memory bobSignedContext) external`,
-    `event TakeOrderV2(address sender, ${_TakeOrderConfigV3} config, uint256 input, uint256 output)`,
-    `function quote(${_Quote} calldata quoteConfig) external view returns (bool, uint256, uint256)`,
-    `event ClearV2(address sender, ${_OrderV3} alice, ${_OrderV3} bob, ${_ClearConfig} clearConfig)`,
 ] as const;
 export const _Arb = [
-    `function arb2(${_TakeOrdersConfigV3} calldata takeOrders, uint256 minimumSenderOutput, ${_EvaluableV3} calldata evaluable) external payable`,
-    `function arb3(address orderBook, ${_TakeOrdersConfigV3} calldata takeOrders, ${_TaskV1} calldata task) external payable`,
     "function iRouteProcessor() external view returns (address)",
+    `function arb4(address orderBook, ${_TakeOrdersConfigV4} calldata takeOrders, ${_TaskV2} calldata task) external payable`,
+    `function arb3(address orderBook, ${_TakeOrdersConfigV4} calldata takeOrders, bytes calldata exchangeData, ${_TaskV2} calldata task) external payable`,
 ] as const;
 
 /** Keeps Orderbook v4 related ABIs */
@@ -54,21 +60,25 @@ export namespace OrderbookAbi {
 
         /** Orderbook v4 contract ABI */
         export const Orderbook = parseAbi(_Orderbook);
+
+        /** Order v4 struct ABI */
+        export const OrderStructAbi = parseAbiParameters(_OrderV4);
     }
 
     /** Orderbook v4 structs */
     export namespace Structs {
-        export const IO = _IO;
-        export const EvaluableV3 = _EvaluableV3;
-        export const SignedContextV1 = _SignedContextV1;
-        export const TaskV1 = _TaskV1;
-        export const ClearStateChange = _ClearStateChange;
-        export const OrderV3 = _OrderV3;
-        export const TakeOrderConfigV3 = _TakeOrderConfigV3;
-        export const OrderConfigV3 = _OrderConfigV3;
-        export const TakeOrdersConfigV3 = _TakeOrdersConfigV3;
-        export const ClearConfig = _ClearConfig;
-        export const Quote = _Quote;
+        export const Float = _Float;
+        export const IO = _IOV2;
+        export const Evaluable = _EvaluableV4;
+        export const SignedContext = _SignedContextV1;
+        export const Task = _TaskV2;
+        export const ClearStateChange = _ClearStateChangeV2;
+        export const Order = _OrderV4;
+        export const TakeOrderConfig = _TakeOrderConfigV4;
+        export const OrderConfig = _OrderConfigV4;
+        export const TakeOrdersConfig = _TakeOrdersConfigV4;
+        export const ClearConfig = _ClearConfigV2;
+        export const Quote = _QuoteV2;
     }
 
     /** Signature ABI for Orderbook v4 and Arb contracts */

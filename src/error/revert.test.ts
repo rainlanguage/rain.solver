@@ -1,8 +1,9 @@
-import { ABI } from "../common";
 import { isDeepStrictEqual } from "util";
-import { RawTransaction } from "../signer";
+import { tryDecodeError } from "./decoder";
+import { getRpcError } from "../rpc/helpers";
+import { ABI, RawTransaction } from "../common";
+import { errorSnapshot, containsNodeError } from "./common";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
-import { getRpcError, errorSnapshot, tryDecodeError, containsNodeError } from ".";
 import { BaseError, decodeFunctionData, Hex, isHex, TransactionReceipt } from "viem";
 import {
     handleRevert,
@@ -15,17 +16,24 @@ vi.mock("util", () => ({
     isDeepStrictEqual: vi.fn(),
 }));
 
+vi.mock("./decoder", () => ({
+    tryDecodeError: vi.fn(),
+}));
+
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
     decodeFunctionData: vi.fn(),
     isHex: vi.fn(),
 }));
 
-vi.mock(".", () => ({
-    getRpcError: vi.fn(),
+vi.mock("./common", () => ({
     errorSnapshot: vi.fn(),
-    tryDecodeError: vi.fn(),
     containsNodeError: vi.fn(),
+}));
+
+vi.mock("../rpc/helpers", async (importOriginal) => ({
+    ...(await importOriginal()),
+    getRpcError: vi.fn(),
 }));
 
 describe("Test revert error handling functions", () => {
@@ -365,10 +373,10 @@ describe("Test revert error handling functions", () => {
     });
 
     describe("Test tryDetectFrontrun", () => {
-        it("should detect frontrun for arb3 transaction", async () => {
+        it("should detect frontrun for arb4 transaction", async () => {
             const mockOrderConfig = { order: "test", config: "data" };
             const frontrunHash = "0xfrontrun123";
-            mockRawTx.data = ("0x7ea0b76a" + "0".repeat(56)) as Hex; // arb3 function selector
+            mockRawTx.data = ("0x4ed39461" + "0".repeat(56)) as Hex; // arb4 function selector
             (decodeFunctionData as Mock).mockReturnValue({
                 args: [null, { orders: [mockOrderConfig] }],
             });
@@ -393,7 +401,7 @@ describe("Test revert error handling functions", () => {
                 data: mockRawTx.data,
             });
             expect(mockViemClient.getLogs).toHaveBeenCalledWith({
-                events: [ABI.Orderbook.Primary.Orderbook[13], ABI.Orderbook.Primary.Orderbook[15]],
+                events: [ABI.Orderbook.Primary.Orderbook[7], ABI.Orderbook.Primary.Orderbook[8]],
                 address: "0xOrderbook",
                 blockHash: mockReceipt.blockHash,
             });
@@ -424,7 +432,7 @@ describe("Test revert error handling functions", () => {
 
             expect(result).toBe(frontrunHash);
             expect(decodeFunctionData).toHaveBeenCalledWith({
-                abi: [ABI.Orderbook.Primary.Orderbook[12]],
+                abi: [ABI.Orderbook.Primary.Orderbook[19]],
                 data: mockRawTx.data,
             });
         });

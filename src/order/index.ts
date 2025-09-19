@@ -1,11 +1,13 @@
 import { erc20Abi } from "viem";
 import { syncOrders } from "./sync";
 import { SgOrder } from "../subgraph";
+import { SharedState } from "../state";
 import { quoteSingleOrder } from "./quote";
 import { PreAssembledSpan } from "../logger";
 import { SubgraphManager } from "../subgraph";
 import { downscaleProtection } from "./protection";
-import { SharedState, TokenDetails } from "../state";
+import { errorSnapshot, RainSolverBaseError } from "../error";
+import { normalizeFloat, Result, TokenDetails } from "../common";
 import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
 import {
     IO,
@@ -23,6 +25,38 @@ export * from "./config";
 
 /** The default owner limit */
 export const DEFAULT_OWNER_LIMIT = 25 as const;
+
+/** Enumerates the possible error types that can occur within the OrderManager functionalities */
+export enum OrderManagerErrorType {
+    UndefinedTokenDecimals,
+    DecodeAbiParametersError,
+    WasmEncodedError,
+}
+
+/**
+ * Represents an error type for the OrderManager functionalities.
+ * This error class extends the `RainSolverBaseError` error class, with the `type`
+ * property indicates the specific category of the error, as defined by the
+ * `OrderManagerErrorType` enum. The optional `cause` property can be used to
+ * attach the original error or any relevant context that led to this error.
+ *
+ * @example
+ * ```typescript
+ * // without cause
+ * throw new OrderManagerError("msg", OrderManagerErrorType);
+ *
+ * // with cause
+ * throw new OrderManagerError("msg", OrderManagerErrorType, originalError);
+ * ```
+ */
+export class OrderManagerError extends RainSolverBaseError {
+    type: OrderManagerErrorType;
+    constructor(message: string, type: OrderManagerErrorType, cause?: any) {
+        super(message, cause);
+        this.type = type;
+        this.name = "OrderManagerError";
+    }
+}
 
 /**
  * OrderManager is responsible for managing orders state for Rainsolver during runtime, it
@@ -91,17 +125,32 @@ export class OrderManager {
     static async init(
         state: SharedState,
         subgraphManager?: SubgraphManager,
-    ): Promise<{ orderManager: OrderManager; report: PreAssembledSpan }> {
+    ): Promise<Result<{ orderManager: OrderManager; report: PreAssembledSpan }, PreAssembledSpan>> {
         const orderManager = new OrderManager(state, subgraphManager);
-        const report = await orderManager.fetch();
-        return { orderManager, report };
+        const fetchResult = await orderManager.fetch();
+        if (fetchResult.isErr()) {
+            return Result.err(fetchResult.error);
+        }
+        return Result.ok({ orderManager, report: fetchResult.value });
     }
 
     /** Fetches all active orders from upstream subgraphs */
-    async fetch(): Promise<PreAssembledSpan> {
-        const { orders, report } = await this.subgraphManager.fetchAll();
-        await this.addOrders(orders);
-        return report;
+    async fetch(): Promise<Result<PreAssembledSpan, PreAssembledSpan>> {
+        const fetchResult = await this.subgraphManager.fetchAll();
+        if (fetchResult.isErr()) {
+            return Result.err(fetchResult.error.report);
+        }
+        const { orders, report } = fetchResult.value;
+        for (const order of orders) {
+            const result = await this.addOrder(order);
+            if (result.isErr()) {
+                report.setAttr(
+                    `fetchstatus.orders.${order.orderHash}`,
+                    await errorSnapshot("Failed to handle order", result.error),
+                );
+            }
+        }
+        return Result.ok(report);
     }
 
     /** Syncs orders to upstream subgraphs */
@@ -110,57 +159,66 @@ export class OrderManager {
     }
 
     /**
-     * Adds new orders to the order map
-     * @param ordersDetails - Array of order details from subgraph
+     * Adds a new order to the order map
+     * @param orderDetails - Order details from subgraph
      */
-    async addOrders(ordersDetails: SgOrder[]) {
-        for (let i = 0; i < ordersDetails.length; i++) {
-            const orderDetails = ordersDetails[i];
-            const orderHash = orderDetails.orderHash.toLowerCase();
-            const orderbook = orderDetails.orderbook.id.toLowerCase();
+    async addOrder(orderDetails: SgOrder): Promise<Result<void, OrderManagerError>> {
+        const orderHash = orderDetails.orderHash.toLowerCase();
+        const orderbook = orderDetails.orderbook.id.toLowerCase();
 
-            const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
-            if (orderStructResult.isErr()) continue;
-            const orderStruct = orderStructResult.value;
-
-            const pairs = await this.getOrderPairs(orderHash, orderStruct, orderDetails);
-
-            // add to the owners map
-            if (!this.ownersMap.has(orderbook)) {
-                this.ownersMap.set(orderbook, new Map());
-            }
-            const orderbookOwnerProfileItem = this.ownersMap.get(orderbook)!;
-
-            if (!orderbookOwnerProfileItem.has(orderStruct.owner)) {
-                const order = {
-                    active: true,
-                    order: orderStruct,
-                    takeOrders: pairs,
-                };
-                orderbookOwnerProfileItem.set(orderStruct.owner, {
-                    limit: this.ownerLimits[orderStruct.owner] ?? DEFAULT_OWNER_LIMIT,
-                    orders: new Map([[orderHash, order]]),
-                    lastIndex: 0,
-                });
-            }
-            const ownerProfile = orderbookOwnerProfileItem.get(orderStruct.owner)!;
-            const order = ownerProfile.orders.get(orderHash);
-            if (!order) {
-                ownerProfile.orders.set(orderHash, {
-                    active: true,
-                    order: orderStruct,
-                    takeOrders: pairs,
-                });
-            } else {
-                if (!order.active) order.active = true;
-            }
-
-            // add to the pair maps
-            for (let j = 0; j < pairs.length; j++) {
-                this.addToPairMaps(pairs[j]);
-                this.addToTokenVaultsMap(pairs[j]);
-            }
+        const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
+        if (orderStructResult.isErr()) {
+            return Result.err(
+                new OrderManagerError(
+                    "Failed to decode order bytes",
+                    OrderManagerErrorType.DecodeAbiParametersError,
+                    orderStructResult.error,
+                ),
+            );
         }
+        const orderStruct = orderStructResult.value;
+
+        const pairsResult = await this.getOrderPairs(orderHash, orderStruct, orderDetails);
+        if (pairsResult.isErr()) return Result.err(pairsResult.error);
+        const pairs = pairsResult.value;
+
+        // add to the owners map
+        if (!this.ownersMap.has(orderbook)) {
+            this.ownersMap.set(orderbook, new Map());
+        }
+        const orderbookOwnerProfileItem = this.ownersMap.get(orderbook)!;
+
+        if (!orderbookOwnerProfileItem.has(orderStruct.owner)) {
+            const order = {
+                active: true,
+                order: orderStruct,
+                takeOrders: pairs,
+            };
+            orderbookOwnerProfileItem.set(orderStruct.owner, {
+                limit: this.ownerLimits[orderStruct.owner] ?? DEFAULT_OWNER_LIMIT,
+                orders: new Map([[orderHash, order]]),
+                lastIndex: 0,
+            });
+        }
+        const ownerProfile = orderbookOwnerProfileItem.get(orderStruct.owner)!;
+        const order = ownerProfile.orders.get(orderHash);
+        if (!order) {
+            ownerProfile.orders.set(orderHash, {
+                active: true,
+                order: orderStruct,
+                takeOrders: pairs,
+            });
+        } else {
+            if (!order.active) order.active = true;
+        }
+
+        // add to the pair maps
+        for (let j = 0; j < pairs.length; j++) {
+            this.addToPairMaps(pairs[j]);
+            this.addToTokenVaultsMap(pairs[j]);
+        }
+
+        return Result.ok(undefined);
     }
 
     /**
@@ -196,10 +254,10 @@ export class OrderManager {
             owner,
             {
                 address: outputVault.token.toLowerCase(),
-                decimals: outputVault.decimals,
+                decimals: pair.sellTokenDecimals,
                 symbol: pair.sellTokenSymbol,
             },
-            outputVault.vaultId,
+            BigInt(outputVault.vaultId),
             pair.sellTokenVaultBalance,
         );
         this.updateVault(
@@ -207,10 +265,10 @@ export class OrderManager {
             owner,
             {
                 address: inputVault.token.toLowerCase(),
-                decimals: inputVault.decimals,
+                decimals: pair.buyTokenDecimals,
                 symbol: pair.buyTokenSymbol,
             },
-            inputVault.vaultId,
+            BigInt(inputVault.vaultId),
             pair.buyTokenVaultBalance,
         );
     }
@@ -320,13 +378,13 @@ export class OrderManager {
      * @param orderHash - The hash of the order
      * @param orderStruct - The order struct
      * @param orderDetails - The order details from subgraph
-     * @returns Array of valid trading pairs
+     * @returns Array of valid trading pairs if successful, or an WasmEncoded if error
      */
     async getOrderPairs(
         orderHash: string,
         orderStruct: Order,
         orderDetails: SgOrder,
-    ): Promise<Pair[]> {
+    ): Promise<Result<Pair[], OrderManagerError>> {
         const pairs: Pair[] = [];
         // helper iterator function
         function* iterIO() {
@@ -343,7 +401,12 @@ export class OrderManager {
         }
 
         // helper function to handle token details
-        const handleToken = async (io: IO, tokensList: SgOrder["outputs"]) => {
+        const handleToken = async (
+            io: IO,
+            tokensList: SgOrder["outputs"],
+        ): Promise<
+            Result<{ symbol: string; decimals: number; balance: string }, OrderManagerError>
+        > => {
             const address = io.token.toLowerCase() as `0x${string}`;
             const cached = this.state.watchedTokens.get(address);
             const sgOrderIO = tokensList.find((v) => v.token.address.toLowerCase() === address)!;
@@ -357,36 +420,91 @@ export class OrderManager {
                         functionName: "symbol",
                     })
                     .catch(() => "UnknownSymbol")); // fallback to unknown symbol if all fail
+            let decimals =
+                cached?.decimals ??
+                (sgOrderIO?.token.decimals === undefined
+                    ? undefined
+                    : Number(sgOrderIO?.token.decimals));
+            if (typeof decimals !== "number") {
+                try {
+                    decimals = await this.state.client.readContract({
+                        address,
+                        abi: erc20Abi,
+                        functionName: "decimals",
+                    });
+                } catch (error) {
+                    return Result.err(
+                        new OrderManagerError(
+                            `Failed to get token decimals for: ${address}`,
+                            OrderManagerErrorType.UndefinedTokenDecimals,
+                            error,
+                        ),
+                    );
+                }
+            }
             // add to watched tokens
             this.state.watchToken({
                 symbol,
                 address,
-                decimals: io.decimals,
+                decimals,
             });
-            return { symbol, balance: sgOrderIO.balance };
+            return Result.ok({ symbol, decimals, balance: sgOrderIO.balance });
         };
 
         for (const { output, input, outputIOIndex, inputIOIndex } of iterIO()) {
-            const { symbol: inputSymbol, balance: inputBalance } = await handleToken(
-                input,
-                orderDetails.inputs,
-            );
-            const { symbol: outputSymbol, balance: outputBalance } = await handleToken(
-                output,
-                orderDetails.outputs,
-            );
+            const inputResult = await handleToken(input, orderDetails.inputs);
+            if (inputResult.isErr()) {
+                return Result.err(inputResult.error);
+            }
+
+            const outputResult = await handleToken(output, orderDetails.outputs);
+            if (outputResult.isErr()) {
+                return Result.err(outputResult.error);
+            }
+
+            const {
+                symbol: inputSymbol,
+                decimals: inputDecimals,
+                balance: inputBalanceHex,
+            } = inputResult.value;
+            const {
+                symbol: outputSymbol,
+                decimals: outputDecimals,
+                balance: outputBalanceHex,
+            } = outputResult.value;
+
+            const inputBalanceRes = normalizeFloat(inputBalanceHex, inputDecimals);
+            if (inputBalanceRes.isErr()) {
+                return Result.err(
+                    new OrderManagerError(
+                        `Failed to parse float`,
+                        OrderManagerErrorType.WasmEncodedError,
+                        inputBalanceRes.error,
+                    ),
+                );
+            }
+            const outputBalanceRes = normalizeFloat(outputBalanceHex, outputDecimals);
+            if (outputBalanceRes.isErr()) {
+                return Result.err(
+                    new OrderManagerError(
+                        `Failed to parse float`,
+                        OrderManagerErrorType.WasmEncodedError,
+                        outputBalanceRes.error,
+                    ),
+                );
+            }
 
             if (input.token.toLowerCase() !== output.token.toLowerCase()) {
                 pairs.push({
                     orderbook: orderDetails.orderbook.id.toLowerCase(),
                     buyToken: input.token.toLowerCase(),
                     buyTokenSymbol: inputSymbol,
-                    buyTokenDecimals: input.decimals,
-                    buyTokenVaultBalance: BigInt(inputBalance),
+                    buyTokenDecimals: inputDecimals,
+                    buyTokenVaultBalance: inputBalanceRes.value,
                     sellToken: output.token.toLowerCase(),
                     sellTokenSymbol: outputSymbol,
-                    sellTokenDecimals: output.decimals,
-                    sellTokenVaultBalance: BigInt(outputBalance),
+                    sellTokenDecimals: outputDecimals,
+                    sellTokenVaultBalance: outputBalanceRes.value,
                     takeOrder: {
                         id: orderHash,
                         struct: {
@@ -400,7 +518,7 @@ export class OrderManager {
             }
         }
 
-        return pairs;
+        return Result.ok(pairs);
     }
 
     /**
@@ -490,5 +608,43 @@ export class OrderManager {
         const buyToken = orderDetails.buyToken.toLowerCase();
         const ob = orderDetails.orderbook.toLowerCase();
         return getSortedPairList(this.oiPairMap, ob, buyToken, sellToken, counterpartySource);
+    }
+
+    /**
+     * Gets the current metadata of all orders that being processed, which includes total
+     * orders count, total owners count, total pairs count and total distinct pairs count
+     * @returns An object containing the metadata
+     */
+    getCurrentMetadata() {
+        let totalCount = 0;
+        let totalOwnersCount = 0;
+        let totalPairsCount = 0;
+        let totalDistinctPairsCount = 0;
+        this.ownersMap.forEach((ownersProfileMap) => {
+            let obOwners = 0;
+            let obOrders = 0;
+            let obPairs = 0;
+            const distinctPairsSet = new Set<string>();
+            ownersProfileMap.forEach((ownerProfile) => {
+                obOwners++;
+                obOrders += ownerProfile.orders.size;
+                ownerProfile.orders.forEach((orderProfile) => {
+                    obPairs += orderProfile.takeOrders.length;
+                    orderProfile.takeOrders.forEach((pair) => {
+                        distinctPairsSet.add(`${pair.buyToken}-${pair.sellToken}`);
+                    });
+                });
+            });
+            totalCount += obOrders;
+            totalOwnersCount += obOwners;
+            totalPairsCount += obPairs;
+            totalDistinctPairsCount = distinctPairsSet.size;
+        });
+        return {
+            totalCount,
+            totalOwnersCount,
+            totalPairsCount,
+            totalDistinctPairsCount,
+        };
     }
 }

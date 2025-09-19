@@ -1,7 +1,7 @@
 import { sleep } from "../common";
 import { RainSolverTransportTimeoutError } from "./transport";
 import { vi, describe, it, assert, Mock, beforeEach, expect } from "vitest";
-import { RpcState, RpcConfig, RpcMetrics, RpcProgress, RpcBufferType } from ".";
+import { RpcState, RpcConfig, RpcMetrics, RpcProgress, RpcBufferType } from "./rpc";
 
 vi.mock("../common", async (importOriginal) => ({
     ...(await importOriginal()),

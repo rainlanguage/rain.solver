@@ -1,9 +1,9 @@
 import { Result } from "../../common";
+import { RainSolverSigner } from "../../signer";
 import { Attributes } from "@opentelemetry/api";
-import { withBigintSerializer } from "../../common";
 import { BaseError, ExecutionRevertedError } from "viem";
-import { RainSolverSigner, RawTransaction } from "../../signer";
 import { containsNodeError, errorSnapshot } from "../../error";
+import { withBigintSerializer, RawTransaction } from "../../common";
 import { DryrunFailure, DryrunResult, DryrunSuccess } from "../types";
 
 /**

@@ -4,6 +4,7 @@ import { BlackList } from "./blacklist";
 import { LiquidityProviders } from "sushi";
 
 export * from "./marketPrice";
+export * from "./balancer";
 
 /** Blacklisted pools as a set, used by router */
 export const PoolBlackList = new Set(BlackList);

@@ -2,11 +2,12 @@ import { Router } from "sushi";
 import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
 import { ONE18 } from "../../../math";
-import { Token } from "sushi/currency";
-import { Result } from "../../../common";
 import { Pair } from "../../../order";
+import { Token } from "sushi/currency";
 import { SimulationResult } from "../../types";
-import { encodeFunctionData, encodeAbiParameters, maxUint256 } from "viem";
+import { Result, toFloat } from "../../../common";
+import { getEnsureBountyTaskBytecode } from "../../../task";
+import { encodeAbiParameters, encodeFunctionData } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
     trySimulateTrade,
@@ -30,9 +31,9 @@ vi.mock("../../../router", async (importOriginal) => ({
     visualizeRoute: vi.fn().mockReturnValue(["routeVisual"]),
 }));
 
-vi.mock("../../../task", () => ({
-    parseRainlang: vi.fn().mockResolvedValue("0xbytecode"),
-    getBountyEnsureRainlang: vi.fn().mockResolvedValue("rainlang"),
+vi.mock("../../../task", async (importOriginal) => ({
+    ...(await importOriginal()),
+    getEnsureBountyTaskBytecode: vi.fn().mockResolvedValue(Result.ok("0xbytecode")),
 }));
 
 vi.mock("../dryrun", () => ({
@@ -195,14 +196,14 @@ describe("Test trySimulateTrade", () => {
         // Assert encodeFunctionData was called correctly
         expect(encodeFunctionData).toHaveBeenCalledWith({
             abi: expect.any(Array), // ArbAbi
-            functionName: "arb3",
+            functionName: "arb4",
             args: [
                 "0xorderbook",
                 {
                     data: "0xparams",
-                    maximumIORatio: 2000000000000000000n,
-                    maximumInput: maxUint256,
-                    minimumInput: 1n,
+                    maximumIORatio: (toFloat(2000000000000000000n, 18) as any).value,
+                    maximumInput: expect.any(String),
+                    minimumInput: expect.any(String),
                     orders: [{}],
                 },
                 {
@@ -336,6 +337,24 @@ describe("Test trySimulateTrade", () => {
         expect(encodeFunctionData).toHaveBeenCalledTimes(2);
         expect(encodeAbiParameters).toHaveBeenCalledTimes(1);
     });
+
+    it("should return error when getEnsureBountyTaskBytecode fails", async () => {
+        (Router.findBestRoute as Mock).mockReturnValue({
+            status: "OK",
+            amountOutBI: 20n * ONE18,
+            legs: [],
+        });
+        args.orderDetails = makeOrderDetails(1n * ONE18);
+        (getEnsureBountyTaskBytecode as Mock).mockResolvedValue(Result.err("error"));
+
+        const result: SimulationResult = await trySimulateTrade.call(solver, args);
+
+        assert(result.isErr());
+        expect(result.error).toHaveProperty("spanAttributes");
+        expect(result.error).toHaveProperty("reason");
+        expect(result.error.reason).toBe(RouteProcessorSimulationHaltReason.NoOpportunity);
+        expect(result.error.type).toBe("routeProcessor");
+    });
 });
 
 describe("Test findLargestTradeSize", () => {
@@ -431,84 +450,5 @@ describe("Test findLargestTradeSize", () => {
 
         expect(typeof result).toBe("bigint");
         expect(result).toBeGreaterThan(0n);
-    });
-});
-
-describe("Test findLargestTradeSize", () => {
-    let solver: RainSolver;
-    let fromToken: Token;
-    let toToken: Token;
-    let maximumInputFixed: bigint;
-
-    beforeEach(() => {
-        vi.clearAllMocks();
-        solver = {
-            state: {
-                gasPrice: 1n,
-                dataFetcher: {
-                    getCurrentPoolCodeMap: vi.fn().mockReturnValue("mockPcMap"),
-                },
-                chainConfig: {
-                    id: 1,
-                },
-            },
-            appOptions: {
-                route: undefined,
-            },
-        } as any;
-        fromToken = { address: "0xFrom", decimals: 18 } as any;
-        toToken = { address: "0xTo", decimals: 18 } as any;
-        maximumInputFixed = 10n * ONE18;
-    });
-
-    it("should return undefined if no valid trade size found (all NoWay)", () => {
-        (Router.findBestRoute as Mock).mockReturnValue({ status: "NoWay" });
-
-        const result: bigint | undefined = findLargestTradeSize.call(
-            solver,
-            makeOrderDetails(1n * ONE18),
-            toToken,
-            fromToken,
-            maximumInputFixed,
-        );
-
-        expect(result).toBeUndefined();
-    });
-
-    it("should return the largest valid trade size when some routes are valid", () => {
-        (Router.findBestRoute as Mock).mockImplementation(() => {
-            return { status: "OK", amountOutBI: 4n * ONE18 };
-        });
-
-        const orderDetails = makeOrderDetails(1n * ONE18);
-
-        const result: bigint | undefined = findLargestTradeSize.call(
-            solver,
-            orderDetails,
-            toToken,
-            fromToken,
-            maximumInputFixed,
-        );
-
-        expect(typeof result).toBe("bigint");
-        expect(result).toBe(3999999761581420898n);
-    });
-
-    it("should return undefined if all OK routes have price < ratio", () => {
-        (Router.findBestRoute as Mock).mockImplementation(() => ({
-            status: "OK",
-            amountOutBI: 1n, // price = 1
-        }));
-        const orderDetails = makeOrderDetails(2n * ONE18); // ratio = 2
-
-        const result: bigint | undefined = findLargestTradeSize.call(
-            solver,
-            orderDetails,
-            toToken,
-            fromToken,
-            maximumInputFixed,
-        );
-
-        expect(result).toBeUndefined();
     });
 });

@@ -1,7 +1,7 @@
-import { Result } from "../common";
 import { Evaluable, TakeOrder } from "../order";
 import { Attributes } from "@opentelemetry/api";
-import { EstimateGasCostResult, RawTransaction } from "../signer";
+import { Result, RawTransaction } from "../common";
+import { EstimateGasCostResult } from "../signer";
 
 /** Specifies reason that order process halted with failure */
 export enum ProcessOrderHaltReason {
@@ -27,6 +27,7 @@ export enum TradeType {
     RouteProcessor = "routeProcessor",
     IntraOrderbook = "intraOrderbook",
     InterOrderbook = "interOrderbook",
+    Balancer = "balancer",
 }
 
 /** Base type for process order results containing shared fields */
@@ -41,6 +42,7 @@ export type ProcessOrderResultBase = {
 
 /** Successful process order result */
 export type ProcessOrderSuccess = ProcessOrderResultBase & {
+    endTime: number;
     txUrl?: string;
     clearedAmount?: string;
     inputTokenIncome?: string;
@@ -53,15 +55,16 @@ export type ProcessOrderSuccess = ProcessOrderResultBase & {
 
 /** Failed process order result */
 export type ProcessOrderFailure = ProcessOrderResultBase & {
+    endTime: number;
     reason: ProcessOrderHaltReason;
     error?: any;
     txUrl?: string;
 };
 
 export type TakeOrdersConfigType = {
-    minimumInput: bigint;
-    maximumInput: bigint;
-    maximumIORatio: bigint;
+    minimumInput: `0x${string}`;
+    maximumInput: `0x${string}`;
+    maximumIORatio: `0x${string}`;
     orders: TakeOrder[];
     data: `0x${string}`;
 };

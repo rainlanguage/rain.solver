@@ -16,6 +16,7 @@ export type Settlement = {
     pair: string;
     owner: string;
     orderHash: string;
+    startTime: number;
     settle: () => Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>>;
 };
 
@@ -33,7 +34,8 @@ export async function initializeRound(
 
     for (const orderDetails of iterOrders(orders, shuffle)) {
         const pair = `${orderDetails.buyTokenSymbol}/${orderDetails.sellTokenSymbol}`;
-        const report = new PreAssembledSpan(`checkpoint_${pair}`);
+        const startTime = performance.now();
+        const report = new PreAssembledSpan(`checkpoint_${pair}`, startTime);
         const owner = orderDetails.takeOrder.struct.order.owner.toLowerCase();
         report.extendAttrs({
             "details.pair": pair,
@@ -49,9 +51,11 @@ export async function initializeRound(
                 ?.get(owner)
                 ?.get(orderDetails.sellToken)
                 ?.get(
-                    orderDetails.takeOrder.struct.order.validOutputs[
-                        orderDetails.takeOrder.struct.outputIOIndex
-                    ].vaultId,
+                    BigInt(
+                        orderDetails.takeOrder.struct.order.validOutputs[
+                            orderDetails.takeOrder.struct.outputIOIndex
+                        ].vaultId,
+                    ),
                 )?.balance ?? orderDetails.sellTokenVaultBalance;
         orderDetails.buyTokenVaultBalance =
             this.orderManager.ownerTokenVaultMap
@@ -59,19 +63,24 @@ export async function initializeRound(
                 ?.get(owner)
                 ?.get(orderDetails.buyToken)
                 ?.get(
-                    orderDetails.takeOrder.struct.order.validInputs[
-                        orderDetails.takeOrder.struct.inputIOIndex
-                    ].vaultId,
+                    BigInt(
+                        orderDetails.takeOrder.struct.order.validInputs[
+                            orderDetails.takeOrder.struct.inputIOIndex
+                        ].vaultId,
+                    ),
                 )?.balance ?? orderDetails.buyTokenVaultBalance;
 
         // skip if the output vault is empty
         if (orderDetails.sellTokenVaultBalance <= 0n) {
+            const endTime = performance.now();
             settlements.push({
                 pair,
+                startTime,
                 orderHash: orderDetails.takeOrder.id,
                 owner: orderDetails.takeOrder.struct.order.owner,
                 settle: async () => {
                     return Result.ok({
+                        endTime,
                         tokenPair: pair,
                         buyToken: orderDetails.buyToken,
                         sellToken: orderDetails.sellToken,
@@ -105,6 +114,7 @@ export async function initializeRound(
         settlements.push({
             settle,
             pair,
+            startTime,
             orderHash: orderDetails.takeOrder.id,
             owner: orderDetails.takeOrder.struct.order.owner,
         });
@@ -135,18 +145,21 @@ export async function finalizeRound(
 }> {
     const results: Result<ProcessOrderSuccess, ProcessOrderFailure>[] = [];
     const reports: PreAssembledSpan[] = [];
-    for (const { settle, pair, owner, orderHash } of settlements) {
+    for (const { settle, pair, owner, orderHash, startTime } of settlements) {
         // instantiate a span report for this pair
-        const report = new PreAssembledSpan(`order_${pair}`);
+        const report = new PreAssembledSpan(`order_${pair}`, startTime);
         report.setAttr("details.owner", owner);
 
         // settle the process results
         // this will return the report of the operation
         const result = await settle();
         results.push(result);
+        let endTime = performance.now();
 
         if (result.isOk()) {
             const value = result.value;
+            endTime = value.endTime;
+
             // keep track of avg gas cost
             if (value.gasCost) {
                 this.state.gasCosts.push(value.gasCost);
@@ -192,6 +205,7 @@ export async function finalizeRound(
             }
         } else {
             const err = result.error;
+            endTime = err.endTime;
             // set the span attributes with the values gathered at processOrder()
             for (const attrKey in err.spanAttributes) {
                 // record event attrs
@@ -328,7 +342,7 @@ export async function finalizeRound(
                 }
             }
         }
-        report.end();
+        report.end(endTime);
         reports.push(report);
 
         // export the report to logger if logger is available

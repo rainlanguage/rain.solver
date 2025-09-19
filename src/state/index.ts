@@ -1,33 +1,52 @@
-import { ABI } from "../common";
-import { RpcState } from "../rpc";
 import { ChainId } from "sushi/chain";
 import { AppOptions } from "../config";
 import { Token } from "sushi/currency";
-import { errorSnapshot } from "../error";
 import { getGasPrice } from "./gasPrice";
+import { BalancerRouter } from "../router";
 import { WalletConfig } from "../wallet/config";
 import { SubgraphConfig } from "../subgraph/config";
+import { RainSolverBaseError } from "../error/types";
 import { OrderManagerConfig } from "../order/config";
-import { ChainConfig, getChainConfig } from "./chain";
-import { createPublicClient, PublicClient } from "viem";
 import { LiquidityProviders, RainDataFetcher } from "sushi";
+import { ABI, Result, TokenDetails, Dispair } from "../common";
 import { getMarketPrice, processLiquidityProviders } from "../router";
-import { rainSolverTransport, RainSolverTransportConfig } from "../rpc";
+import { ChainConfig, ChainConfigError, getChainConfig } from "./chain";
+import { createPublicClient, PublicClient, ReadContractErrorType } from "viem";
+import { RpcState, rainSolverTransport, RainSolverTransportConfig } from "../rpc";
+
+/** Enumerates the possible error types that can occur within the chain config */
+export enum SharedStateErrorType {
+    ChainConfigError,
+    FailedToGetDispairInterpreterAddress,
+    FailedToGetDispairStoreAddress,
+    SushiRouterInitializationError,
+}
 
 /**
- * Rain dispair contracts, deployer, store and interpreter
+ * Represents an error type for the ChainConfig.
+ * This error class extends the `RainSolverError` error class, with the `type`
+ * property indicates the specific category of the error, as defined by the
+ * `SharedStateErrorType` enum.
+ *
+ * @example
+ * ```typescript
+ * throw new SharedStateError("msg", SharedStateErrorType.ChainConfigError, originalError);
+ * ```
  */
-export type Dispair = {
-    deployer: string;
-    interpreter: string;
-    store: string;
-};
-
-export type TokenDetails = {
-    address: string;
-    decimals: number;
-    symbol: string;
-};
+export class SharedStateError extends RainSolverBaseError {
+    type: SharedStateErrorType;
+    override cause?: ReadContractErrorType | ChainConfigError;
+    constructor(
+        message: string,
+        type: SharedStateErrorType,
+        cause?: ReadContractErrorType | ChainConfigError,
+    ) {
+        super(message);
+        this.type = type;
+        this.cause = cause;
+        this.name = "SharedStateError";
+    }
+}
 
 /**
  * SharedState configuration that holds required data for instantiating SharedState
@@ -65,9 +84,13 @@ export type SharedStateConfig = {
     rainSolverTransportConfig?: RainSolverTransportConfig;
     /** RainDataFetcher instance */
     dataFetcher: RainDataFetcher;
+    /** Balancer router instance */
+    balancerRouter?: BalancerRouter;
 };
 export namespace SharedStateConfig {
-    export async function tryFromAppOptions(options: AppOptions): Promise<SharedStateConfig> {
+    export async function tryFromAppOptions(
+        options: AppOptions,
+    ): Promise<Result<SharedStateConfig, SharedStateError>> {
         const rainSolverTransportConfig = { timeout: options.timeout };
         const rpcState = new RpcState(options.rpc);
         const writeRpcState = options.writeRpc ? new RpcState(options.writeRpc) : undefined;
@@ -79,10 +102,17 @@ export namespace SharedStateConfig {
 
         // get chain config
         const chainId = await client.getChainId();
-        const chainConfig = getChainConfig(chainId as ChainId);
-        if (!chainConfig) {
-            throw `Cannot find configuration for the network with chain id: ${chainId}`;
+        const chainConfigResult = getChainConfig(chainId as ChainId);
+        if (chainConfigResult.isErr()) {
+            return Result.err(
+                new SharedStateError(
+                    `Cannot find configuration for the network with chain id: ${chainId}`,
+                    SharedStateErrorType.ChainConfigError,
+                    chainConfigResult.error,
+                ),
+            );
         }
+        const chainConfig = chainConfigResult.value;
 
         // re-assign the client with static chain data
         client = createPublicClient({
@@ -90,26 +120,72 @@ export namespace SharedStateConfig {
             transport: rainSolverTransport(rpcState, rainSolverTransportConfig),
         });
 
-        const getDispairAddress = async (functionName: "iInterpreter" | "iStore") => {
+        const getDispairAddress = async (
+            functionName: "iInterpreter" | "iStore",
+        ): Promise<Result<`0x${string}`, SharedStateError>> => {
             try {
-                return await client.readContract({
-                    address: options.dispair as `0x${string}`,
-                    abi: ABI.Deployer.Primary.Deployer,
-                    functionName,
-                });
+                return Result.ok(
+                    await client.readContract({
+                        address: options.dispair,
+                        abi: ABI.Deployer.Primary.Deployer,
+                        functionName,
+                    }),
+                );
             } catch (error) {
-                throw await errorSnapshot(`failed to get dispair ${functionName} address`, error);
+                return Result.err(
+                    new SharedStateError(
+                        `failed to get dispair ${functionName} address`,
+                        functionName === "iInterpreter"
+                            ? SharedStateErrorType.FailedToGetDispairInterpreterAddress
+                            : SharedStateErrorType.FailedToGetDispairStoreAddress,
+                        error as ReadContractErrorType,
+                    ),
+                );
             }
         };
-        const interpreter = await getDispairAddress("iInterpreter");
-        const store = await getDispairAddress("iStore");
+        const interpreterResult = await getDispairAddress("iInterpreter");
+        if (interpreterResult.isErr()) {
+            return Result.err(interpreterResult.error);
+        }
+        const storeResult = await getDispairAddress("iStore");
+        if (storeResult.isErr()) {
+            return Result.err(storeResult.error);
+        }
+        const interpreter = interpreterResult.value;
+        const store = storeResult.value;
 
         const liquidityProviders = processLiquidityProviders(options.liquidityProviders);
-        const dataFetcher = await RainDataFetcher.init(
-            chainConfig.id as ChainId,
-            client,
-            liquidityProviders,
-        );
+        const rainDataFetcherResult = await (async (): Promise<
+            Result<RainDataFetcher, SharedStateError>
+        > => {
+            try {
+                const res = await RainDataFetcher.init(
+                    chainConfig.id as ChainId,
+                    client,
+                    liquidityProviders,
+                );
+                return Result.ok(res);
+            } catch (error) {
+                return Result.err(
+                    new SharedStateError(
+                        "Failed to init sushi RainDataFetcher",
+                        SharedStateErrorType.SushiRouterInitializationError,
+                        error as ReadContractErrorType,
+                    ),
+                );
+            }
+        })();
+        if (rainDataFetcherResult.isErr()) {
+            return Result.err(rainDataFetcherResult.error);
+        }
+        const dataFetcher = rainDataFetcherResult.value;
+
+        const balancerRouter = (() => {
+            const res = BalancerRouter.init(chainId);
+            if (res.isOk()) return res.value;
+            else return undefined;
+        })();
+
         const config: SharedStateConfig = {
             client,
             rpcState,
@@ -126,8 +202,9 @@ export namespace SharedStateConfig {
             dispair: {
                 interpreter,
                 store,
-                deployer: options.dispair,
+                deployer: options.dispair as `0x${string}`,
             },
+            balancerRouter,
         };
 
         // try to get init gas price
@@ -135,7 +212,7 @@ export namespace SharedStateConfig {
         const result = await getGasPrice(client, chainConfig, options.gasPriceMultiplier).catch(
             () => undefined,
         );
-        if (!result) return config;
+        if (!result) return Result.ok(config);
         const { gasPrice, l1GasPrice } = result;
         if (!gasPrice.error) {
             config.initGasPrice = gasPrice.value;
@@ -144,7 +221,7 @@ export namespace SharedStateConfig {
             config.initL1GasPrice = l1GasPrice.value;
         }
 
-        return config;
+        return Result.ok(config);
     }
 }
 
@@ -177,6 +254,8 @@ export class SharedState {
     readonly transactionGas?: string;
     /** RainSolver transport configuration */
     readonly rainSolverTransportConfig?: RainSolverTransportConfig;
+    /** Balancer router instance */
+    readonly balancerRouter?: BalancerRouter;
 
     /** Current gas price of the operating chain */
     gasPrice = 0n;
@@ -204,6 +283,7 @@ export class SharedState {
         this.rpc = config.rpcState;
         this.writeRpc = config.writeRpcState;
         this.dataFetcher = config.dataFetcher;
+        this.balancerRouter = config.balancerRouter;
         if (typeof config.gasPriceMultiplier === "number") {
             this.gasPriceMultiplier = config.gasPriceMultiplier;
         }
@@ -283,6 +363,14 @@ export class SharedState {
      * @returns The market price for the token pair or undefined if no route were found
      */
     getMarketPrice(fromToken: Token, toToken: Token, blockNumber?: bigint) {
-        return getMarketPrice.call(this, fromToken, toToken, blockNumber);
+        return getMarketPrice(
+            this.chainConfig.id,
+            this.dataFetcher,
+            fromToken,
+            toToken,
+            this.gasPrice,
+            blockNumber,
+            this.balancerRouter,
+        );
     }
 }

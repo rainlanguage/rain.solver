@@ -1,54 +1,68 @@
-import { SharedState } from "../state";
+import { ONE18 } from "../math";
 import { Token } from "sushi/currency";
-import { ChainId, Router } from "sushi";
-import { scaleTo18, ONE18 } from "../math";
+import { BalancerRouter } from "./balancer";
 import { PoolBlackList, RPoolFilter } from ".";
+import { ChainId, RainDataFetcher, Router } from "sushi";
 import { formatUnits, parseUnits, maxUint256 } from "viem";
 
 /**
  * Get market price for 1 unit of token for a token pair
+ * @param chainId - The chain id
+ * @param dataFetcher - The data fetcher instance
  * @param fromToken - The sell token
  * @param toToken - The buy token
+ * @param gasPrice - The gas price to use for routing
  * @param blockNumber - Optional block number to fetch the pools data at a specific block height
+ * @param balancerRouter - Optional balancer router instance to use for fallback routing
+ * @returns The market price for the token pair or undefined if no route were found
  */
 export async function getMarketPrice(
-    this: SharedState,
+    chainId: number,
+    dataFetcher: RainDataFetcher,
     fromToken: Token,
     toToken: Token,
+    gasPrice: bigint | number,
     blockNumber?: bigint,
-): Promise<{ price: string; amountOut: string } | undefined> {
+    balancerRouter?: BalancerRouter,
+): Promise<{ price: string } | undefined> {
     // return early if from and to tokens are the same
     if (fromToken.address.toLowerCase() === toToken.address.toLowerCase()) {
-        return {
-            price: "1",
-            amountOut: "1",
-        };
+        return { price: "1" };
     }
 
     const amountIn = parseUnits("1", fromToken.decimals);
     try {
-        await this.dataFetcher.fetchPoolsForToken(fromToken, toToken, PoolBlackList, {
+        await dataFetcher.fetchPoolsForToken(fromToken, toToken, PoolBlackList, {
             blockNumber,
         });
-        const pcMap = this.dataFetcher.getCurrentPoolCodeMap(fromToken, toToken);
+        const pcMap = dataFetcher.getCurrentPoolCodeMap(fromToken, toToken);
         const route = Router.findBestRoute(
             pcMap,
-            this.chainConfig.id as ChainId,
+            chainId as ChainId,
             fromToken,
             amountIn,
             toToken,
-            Number(this.gasPrice),
+            Number(gasPrice),
             undefined,
             RPoolFilter,
         );
         if (route.status == "NoWay") {
+            // try balancer
+            if (balancerRouter) {
+                const balancerRouteResult = await balancerRouter.getBestRoute({
+                    tokenIn: fromToken,
+                    tokenOut: toToken,
+                    swapAmount: amountIn,
+                });
+                if (balancerRouteResult.isOk()) {
+                    const price =
+                        balancerRouteResult.value.onchainPrice ?? balancerRouteResult.value.price;
+                    return { price: formatUnits(price, 18) };
+                }
+            }
             return;
         } else {
-            const price = scaleTo18(route.amountOutBI, toToken.decimals);
-            return {
-                price: formatUnits(price, 18),
-                amountOut: formatUnits(route.amountOutBI, toToken.decimals),
-            };
+            return { price: formatUnits(route.amountOutBI, toToken.decimals) };
         }
     } catch (error) {
         return;

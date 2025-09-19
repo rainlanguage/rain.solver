@@ -1,4 +1,5 @@
 import { parseAbiItem } from "viem";
+import { RawRpcError } from "../rpc/helpers";
 
 /** Solidity hex string selector pattern */
 export const SELECTOR_PATTERN = /^0x[a-fA-F0-9]{8}$/;
@@ -73,13 +74,6 @@ export const KnownErrors = [
 export type DecodedErrorType = {
     name: string;
     args: any[];
-};
-
-/** Raw error type returned from rpc call */
-export type RawRpcError = {
-    code: number;
-    message: string;
-    data?: string | number;
 };
 
 /** Represents a revert error that happened for a transaction */

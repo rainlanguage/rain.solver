@@ -19,6 +19,7 @@ writeRpc:
     - url: http://write-rpc.example.com
 subgraph: ["http://subgraph.example.com"]
 arbAddress: "0x1111111111111111111111111111111111111111"
+balancerArbAddress: "0x3333333333333333333333333333333333333333"
 dispair: "0x2222222222222222222222222222222222222222"
 liquidityProviders: 
  - lp1
@@ -33,8 +34,6 @@ botMinBalance: 50.5
 gasPriceMultiplier: 150
 gasLimitMultiplier: 90
 timeout: 20000
-hops: 2
-retries: 3
 maxRatio: true
 rpOnly: false
 ownerProfile: $OWNER_PROFILE
@@ -72,6 +71,7 @@ sgFilter:
             writeRpc: [{ url: "http://write-rpc.example.com" }],
             subgraph: ["http://subgraph.example.com"],
             arbAddress: "0x1111111111111111111111111111111111111111",
+            balancerArbAddress: "0x3333333333333333333333333333333333333333",
             dispair: "0x2222222222222222222222222222222222222222",
             genericArbAddress: undefined,
             liquidityProviders: ["lp1", "lp2"],
@@ -85,8 +85,6 @@ sgFilter:
             gasPriceMultiplier: 150,
             gasLimitMultiplier: 90,
             timeout: 20000,
-            hops: 2,
-            retries: 3,
             maxRatio: true,
             rpOnly: false,
             ownerProfile: {
@@ -153,8 +151,6 @@ sgFilter:
             gasPriceMultiplier: "150",
             gasLimitMultiplier: "90",
             timeout: "20000",
-            hops: "2",
-            retries: "3",
             maxRatio: true,
             rpOnly: false,
             ownerProfile: [
@@ -228,8 +224,6 @@ sgFilter:
         assert.deepEqual(result.gasPriceMultiplier, 150);
         assert.deepEqual(result.gasLimitMultiplier, 90);
         assert.deepEqual(result.timeout, 20000);
-        assert.deepEqual(result.hops, 2);
-        assert.deepEqual(result.retries, 3);
         assert.equal(result.maxRatio, true);
         assert.equal(result.rpOnly, false);
 

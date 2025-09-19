@@ -4,15 +4,20 @@ import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
 import { ChainId, Router } from "sushi";
 import { estimateProfit } from "./utils";
+import { errorSnapshot } from "../../../error";
 import { Attributes } from "@opentelemetry/api";
-import { Result, ABI } from "../../../common";
+import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
-import { ONE18, scaleTo18, scaleFrom18 } from "../../../math";
 import { RPoolFilter, visualizeRoute } from "../../../router";
-import { RainSolverSigner, RawTransaction } from "../../../signer";
-import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
+import { Result, ABI, RawTransaction, toFloat } from "../../../common";
+import { ONE18, scaleTo18, scaleFrom18, minFloat, maxFloat } from "../../../math";
+import { encodeAbiParameters, encodeFunctionData, formatUnits, parseUnits } from "viem";
 import { TakeOrdersConfigType, SimulationResult, TradeType, FailedSimulation } from "../../types";
-import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
+import {
+    EnsureBountyTaskType,
+    EnsureBountyTaskErrorType,
+    getEnsureBountyTaskBytecode,
+} from "../../../task";
 
 /** Specifies the reason that route processor simulation failed */
 export enum RouteProcessorSimulationHaltReason {
@@ -128,11 +133,66 @@ export async function trySimulateTrade(
         this.state.chainConfig.routeProcessors["4"],
     );
 
+    let maximumInputFloat: `0x${string}` = maxFloat(orderDetails.sellTokenDecimals);
+    if (isPartial) {
+        const valueResult = toFloat(maximumInput, orderDetails.sellTokenDecimals);
+        if (valueResult.isErr()) {
+            spanAttributes["error"] = valueResult.error.readableMsg;
+            const result: FailedSimulation = {
+                spanAttributes,
+                type: TradeType.RouteProcessor,
+                noneNodeError: valueResult.error.readableMsg,
+            };
+            return Result.err(result);
+        }
+        maximumInputFloat = valueResult.value;
+    }
+
+    let maximumIORatioFloat: `0x${string}` = maxFloat(18);
+    if (!this.appOptions.maxRatio) {
+        const valueResult = toFloat(price, 18);
+        if (valueResult.isErr()) {
+            spanAttributes["error"] = valueResult.error.readableMsg;
+            const result: FailedSimulation = {
+                spanAttributes,
+                type: TradeType.RouteProcessor,
+                noneNodeError: valueResult.error.readableMsg,
+            };
+            return Result.err(result);
+        }
+        maximumIORatioFloat = valueResult.value;
+    }
+
+    // try to get task bytecode for ensure bounty task
+    const taskBytecodeResult = await getEnsureBountyTaskBytecode(
+        {
+            type: EnsureBountyTaskType.External,
+            inputToEthPrice: parseUnits(ethPrice, 18),
+            outputToEthPrice: 0n,
+            minimumExpected: 0n,
+            sender: signer.account.address,
+        },
+        this.state.client,
+        this.state.dispair,
+    );
+    if (taskBytecodeResult.isErr()) {
+        const errMsg = await errorSnapshot("", taskBytecodeResult.error);
+        spanAttributes["isNodeError"] =
+            taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
+        spanAttributes["error"] = errMsg;
+        const result = {
+            type: TradeType.RouteProcessor,
+            spanAttributes,
+            reason: RouteProcessorSimulationHaltReason.NoOpportunity,
+        };
+        return Result.err(result);
+    }
+
     const orders = [orderDetails.takeOrder.struct];
     const takeOrdersConfigStruct: TakeOrdersConfigType = {
-        minimumInput: 1n,
-        maximumInput: isPartial ? maximumInput : maxUint256,
-        maximumIORatio: this.appOptions.maxRatio ? maxUint256 : price,
+        minimumInput: minFloat(orderDetails.sellTokenDecimals),
+        maximumInput: maximumInputFloat,
+        maximumIORatio: maximumIORatioFloat,
         orders,
         data: encodeAbiParameters([{ type: "bytes" }], [rpParams.routeCode]),
     };
@@ -140,25 +200,15 @@ export async function trySimulateTrade(
         evaluable: {
             interpreter: this.state.dispair.interpreter as `0x${string}`,
             store: this.state.dispair.store as `0x${string}`,
-            bytecode: (this.appOptions.gasCoveragePercentage === "0"
-                ? "0x"
-                : await parseRainlang(
-                      await getBountyEnsureRainlang(
-                          parseUnits(ethPrice, 18),
-                          0n,
-                          0n,
-                          signer.account.address,
-                      ),
-                      this.state.client,
-                      this.state.dispair,
-                  )) as `0x${string}`,
+            bytecode:
+                this.appOptions.gasCoveragePercentage === "0" ? "0x" : taskBytecodeResult.value,
         },
         signedContext: [],
     };
     const rawtx: RawTransaction = {
         data: encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         }),
         to: this.appOptions.arbAddress as `0x${string}`,
@@ -182,6 +232,7 @@ export async function trySimulateTrade(
     }
 
     let { estimation, estimatedGasCost } = initDryrunResult.value;
+    delete rawtx.gas; // delete gas to let signer estimate gas again with updated tx data
     // include dryrun initial gas estimation in logs
     Object.assign(spanAttributes, initDryrunResult.value.spanAttributes);
     extendObjectWithHeader(
@@ -204,24 +255,41 @@ export async function trySimulateTrade(
     // coverage is not 0, 0 gas coverage means 0 minimum
     // sender output which is already called above
     if (this.appOptions.gasCoveragePercentage !== "0") {
-        const headroom = BigInt((Number(this.appOptions.gasCoveragePercentage) * 1.03).toFixed());
+        const headroom = BigInt((Number(this.appOptions.gasCoveragePercentage) * 1.01).toFixed());
         spanAttributes["gasEst.initial.minBountyExpected"] = (
             (estimatedGasCost * headroom) /
             100n
         ).toString();
-        task.evaluable.bytecode = (await parseRainlang(
-            await getBountyEnsureRainlang(
-                parseUnits(ethPrice, 18),
-                0n,
-                (estimatedGasCost * headroom) / 100n,
-                signer.account.address,
-            ),
+
+        // try to get task bytecode for ensure bounty task
+        let taskBytecodeResult = await getEnsureBountyTaskBytecode(
+            {
+                type: EnsureBountyTaskType.External,
+                inputToEthPrice: parseUnits(ethPrice, 18),
+                outputToEthPrice: 0n,
+                minimumExpected: (estimatedGasCost * headroom) / 100n,
+                sender: signer.account.address,
+            },
             this.state.client,
             this.state.dispair,
-        )) as `0x${string}`;
+        );
+        if (taskBytecodeResult.isErr()) {
+            const errMsg = await errorSnapshot("", taskBytecodeResult.error);
+            spanAttributes["isNodeError"] =
+                taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
+            spanAttributes["error"] = errMsg;
+            const result = {
+                type: TradeType.RouteProcessor,
+                spanAttributes,
+                reason: RouteProcessorSimulationHaltReason.NoOpportunity,
+            };
+            return Result.err(result);
+        }
+
+        task.evaluable.bytecode = taskBytecodeResult.value;
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
 
@@ -258,19 +326,36 @@ export async function trySimulateTrade(
             "gasEst.final",
         );
 
-        task.evaluable.bytecode = (await parseRainlang(
-            await getBountyEnsureRainlang(
-                parseUnits(ethPrice, 18),
-                0n,
-                (estimatedGasCost * BigInt(this.appOptions.gasCoveragePercentage)) / 100n,
-                signer.account.address,
-            ),
+        // try to get task bytecode for ensure bounty task
+        taskBytecodeResult = await getEnsureBountyTaskBytecode(
+            {
+                type: EnsureBountyTaskType.External,
+                inputToEthPrice: parseUnits(ethPrice, 18),
+                outputToEthPrice: 0n,
+                minimumExpected:
+                    (estimatedGasCost * BigInt(this.appOptions.gasCoveragePercentage)) / 100n,
+                sender: signer.account.address,
+            },
             this.state.client,
             this.state.dispair,
-        )) as `0x${string}`;
+        );
+        if (taskBytecodeResult.isErr()) {
+            const errMsg = await errorSnapshot("", taskBytecodeResult.error);
+            spanAttributes["isNodeError"] =
+                taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
+            spanAttributes["error"] = errMsg;
+            const result = {
+                type: TradeType.RouteProcessor,
+                spanAttributes,
+                reason: RouteProcessorSimulationHaltReason.NoOpportunity,
+            };
+            return Result.err(result);
+        }
+
+        task.evaluable.bytecode = taskBytecodeResult.value;
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
         spanAttributes["gasEst.final.minBountyExpected"] = (

@@ -330,17 +330,17 @@ describe("Test getSortedPairList function", () => {
 
         // check sorting order: descending by ratio, then by maxOutput
         // expected order: hash2 (20n, 300n), hash3 (10n, 800n), hash1 (10n, 500n), hash4 (no quote)
-        expect(result[0].takeOrder.id).toBe("hash2");
-        expect(result[0].takeOrder.quote?.ratio).toBe(20n);
-        expect(result[0].takeOrder.quote?.maxOutput).toBe(300n);
+        expect(result[0].takeOrder.id).toBe("hash3");
+        expect(result[0].takeOrder.quote?.ratio).toBe(10n);
+        expect(result[0].takeOrder.quote?.maxOutput).toBe(800n);
 
-        expect(result[1].takeOrder.id).toBe("hash3");
+        expect(result[1].takeOrder.id).toBe("hash1");
         expect(result[1].takeOrder.quote?.ratio).toBe(10n);
-        expect(result[1].takeOrder.quote?.maxOutput).toBe(800n);
+        expect(result[1].takeOrder.quote?.maxOutput).toBe(500n);
 
-        expect(result[2].takeOrder.id).toBe("hash1");
-        expect(result[2].takeOrder.quote?.ratio).toBe(10n);
-        expect(result[2].takeOrder.quote?.maxOutput).toBe(500n);
+        expect(result[2].takeOrder.id).toBe("hash2");
+        expect(result[2].takeOrder.quote?.ratio).toBe(20n);
+        expect(result[2].takeOrder.quote?.maxOutput).toBe(300n);
 
         expect(result[3].takeOrder.id).toBe("hash4");
         expect(result[3].takeOrder.quote).toBeUndefined();
@@ -348,9 +348,9 @@ describe("Test getSortedPairList function", () => {
         // verify the internal map is also sorted
         const internalMap = pairMap.get(orderbook1)?.get(outputToken)?.get(inputToken);
         const internalEntries = Array.from(internalMap!.entries());
-        expect(internalEntries[0][0]).toBe("hash2");
-        expect(internalEntries[1][0]).toBe("hash3");
-        expect(internalEntries[2][0]).toBe("hash1");
+        expect(internalEntries[0][0]).toBe("hash3");
+        expect(internalEntries[1][0]).toBe("hash1");
+        expect(internalEntries[2][0]).toBe("hash2");
         expect(internalEntries[3][0]).toBe("hash4");
     });
 
@@ -387,10 +387,10 @@ describe("Test getSortedPairList function", () => {
 
         // check orderbook3 sorting: hash8 (30n, 200n), hash7 (25n, 200n)
         expect(ob3Results).toHaveLength(2);
-        expect(ob3Results![0].takeOrder.id).toBe("hash8");
-        expect(ob3Results![0].takeOrder.quote?.ratio).toBe(30n);
-        expect(ob3Results![1].takeOrder.id).toBe("hash7");
-        expect(ob3Results![1].takeOrder.quote?.ratio).toBe(25n);
+        expect(ob3Results![0].takeOrder.id).toBe("hash7");
+        expect(ob3Results![0].takeOrder.quote?.ratio).toBe(25n);
+        expect(ob3Results![1].takeOrder.id).toBe("hash8");
+        expect(ob3Results![1].takeOrder.quote?.ratio).toBe(30n);
 
         // verify internal maps are also sorted
         const ob2InternalMap = pairMap.get(orderbook2)?.get(outputToken)?.get(inputToken);
@@ -400,8 +400,8 @@ describe("Test getSortedPairList function", () => {
 
         const ob3InternalMap = pairMap.get(orderbook3)?.get(outputToken)?.get(inputToken);
         const ob3InternalEntries = Array.from(ob3InternalMap!.entries());
-        expect(ob3InternalEntries[0][0]).toBe("hash8");
-        expect(ob3InternalEntries[1][0]).toBe("hash7");
+        expect(ob3InternalEntries[0][0]).toBe("hash7");
+        expect(ob3InternalEntries[1][0]).toBe("hash8");
     });
 });
 
@@ -425,28 +425,28 @@ describe("Test sortPairList function", () => {
         const sorted = [...pairs].sort(sortPairList);
 
         // expected order (descending by ratio, then descending by maxOutput for same ratios):
-        // 1. ratio: 20n, maxOutput: 300n
-        // 2. ratio: 10n, maxOutput: 800n
-        // 3. ratio: 10n, maxOutput: 200n
-        // 4. ratio: 5n, maxOutput: 1000n
-        // 5. ratio: 5n, maxOutput: 500n
+        // 1. ratio: 5n, maxOutput: 1000n
+        // 2. ratio: 5n, maxOutput: 500n
+        // 3. ratio: 10n, maxOutput: 800n
+        // 4. ratio: 10n, maxOutput: 200n
+        // 5. ratio: 20n, maxOutput: 300n
         // 6. undefined quote
         // 7. undefined quote
 
-        expect(sorted[0][1].takeOrder.quote?.ratio).toBe(20n);
-        expect(sorted[0][1].takeOrder.quote?.maxOutput).toBe(300n);
+        expect(sorted[0][1].takeOrder.quote?.ratio).toBe(5n);
+        expect(sorted[0][1].takeOrder.quote?.maxOutput).toBe(1000n);
 
-        expect(sorted[1][1].takeOrder.quote?.ratio).toBe(10n);
-        expect(sorted[1][1].takeOrder.quote?.maxOutput).toBe(800n);
+        expect(sorted[1][1].takeOrder.quote?.ratio).toBe(5n);
+        expect(sorted[1][1].takeOrder.quote?.maxOutput).toBe(500n);
 
         expect(sorted[2][1].takeOrder.quote?.ratio).toBe(10n);
-        expect(sorted[2][1].takeOrder.quote?.maxOutput).toBe(200n);
+        expect(sorted[2][1].takeOrder.quote?.maxOutput).toBe(800n);
 
-        expect(sorted[3][1].takeOrder.quote?.ratio).toBe(5n);
-        expect(sorted[3][1].takeOrder.quote?.maxOutput).toBe(1000n);
+        expect(sorted[3][1].takeOrder.quote?.ratio).toBe(10n);
+        expect(sorted[3][1].takeOrder.quote?.maxOutput).toBe(200n);
 
-        expect(sorted[4][1].takeOrder.quote?.ratio).toBe(5n);
-        expect(sorted[4][1].takeOrder.quote?.maxOutput).toBe(500n);
+        expect(sorted[4][1].takeOrder.quote?.ratio).toBe(20n);
+        expect(sorted[4][1].takeOrder.quote?.maxOutput).toBe(300n);
 
         // last two should have no quotes
         expect(sorted[5][1].takeOrder.quote).toBeUndefined();

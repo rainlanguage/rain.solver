@@ -5,8 +5,8 @@ import { SharedState } from "../state";
 import { SubgraphManager } from "../subgraph";
 import { downscaleProtection } from "./protection";
 import { CounterpartySource, Order, Pair } from "./types";
-import { OrderManager, DEFAULT_OWNER_LIMIT } from "./index";
-import { describe, it, expect, beforeEach, vi, Mock } from "vitest";
+import { OrderManager, DEFAULT_OWNER_LIMIT, OrderManagerError } from "./index";
+import { describe, it, expect, beforeEach, vi, Mock, assert } from "vitest";
 
 vi.mock("./sync", () => ({
     syncOrders: vi.fn(),
@@ -20,7 +20,13 @@ vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
     erc20Abi: [],
     encodeFunctionData: vi.fn().mockReturnValue("0xencoded"),
-    decodeFunctionResult: vi.fn().mockReturnValue([null, 100n, 2n]),
+    decodeFunctionResult: vi
+        .fn()
+        .mockReturnValue([
+            true,
+            "0xffffffee00000000000000000000000000000000000000000000000000000064",
+            "0xffffffee00000000000000000000000000000000000000000000000000000002",
+        ]),
 }));
 
 vi.mock("../subgraph", () => ({
@@ -48,8 +54,20 @@ vi.mock("./types", async (importOriginal) => {
             tryFromBytes: vi.fn().mockImplementation((value: any) =>
                 Result.ok({
                     owner: value === "0xadminBytes" ? "0xadmin" : "0xowner",
-                    validInputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
-                    validOutputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
+                    validInputs: [
+                        {
+                            token: "0xinput",
+                            vaultId:
+                                "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        },
+                    ],
+                    validOutputs: [
+                        {
+                            token: "0xoutput",
+                            vaultId:
+                                "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        },
+                    ],
                 }),
             ),
         },
@@ -87,14 +105,28 @@ describe("Test OrderManager", () => {
             orderHash: "0xhash",
             orderbook: { id: "0xorderbook" },
             orderBytes: "0xbytes",
-            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
         };
-        (orderManager.subgraphManager.fetchAll as Mock).mockResolvedValueOnce({
-            orders: [mockOrder],
-            report: { status: "ok" },
-        });
-        const report = await orderManager.fetch();
+        (orderManager.subgraphManager.fetchAll as Mock).mockResolvedValueOnce(
+            Result.ok({
+                orders: [mockOrder],
+                report: { status: "ok" },
+            }),
+        );
+        const fetchResult = await orderManager.fetch();
+        assert(fetchResult.isOk());
+        const report = fetchResult.value;
 
         expect(report).toEqual({ status: "ok" });
         expect(orderManager.ownersMap.size).toBe(1);
@@ -109,7 +141,7 @@ describe("Test OrderManager", () => {
     });
 
     it("should correctly sync orders", async () => {
-        // mock syncOrders to return addOrders and removeOrders
+        // mock syncOrders to return addOrder and removeOrders
         (syncOrders as Mock).mockResolvedValueOnce(undefined);
         await orderManager.sync();
 
@@ -122,18 +154,43 @@ describe("Test OrderManager", () => {
                 orderHash: "0xhash1",
                 orderbook: { id: "0xorderbook1" },
                 orderBytes: "0xbytes",
-                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 2n }],
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000002",
+                    },
+                ],
             },
             {
                 orderHash: "0xhash2",
                 orderbook: { id: "0xorderbook2" },
                 orderBytes: "0xbytes",
-                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 3n }],
-                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 4n }],
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000003",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000004",
+                    },
+                ],
             },
         ];
-        await orderManager.addOrders(orders as any);
+        await orderManager.addOrder(orders[0] as any);
+        await orderManager.addOrder(orders[1] as any);
 
         expect(orderManager.ownersMap.size).toBe(2);
         expect(orderManager.ownersMap.get("0xorderbook1")).toBeDefined();
@@ -250,15 +307,58 @@ describe("Test OrderManager", () => {
         });
     });
 
+    it("should return error when add order fails", async () => {
+        const order = {
+            orderHash: "0xhash1",
+            orderbook: { id: "0xorderbook1" },
+            orderBytes: "0xbytes",
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                    balance: "0x01",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                    balance: "0x01",
+                },
+            ],
+        };
+
+        (Order.tryFromBytes as Mock).mockReturnValueOnce(Result.err("some error"));
+        const result = await orderManager.addOrder(order as any);
+        assert(result.isErr());
+        expect(result.error).instanceOf(OrderManagerError);
+
+        const getOrderPairsSpy = vi.spyOn(orderManager, "getOrderPairs");
+        getOrderPairsSpy.mockResolvedValueOnce(Result.err(new OrderManagerError("err", 1)));
+        const result2 = await orderManager.addOrder(order as any);
+        assert(result2.isErr());
+        expect(result2.error).instanceOf(OrderManagerError);
+
+        getOrderPairsSpy.mockRestore();
+    });
+
     it("should remove orders", async () => {
         const mockOrder = {
             orderHash: "0xhash",
             orderbook: { id: "0xorderbook" },
             orderBytes: "0xbytes",
-            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
         };
-        await orderManager.addOrders([mockOrder as any]);
+        await orderManager.addOrder(mockOrder as any);
         expect(orderManager.ownersMap.size).toBe(1);
 
         // check pairMap before removal
@@ -284,10 +384,20 @@ describe("Test OrderManager", () => {
             orderHash: "0xhash",
             orderbook: { id: "0xorderbook" },
             orderBytes: "0xbytes",
-            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 2n }],
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000002",
+                },
+            ],
         };
-        await orderManager.addOrders([mockOrder as any]);
+        await orderManager.addOrder(mockOrder as any);
 
         const result = orderManager.getNextRoundOrders();
         expect(Array.isArray(result)).toBe(true);
@@ -325,18 +435,39 @@ describe("Test OrderManager", () => {
             orderHash: "0xhash",
             orderbook: { id: "0xorderbook" },
             orderBytes: "0xbytes",
-            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
         };
         const adminOrder = {
             owner: "0xadmin",
             orderHash: "0xadmin",
             orderbook: { id: "0xorderbook" },
             orderBytes: "0xadminBytes",
-            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
         };
-        await orderManager.addOrders([mockOrder as any, adminOrder as any]);
+        await orderManager.addOrder(mockOrder as any);
+        await orderManager.addOrder(adminOrder as any);
         await orderManager.resetLimits();
 
         const ownerProfileMap = orderManager.ownersMap.get("0xorderbook");
@@ -347,31 +478,39 @@ describe("Test OrderManager", () => {
     it("getOrderPairs should return all valid input/output pairs", async () => {
         const orderStruct = {
             owner: "0xowner",
-            validInputs: [
-                { token: "0xinput1", decimals: 18 },
-                { token: "0xinput2", decimals: 6 },
-            ],
-            validOutputs: [
-                { token: "0xoutput1", decimals: 18 },
-                { token: "0xoutput2", decimals: 6 },
-            ],
+            validInputs: [{ token: "0xinput1" }, { token: "0xinput2" }],
+            validOutputs: [{ token: "0xoutput1" }, { token: "0xoutput2" }],
         };
         const orderDetails = {
             orderbook: { id: "0xorderbook" },
             outputs: [
-                { token: { address: "0xoutput1", symbol: "OUT1" }, balance: 1n },
-                { token: { address: "0xoutput2", symbol: "OUT2" }, balance: 1n },
+                {
+                    token: { address: "0xoutput1", symbol: "OUT1", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+                {
+                    token: { address: "0xoutput2", symbol: "OUT2", decimals: "6" },
+                    balance: "0xfffffffa00000000000000000000000000000000000000000000000000000001",
+                },
             ],
             inputs: [
-                { token: { address: "0xinput1", symbol: "IN1" }, balance: 1n },
-                { token: { address: "0xinput2", symbol: "IN2" }, balance: 1n },
+                {
+                    token: { address: "0xinput1", symbol: "IN1", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+                {
+                    token: { address: "0xinput2", symbol: "IN2", decimals: "6" },
+                    balance: "0xfffffffa00000000000000000000000000000000000000000000000000000001",
+                },
             ],
         };
-        const pairs = await orderManager.getOrderPairs(
+        const pairsResult = await orderManager.getOrderPairs(
             "0xhash",
             orderStruct as any,
             orderDetails as any,
         );
+        assert(pairsResult.isOk());
+        const pairs = pairsResult.value;
 
         // should be 4 pairs (2 inputs x 2 outputs)
         expect(pairs.length).toBe(4);
@@ -419,6 +558,67 @@ describe("Test OrderManager", () => {
         ]);
     });
 
+    it("getOrderPairs should return error when fails to parse float", async () => {
+        const orderStruct = {
+            owner: "0xowner",
+            validInputs: [{ token: "0xinput" }],
+            validOutputs: [{ token: "0xoutput" }],
+        };
+        const orderDetails = {
+            orderbook: { id: "0xorderbook" },
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT1", decimals: "18" },
+                    balance: "0x01",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN1", decimals: "18" },
+                    balance: "0x01",
+                },
+            ],
+        };
+        const pairsResult = await orderManager.getOrderPairs(
+            "0xhash",
+            orderStruct as any,
+            orderDetails as any,
+        );
+        assert(pairsResult.isErr());
+        expect(pairsResult.error?.cause?.readableMsg).toContain("Invalid hex string");
+    });
+
+    it("getOrderPairs should return error when fails to get decimals", async () => {
+        const orderStruct = {
+            owner: "0xowner",
+            validInputs: [{ token: "0xinput" }],
+            validOutputs: [{ token: "0xoutput" }],
+        };
+        const orderDetails = {
+            orderbook: { id: "0xorderbook" },
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT1" },
+                    balance: "0x01",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN1" },
+                    balance: "0x01",
+                },
+            ],
+        };
+        (orderManager.state.client.readContract as Mock).mockRejectedValueOnce("some error");
+        const pairsResult = await orderManager.getOrderPairs(
+            "0xhash",
+            orderStruct as any,
+            orderDetails as any,
+        );
+        assert(pairsResult.isErr());
+        expect(pairsResult.error).instanceOf(OrderManagerError);
+    });
+
     it("quoteOrder should set quote on the takeOrder", async () => {
         const bundledOrder = {
             orderbook: "0xorderbook",
@@ -433,8 +633,8 @@ describe("Test OrderManager", () => {
                 struct: {
                     order: {
                         owner: "0xowner",
-                        validInputs: [{ token: "0xinput", decimals: 18 }],
-                        validOutputs: [{ token: "0xoutput", decimals: 18 }],
+                        validInputs: [{ token: "0xinput" }],
+                        validOutputs: [{ token: "0xoutput" }],
                     },
                     inputIOIndex: 0,
                     outputIOIndex: 0,
@@ -456,32 +656,82 @@ describe("Test OrderManager", () => {
                 orderHash: "0xhash1",
                 orderbook: { id: "0xorderbook" },
                 orderBytes: "0xbytes1",
-                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
             },
             {
                 orderHash: "0xhash2",
                 orderbook: { id: "0xorderbook" },
                 orderBytes: "0xbytes2",
-                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
             },
             {
                 orderHash: "0xhash3",
                 orderbook: { id: "0xorderbook" },
                 orderBytes: "0xbytes3",
-                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
             },
             {
                 orderHash: "0xhash4",
                 orderbook: { id: "0xorderbook" },
                 orderBytes: "0xbytes4",
-                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
             },
         ];
-        await orderManager.addOrders(orders as any);
+        for (const order of orders) {
+            await orderManager.addOrder(order as any);
+        }
 
         // set owner limit to 3 so only three orders are returned per round
         const ownerProfileMap = orderManager.ownersMap.get("0xorderbook");
@@ -511,10 +761,20 @@ describe("Test OrderManager", () => {
             orderHash: "0xhash",
             orderbook: { id: "0xorderbook" },
             orderBytes: "0xbytes",
-            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
         };
-        await orderManager.addOrders([mockOrder as any]);
+        await orderManager.addOrder(mockOrder as any);
 
         // get the takeOrder object from getNextRoundOrders
         const roundOrders = orderManager.getNextRoundOrders();
@@ -549,32 +809,77 @@ describe("Test OrderManager", () => {
             orderHash: "0xhashA",
             orderbook: { id: "0xorderbook" },
             orderBytes: "0xbytesA",
-            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
         };
         const orderB = {
             orderHash: "0xhashB",
             orderbook: { id: "0xorderbook" },
             orderBytes: "0xbytesB",
-            outputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
-            inputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
+            outputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
         };
         (Order.tryFromBytes as Mock)
             .mockReturnValueOnce(
                 Result.ok({
                     owner: "0xowner",
-                    validInputs: [{ token: "0xinput", decimals: 18 }],
-                    validOutputs: [{ token: "0xoutput", decimals: 18 }],
+                    validInputs: [
+                        {
+                            token: "0xinput",
+                            vaultId:
+                                "0x000000000000000000000000000000000000000000000000000000000000001",
+                        },
+                    ],
+                    validOutputs: [
+                        {
+                            token: "0xoutput",
+                            vaultId:
+                                "0x000000000000000000000000000000000000000000000000000000000000001",
+                        },
+                    ],
                 }),
             )
             .mockReturnValueOnce(
                 Result.ok({
                     owner: "0xowner",
-                    validInputs: [{ token: "0xoutput", decimals: 18 }],
-                    validOutputs: [{ token: "0xinput", decimals: 18 }],
+                    validInputs: [
+                        {
+                            token: "0xoutput",
+                            vaultId:
+                                "0x000000000000000000000000000000000000000000000000000000000000001",
+                        },
+                    ],
+                    validOutputs: [
+                        {
+                            token: "0xinput",
+                            vaultId:
+                                "0x000000000000000000000000000000000000000000000000000000000000001",
+                        },
+                    ],
                 }),
             );
-        await orderManager.addOrders([orderA as any, orderB as any]);
+        await orderManager.addOrder(orderA as any);
+        await orderManager.addOrder(orderB as any);
 
         // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)
         const roundOrders = orderManager.getNextRoundOrders();
@@ -597,32 +902,77 @@ describe("Test OrderManager", () => {
             orderHash: "0xhashA",
             orderbook: { id: "0xorderbookA" },
             orderBytes: "0xbytesA",
-            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
         };
         const orderB = {
             orderHash: "0xhashB",
             orderbook: { id: "0xorderbookB" },
             orderBytes: "0xbytesB",
-            outputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
-            inputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
+            outputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
         };
         (Order.tryFromBytes as Mock)
             .mockReturnValueOnce(
                 Result.ok({
                     owner: "0xowner",
-                    validInputs: [{ token: "0xinput", decimals: 18 }],
-                    validOutputs: [{ token: "0xoutput", decimals: 18 }],
+                    validInputs: [
+                        {
+                            token: "0xinput",
+                            vaultId:
+                                "0x000000000000000000000000000000000000000000000000000000000000001",
+                        },
+                    ],
+                    validOutputs: [
+                        {
+                            token: "0xoutput",
+                            vaultId:
+                                "0x000000000000000000000000000000000000000000000000000000000000001",
+                        },
+                    ],
                 }),
             )
             .mockReturnValueOnce(
                 Result.ok({
                     owner: "0xowner",
-                    validInputs: [{ token: "0xoutput", decimals: 18 }],
-                    validOutputs: [{ token: "0xinput", decimals: 18 }],
+                    validInputs: [
+                        {
+                            token: "0xoutput",
+                            vaultId:
+                                "0x000000000000000000000000000000000000000000000000000000000000001",
+                        },
+                    ],
+                    validOutputs: [
+                        {
+                            token: "0xinput",
+                            vaultId:
+                                "0x000000000000000000000000000000000000000000000000000000000000001",
+                        },
+                    ],
                 }),
             );
-        await orderManager.addOrders([orderA as any, orderB as any]);
+        await orderManager.addOrder(orderA as any);
+        await orderManager.addOrder(orderB as any);
 
         // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)
         const roundOrders = orderManager.getNextRoundOrders();
@@ -837,12 +1187,12 @@ describe("Test OrderManager", () => {
                     order: {
                         owner: "0xOwner",
                         validOutputs: [
-                            { token: "0xToken0", decimals: 8, vaultId: 10n },
-                            { token: "0xToken2", decimals: 6, vaultId: 20n }, // outputIOIndex: 1
+                            { token: "0xToken0", vaultId: 10n },
+                            { token: "0xToken2", vaultId: 20n }, // outputIOIndex: 1
                         ],
                         validInputs: [
-                            { token: "0xToken1", decimals: 18, vaultId: 30n }, // inputIOIndex: 0
-                            { token: "0xToken3", decimals: 12, vaultId: 40n },
+                            { token: "0xToken1", vaultId: 30n }, // inputIOIndex: 0
+                            { token: "0xToken3", vaultId: 40n },
                         ],
                     } as any,
                     outputIOIndex: 1, // should use second output
@@ -920,5 +1270,59 @@ describe("Test OrderManager", () => {
         );
 
         resetLimitsSpy.mockRestore();
+    });
+
+    it("test getCurrentMetadata method", async () => {
+        const orders = [
+            {
+                orderHash: "0xhash1",
+                orderbook: { id: "0xorderbook1" },
+                orderBytes: "0xbytes",
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            },
+            {
+                orderHash: "0xhash2",
+                orderbook: { id: "0xorderbook2" },
+                orderBytes: "0xbytes",
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            },
+        ];
+        await orderManager.addOrder(orders[0] as any);
+        await orderManager.addOrder(orders[1] as any);
+
+        const metadata = orderManager.getCurrentMetadata();
+
+        expect(metadata).toEqual({
+            totalCount: 2,
+            totalOwnersCount: 2,
+            totalPairsCount: 2,
+            totalDistinctPairsCount: 1,
+        });
     });
 });

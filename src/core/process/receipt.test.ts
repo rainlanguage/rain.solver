@@ -103,6 +103,7 @@ describe("Test processReceipt", () => {
             expect(result.value.inputTokenIncome).toBe("2000");
             expect(result.value.outputTokenIncome).toBe("1");
             expect(result.value.netProfit).toBeDefined();
+            expect(result.value.endTime).toBeTypeOf("number");
             expect(result.value.spanAttributes["didClear"]).toBe(true);
             expect(result.value.spanAttributes["details.actualGasCost"]).toBeDefined();
             expect(result.value.spanAttributes["details.actualGasCost"]).toBeTypeOf("number");
@@ -129,6 +130,7 @@ describe("Test processReceipt", () => {
 
             assert(result.isOk());
             expect(result.value.gasCost).toBe(470000000000000n);
+            expect(result.value.endTime).toBeTypeOf("number");
             expect(mockArgs.baseResult.spanAttributes["details.gasCostL1"]).toBeDefined();
         });
 
@@ -144,6 +146,7 @@ describe("Test processReceipt", () => {
             expect(result.value.netProfit).toBeUndefined();
             expect(result.value.inputTokenIncome).toBeUndefined();
             expect(result.value.outputTokenIncome).toBeUndefined();
+            expect(result.value.endTime).toBeTypeOf("number");
         });
     });
 
@@ -168,6 +171,7 @@ describe("Test processReceipt", () => {
             expect(result.error.error).toBe(mockSimulation);
             expect(result.error.txUrl).toBe(mockArgs.txUrl);
             expect(result.error.spanAttributes["txNoneNodeError"]).toBe(true);
+            expect(result.error.endTime).toBeTypeOf("number");
         });
 
         it("should retry handleRevert when simulation fails to find revert reason", async () => {
@@ -189,6 +193,7 @@ describe("Test processReceipt", () => {
             assert(result.isErr());
             expect(result.error.reason).toBe(ProcessOrderHaltReason.TxReverted);
             expect(result.error.error).toBe(retrySimulation);
+            expect(result.error.endTime).toBeTypeOf("number");
         });
 
         it("should handle node error correctly in span attributes", async () => {
@@ -201,6 +206,7 @@ describe("Test processReceipt", () => {
 
             assert(result.isErr());
             expect(result.error.spanAttributes["txNoneNodeError"]).toBe(false);
+            expect(result.error.endTime).toBeTypeOf("number");
         });
 
         it("should call handleRevert with correct parameters", async () => {

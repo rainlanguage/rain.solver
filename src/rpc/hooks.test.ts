@@ -1,14 +1,15 @@
-import { shouldThrow } from "../error";
-import { normalizeUrl, RpcMetrics, RpcState } from ".";
+import { RpcMetrics, RpcState } from "./rpc";
+import { normalizeUrl, shouldThrow } from "./helpers";
 import { onFetchRequest, onFetchResponse } from "./hooks";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 
-vi.mock("../error", () => ({
+vi.mock("./helpers", () => ({
+    normalizeUrl: vi.fn(),
     shouldThrow: vi.fn(),
 }));
 
-vi.mock(".", () => ({
-    normalizeUrl: vi.fn(),
+vi.mock("./rpc", () => ({
+    RpcState: vi.fn(),
     RpcMetrics: vi.fn(),
 }));
 

@@ -1,6 +1,6 @@
 import fs from "fs";
-import { ABI } from "../common";
-import { Dispair } from "../state";
+import { RainSolverBaseError } from "../error";
+import { ABI, Dispair, Result } from "../common";
 import { formatUnits, PublicClient, stringToHex } from "viem";
 import { MetaStore, RainDocument } from "@rainlanguage/dotrain";
 
@@ -94,4 +94,136 @@ export async function parseRainlang(
         functionName: "parse2",
         args: [stringToHex(rainlang)],
     });
+}
+
+/** Specifies the type of the Ensure Bounty Task */
+export enum EnsureBountyTaskType {
+    /** internal clear against same orderbook, i.e. clear2() */
+    Internal,
+    /** external clear against different orderbooks or dexes, i.e. arb3() */
+    External,
+}
+
+/**
+ * Parameters for the Ensure Bounty Task based on the task type
+ */
+export type EnsureBountyTaskParams =
+    | {
+          type: EnsureBountyTaskType.External;
+          inputToEthPrice: bigint;
+          outputToEthPrice: bigint;
+          minimumExpected: bigint;
+          sender: string;
+      }
+    | {
+          type: EnsureBountyTaskType.Internal;
+          botAddress: string;
+          inputToken: string;
+          outputToken: string;
+          orgInputBalance: bigint;
+          orgOutputBalance: bigint;
+          inputToEthPrice: bigint;
+          outputToEthPrice: bigint;
+          minimumExpected: bigint;
+          sender: string;
+      };
+
+/** Error types for the Ensure Bounty Task */
+export enum EnsureBountyTaskErrorType {
+    /** Dotrain compose error */
+    ComposeError,
+    /** Rainlang onchain parse error */
+    ParseError,
+}
+
+/**
+ * Represents an error type for the Ensure Bounty Task functionalities.
+ * This error class extends the `RainSolverBaseError` error class, with the `type`
+ * property indicates the specific category of the error, as defined by the
+ * `EnsureBountyTaskErrorType` enum. The optional `cause` property can be used to
+ * attach the original error or any relevant context that led to this error.
+ *
+ * @example
+ * ```typescript
+ * // without cause
+ * throw new EnsureBountyTaskError("msg", EnsureBountyTaskErrorType);
+ *
+ * // with cause
+ * throw new EnsureBountyTaskError("msg", EnsureBountyTaskErrorType, originalError);
+ * ```
+ */
+export class EnsureBountyTaskError extends RainSolverBaseError {
+    type: EnsureBountyTaskErrorType;
+    constructor(message: string, type: EnsureBountyTaskErrorType, cause?: any) {
+        super(message, cause);
+        this.type = type;
+        this.name = "EnsureBountyTaskError";
+    }
+}
+
+/**
+ * Get the bytecode for the ensure bounty task based on the task type, this is used
+ * for creating rainlang tasks to ensure a minimum bounty is received for a trade
+ * @param params - The parameters for the ensure bounty task
+ * @param client - The public client
+ * @param dispair - The dispair instance
+ * @returns The bytecode for the ensure bounty task
+ */
+export async function getEnsureBountyTaskBytecode(
+    params: EnsureBountyTaskParams,
+    client: PublicClient,
+    dispair: Dispair,
+): Promise<Result<`0x${string}`, EnsureBountyTaskError>> {
+    const rainlangPromise = (async () => {
+        if (params.type === EnsureBountyTaskType.External) {
+            return getBountyEnsureRainlang(
+                params.inputToEthPrice,
+                params.outputToEthPrice,
+                params.minimumExpected,
+                params.sender,
+            );
+        } else if (params.type === EnsureBountyTaskType.Internal) {
+            return getWithdrawEnsureRainlang(
+                params.botAddress,
+                params.inputToken,
+                params.outputToken,
+                params.orgInputBalance,
+                params.orgOutputBalance,
+                params.inputToEthPrice,
+                params.outputToEthPrice,
+                params.minimumExpected,
+                params.sender,
+            );
+        } else {
+            throw new Error("Invalid EnsureBountyTaskParams type");
+        }
+    })();
+
+    // await rainlang compose
+    let rainlang = "";
+    try {
+        rainlang = await rainlangPromise;
+    } catch (error: any) {
+        return Result.err(
+            new EnsureBountyTaskError(
+                "Failed to compose ensure bounty task",
+                EnsureBountyTaskErrorType.ComposeError,
+                error,
+            ),
+        );
+    }
+
+    // parse rainlang
+    try {
+        const bytecode = await parseRainlang(rainlang, client, dispair);
+        return Result.ok(bytecode as `0x${string}`);
+    } catch (error: any) {
+        return Result.err(
+            new EnsureBountyTaskError(
+                "Failed to parse ensure bounty rainlang task",
+                EnsureBountyTaskErrorType.ParseError,
+                error,
+            ),
+        );
+    }
 }

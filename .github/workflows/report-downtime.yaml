@@ -1,0 +1,37 @@
+name: Report Downtime
+
+on:
+  schedule:
+    - cron: '0 * * */7 *' # once every 7 days
+jobs:
+  take-orders:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install Nix 1/2
+        uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+      - name: Install Nix 2/2
+        uses: DeterminateSystems/flakehub-cache-action@main
+
+      - name: Prepare Sushi Lib
+        run: ./prep-sushi.sh
+
+      - name: Install Dependencies
+        run:  nix develop -c npm install
+
+      - name: Report Downtime
+        run: nix develop -c npx ts-node scripts/downtime.ts
+        env:
+          SUBGRAPHS: ${{ vars.DOWNTIME_SUBGRAPHS }}
+          DURATION: ${{ vars.DOWNTIME_DURATION }} # in days
+          THRESHOLD: ${{ vars.DOWNTIME_THRESHOLD }} # in minutes
+          TG_CHAT_ID: ${{ vars.TG_CHAT_ID }}
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}

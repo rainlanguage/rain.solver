@@ -16,10 +16,10 @@ export enum AppOptionsErrorType {
  *
  * @example
  * ```typescript
- * // with cause
+ * // without cause
  * throw new AppOptionsError("msg", AppOptionsErrorType);
  *
- * // without cause
+ * // with cause
  * throw new AppOptionsError("msg", AppOptionsErrorType, originalError);
  * ```
  */
