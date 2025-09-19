@@ -77,6 +77,7 @@ export function rainSolverTransport(
     const {
         key = RainSolverTransportDefaults.KEY,
         name = RainSolverTransportDefaults.NAME,
+        dedupe = RainSolverTransportDefaults.DEDUPE,
         timeout = RainSolverTransportDefaults.TIMEOUT,
         retryCount = RainSolverTransportDefaults.RETRY_COUNT,
         retryDelay = RainSolverTransportDefaults.RETRY_DELAY,
@@ -108,7 +109,9 @@ export function rainSolverTransport(
                         return await transport({
                             chain,
                             retryCount: resolvedRetryCount,
-                        }).request(args);
+                        }).request(args, {
+                            dedupe,
+                        });
                     } catch (error: any) {
                         if (shouldThrow(error)) throw error;
                         if (tryNextCount) return req(tryNextCount - 1);

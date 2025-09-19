@@ -98,12 +98,14 @@ export namespace RainSolverSignerActions {
  *
  * @param signer - The RainSolverSigner instance to use for sending the transaction
  * @param tx - The transaction parameters to send
+ * @param retryDelay - Optional delay in milliseconds before retrying a failed transaction (default: 3000ms)
  * @returns A Promise that resolves to the transaction hash
  * @throws Will throw if the transaction fails to send
  */
 export async function sendTx(
     signer: RainSolverSigner,
     tx: SendTransactionParameters<Chain, HDAccount | PrivateKeyAccount>,
+    retryDelay = 3_000,
 ): Promise<`0x${string}`> {
     // make sure signer is free
     await signer.waitUntilFree();
@@ -137,7 +139,7 @@ export async function sendTx(
         signer.busy = false;
         return result;
     } catch (error) {
-        await sleep(3_000); // wait 3 secs and retry once more
+        await sleep(retryDelay); // wait for retryDelay time and retry once more
         try {
             const result = await send();
             signer.busy = false;
