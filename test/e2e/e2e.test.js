@@ -2,7 +2,7 @@ require("dotenv").config();
 const { assert } = require("chai");
 const testData = require("./data");
 const { RainSolver } = require("../../src/core");
-const { arbAbis } = require("../../src/abis");
+const { arbAbis } = require("../../src/common");
 const { RpcState } = require("../../src/rpc");
 const mockServer = require("mockttp").getLocal();
 const { sendTx, waitUntilFree, estimateGasCost } = require("../../src/signer/actions");

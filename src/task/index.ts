@@ -1,6 +1,6 @@
 import fs from "fs";
 import { Dispair } from "../state";
-import { DeployerAbi } from "../abis";
+import { DeployerAbi } from "../common";
 import { formatUnits, PublicClient, stringToHex } from "viem";
 import { MetaStore, RainDocument } from "@rainlanguage/dotrain";
 

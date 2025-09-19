@@ -266,6 +266,7 @@ describe("Test RainSolverCli", () => {
                 mockAppOptions,
                 mockOrderManager,
                 mockWalletManager,
+                mockLogger,
             );
             expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
                 expect.objectContaining({ name: "startup" }),
@@ -672,20 +673,10 @@ describe("Test RainSolverCli", () => {
             await rainSolverCli.processOrdersForRound(mockRoundSpan as any, mockRoundCtx as any);
 
             expect(mockRainSolver.processNextRound).toHaveBeenCalledTimes(1);
-
-            expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
-                { name: "checkpoint-1" },
-                mockRoundCtx,
-            );
-            expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
-                { name: "report-1" },
-                mockRoundCtx,
-            );
-            expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
-                { name: "report-2" },
-                mockRoundCtx,
-            );
-
+            expect(mockRainSolver.processNextRound).toHaveBeenCalledWith({
+                span: mockRoundSpan,
+                context: mockRoundCtx,
+            });
             expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("foundOpp", true);
             expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("txUrls", [
                 "https://etherscan.io/tx/0x123",

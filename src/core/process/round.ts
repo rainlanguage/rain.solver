@@ -1,7 +1,7 @@
 import { RainSolver } from "..";
 import { Result } from "../../common";
-import { PreAssembledSpan } from "../../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
+import { PreAssembledSpan, SpanWithContext } from "../../logger";
 import { ErrorSeverity, errorSnapshot, isTimeout, KnownErrors } from "../../error";
 import {
     ProcessOrderStatus,
@@ -21,7 +21,7 @@ export type Settlement = {
 /**
  * Initializes a new round of processing orders
  */
-export async function initializeRound(this: RainSolver) {
+export async function initializeRound(this: RainSolver, roundSpanCtx?: SpanWithContext) {
     const orders = this.orderManager.getNextRoundOrders(true);
     const settlements: Settlement[] = [];
     const checkpointReports: PreAssembledSpan[] = [];
@@ -67,6 +67,9 @@ export async function initializeRound(this: RainSolver) {
                 });
                 report.end();
                 checkpointReports.push(report);
+
+                // export the report to logger if logger is available
+                this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
             }
         }
     }
@@ -84,6 +87,7 @@ export async function initializeRound(this: RainSolver) {
 export async function finalizeRound(
     this: RainSolver,
     settlements: Settlement[],
+    roundSpanCtx?: SpanWithContext,
 ): Promise<{
     results: Result<ProcessOrderSuccess, ProcessOrderFailure>[];
     reports: PreAssembledSpan[];
@@ -108,6 +112,17 @@ export async function finalizeRound(
             }
 
             // set the span attributes with the values gathered at processOrder()
+            for (const attrKey in value.spanAttributes) {
+                // record event attrs
+                if (attrKey.startsWith("event.")) {
+                    report.addEvent(
+                        attrKey.replace("event.", ""),
+                        undefined,
+                        value.spanAttributes[attrKey] as number,
+                    );
+                    delete value.spanAttributes[attrKey];
+                }
+            }
             report.extendAttrs(value.spanAttributes);
 
             // set the otel span status based on report status
@@ -137,6 +152,17 @@ export async function finalizeRound(
         } else {
             const err = result.error;
             // set the span attributes with the values gathered at processOrder()
+            for (const attrKey in err.spanAttributes) {
+                // record event attrs
+                if (attrKey.startsWith("event.")) {
+                    report.addEvent(
+                        attrKey.replace("event.", ""),
+                        undefined,
+                        err.spanAttributes[attrKey] as number,
+                    );
+                    delete err.spanAttributes[attrKey];
+                }
+            }
             report.extendAttrs(err.spanAttributes);
 
             // Finalize the reports based on error type
@@ -263,6 +289,9 @@ export async function finalizeRound(
         }
         report.end();
         reports.push(report);
+
+        // export the report to logger if logger is available
+        this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
     }
 
     return { results, reports };

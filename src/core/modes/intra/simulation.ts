@@ -1,6 +1,5 @@
 import { RainSolver } from "../..";
 import { dryrun } from "../dryrun";
-import { Result } from "../../../common";
 import { estimateProfit } from "./utils";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
@@ -8,8 +7,8 @@ import { extendObjectWithHeader } from "../../../logger";
 import { BundledOrders, TakeOrderDetails } from "../../../order";
 import { encodeFunctionData, maxUint256, parseUnits } from "viem";
 import { getWithdrawEnsureRainlang, parseRainlang } from "../../../task";
-import { Clear2Abi, OrderbookMulticallAbi, Withdraw2Abi } from "../../../abis";
 import { FailedSimulation, SimulationResult, TaskType, TradeType } from "../../types";
+import { Clear2Abi, OrderbookMulticallAbi, Withdraw2Abi, Result } from "../../../common";
 
 /** Arguments for simulating inter-orderbook trade */
 export type SimulateIntraOrderbookTradeArgs = {
