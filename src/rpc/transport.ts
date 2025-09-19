@@ -93,7 +93,7 @@ export function rainSolverTransport(
             retryDelay,
             retryCount: 0,
             type: "RainSolverTransport",
-            async request(args) {
+            async request(args, options) {
                 const req = async (tryNextCount: number): Promise<any> => {
                     try {
                         const transport = await state.nextRpc({
@@ -110,6 +110,7 @@ export function rainSolverTransport(
                             chain,
                             retryCount: resolvedRetryCount,
                         }).request(args, {
+                            ...options,
                             dedupe,
                         });
                     } catch (error: any) {
