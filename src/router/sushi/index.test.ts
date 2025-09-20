@@ -335,6 +335,24 @@ describe("test SushiRouter methods", () => {
                     ignoreCache: true,
                 },
             );
+
+            delete params.ignoreCache;
+            const result2 = await router.findBestRoute(params);
+
+            assert(result2.isOk());
+            expect(result2.value.price).toBe(2000000000000000000000n);
+            expect(result2.value.amountOut).toBe(2000000000n);
+            expect(result2.value.status).toBe(RouteStatus.Success);
+
+            expect(mockDataFetcher.fetchPoolsForToken).toHaveBeenCalledWith(
+                mockTokenIn,
+                mockTokenOut,
+                expect.any(Set), // BlackListSet
+                {
+                    blockNumber: 18000000n,
+                    ignoreCache: undefined,
+                },
+            );
         });
 
         it("should return NoRouteFound error when router finds no way", async () => {

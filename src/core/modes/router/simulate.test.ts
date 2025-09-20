@@ -104,6 +104,16 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.reason).toBe(RouterSimulationHaltReason.NoRoute);
         expect(result.error.spanAttributes.route).toBe("no way for sushi and balancer");
         expect(result.error.type).toBe("router");
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
+        });
     });
 
     it("should return OrderRatioGreaterThanMarketPrice if price < order ratio", async () => {
@@ -139,6 +149,16 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.spanAttributes.error).toBe("Order's ratio greater than market price");
         expect(Array.isArray(result.error.spanAttributes.route)).toBe(true);
         expect(result.error.type).toBe("routeProcessor");
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
+        });
     });
 
     it("should return NoOpportunity if initial dryrun fails", async () => {
@@ -176,6 +196,16 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.spanAttributes.stage).toBe(1);
         expect(result.error.spanAttributes.oppBlockNumber).toBe(123);
         expect(result.error.type).toBe("balancer");
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
+        });
     });
 
     it("should return ok result if all steps succeed with gasCoveragePercentage 0", async () => {
@@ -252,6 +282,16 @@ describe("Test trySimulateTrade", () => {
                 },
             ],
         });
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
+        });
     });
 
     it("should return ok result if all steps succeed with gasCoveragePercentage not 0", async () => {
@@ -311,6 +351,16 @@ describe("Test trySimulateTrade", () => {
 
         // verify called times
         expect(encodeFunctionData).toHaveBeenCalledTimes(3);
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
+        });
     });
 
     it("should handle isPartial flag correctly in takeOrdersConfigStruct", async () => {
@@ -346,6 +396,16 @@ describe("Test trySimulateTrade", () => {
         assert(result.isOk());
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.type).toBe("routeProcessor");
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: true,
+            signer: args.signer,
+        });
     });
 
     it("should return NoOpportunity if final dryrun fails when gasCoveragePercentage is not 0", async () => {
@@ -394,6 +454,16 @@ describe("Test trySimulateTrade", () => {
 
         // verify encodeFunctionData was called twice (for both dryruns)
         expect(encodeFunctionData).toHaveBeenCalledTimes(2);
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
+        });
     });
 
     it("should return error when getEnsureBountyTaskBytecode fails", async () => {
@@ -424,5 +494,15 @@ describe("Test trySimulateTrade", () => {
         expect(result.error).toHaveProperty("reason");
         expect(result.error.reason).toBe(RouterSimulationHaltReason.NoOpportunity);
         expect(result.error.type).toBe("balancer");
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
+        });
     });
 });
