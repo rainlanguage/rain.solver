@@ -232,6 +232,7 @@ export class SushiRouter extends RainSolverRouterBase {
             blockNumber = undefined,
             ignoreCache = undefined,
             skipFetch = false,
+            sushiRouteType,
         } = params;
         try {
             if (!skipFetch) {
@@ -251,7 +252,7 @@ export class SushiRouter extends RainSolverRouterBase {
                 undefined,
                 RPoolFilter,
                 undefined,
-                params.sushiRouteType,
+                sushiRouteType,
             );
             if (route.status == "NoWay") {
                 return Result.err(
@@ -421,6 +422,7 @@ export class SushiRouter extends RainSolverRouterBase {
             gasPrice,
             blockNumber,
             skipFetch: true,
+            sushiRouteType: state.appOptions.route,
         });
 
         // exit early if no route found
