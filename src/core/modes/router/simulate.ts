@@ -2,32 +2,31 @@ import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
 import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
-import { ChainId, Router } from "sushi";
 import { estimateProfit } from "./utils";
+import { scaleFrom18 } from "../../../math";
 import { errorSnapshot } from "../../../error";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
-import { ONE18, scaleTo18, scaleFrom18 } from "../../../math";
-import { RPoolFilter, visualizeRoute } from "../../../router";
 import { Result, ABI, RawTransaction } from "../../../common";
-import { TakeOrdersConfigType, SimulationResult, TradeType, FailedSimulation } from "../../types";
-import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
+import { encodeFunctionData, formatUnits, parseUnits } from "viem";
+import { SimulationResult, TradeType, FailedSimulation } from "../../types";
+import { RainSolverRouterErrorType, RouterType } from "../../../router/types";
 import {
     EnsureBountyTaskType,
     EnsureBountyTaskErrorType,
     getEnsureBountyTaskBytecode,
 } from "../../../task";
 
-/** Specifies the reason that route processor simulation failed */
-export enum RouteProcessorSimulationHaltReason {
+/** Specifies the reason that router simulation failed */
+export enum RouterSimulationHaltReason {
     NoOpportunity = 1,
     NoRoute = 2,
     OrderRatioGreaterThanMarketPrice = 3,
 }
 
-/** Arguments for simulating route processor trade */
-export type SimulateRouteProcessorTradeArgs = {
+/** Arguments for simulating router trade */
+export type SimulateRouterTradeArgs = {
     /** The bundled order details including tokens, decimals, and take orders */
     orderDetails: Pair;
     /** The RainSolverSigner instance used for signing transactions */
@@ -47,13 +46,13 @@ export type SimulateRouteProcessorTradeArgs = {
 };
 
 /**
- * Attempts to find a profitable opportunity (opp) for a given order by simulating a trade against route processor.
+ * Attempts to find a profitable opportunity (opp) for a given order by simulating a trade against rain router.
  * @param this - The RainSolver instance context
  * @param args - The arguments for simulating the trade
  */
 export async function trySimulateTrade(
     this: RainSolver,
-    args: SimulateRouteProcessorTradeArgs,
+    args: SimulateRouterTradeArgs,
 ): Promise<SimulationResult> {
     const {
         orderDetails,
@@ -71,67 +70,60 @@ export async function trySimulateTrade(
     const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
     spanAttributes["amountIn"] = formatUnits(maximumInputFixed, 18);
 
-    // get route details from sushi dataFetcher
-    const pcMap = this.state.dataFetcher.getCurrentPoolCodeMap(fromToken, toToken);
-    const route = Router.findBestRoute(
-        pcMap,
-        this.state.chainConfig.id as ChainId,
+    const tradeParamsResult = await this.state.router.getTradeParams({
+        state: this.state,
+        orderDetails,
         fromToken,
-        maximumInput,
         toToken,
-        Number(gasPrice),
-        undefined,
-        RPoolFilter,
-        undefined,
-        this.appOptions.route,
-    );
-
-    // exit early if no route found
-    if (route.status == "NoWay") {
-        spanAttributes["route"] = "no-way";
+        maximumInput,
+        signer,
+        blockNumber,
+        isPartial,
+    });
+    if (tradeParamsResult.isErr()) {
         const result = {
-            type: TradeType.RouteProcessor,
+            type: TradeType.Router,
             spanAttributes,
-            reason: RouteProcessorSimulationHaltReason.NoRoute,
+            reason: RouterSimulationHaltReason.NoOpportunity,
         };
+        if (tradeParamsResult.error.typ === RainSolverRouterErrorType.NoRouteFound) {
+            spanAttributes["route"] = "no way for sushi and balancer";
+            result.reason = RouterSimulationHaltReason.NoRoute;
+        } else {
+            spanAttributes["error"] = tradeParamsResult.error.message;
+        }
         return Result.err(result);
     }
+    const { type: routeType, quote, routeVisual, takeOrdersConfigStruct } = tradeParamsResult.value;
 
-    spanAttributes["amountOut"] = formatUnits(route.amountOutBI, toToken.decimals);
-    const rateFixed = scaleTo18(route.amountOutBI, orderDetails.buyTokenDecimals);
-    const price = (rateFixed * ONE18) / maximumInputFixed;
-    spanAttributes["marketPrice"] = formatUnits(price, 18);
-
-    const routeVisual: string[] = [];
-    try {
-        visualizeRoute(fromToken, toToken, route.legs).forEach((v) => {
-            routeVisual.push(v);
-        });
-    } catch {
-        /**/
+    // determine trade type based on router type
+    let type = TradeType.RouteProcessor;
+    let arbAddress = this.appOptions.arbAddress;
+    if (routeType === RouterType.Sushi) {
+        type = TradeType.RouteProcessor;
+    } else if (routeType === RouterType.Balancer) {
+        type = TradeType.Balancer;
+        arbAddress = this.appOptions.balancerArbAddress!;
+    } else {
+        type = TradeType.Router;
     }
+
+    spanAttributes["amountOut"] = formatUnits(quote.amountOut, toToken.decimals);
+    spanAttributes["marketPrice"] = formatUnits(quote.price, 18);
     spanAttributes["route"] = routeVisual;
 
     // exit early if market price is lower than order quote ratio
-    if (price < orderDetails.takeOrder.quote!.ratio) {
+    if (quote.price < orderDetails.takeOrder.quote!.ratio) {
         spanAttributes["error"] = "Order's ratio greater than market price";
         const result = {
-            type: TradeType.RouteProcessor,
+            type,
             spanAttributes,
-            reason: RouteProcessorSimulationHaltReason.OrderRatioGreaterThanMarketPrice,
+            reason: RouterSimulationHaltReason.OrderRatioGreaterThanMarketPrice,
         };
         return Result.err(result);
     }
 
     spanAttributes["oppBlockNumber"] = Number(blockNumber);
-    const rpParams = Router.routeProcessor4Params(
-        pcMap,
-        route,
-        fromToken,
-        toToken,
-        this.appOptions.arbAddress as `0x${string}`,
-        this.state.chainConfig.routeProcessors["4"],
-    );
 
     // try to get task bytecode for ensure bounty task
     const taskBytecodeResult = await getEnsureBountyTaskBytecode(
@@ -151,20 +143,12 @@ export async function trySimulateTrade(
             taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
         spanAttributes["error"] = errMsg;
         const result = {
-            type: TradeType.RouteProcessor,
+            type,
             spanAttributes,
-            reason: RouteProcessorSimulationHaltReason.NoOpportunity,
+            reason: RouterSimulationHaltReason.NoOpportunity,
         };
         return Result.err(result);
     }
-    const orders = [orderDetails.takeOrder.struct];
-    const takeOrdersConfigStruct: TakeOrdersConfigType = {
-        minimumInput: 1n,
-        maximumInput: isPartial ? maximumInput : maxUint256,
-        maximumIORatio: this.appOptions.maxRatio ? maxUint256 : price,
-        orders,
-        data: encodeAbiParameters([{ type: "bytes" }], [rpParams.routeCode]),
-    };
     const task = {
         evaluable: {
             interpreter: this.state.dispair.interpreter as `0x${string}`,
@@ -180,7 +164,7 @@ export async function trySimulateTrade(
             functionName: "arb3",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         }),
-        to: this.appOptions.arbAddress as `0x${string}`,
+        to: arbAddress as `0x${string}`,
         gasPrice,
     };
 
@@ -195,8 +179,8 @@ export async function trySimulateTrade(
     if (initDryrunResult.isErr()) {
         spanAttributes["stage"] = 1;
         Object.assign(initDryrunResult.error.spanAttributes, spanAttributes);
-        initDryrunResult.error.reason = RouteProcessorSimulationHaltReason.NoOpportunity;
-        (initDryrunResult.error as FailedSimulation).type = TradeType.RouteProcessor;
+        initDryrunResult.error.reason = RouterSimulationHaltReason.NoOpportunity;
+        (initDryrunResult.error as FailedSimulation).type = type;
         return Result.err(initDryrunResult.error as FailedSimulation);
     }
 
@@ -248,9 +232,9 @@ export async function trySimulateTrade(
                 taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
             spanAttributes["error"] = errMsg;
             const result = {
-                type: TradeType.RouteProcessor,
+                type,
                 spanAttributes,
-                reason: RouteProcessorSimulationHaltReason.NoOpportunity,
+                reason: RouterSimulationHaltReason.NoOpportunity,
             };
             return Result.err(result);
         }
@@ -271,8 +255,8 @@ export async function trySimulateTrade(
         if (finalDryrunResult.isErr()) {
             spanAttributes["stage"] = 2;
             Object.assign(finalDryrunResult.error.spanAttributes, spanAttributes);
-            finalDryrunResult.error.reason = RouteProcessorSimulationHaltReason.NoOpportunity;
-            (finalDryrunResult.error as FailedSimulation).type = TradeType.RouteProcessor;
+            finalDryrunResult.error.reason = RouterSimulationHaltReason.NoOpportunity;
+            (finalDryrunResult.error as FailedSimulation).type = type;
             return Result.err(finalDryrunResult.error as FailedSimulation);
         }
 
@@ -314,9 +298,9 @@ export async function trySimulateTrade(
                 taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
             spanAttributes["error"] = errMsg;
             const result = {
-                type: TradeType.RouteProcessor,
+                type,
                 spanAttributes,
-                reason: RouteProcessorSimulationHaltReason.NoOpportunity,
+                reason: RouterSimulationHaltReason.NoOpportunity,
             };
             return Result.err(result);
         }
@@ -336,7 +320,7 @@ export async function trySimulateTrade(
     // if reached here, it means there was a success and found opp
     spanAttributes["foundOpp"] = true;
     const result = {
-        type: TradeType.RouteProcessor,
+        type,
         spanAttributes,
         rawtx,
         estimatedGasCost,
@@ -344,69 +328,9 @@ export async function trySimulateTrade(
         estimatedProfit: estimateProfit(
             orderDetails,
             parseUnits(ethPrice, 18),
-            price,
+            quote.price,
             maximumInputFixed,
         )!,
     };
     return Result.ok(result);
-}
-
-/**
- * Calculates the largest possible partial trade size for rp clear, returns undefined if
- * it cannot be determined due to the fact that order's ratio being higher than market
- * price
- * @param this - The RainSolver instance
- * @param orderDetails - The order details
- * @param toToken - The token to trade to
- * @param fromToken - The token to trade from
- * @param maximumInputFixed - The maximum input amount (in 18 decimals)
- */
-export function findLargestTradeSize(
-    this: RainSolver,
-    orderDetails: Pair,
-    toToken: Token,
-    fromToken: Token,
-    maximumInputFixed: bigint,
-): bigint | undefined {
-    const result: bigint[] = [];
-    const gasPrice = Number(this.state.gasPrice);
-    const ratio = orderDetails.takeOrder.quote!.ratio;
-    const pcMap = this.state.dataFetcher.getCurrentPoolCodeMap(fromToken, toToken);
-    const initAmount = scaleFrom18(maximumInputFixed, fromToken.decimals) / 2n;
-    let maximumInput = initAmount;
-    for (let i = 1n; i < 26n; i++) {
-        const maxInput18 = scaleTo18(maximumInput, fromToken.decimals);
-        const route = Router.findBestRoute(
-            pcMap,
-            this.state.chainConfig.id as ChainId,
-            fromToken,
-            maximumInput,
-            toToken,
-            gasPrice,
-            undefined,
-            RPoolFilter,
-            undefined,
-            this.appOptions.route,
-        );
-
-        if (route.status == "NoWay") {
-            maximumInput = maximumInput - initAmount / 2n ** i;
-        } else {
-            const amountOut = scaleTo18(route.amountOutBI, toToken.decimals);
-            const price = (amountOut * ONE18) / maxInput18;
-
-            if (price < ratio) {
-                maximumInput = maximumInput - initAmount / 2n ** i;
-            } else {
-                result.unshift(maxInput18);
-                maximumInput = maximumInput + initAmount / 2n ** i;
-            }
-        }
-    }
-
-    if (result.length) {
-        return result[0];
-    } else {
-        return undefined;
-    }
 }

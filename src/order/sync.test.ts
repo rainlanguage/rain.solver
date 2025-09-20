@@ -303,7 +303,7 @@ describe("Test syncOrders", () => {
                 },
             ],
         };
-        const mockSyncStatus = {
+        const mockSyncStatus: any = {
             "https://subgraph1.com": {},
         };
         (applyFilters as Mock).mockReturnValue(true);
@@ -344,7 +344,7 @@ describe("Test syncOrders", () => {
             ],
         };
 
-        const mockSyncStatus = {
+        const mockSyncStatus: any = {
             "https://subgraph1.com": {},
         };
         const mockError = new Error("Failed to add order to database");
@@ -388,7 +388,7 @@ describe("Test syncOrders", () => {
                 },
             ],
         };
-        const mockSyncStatus = {
+        const mockSyncStatus: any = {
             "https://subgraph2.com": {},
         };
         mockSubgraphManager.getUpstreamEvents.mockResolvedValue({

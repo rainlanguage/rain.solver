@@ -73,9 +73,12 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
 
         // convert gas to the vault token for depositing only in case the current balance is insufficient
         if (topupAmount > signerTokenBalance) {
-            await signer.state.dataFetcher.updatePools();
-            await signer.state.dataFetcher.fetchPoolsForToken(gasToken, vaultToken);
-            const pcMap = signer.state.dataFetcher.getCurrentPoolCodeMap(gasToken, vaultToken);
+            await signer.state.router.sushi?.update();
+            await signer.state.router.sushi?.dataFetcher.fetchPoolsForToken(gasToken, vaultToken);
+            const pcMap = signer.state.router.sushi!.dataFetcher.getCurrentPoolCodeMap(
+                gasToken,
+                vaultToken,
+            );
             const network = {
                 chainId: signer.chain.id,
                 gasPrice: Number(signer.state.gasPrice),

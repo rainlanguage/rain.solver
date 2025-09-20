@@ -4,11 +4,11 @@ import { formatUnits } from "viem";
 import { AppOptions } from "../config";
 import { RainSolver } from "../core";
 import { OrderManager } from "../order";
+import { ChainId, ChainKey } from "sushi";
 import { WalletManager, WalletType } from "../wallet";
 import { sleep, withBigintSerializer } from "../common";
 import { ErrorSeverity, errorSnapshot } from "../error";
 import { SharedState, SharedStateConfig } from "../state";
-import { ChainId, ChainKey, RainDataFetcher } from "sushi";
 import { SubgraphConfig, SubgraphManager } from "../subgraph";
 import { PreAssembledSpan, RainSolverLogger } from "../logger";
 import { Context, context, Span, SpanStatusCode, trace } from "@opentelemetry/api";
@@ -277,13 +277,7 @@ export class RainSolverCli {
         if (this.nextDatafetcherReset <= now) {
             this.nextDatafetcherReset = now + this.appOptions.poolUpdateInterval * 60 * 1000;
             // reset only if the data fetcher is initialized successfully
-            try {
-                this.state.dataFetcher = await RainDataFetcher.init(
-                    this.state.chainConfig.id as ChainId,
-                    this.state.client,
-                    this.state.liquidityProviders,
-                );
-            } catch {}
+            await this.state.router.sushi?.reset();
         }
     }
 
@@ -298,14 +292,20 @@ export class RainSolverCli {
             span: roundSpan,
             context: roundCtx,
         });
-        const txUrls = results
-            .map((v) => (v.isOk() ? v.value.txUrl : v.error.txUrl))
-            .filter((v) => !!v);
-        const foundOpp = txUrls.length > 0;
-        if (foundOpp) {
+        const successTxs: string[] = [];
+        const failedTxs: string[] = [];
+        results.forEach((v) => {
+            if (v.isOk()) {
+                if (v.value.txUrl) successTxs.push(v.value.txUrl);
+            } else if (v.error.txUrl) {
+                failedTxs.push(v.error.txUrl);
+            }
+        });
+        if (successTxs.length > 0 || failedTxs.length > 0) {
             roundSpan.setAttribute("foundOpp", true);
-            roundSpan.setAttribute("txUrls", txUrls);
         }
+        roundSpan.setAttribute("txUrls.success", successTxs);
+        roundSpan.setAttribute("txUrls.failed", failedTxs);
         roundSpan.setAttribute(
             "ordersMetadata.roundProcessedOrderPairsCount",
             checkpointReports.length,

@@ -104,6 +104,7 @@ describe("Test processReceipt", () => {
             expect(result.value.outputTokenIncome).toBe("1");
             expect(result.value.netProfit).toBeDefined();
             expect(result.value.endTime).toBeTypeOf("number");
+            expect(result.value.txUrl).toBe("https://etherscan.io/tx/0xTxHash123");
             expect(result.value.spanAttributes["didClear"]).toBe(true);
             expect(result.value.spanAttributes["details.actualGasCost"]).toBeDefined();
             expect(result.value.spanAttributes["details.actualGasCost"]).toBeTypeOf("number");

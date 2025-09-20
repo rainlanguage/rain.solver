@@ -1,12 +1,22 @@
+import { ONE18 } from "../../math";
 import { Token } from "sushi/currency";
+import { RouterType, RouteStatus } from "../types";
 import { Result, TokenDetails } from "../../common";
+import { encodeAbiParameters, maxUint256, PublicClient } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
     BalancerRouter,
     BalancerRouterPath,
     BalancerRouterError,
+    BalancerCachedRoute,
     BalancerRouterErrorType,
 } from ".";
+import { AddressProvider } from "@balancer/sdk";
+
+vi.mock("viem", async (importOriginal) => ({
+    ...(await importOriginal()),
+    encodeAbiParameters: vi.fn().mockReturnValue("0xencodedData"),
+}));
 
 vi.mock("@balancer/sdk", async (importOriginal) => {
     return {
@@ -20,11 +30,37 @@ vi.mock("@balancer/sdk", async (importOriginal) => {
 });
 
 describe("test BalancerRouter", () => {
+    let mockClient: PublicClient;
+    const chainId = 1;
+    const mockTokenIn = new Token({
+        chainId: 1,
+        address: "0xa0b86a33e6c0c536b5e9f9de9c2c4b6d5e9c2c4b" as `0x${string}`,
+        decimals: 18,
+        symbol: "WETH",
+    });
+
+    const mockTokenOut = new Token({
+        chainId: 1,
+        address: "0xa1b86a33e6c0c536b5e9f9de9c2c4b6d5e9c2c4b" as `0x${string}`,
+        decimals: 6,
+        symbol: "USDC",
+    });
+
+    const mockSwapAmount = 1000000000000000000n; // 1 WETH
+    const routerAddress = AddressProvider.BatchRouter(chainId);
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockClient = {
+            simulateContract: vi.fn(),
+        } as any;
+    });
+
     describe("test init method", () => {
-        it("should successfully initialize BalancerRouter for supported chain", () => {
+        it("should successfully initialize BalancerRouter for supported chain", async () => {
             const chainId = 1; // Ethereum mainnet - supported by Balancer v3
 
-            const result = BalancerRouter.init(chainId);
+            const result = await BalancerRouter.create(chainId, mockClient, routerAddress);
 
             assert(result.isOk());
             if (result.isOk()) {
@@ -39,45 +75,14 @@ describe("test BalancerRouter", () => {
                 expect(router.cache.size).toBe(0);
             }
         });
-
-        it("should return error for unsupported chain", () => {
-            const unsupportedChainId = 999999; // Non-existent chain
-
-            const result = BalancerRouter.init(unsupportedChainId);
-
-            assert(result.isErr());
-            if (result.isErr()) {
-                const error = result.error;
-                expect(error).toBeInstanceOf(BalancerRouterError);
-                expect(error.type).toBe(BalancerRouterErrorType.UnsupportedChain);
-                expect(error.message).toBe(
-                    `Balancer router does not support chain with id: ${unsupportedChainId}`,
-                );
-                expect(error.name).toBe("BalancerRouterError");
-            }
-        });
     });
 
     describe("test fetchSortedRoutes method", () => {
         let router: BalancerRouter;
         let mockBalancerApi: { sorSwapPaths: { fetchSorSwapPaths: Mock } };
 
-        const mockTokenIn: TokenDetails = {
-            address: "0xa0b86a33e6c0c536b5e9f9de9c2c4b6d5e9c2c4b" as `0x${string}`,
-            decimals: 18,
-            symbol: "WETH",
-        };
-
-        const mockTokenOut: TokenDetails = {
-            address: "0xa1b86a33e6c0c536b5e9f9de9c2c4b6d5e9c2c4b" as `0x${string}`,
-            decimals: 6,
-            symbol: "USDC",
-        };
-
-        const mockSwapAmount = 1000000000000000000n; // 1 WETH
-
-        beforeEach(() => {
-            const routerResult = BalancerRouter.init(1); // Ethereum mainnet
+        beforeEach(async () => {
+            const routerResult = await BalancerRouter.create(chainId, mockClient, routerAddress);
             if (routerResult.isOk()) {
                 router = routerResult.value;
                 mockBalancerApi = (router as any).balancerApi;
@@ -111,9 +116,9 @@ describe("test BalancerRouter", () => {
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
 
             const result = await router.fetchSortedRoutes({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
             });
 
             assert(result.isOk());
@@ -121,14 +126,14 @@ describe("test BalancerRouter", () => {
             expect(routes).toHaveLength(2);
 
             // check first route
-            expect(routes[0].tokenIn).toBe(mockTokenIn.address);
+            expect(routes[0].tokenIn).toBe(mockTokenIn.address.toLowerCase());
             expect(routes[0].steps).toHaveLength(1);
             expect(routes[0].steps[0].pool).toBe("0xpool1");
             expect(routes[0].steps[0].tokenOut).toBe(mockTokenOut.address);
             expect(routes[0].steps[0].isBuffer).toBe(false);
 
             // check second route (multi-hop)
-            expect(routes[1].tokenIn).toBe(mockTokenIn.address);
+            expect(routes[1].tokenIn).toBe(mockTokenIn.address.toLowerCase());
             expect(routes[1].steps).toHaveLength(2);
             expect(routes[1].steps[0].pool).toBe("0xpool2");
             expect(routes[1].steps[0].tokenOut).toBe("0xintermediatetoken");
@@ -149,9 +154,9 @@ describe("test BalancerRouter", () => {
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue([]);
 
             const result = await router.fetchSortedRoutes({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
             });
 
             assert(result.isErr());
@@ -166,9 +171,9 @@ describe("test BalancerRouter", () => {
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockRejectedValue(mockError);
 
             const result = await router.fetchSortedRoutes({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
             });
 
             assert(result.isErr());
@@ -206,9 +211,9 @@ describe("test BalancerRouter", () => {
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
 
             const result = await router.fetchSortedRoutes({
-                tokenIn: tokenWithoutSymbol,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+                fromToken: tokenWithoutSymbol,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
             });
 
             assert(result.isOk());
@@ -241,9 +246,9 @@ describe("test BalancerRouter", () => {
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
 
             const result = await router.fetchSortedRoutes({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
             });
 
             assert(result.isOk());
@@ -254,26 +259,12 @@ describe("test BalancerRouter", () => {
         });
     });
 
-    describe("test getBestRoute method", () => {
+    describe("test findBestRoute method", () => {
         let router: BalancerRouter;
         let mockBalancerApi: { sorSwapPaths: { fetchSorSwapPaths: Mock } };
 
-        const mockTokenIn: TokenDetails = {
-            address: "0xa0b86a33e6c0c536b5e9f9de9c2c4b6d5e9c2c4b" as `0x${string}`,
-            decimals: 18,
-            symbol: "WETH",
-        };
-
-        const mockTokenOut: TokenDetails = {
-            address: "0xa1b86a33e6c0c536b5e9f9de9c2c4b6d5e9c2c4b" as `0x${string}`,
-            decimals: 6,
-            symbol: "USDC",
-        };
-
-        const mockSwapAmount = 1000000000000000000n; // 1 WETH
-
-        beforeEach(() => {
-            const routerResult = BalancerRouter.init(1); // Ethereum mainnet
+        beforeEach(async () => {
+            const routerResult = await BalancerRouter.create(chainId, mockClient, routerAddress);
             if (routerResult.isOk()) {
                 router = routerResult.value;
                 router.cache.clear(); // clear cache before each test
@@ -297,22 +288,25 @@ describe("test BalancerRouter", () => {
 
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
 
-            const result = await router.getBestRoute({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+            const result = await router.findBestRoute({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
             });
 
             assert(result.isOk());
             const cachedRoute = result.value;
             expect(cachedRoute.route).toHaveLength(1);
-            expect(cachedRoute.route[0].tokenIn).toBe(mockTokenIn.address);
+            expect(cachedRoute.route[0].tokenIn).toBe(mockTokenIn.address.toLowerCase());
             expect(cachedRoute.route[0].exactAmountIn).toBe(mockSwapAmount);
             expect(cachedRoute.route[0].minAmountOut).toBe(3000000000n);
             expect(cachedRoute.route[0].steps).toHaveLength(1);
             expect(cachedRoute.route[0].steps[0].pool).toBe("0xpool1");
             expect(cachedRoute.price).toBeGreaterThan(0n);
             expect(cachedRoute.validUntil).toBeGreaterThan(Date.now());
+            expect(cachedRoute.type).toBe(RouterType.Balancer);
+            expect(cachedRoute.amountOut).toBe(3000000000n);
+            expect(cachedRoute.status).toBe(RouteStatus.Success);
 
             // verify route was cached
             const cacheKey = `${mockTokenIn.address.toLowerCase()}/${mockTokenOut.address.toLowerCase()}`;
@@ -337,25 +331,60 @@ describe("test BalancerRouter", () => {
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
 
             // First call - should fetch from API
-            const firstResult = await router.getBestRoute({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+            const firstResult = await router.findBestRoute({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
             });
 
             assert(firstResult.isOk());
             expect(mockBalancerApi.sorSwapPaths.fetchSorSwapPaths).toHaveBeenCalledTimes(1);
 
             // Second call - should return from cache
-            const secondResult = await router.getBestRoute({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+            const secondResult = await router.findBestRoute({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
             });
 
             assert(secondResult.isOk());
             expect(mockBalancerApi.sorSwapPaths.fetchSorSwapPaths).toHaveBeenCalledTimes(1); // No additional API call
             expect(secondResult.value).toEqual(firstResult.value);
+        });
+
+        it("should return error when cached route is NoWay", async () => {
+            mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue([]);
+            const cacheKey = `${mockTokenIn.address.toLowerCase()}/${mockTokenOut.address.toLowerCase()}`;
+
+            // first call to populate cache with NoWay
+            const result = await router.findBestRoute({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
+            });
+            assert(result.isErr());
+            const error = result.error;
+            expect(error).toBeInstanceOf(BalancerRouterError);
+            expect(error.type).toBe(BalancerRouterErrorType.NoRouteFound);
+            expect(error.message).toBe("Found no balancer route for given token pair");
+            expect(mockBalancerApi.sorSwapPaths.fetchSorSwapPaths).toHaveBeenCalledTimes(1);
+            expect(router.cache.has(cacheKey)).toBe(true);
+            expect(router.cache.get(cacheKey)?.status).toBe(RouteStatus.NoWay);
+
+            // second call should hit cache and return same error
+            const result2 = await router.findBestRoute({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
+            });
+            assert(result2.isErr());
+            const error2 = result2.error;
+            expect(error2).toBeInstanceOf(BalancerRouterError);
+            expect(error2.type).toBe(BalancerRouterErrorType.NoRouteFound);
+            expect(error2.message).toBe("Found no balancer route for given token pair");
+            expect(mockBalancerApi.sorSwapPaths.fetchSorSwapPaths).toHaveBeenCalledTimes(1); // no additional call
+            expect(router.cache.has(cacheKey)).toBe(true);
+            expect(router.cache.get(cacheKey)?.status).toBe(RouteStatus.NoWay);
         });
 
         it("should ignore cache when ignoreCache is true", async () => {
@@ -375,19 +404,19 @@ describe("test BalancerRouter", () => {
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
 
             // First call
-            await router.getBestRoute({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+            await router.findBestRoute({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
             });
 
             expect(mockBalancerApi.sorSwapPaths.fetchSorSwapPaths).toHaveBeenCalledTimes(1);
 
             // Second call with ignoreCache: true
-            await router.getBestRoute({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+            await router.findBestRoute({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
                 ignoreCache: true,
             });
 
@@ -412,7 +441,9 @@ describe("test BalancerRouter", () => {
 
             // manually add expired cache entry
             const cacheKey = `${mockTokenIn.address.toLowerCase()}/${mockTokenOut.address.toLowerCase()}`;
-            const expiredRoute = {
+            const expiredRoute: BalancerCachedRoute = {
+                type: RouterType.Balancer,
+                status: RouteStatus.Success,
                 route: [
                     {
                         tokenIn: mockTokenIn.address as `0x${string}`,
@@ -430,29 +461,33 @@ describe("test BalancerRouter", () => {
                 altRoutes: [],
                 validUntil: Date.now() - 1000, // Expired 1 second ago
                 price: 2000000000000000000000n,
+                amountOut: 2000000000n,
             };
             router.cache.set(cacheKey, expiredRoute);
 
-            const result = await router.getBestRoute({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+            const result = await router.findBestRoute({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
             });
 
             assert(result.isOk());
             expect(mockBalancerApi.sorSwapPaths.fetchSorSwapPaths).toHaveBeenCalledTimes(1);
             expect(result.value.route[0].minAmountOut).toBe(3000000000n); // New route data
             expect(result.value.route[0].steps[0].pool).toBe("0xpool1"); // New pool
+            expect(result.value.type).toBe(RouterType.Balancer);
+            expect(result.value.amountOut).toBe(3000000000n);
+            expect(result.value.status).toBe(RouteStatus.Success);
         });
 
         it("should return error when fetchSortedRoutes fails", async () => {
             const mockError = new Error("Network error");
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockRejectedValue(mockError);
 
-            const result = await router.getBestRoute({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+            const result = await router.findBestRoute({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
             });
 
             assert(result.isErr());
@@ -460,15 +495,19 @@ describe("test BalancerRouter", () => {
             expect(error).toBeInstanceOf(BalancerRouterError);
             expect(error.type).toBe(BalancerRouterErrorType.FetchFailed);
             expect(error.cause).toBe(mockError);
+
+            const cacheKey = `${mockTokenIn.address.toLowerCase()}/${mockTokenOut.address.toLowerCase()}`;
+            expect(router.cache.has(cacheKey)).toBe(true);
+            expect(router.cache.get(cacheKey)?.status).toBe(RouteStatus.NoWay);
         });
 
         it("should return error when no routes found", async () => {
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue([]);
 
-            const result = await router.getBestRoute({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+            const result = await router.findBestRoute({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
             });
 
             assert(result.isErr());
@@ -476,6 +515,10 @@ describe("test BalancerRouter", () => {
             expect(error).toBeInstanceOf(BalancerRouterError);
             expect(error.type).toBe(BalancerRouterErrorType.NoRouteFound);
             expect(error.message).toBe("Found no balancer route for given token pair");
+
+            const cacheKey = `${mockTokenIn.address.toLowerCase()}/${mockTokenOut.address.toLowerCase()}`;
+            expect(router.cache.has(cacheKey)).toBe(true);
+            expect(router.cache.get(cacheKey)?.status).toBe(RouteStatus.NoWay);
         });
 
         it("should calculate price correctly for multiple routes", async () => {
@@ -505,10 +548,10 @@ describe("test BalancerRouter", () => {
 
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
 
-            const result = await router.getBestRoute({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+            const result = await router.findBestRoute({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
             });
 
             assert(result.isOk());
@@ -529,40 +572,17 @@ describe("test BalancerRouter", () => {
     describe("test tryQuote method", () => {
         let router: BalancerRouter;
         let mockBalancerApi: { sorSwapPaths: { fetchSorSwapPaths: Mock } };
-        let mockSigner: any;
 
-        const mockTokenIn: TokenDetails = {
-            address: "0xa0b86a33e6c0c536b5e9f9de9c2c4b6d5e9c2c4b" as `0x${string}`,
-            decimals: 18,
-            symbol: "WETH",
-        };
-
-        const mockTokenOut: TokenDetails = {
-            address: "0xa1b86a33e6c0c536b5e9f9de9c2c4b6d5e9c2c4b" as `0x${string}`,
-            decimals: 6,
-            symbol: "USDC",
-        };
-
-        const mockSwapAmount = 1000000000000000000n; // 1 WETH
-
-        beforeEach(() => {
-            const routerResult = BalancerRouter.init(1); // Ethereum mainnet
+        beforeEach(async () => {
+            const routerResult = await BalancerRouter.create(chainId, mockClient, routerAddress);
             if (routerResult.isOk()) {
                 router = routerResult.value;
                 router.cache.clear(); // clear cache before each test
                 mockBalancerApi = (router as any).balancerApi;
             }
-
-            // mock signer
-            mockSigner = {
-                account: {
-                    address: "0x1234567890123456789012345678901234567890" as `0x${string}`,
-                },
-                simulateContract: vi.fn(),
-            };
         });
 
-        it("should successfully get market price with onchain simulation", async () => {
+        it("should successfully get quote with onchain simulation", async () => {
             const mockSorPaths = [
                 {
                     tokens: [
@@ -581,81 +601,34 @@ describe("test BalancerRouter", () => {
             };
 
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
-            mockSigner.simulateContract.mockResolvedValue(mockSimulationResult);
+            (mockClient.simulateContract as Mock).mockResolvedValue(mockSimulationResult);
 
-            const result = await router.tryQuote(
-                {
-                    tokenIn: mockTokenIn,
-                    tokenOut: mockTokenOut,
-                    swapAmount: mockSwapAmount,
-                },
-                mockSigner,
-            );
+            const result = await router.tryQuote({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
+            });
 
             assert(result.isOk());
-            const marketPrice = result.value;
-            expect(marketPrice.amountOut).toBe(3100000000n);
-            expect(marketPrice.price).toBeGreaterThan(0n);
-            expect(marketPrice.route).toHaveLength(1);
-            expect(marketPrice.route[0].tokenIn).toBe(mockTokenIn.address);
-            expect(marketPrice.route[0].steps[0].pool).toBe("0xpool1");
+            const quote = result.value;
+            expect(quote.amountOut).toBe(3100000000n);
+            expect(quote.price).toBeGreaterThan(0n);
+            expect(quote.route).toHaveLength(1);
+            expect(quote.route[0].tokenIn).toBe(mockTokenIn.address.toLowerCase());
+            expect(quote.route[0].steps[0].pool).toBe("0xpool1");
+            expect(quote.type).toBe(RouterType.Balancer);
+            expect(quote.status).toBe(RouteStatus.Success);
 
             // verify simulation was called with correct parameters
-            expect(mockSigner.simulateContract).toHaveBeenCalledWith({
+            expect(mockClient.simulateContract).toHaveBeenCalledWith({
                 address: router.routerAddress,
                 abi: expect.any(Array),
                 functionName: "querySwapExactIn",
-                args: [expect.any(Array), mockSigner.account.address, "0x"],
+                args: [expect.any(Array), `0x${"1".repeat(40)}`, "0x"],
             });
         });
 
-        it("should return cached onchain price when available", async () => {
-            const onchainPrice = 3200000000000000000000n;
-            const cachedRoute = {
-                route: [
-                    {
-                        tokenIn: mockTokenIn.address as `0x${string}`,
-                        exactAmountIn: mockSwapAmount,
-                        minAmountOut: 3000000000n,
-                        steps: [
-                            {
-                                pool: "0xpool1" as `0x${string}`,
-                                tokenOut: mockTokenOut.address as `0x${string}`,
-                                isBuffer: false,
-                            },
-                        ],
-                    },
-                ],
-                altRoutes: [],
-                validUntil: Date.now() + 60000,
-                price: 3000000000000000000000n,
-                onchainPrice,
-            };
-
-            // manually add cached route with onchain price
-            const cacheKey = `${mockTokenIn.address.toLowerCase()}/${mockTokenOut.address.toLowerCase()}`;
-            router.cache.set(cacheKey, cachedRoute);
-
-            const result = await router.tryQuote(
-                {
-                    tokenIn: mockTokenIn,
-                    tokenOut: mockTokenOut,
-                    swapAmount: mockSwapAmount,
-                },
-                mockSigner,
-            );
-
-            assert(result.isOk());
-            const marketPrice = result.value;
-            expect(marketPrice.price).toBe(onchainPrice);
-            expect(marketPrice.amountOut).toBe(3000000000n);
-            expect(marketPrice.route).toEqual(cachedRoute.route);
-
-            // Should not call simulateContract when onchainPrice is cached
-            expect(mockSigner.simulateContract).not.toHaveBeenCalled();
-        });
-
-        it("should use default address when signer has no account", async () => {
+        it("should use sender address when provided", async () => {
             const mockSorPaths = [
                 {
                     tokens: [
@@ -674,23 +647,19 @@ describe("test BalancerRouter", () => {
             };
 
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
-            mockSigner.simulateContract.mockResolvedValue(mockSimulationResult);
-            mockSigner.account = undefined; // No account
+            (mockClient.simulateContract as Mock).mockResolvedValue(mockSimulationResult);
 
             const customAddress = "0x9999999999999999999999999999999999999999" as `0x${string}`;
 
-            const result = await router.tryQuote(
-                {
-                    tokenIn: mockTokenIn,
-                    tokenOut: mockTokenOut,
-                    swapAmount: mockSwapAmount,
-                },
-                mockSigner,
-                customAddress,
-            );
+            const result = await router.tryQuote({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
+                senderAddress: customAddress,
+            });
 
             assert(result.isOk());
-            expect(mockSigner.simulateContract).toHaveBeenCalledWith({
+            expect(mockClient.simulateContract).toHaveBeenCalledWith({
                 address: router.routerAddress,
                 abi: expect.any(Array),
                 functionName: "querySwapExactIn",
@@ -698,54 +667,15 @@ describe("test BalancerRouter", () => {
             });
         });
 
-        it("should fallback to cached price when simulation fails", async () => {
-            const mockSorPaths = [
-                {
-                    tokens: [
-                        { address: mockTokenIn.address, decimals: mockTokenIn.decimals },
-                        { address: mockTokenOut.address, decimals: mockTokenOut.decimals },
-                    ],
-                    pools: ["0xpool1"],
-                    inputAmountRaw: mockSwapAmount,
-                    outputAmountRaw: 3000000000n,
-                    isBuffer: [false],
-                },
-            ];
-
-            mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
-            mockSigner.simulateContract.mockResolvedValue({
-                result: [null, null, []], // Invalid simulation result
-            });
-
-            const result = await router.tryQuote(
-                {
-                    tokenIn: mockTokenIn,
-                    tokenOut: mockTokenOut,
-                    swapAmount: mockSwapAmount,
-                },
-                mockSigner,
-            );
-
-            assert(result.isOk());
-            const marketPrice = result.value;
-            // Should fallback to cached route price and amount
-            expect(marketPrice.amountOut).toBe(3000000000n);
-            expect(marketPrice.price).toBeGreaterThan(0n);
-            expect(marketPrice.route).toHaveLength(1);
-        });
-
-        it("should return error when getBestRoute fails", async () => {
+        it("should return error when findBestRoute fails", async () => {
             const mockError = new Error("Network error");
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockRejectedValue(mockError);
 
-            const result = await router.tryQuote(
-                {
-                    tokenIn: mockTokenIn,
-                    tokenOut: mockTokenOut,
-                    swapAmount: mockSwapAmount,
-                },
-                mockSigner,
-            );
+            const result = await router.tryQuote({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
+            });
 
             assert(result.isErr());
             const error = result.error;
@@ -770,16 +700,13 @@ describe("test BalancerRouter", () => {
 
             const simulationError = new Error("Simulation failed");
             mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
-            mockSigner.simulateContract.mockRejectedValue(simulationError);
+            (mockClient.simulateContract as Mock).mockRejectedValue(simulationError);
 
-            const result = await router.tryQuote(
-                {
-                    tokenIn: mockTokenIn,
-                    tokenOut: mockTokenOut,
-                    swapAmount: mockSwapAmount,
-                },
-                mockSigner,
-            );
+            const result = await router.tryQuote({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
+            });
 
             assert(result.isErr());
             const error = result.error;
@@ -789,45 +716,6 @@ describe("test BalancerRouter", () => {
                 "Swap query execution failed for the given route to get market price",
             );
             expect(error.cause).toBe(simulationError);
-        });
-
-        it("should update cache with onchain price after successful simulation", async () => {
-            const mockSorPaths = [
-                {
-                    tokens: [
-                        { address: mockTokenIn.address, decimals: mockTokenIn.decimals },
-                        { address: mockTokenOut.address, decimals: mockTokenOut.decimals },
-                    ],
-                    pools: ["0xpool1"],
-                    inputAmountRaw: mockSwapAmount,
-                    outputAmountRaw: 3000000000n,
-                    isBuffer: [false],
-                },
-            ];
-
-            const mockSimulationResult = {
-                result: [null, null, [3100000000n]],
-            };
-
-            mockBalancerApi.sorSwapPaths.fetchSorSwapPaths.mockResolvedValue(mockSorPaths);
-            mockSigner.simulateContract.mockResolvedValue(mockSimulationResult);
-
-            const result = await router.tryQuote(
-                {
-                    tokenIn: mockTokenIn,
-                    tokenOut: mockTokenOut,
-                    swapAmount: mockSwapAmount,
-                },
-                mockSigner,
-            );
-
-            assert(result.isOk());
-
-            // verify that onchain price was cached
-            const cacheKey = `${mockTokenIn.address.toLowerCase()}/${mockTokenOut.address.toLowerCase()}`;
-            const cachedRoute = router.cache.get(cacheKey);
-            expect(cachedRoute?.onchainPrice).toBeDefined();
-            expect(cachedRoute?.onchainPrice).toBeGreaterThan(0n);
         });
     });
 
@@ -1005,58 +893,52 @@ describe("test BalancerRouter", () => {
 
     describe("test getMarketPrice method", () => {
         let router: BalancerRouter;
-        const mockSwapAmount = 1000000000000000000n; // 1 WETH
-        const mockTokenIn: TokenDetails = {
-            address: "0xa0b86a33e6c0c536b5e9f9de9c2c4b6d5e9c2c4b" as `0x${string}`,
-            decimals: 18,
-            symbol: "WETH",
-        };
-        const mockTokenOut: TokenDetails = {
-            address: "0xa1b86a33e6c0c536b5e9f9de9c2c4b6d5e9c2c4b" as `0x${string}`,
-            decimals: 6,
-            symbol: "USDC",
-        };
 
-        beforeEach(() => {
-            const routerResult = BalancerRouter.init(1); // Ethereum mainnet
+        beforeEach(async () => {
+            const routerResult = await BalancerRouter.create(chainId, mockClient, routerAddress);
             if (routerResult.isOk()) {
                 router = routerResult.value;
             }
         });
 
         it("should successfully get market price", async () => {
-            const getBestRouteSpy = vi.spyOn(router, "getBestRoute");
+            const findBestRouteSpy = vi.spyOn(router, "findBestRoute");
 
             // onchain price
-            getBestRouteSpy.mockResolvedValueOnce(
+            findBestRouteSpy.mockResolvedValueOnce(
                 Result.ok({
+                    type: RouterType.Balancer,
+                    status: RouteStatus.Success,
+                    amountOut: 3100000000n,
                     price: 3100000000000000000n,
                     route: [],
                     altRoutes: [],
-                    onchainPrice: 3200000000000000000n,
                     validUntil: 1,
                 }),
             );
             let result = await router.getMarketPrice({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
                 ignoreCache: true,
             });
             assert(result.isOk());
             let marketPrice = result.value;
-            expect(marketPrice.price).toBe("3.2");
-            expect(getBestRouteSpy).toHaveBeenCalledTimes(1);
-            expect(getBestRouteSpy).toHaveBeenCalledWith({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+            expect(marketPrice.price).toBe("3.1");
+            expect(findBestRouteSpy).toHaveBeenCalledTimes(1);
+            expect(findBestRouteSpy).toHaveBeenCalledWith({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
                 ignoreCache: true,
             });
 
             // api price
-            getBestRouteSpy.mockResolvedValueOnce(
+            findBestRouteSpy.mockResolvedValueOnce(
                 Result.ok({
+                    type: RouterType.Balancer,
+                    status: RouteStatus.Success,
+                    amountOut: 3100000000n,
                     price: 3100000000000000000n,
                     route: [],
                     altRoutes: [],
@@ -1064,48 +946,257 @@ describe("test BalancerRouter", () => {
                 }),
             );
             result = await router.getMarketPrice({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
                 ignoreCache: false,
             });
             assert(result.isOk());
             marketPrice = result.value;
             expect(marketPrice.price).toBe("3.1");
-            expect(getBestRouteSpy).toHaveBeenCalledTimes(2);
-            expect(getBestRouteSpy).toHaveBeenCalledWith({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+            expect(findBestRouteSpy).toHaveBeenCalledTimes(2);
+            expect(findBestRouteSpy).toHaveBeenCalledWith({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
                 ignoreCache: false,
             });
 
-            getBestRouteSpy.mockRestore();
+            findBestRouteSpy.mockRestore();
         });
 
-        it("should return err when getBestRoute fails", async () => {
-            const getBestRouteSpy = vi.spyOn(router, "getBestRoute");
-            getBestRouteSpy.mockResolvedValue(
+        it("should return err when findBestRoute fails", async () => {
+            const findBestRouteSpy = vi.spyOn(router, "findBestRoute");
+            findBestRouteSpy.mockResolvedValue(
                 Result.err(new BalancerRouterError("msg", BalancerRouterErrorType.FetchFailed)),
             );
 
             const result = await router.getMarketPrice({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
                 ignoreCache: false,
             });
             assert(result.isErr());
             expect(result.error.message).toBe("msg");
-            expect(getBestRouteSpy).toHaveBeenCalledTimes(1);
-            expect(getBestRouteSpy).toHaveBeenCalledWith({
-                tokenIn: mockTokenIn,
-                tokenOut: mockTokenOut,
-                swapAmount: mockSwapAmount,
+            expect(findBestRouteSpy).toHaveBeenCalledTimes(1);
+            expect(findBestRouteSpy).toHaveBeenCalledWith({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
                 ignoreCache: false,
             });
 
-            getBestRouteSpy.mockRestore();
+            findBestRouteSpy.mockRestore();
+        });
+    });
+
+    describe("test getTradeParams method", () => {
+        let mockOrderDetails: any;
+        let mockGetTradeParamsArgs: any;
+        let router: BalancerRouter;
+
+        beforeEach(async () => {
+            vi.clearAllMocks();
+            const routerResult = await BalancerRouter.create(chainId, mockClient, routerAddress);
+            if (routerResult.isOk()) {
+                router = routerResult.value;
+            }
+
+            // Mock order details
+            mockOrderDetails = {
+                takeOrder: {
+                    struct: {
+                        order: "0xorder",
+                        inputIOIndex: 0,
+                        outputIOIndex: 0,
+                        signedContext: [],
+                    },
+                    quote: {
+                        ratio: 3000n * ONE18, // 3000 price ratio
+                    },
+                },
+            };
+
+            // Mock GetTradeParamsArgs
+            mockGetTradeParamsArgs = {
+                state: {
+                    appOptions: {
+                        maxRatio: true,
+                    },
+                    watchedTokens: new Map<string, TokenDetails>([
+                        [
+                            mockTokenIn.address.toLowerCase(),
+                            {
+                                address: mockTokenIn.address,
+                                decimals: mockTokenIn.decimals,
+                                symbol: mockTokenIn.symbol,
+                            } as any,
+                        ],
+                        [
+                            mockTokenOut.address.toLowerCase(),
+                            {
+                                address: mockTokenOut.address,
+                                decimals: mockTokenOut.decimals,
+                                symbol: mockTokenOut.symbol,
+                            } as any,
+                        ],
+                    ]),
+                },
+                maximumInput: mockSwapAmount,
+                orderDetails: mockOrderDetails,
+                toToken: mockTokenOut,
+                fromToken: mockTokenIn,
+                signer: {
+                    account: {
+                        address: "0xsignerAddress" as `0x${string}`,
+                    },
+                },
+                isPartial: false,
+            };
+        });
+
+        it("should successfully return trade params for full trade", async () => {
+            const mockQuote = {
+                type: RouterType.Balancer as const,
+                status: RouteStatus.Success,
+                price: 3000n * ONE18,
+                route: [
+                    {
+                        tokenIn: mockTokenIn.address as `0x${string}`,
+                        exactAmountIn: mockSwapAmount,
+                        minAmountOut: 3000000000n,
+                        steps: [
+                            {
+                                pool: "0xpool1" as `0x${string}`,
+                                tokenOut: mockTokenOut.address as `0x${string}`,
+                                isBuffer: false,
+                            },
+                        ],
+                    },
+                ],
+                amountOut: 3000000000n,
+            };
+
+            const tryQuoteSpy = vi.spyOn(router, "tryQuote");
+            tryQuoteSpy.mockResolvedValue(Result.ok(mockQuote));
+
+            const visualizeSpy = vi.spyOn(BalancerRouter, "visualizeRoute");
+            visualizeSpy.mockReturnValue(["some route visual"]);
+
+            (encodeAbiParameters as Mock).mockReturnValue("0xencodedData");
+
+            const result = await router.getTradeParams(mockGetTradeParamsArgs);
+
+            assert(result.isOk());
+            const tradeParams = result.value;
+
+            expect(tradeParams.type).toBe(RouterType.Balancer);
+            expect(tradeParams.quote).toEqual(mockQuote);
+            expect(tradeParams.routeVisual).toEqual(["some route visual"]);
+            expect(tradeParams.takeOrdersConfigStruct.minimumInput).toBe(1n);
+            expect(tradeParams.takeOrdersConfigStruct.maximumInput).toBe(maxUint256);
+            expect(tradeParams.takeOrdersConfigStruct.maximumIORatio).toBe(maxUint256);
+            expect(tradeParams.takeOrdersConfigStruct.orders).toEqual([
+                mockOrderDetails.takeOrder.struct,
+            ]);
+            expect(tradeParams.takeOrdersConfigStruct.data).toBe("0xencodedData");
+
+            expect(encodeAbiParameters).toHaveBeenCalledWith(expect.any(Array), [
+                router.routerAddress,
+                mockQuote.route[0],
+            ]);
+            expect(tryQuoteSpy).toHaveBeenCalledWith({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
+                senderAddress: "0xsignerAddress",
+            });
+            expect(visualizeSpy).toHaveBeenCalledWith(
+                mockQuote.route,
+                mockGetTradeParamsArgs.state.watchedTokens,
+            );
+
+            tryQuoteSpy.mockRestore();
+            visualizeSpy.mockRestore();
+        });
+
+        it("should successfully return trade params for partial trade size and maxRatio false", async () => {
+            const mockQuote = {
+                type: RouterType.Balancer as const,
+                status: RouteStatus.Success,
+                price: 3000n * ONE18,
+                route: [
+                    {
+                        tokenIn: mockTokenIn.address as `0x${string}`,
+                        exactAmountIn: mockSwapAmount,
+                        minAmountOut: 3000000000n,
+                        steps: [],
+                    },
+                ],
+                amountOut: 3000000000n,
+            };
+
+            mockGetTradeParamsArgs.isPartial = true;
+            mockGetTradeParamsArgs.state.appOptions.maxRatio = false;
+
+            const tryQuoteSpy = vi.spyOn(router, "tryQuote");
+            tryQuoteSpy.mockResolvedValue(Result.ok(mockQuote));
+
+            const visualizeSpy = vi.spyOn(BalancerRouter, "visualizeRoute");
+            visualizeSpy.mockReturnValue(["some route visual"]);
+
+            const result = await router.getTradeParams(mockGetTradeParamsArgs);
+
+            assert(result.isOk());
+            const tradeParams = result.value;
+
+            expect(tradeParams.type).toBe(RouterType.Balancer);
+            expect(tradeParams.quote).toEqual(mockQuote);
+            expect(tradeParams.routeVisual).toEqual(["some route visual"]);
+            expect(tradeParams.takeOrdersConfigStruct.minimumInput).toBe(1n);
+            expect(tradeParams.takeOrdersConfigStruct.maximumInput).toBe(mockSwapAmount);
+            expect(tradeParams.takeOrdersConfigStruct.maximumIORatio).toBe(mockQuote.price);
+            expect(tradeParams.takeOrdersConfigStruct.orders).toEqual([
+                mockOrderDetails.takeOrder.struct,
+            ]);
+            expect(tradeParams.takeOrdersConfigStruct.data).toBe("0xencodedData");
+
+            expect(encodeAbiParameters).toHaveBeenCalledWith(expect.any(Array), [
+                router.routerAddress,
+                mockQuote.route[0],
+            ]);
+            expect(tryQuoteSpy).toHaveBeenCalledWith({
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
+                senderAddress: "0xsignerAddress",
+            });
+            expect(visualizeSpy).toHaveBeenCalledWith(
+                mockQuote.route,
+                mockGetTradeParamsArgs.state.watchedTokens,
+            );
+
+            tryQuoteSpy.mockRestore();
+            visualizeSpy.mockRestore();
+        });
+
+        it("should return error when tryQuote fails", async () => {
+            const mockError = new BalancerRouterError(
+                "No route found",
+                BalancerRouterErrorType.NoRouteFound,
+            );
+
+            const tryQuoteSpy = vi.spyOn(router, "tryQuote");
+            tryQuoteSpy.mockResolvedValue(Result.err(mockError));
+
+            const result = await router.getTradeParams(mockGetTradeParamsArgs);
+
+            assert(result.isErr());
+            expect(result.error).toBe(mockError);
+            expect(result.error.type).toBe(BalancerRouterErrorType.NoRouteFound);
+
+            tryQuoteSpy.mockRestore();
         });
     });
 });

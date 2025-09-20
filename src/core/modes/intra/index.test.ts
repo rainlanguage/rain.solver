@@ -1,15 +1,15 @@
 import { RainSolver } from "../..";
 import { Result } from "../../../common";
+import { fallbackEthPrice } from "../dryrun";
 import { SimulationResult } from "../../types";
 import { trySimulateTrade } from "./simulation";
 import { RainSolverSigner } from "../../../signer";
-import { fallbackEthPrice } from "../../../router";
 import { findBestIntraOrderbookTrade } from "./index";
 import { extendObjectWithHeader } from "../../../logger";
 import { CounterpartySource, Pair } from "../../../order";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
-vi.mock("../../../router", () => ({
+vi.mock("../dryrun", () => ({
     fallbackEthPrice: vi.fn(),
 }));
 

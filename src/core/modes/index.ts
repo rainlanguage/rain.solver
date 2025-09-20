@@ -6,11 +6,10 @@ import { Result } from "../../common";
 import { Token } from "sushi/currency";
 import { RainSolverSigner } from "../../signer";
 import { Attributes } from "@opentelemetry/api";
-import { findBestRouteProcessorTrade } from "./router";
+import { findBestRouterTrade } from "./router";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
 import { extendObjectWithHeader } from "../../logger";
-import { findBestBalancerTrade } from "./balancer";
 import { containsNodeError, errorSnapshot } from "../../error";
 import { FindBestTradeFailure, FindBestTradeResult } from "../types";
 
@@ -69,7 +68,7 @@ export async function findBestTrade(
     const blockNumber = blockNumberResult.value;
 
     const promises = [
-        findBestRouteProcessorTrade.call(
+        findBestRouterTrade.call(
             this,
             orderDetails,
             signer,
@@ -78,20 +77,6 @@ export async function findBestTrade(
             fromToken,
             blockNumber,
         ),
-        // include balancer trade only if balancer router is available for the operating chain
-        ...(this.state.balancerRouter && this.appOptions.balancerArbAddress
-            ? [
-                  findBestBalancerTrade.call(
-                      this,
-                      orderDetails,
-                      signer,
-                      inputToEthPrice,
-                      toToken,
-                      fromToken,
-                      blockNumber,
-                  ),
-              ]
-            : []),
         // include intra and inter orderbook trades types only if rpOnly is false
         ...(!this.appOptions.rpOnly
             ? [

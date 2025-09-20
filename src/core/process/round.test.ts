@@ -374,7 +374,7 @@ describe("Test initializeRound", () => {
                 exportPreAssembledSpan: vi.fn(),
             } as any;
             const mockCtx = { fields: {} } as any;
-            await initializeRound.call(mockSolver, { span: {}, context: mockCtx });
+            await initializeRound.call(mockSolver, { span: {} as any, context: mockCtx });
 
             expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledTimes(1);
             expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledWith(
@@ -1432,7 +1432,10 @@ describe("Test finalizeRound", () => {
                 exportPreAssembledSpan: vi.fn(),
             } as any;
             const mockCtx = { fields: {} } as any;
-            await finalizeRound.call(mockSolver, settlements, { span: {}, context: mockCtx });
+            await finalizeRound.call(mockSolver, settlements, {
+                span: {} as any,
+                context: mockCtx,
+            });
 
             expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledTimes(1);
             expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledWith(

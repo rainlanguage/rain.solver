@@ -1,4 +1,4 @@
-import { formatUnits, isBytes, isHex } from "viem";
+import { formatUnits, isBytes, isHex, maxUint256 } from "viem";
 
 /**
  * One ether which equals to 1e18
@@ -50,4 +50,25 @@ export function isBigNumberish(value: any): boolean {
             typeof value === "bigint" ||
             isBytes(value))
     );
+}
+
+/**
+ * Calculates the price of an asset in 18 decimal fixed point
+ * @param amountIn - The input amount
+ * @param amountOut - The output amount
+ * @param decimalsIn - The decimals of the input token
+ * @param decimalsOut - The decimals of the output token
+ * @returns The price in 18 decimal fixed point
+ */
+export function calculatePrice18(
+    amountIn: bigint,
+    amountOut: bigint,
+    decimalsIn: number,
+    decimalsOut: number,
+): bigint {
+    if (amountIn === 0n) return maxUint256;
+    const amountOut18 = scaleTo18(amountOut, decimalsOut);
+    const amountIn18 = scaleTo18(amountIn, decimalsIn);
+    const price = (amountOut18 * ONE18) / amountIn18;
+    return price;
 }

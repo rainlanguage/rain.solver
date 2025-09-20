@@ -49,11 +49,18 @@ describe("Test processOrder", () => {
             client: {
                 getBlockNumber: vi.fn().mockResolvedValue(123),
             },
-            dataFetcher: {
-                updatePools: vi.fn().mockResolvedValue(undefined),
-                fetchPoolsForToken: vi.fn().mockResolvedValue(undefined),
+            router: {
+                sushi: {
+                    update: vi.fn().mockResolvedValue(undefined),
+                    dataFetcher: {
+                        updatePools: vi.fn().mockResolvedValue(undefined),
+                        fetchPoolsForToken: vi.fn().mockResolvedValue(undefined),
+                    },
+                },
             },
-            getMarketPrice: vi.fn().mockResolvedValue({ price: "100", amountOut: "100" }),
+            getMarketPrice: vi
+                .fn()
+                .mockResolvedValue(Result.ok({ price: "100", amountOut: "100" })),
             gasPrice: 100n,
         } as any;
         mockArgs = {
@@ -132,7 +139,7 @@ describe("Test processOrder", () => {
 
     it("should return FailedToUpdatePools if updatePools throws (not fetchPoolsForToken)", async () => {
         const error = new Error("update pools failed");
-        (mockState.dataFetcher.updatePools as Mock).mockRejectedValue(error);
+        (mockState.router.sushi!.update as Mock).mockRejectedValue(error);
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
             mockRainSolver,
@@ -160,7 +167,7 @@ describe("Test processOrder", () => {
 
     it("should return FailedToGetPools if fetchPoolsForToken throws", async () => {
         const error = new Error("fetch pools failed");
-        (mockState.dataFetcher.fetchPoolsForToken as Mock).mockRejectedValue(error);
+        (mockState.router.sushi!.dataFetcher.fetchPoolsForToken as Mock).mockRejectedValue(error);
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
             mockRainSolver,
@@ -185,9 +192,9 @@ describe("Test processOrder", () => {
 
     it('should set outputToEthPrice to "" if getMarketPrice returns undefined for output and gasCoveragePercentage is not "0"', async () => {
         (mockState.getMarketPrice as Mock)
-            .mockResolvedValueOnce({ price: "100", amountOut: "100" })
-            .mockResolvedValueOnce({ price: "100", amountOut: "100" })
-            .mockResolvedValueOnce(undefined);
+            .mockResolvedValueOnce(Result.ok({ price: "100", amountOut: "100" }))
+            .mockResolvedValueOnce(Result.ok({ price: "100", amountOut: "100" }))
+            .mockResolvedValueOnce(Result.err("no-way"));
         (findBestTrade as Mock).mockResolvedValue(Result.err({ spanAttributes: {} }));
         mockRainSolver.appOptions.gasCoveragePercentage = "100";
 
@@ -215,9 +222,9 @@ describe("Test processOrder", () => {
 
     it('should set outputToEthPrice to "0" if getMarketPrice returns undefined for output and gasCoveragePercentage is "0"', async () => {
         (mockState.getMarketPrice as Mock)
-            .mockResolvedValueOnce({ price: "100", amountOut: "100" })
-            .mockResolvedValueOnce({ price: "100", amountOut: "100" })
-            .mockResolvedValueOnce(undefined);
+            .mockResolvedValueOnce(Result.ok({ price: "100", amountOut: "100" }))
+            .mockResolvedValueOnce(Result.ok({ price: "100", amountOut: "100" }))
+            .mockResolvedValueOnce(Result.err("no-way"));
         (findBestTrade as Mock).mockResolvedValue(Result.err({ spanAttributes: {} }));
         mockRainSolver.appOptions.gasCoveragePercentage = "0";
 
@@ -244,7 +251,7 @@ describe("Test processOrder", () => {
     });
 
     it('should return FailedToGetEthPrice if getMarketPrice returns undefined and gasCoveragePercentage is not "0"', async () => {
-        (mockState.getMarketPrice as Mock).mockResolvedValue(undefined);
+        (mockState.getMarketPrice as Mock).mockResolvedValue(Result.err("no-way"));
         mockRainSolver.appOptions.gasCoveragePercentage = "100";
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
@@ -268,7 +275,7 @@ describe("Test processOrder", () => {
     });
 
     it('should set input/outputToEthPrice to "0" if getMarketPrice returns undefined and gasCoveragePercentage is "0"', async () => {
-        (mockState.getMarketPrice as Mock).mockResolvedValue(undefined);
+        (mockState.getMarketPrice as Mock).mockResolvedValue(Result.err("no-way"));
         (findBestTrade as Mock).mockResolvedValue(Result.err({ spanAttributes: {} }));
         mockRainSolver.appOptions.gasCoveragePercentage = "0";
 

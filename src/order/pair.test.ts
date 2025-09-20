@@ -380,17 +380,17 @@ describe("Test getSortedPairList function", () => {
 
         // check orderbook2 sorting: hash6 (5n, 600n), hash5 (5n, 400n)
         expect(ob2Results).toHaveLength(2);
-        expect(ob2Results![0].takeOrder.id).toBe("hash6");
-        expect(ob2Results![0].takeOrder.quote?.ratio).toBe(5n);
-        expect(ob2Results![1].takeOrder.id).toBe("hash5");
-        expect(ob2Results![1].takeOrder.quote?.ratio).toBe(5n);
+        expect(ob2Results[0].takeOrder.id).toBe("hash6");
+        expect(ob2Results[0].takeOrder.quote?.ratio).toBe(5n);
+        expect(ob2Results[1].takeOrder.id).toBe("hash5");
+        expect(ob2Results[1].takeOrder.quote?.ratio).toBe(5n);
 
         // check orderbook3 sorting: hash8 (30n, 200n), hash7 (25n, 200n)
         expect(ob3Results).toHaveLength(2);
-        expect(ob3Results![0].takeOrder.id).toBe("hash7");
-        expect(ob3Results![0].takeOrder.quote?.ratio).toBe(25n);
-        expect(ob3Results![1].takeOrder.id).toBe("hash8");
-        expect(ob3Results![1].takeOrder.quote?.ratio).toBe(30n);
+        expect(ob3Results[0].takeOrder.id).toBe("hash7");
+        expect(ob3Results[0].takeOrder.quote?.ratio).toBe(25n);
+        expect(ob3Results[1].takeOrder.id).toBe("hash8");
+        expect(ob3Results[1].takeOrder.quote?.ratio).toBe(30n);
 
         // verify internal maps are also sorted
         const ob2InternalMap = pairMap.get(orderbook2)?.get(outputToken)?.get(inputToken);

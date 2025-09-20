@@ -48,7 +48,11 @@ describe("Test getChainConfig", () => {
         expect(config.stableTokens).toEqual(STABLES[chainId]);
         expect(config.isSpecialL2).toBe(SpecialL2Chains.is(config.id));
         for (const key in publicClientConfig[chainId].chain) {
-            expect(config[key]).toEqual(publicClientConfig[chainId].chain[key]);
+            expect(config[key as keyof typeof config]).toEqual(
+                publicClientConfig[chainId as keyof typeof publicClientConfig].chain[
+                    key as keyof (typeof publicClientConfig)[ChainId]["chain"]
+                ],
+            );
         }
     });
 

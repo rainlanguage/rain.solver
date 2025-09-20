@@ -1,9 +1,9 @@
 import assert from "assert";
 import { RainSolver } from "../..";
 import { Result } from "../../../common";
+import { fallbackEthPrice } from "../dryrun";
 import { trySimulateTrade } from "./simulate";
 import { Attributes } from "@opentelemetry/api";
-import { fallbackEthPrice } from "../../../router";
 import { RainSolverSigner } from "../../../signer";
 import { CounterpartySource, Pair } from "../../../order";
 import { extendObjectWithHeader } from "../../../logger";
@@ -99,6 +99,9 @@ export async function findBestInterOrderbookTrade(
                 "againstOrderbooks." + counterparties[i].orderbook,
             );
             allNoneNodeErrors.push(res.error.noneNodeError);
+        }
+        if (!results.length) {
+            spanAttributes["error"] = "no counterparties found for inter-orderbook trade";
         }
         return Result.err({
             type: TradeType.InterOrderbook,
