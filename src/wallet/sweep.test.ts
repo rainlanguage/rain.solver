@@ -1,5 +1,5 @@
 import { maxUint256 } from "viem";
-import { TokenDetails } from "../state";
+import { TokenDetails } from "../common";
 import { RainDataFetcher } from "sushi";
 import { RainSolverSigner } from "../signer";
 import { describe, it, expect, vi, Mock, beforeEach } from "vitest";
@@ -53,6 +53,7 @@ describe("Test sweep functions", () => {
 
         // setup mock from signer
         mockFromSigner = {
+            state: { appOptions: {} },
             account: { address: "0xfrom" },
             readContract: vi.fn(),
             writeContract: vi.fn(),
@@ -64,6 +65,7 @@ describe("Test sweep functions", () => {
 
         // setup mock to signer
         mockToSigner = {
+            state: { appOptions: {} },
             account: { address: "0xto" },
             readContract: vi.fn(),
             writeContract: vi.fn(),
@@ -248,6 +250,7 @@ describe("Test sweep functions", () => {
 
             // setup mock state
             mockFromSigner.state = {
+                appOptions: {},
                 chainConfig: {
                     id: 1,
                     routeProcessors: {
@@ -256,7 +259,11 @@ describe("Test sweep functions", () => {
                 },
                 gasPrice: 20000000000n,
                 liquidityProviders: ["SushiSwap"],
-                dataFetcher: mockRouter,
+                router: {
+                    sushi: {
+                        dataFetcher: mockRouter,
+                    },
+                },
             } as any;
         });
 

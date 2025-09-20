@@ -5,6 +5,7 @@ import { LiquidityProviders } from "sushi";
 import { Result, sleep, TokenDetails } from "../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { SharedState, SharedStateConfig, SharedStateErrorType } from ".";
+import { RainSolverRouter } from "../router/router";
 
 vi.mock("./gasPrice", () => ({
     getGasPrice: vi.fn().mockResolvedValue({
@@ -40,6 +41,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             timeout: 1000,
             txGas: "120%",
             botMinBalance: "0.0000000001",
+            balancerArbAddress: "0xbalancerArb",
         };
         mockClient = {
             getChainId: vi.fn().mockResolvedValue(1),
@@ -54,7 +56,9 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
                 id: 1,
                 isSpecialL2: false,
                 nativeWrappedToken: "0xwrapped",
-                routeProcessors: {},
+                routeProcessors: {
+                    "4": "0xrouteProcessor",
+                },
                 stableTokens: [],
             }),
         );
@@ -62,6 +66,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
     });
 
     it("should build SharedStateConfig from AppOptions (happy path)", async () => {
+        const spy = vi.spyOn(RainSolverRouter, "create");
         const configResult = await SharedStateConfig.tryFromAppOptions(options);
         assert(configResult.isOk());
         const config = configResult.value;
@@ -79,7 +84,22 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
         expect(config.initL1GasPrice).toBe(0n);
         expect(config.transactionGas).toBe("120%");
         expect(config.rainSolverTransportConfig).toMatchObject({ timeout: 1000 });
-        expect(config.balancerRouter).toBeDefined();
+        expect(config.router).toBeDefined();
+        expect(config.router.balancer).toBeDefined();
+        expect(config.router.sushi).toBeDefined();
+        expect(spy).toHaveBeenCalledWith({
+            chainId: 1,
+            client: mockClient,
+            sushiRouterConfig: {
+                liquidityProviders: [LiquidityProviders.UniswapV2],
+                sushiRouteProcessor4Address: "0xrouteProcessor",
+            },
+            balancerRouterConfig: {
+                balancerRouterAddress: expect.any(String),
+            },
+        });
+
+        spy.mockRestore();
     });
 
     it("should throw if iInterpreter contract call fails", async () => {
@@ -107,6 +127,28 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
         const result = await SharedStateConfig.tryFromAppOptions(options);
         assert(result.isErr());
         expect(result.error.type).toBe(SharedStateErrorType.ChainConfigError);
+    });
+
+    it("should throw if fails to init router", async () => {
+        const spy = vi.spyOn(RainSolverRouter, "create");
+        (spy as Mock).mockResolvedValue(Result.err("some err"));
+        const result = await SharedStateConfig.tryFromAppOptions(options);
+        assert(result.isErr());
+        expect(result.error.type).toBe(SharedStateErrorType.RouterInitializationError);
+        expect(result.error.cause).toBe("some err");
+        expect(spy).toHaveBeenCalledWith({
+            chainId: 1,
+            client: mockClient,
+            sushiRouterConfig: {
+                liquidityProviders: [LiquidityProviders.UniswapV2],
+                sushiRouteProcessor4Address: "0xrouteProcessor",
+            },
+            balancerRouterConfig: {
+                balancerRouterAddress: expect.any(String),
+            },
+        });
+
+        spy.mockRestore();
     });
 });
 

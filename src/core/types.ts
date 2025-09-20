@@ -28,6 +28,7 @@ export enum TradeType {
     IntraOrderbook = "intraOrderbook",
     InterOrderbook = "interOrderbook",
     Balancer = "balancer",
+    Router = "router",
 }
 
 /** Base type for process order results containing shared fields */

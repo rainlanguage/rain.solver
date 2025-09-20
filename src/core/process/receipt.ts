@@ -94,6 +94,7 @@ export async function processReceipt({
             clearedAmount: clearActualAmount?.toString(),
             gasCost: gasCost,
             income,
+            txUrl,
             inputTokenIncome: baseResult.spanAttributes["details.inputTokenIncome"] as any,
             outputTokenIncome: baseResult.spanAttributes["details.outputTokenIncome"] as any,
             netProfit,

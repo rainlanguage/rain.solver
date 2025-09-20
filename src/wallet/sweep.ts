@@ -1,8 +1,8 @@
-import { RPoolFilter } from "../router";
 import { TokenDetails } from "../common";
 import { ChainId, Router } from "sushi";
 import { RainSolverSigner } from "../signer";
 import { Native, Token } from "sushi/currency";
+import { RPoolFilter } from "../router/sushi/blacklist";
 import { encodeFunctionData, erc20Abi, maxUint256 } from "viem";
 
 /**
@@ -172,7 +172,7 @@ export async function convertToGas(
     }
 
     // find best route and build swap contract call params
-    const { pcMap, route } = await from.state.dataFetcher.findBestRoute(
+    const { pcMap, route } = await from.state.router.sushi!.dataFetcher.findBestRoute(
         from.state.chainConfig.id as ChainId,
         sellToken,
         buyToken,
@@ -182,6 +182,7 @@ export async function convertToGas(
         undefined,
         from.state.liquidityProviders,
         RPoolFilter,
+        from.state.appOptions.route,
     );
     const rpParams = Router.routeProcessor4Params(
         pcMap,

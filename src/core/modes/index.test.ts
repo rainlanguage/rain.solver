@@ -1,14 +1,13 @@
 import { RainSolver } from "..";
 import { Result } from "../../common";
 import { findBestTrade } from "./index";
-import { findBestBalancerTrade } from "./balancer";
-import { findBestRouteProcessorTrade } from "./router";
+import { findBestRouterTrade } from "./router";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
 vi.mock("./router", () => ({
-    findBestRouteProcessorTrade: vi.fn(),
+    findBestRouterTrade: vi.fn(),
 }));
 
 vi.mock("./intra", () => ({
@@ -75,7 +74,7 @@ describe("Test findBestTrade", () => {
             oppBlockNumber: 123,
         });
 
-        (findBestRouteProcessorTrade as Mock).mockResolvedValue(rpResult);
+        (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
 
@@ -106,7 +105,7 @@ describe("Test findBestTrade", () => {
             noneNodeError: "inter orderbook failed",
         });
 
-        (findBestRouteProcessorTrade as Mock).mockResolvedValue(rpResult);
+        (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
 
@@ -136,7 +135,7 @@ describe("Test findBestTrade", () => {
             noneNodeError: "inter orderbook failed",
         });
 
-        (findBestRouteProcessorTrade as Mock).mockResolvedValue(rpResult);
+        (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
 
@@ -162,7 +161,7 @@ describe("Test findBestTrade", () => {
             oppBlockNumber: 123,
         });
 
-        (findBestRouteProcessorTrade as Mock).mockResolvedValue(rpResult);
+        (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
 
         const result = await findBestTrade.call(mockRainSolver, args);
 
@@ -170,7 +169,7 @@ describe("Test findBestTrade", () => {
         expect(result.value.estimatedProfit).toBe(100n);
         expect(result.value.type).toBe("routeProcessor");
         expect(result.value.spanAttributes.tradeType).toBe("routeProcessor");
-        expect(findBestRouteProcessorTrade).toHaveBeenCalledWith(
+        expect(findBestRouterTrade).toHaveBeenCalledWith(
             args.orderDetails,
             args.signer,
             args.inputToEthPrice,
@@ -214,24 +213,17 @@ describe("Test findBestTrade", () => {
             estimatedProfit: 120n,
             oppBlockNumber: 123,
         });
-        const balancerResult = Result.ok({
-            type: "balancer",
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 120n,
-            oppBlockNumber: 123,
-        });
 
-        (findBestRouteProcessorTrade as Mock).mockResolvedValue(rpResult);
+        (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
-        (findBestBalancerTrade as Mock).mockResolvedValue(balancerResult);
 
         const result = await findBestTrade.call(mocksolver, args);
 
         assert(result.isOk());
         expect(result.value.estimatedProfit).toBe(150n); // highest profit
         expect(result.value.type).toBe("intraOrderbook");
-        expect(findBestRouteProcessorTrade).toHaveBeenCalledWith(
+        expect(findBestRouterTrade).toHaveBeenCalledWith(
             args.orderDetails,
             args.signer,
             args.inputToEthPrice,
@@ -251,14 +243,6 @@ describe("Test findBestTrade", () => {
             args.signer,
             args.inputToEthPrice,
             args.outputToEthPrice,
-            args.blockNumber,
-        );
-        expect(findBestBalancerTrade).toHaveBeenCalledWith(
-            args.orderDetails,
-            args.signer,
-            args.inputToEthPrice,
-            args.toToken,
-            args.fromToken,
             args.blockNumber,
         );
     });
@@ -285,7 +269,7 @@ describe("Test findBestTrade", () => {
             oppBlockNumber: 123,
         });
 
-        (findBestRouteProcessorTrade as Mock).mockResolvedValue(rpResult);
+        (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
 
@@ -294,7 +278,7 @@ describe("Test findBestTrade", () => {
         assert(result.isOk());
         expect(result.value.estimatedProfit).toBe(150n); // highest profit
         expect(result.value.type).toBe("intraOrderbook");
-        expect(findBestRouteProcessorTrade).toHaveBeenCalledWith(
+        expect(findBestRouterTrade).toHaveBeenCalledWith(
             args.orderDetails,
             args.signer,
             args.inputToEthPrice,
@@ -338,7 +322,7 @@ describe("Test findBestTrade", () => {
             oppBlockNumber: 123,
         });
 
-        (findBestRouteProcessorTrade as Mock).mockResolvedValue(rpResult);
+        (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
 
@@ -367,7 +351,7 @@ describe("Test findBestTrade", () => {
             oppBlockNumber: 123,
         });
 
-        (findBestRouteProcessorTrade as Mock).mockResolvedValue(rpResult);
+        (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
 
@@ -387,7 +371,7 @@ describe("Test findBestTrade", () => {
             oppBlockNumber: 123,
         });
 
-        (findBestRouteProcessorTrade as Mock).mockResolvedValue(rpResult);
+        (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(
             Result.err({
                 type: "intraOrderbook",
@@ -419,7 +403,7 @@ describe("Test findBestTrade", () => {
             oppBlockNumber: 123,
         });
 
-        (findBestRouteProcessorTrade as Mock).mockResolvedValue(rpResult);
+        (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(
             Result.err({
                 type: "intraOrderbook",
@@ -437,7 +421,7 @@ describe("Test findBestTrade", () => {
 
         await findBestTrade.call(mockRainSolver, args);
 
-        expect(findBestRouteProcessorTrade).toHaveBeenCalledWith(
+        expect(findBestRouterTrade).toHaveBeenCalledWith(
             args.orderDetails,
             args.signer,
             args.inputToEthPrice,
@@ -478,7 +462,7 @@ describe("Test findBestTrade", () => {
             noneNodeError: "inter orderbook failed",
         });
 
-        (findBestRouteProcessorTrade as Mock).mockResolvedValue(rpResult);
+        (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
 
