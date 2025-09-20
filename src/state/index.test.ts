@@ -6,6 +6,7 @@ import { Result, sleep, TokenDetails } from "../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { SharedState, SharedStateConfig, SharedStateErrorType } from ".";
 import { RainSolverRouter } from "../router/router";
+import { SushiRouter } from "../router";
 
 vi.mock("./gasPrice", () => ({
     getGasPrice: vi.fn().mockResolvedValue({
@@ -149,6 +150,45 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
         });
 
         spy.mockRestore();
+    });
+
+    it("should not include balancer router if balancerArbAddress is not set", async () => {
+        options.balancerArbAddress = undefined;
+        const spy = vi.spyOn(RainSolverRouter, "create");
+        const result = await SharedStateConfig.tryFromAppOptions(options);
+        assert(result.isOk());
+        expect(spy).toHaveBeenCalledWith({
+            chainId: 1,
+            client: mockClient,
+            sushiRouterConfig: {
+                liquidityProviders: [LiquidityProviders.UniswapV2],
+                sushiRouteProcessor4Address: "0xrouteProcessor",
+            },
+            undefined,
+        });
+
+        spy.mockRestore();
+    });
+
+    it("should not include balancer router if balancer batch router address is undefined", async () => {
+        (mockClient.getChainId as Mock).mockReturnValue(99999);
+        const spy = vi.spyOn(RainSolverRouter, "create");
+        const sushiRouterSpy = vi.spyOn(SushiRouter, "create");
+        sushiRouterSpy.mockResolvedValue(Result.ok({} as any));
+        const result = await SharedStateConfig.tryFromAppOptions(options);
+        assert(result.isOk());
+        expect(spy).toHaveBeenCalledWith({
+            chainId: 99999,
+            client: mockClient,
+            sushiRouterConfig: {
+                liquidityProviders: [LiquidityProviders.UniswapV2],
+                sushiRouteProcessor4Address: "0xrouteProcessor",
+            },
+            undefined,
+        });
+
+        spy.mockRestore();
+        sushiRouterSpy.mockRestore();
     });
 });
 

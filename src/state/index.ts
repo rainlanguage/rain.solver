@@ -160,7 +160,7 @@ export namespace SharedStateConfig {
         const liquidityProviders = SushiRouter.processLiquidityProviders(
             options.liquidityProviders,
         );
-        const balancerRouterAddress = await (async () => {
+        const balancerRouterAddress = (() => {
             try {
                 return AddressProvider.BatchRouter(chainId);
             } catch {

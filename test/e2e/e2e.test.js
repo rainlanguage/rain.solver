@@ -1116,31 +1116,32 @@ for (let i = 0; i < testData.length; i++) {
                 const testSpan = tracer.startSpan("test-clearing");
 
                 // set as the route for POC
-                state.router.balancer.tryQuote = async function (params) {
-                    return Result.ok({
-                        type: RouterType.Balancer,
-                        route: [
-                            {
-                                steps: [
-                                    {
-                                        pool: "0x88c044fb203b58b12252be7242926b1eeb113b4a",
-                                        tokenOut: "0x4200000000000000000000000000000000000006",
-                                        isBuffer: false,
-                                    },
-                                ],
-                                tokenIn: params.fromToken.address,
-                                exactAmountIn: params.amountIn,
-                                minAmountOut: 0n,
-                            },
-                        ],
-                        price: 100000000000000000000000n,
-                        amountOut:
-                            USDC[ChainId.BASE].address.toLowerCase() ===
-                            params.fromToken.address.toLowerCase()
-                                ? 100000000000000000000000n
-                                : 0n,
-                    });
-                };
+                if (state.router.balancer)
+                    state.router.balancer.tryQuote = async function (params) {
+                        return Result.ok({
+                            type: RouterType.Balancer,
+                            route: [
+                                {
+                                    steps: [
+                                        {
+                                            pool: "0x88c044fb203b58b12252be7242926b1eeb113b4a",
+                                            tokenOut: "0x4200000000000000000000000000000000000006",
+                                            isBuffer: false,
+                                        },
+                                    ],
+                                    tokenIn: params.fromToken.address,
+                                    exactAmountIn: params.amountIn,
+                                    minAmountOut: 0n,
+                                },
+                            ],
+                            price: 100000000000000000000000n,
+                            amountOut:
+                                USDC[ChainId.BASE].address.toLowerCase() ===
+                                params.fromToken.address.toLowerCase()
+                                    ? 100000000000000000000000n
+                                    : 0n,
+                        });
+                    };
 
                 // reset network before each test
                 await helpers.reset(rpc, blockNumber);
