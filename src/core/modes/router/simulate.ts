@@ -54,6 +54,7 @@ export async function trySimulateTrade(
     this: RainSolver,
     args: SimulateRouterTradeArgs,
 ): Promise<SimulationResult> {
+    const startTime = performance.now();
     const {
         orderDetails,
         signer,
@@ -92,6 +93,7 @@ export async function trySimulateTrade(
         } else {
             spanAttributes["error"] = tradeParamsResult.error.message;
         }
+        spanAttributes["duration"] = performance.now() - startTime;
         return Result.err(result);
     }
     const { type: routeType, quote, routeVisual, takeOrdersConfigStruct } = tradeParamsResult.value;
@@ -120,6 +122,7 @@ export async function trySimulateTrade(
             spanAttributes,
             reason: RouterSimulationHaltReason.OrderRatioGreaterThanMarketPrice,
         };
+        spanAttributes["duration"] = performance.now() - startTime;
         return Result.err(result);
     }
 
@@ -147,6 +150,7 @@ export async function trySimulateTrade(
             spanAttributes,
             reason: RouterSimulationHaltReason.NoOpportunity,
         };
+        spanAttributes["duration"] = performance.now() - startTime;
         return Result.err(result);
     }
     const task = {
@@ -178,6 +182,7 @@ export async function trySimulateTrade(
     );
     if (initDryrunResult.isErr()) {
         spanAttributes["stage"] = 1;
+        spanAttributes["duration"] = performance.now() - startTime;
         Object.assign(initDryrunResult.error.spanAttributes, spanAttributes);
         initDryrunResult.error.reason = RouterSimulationHaltReason.NoOpportunity;
         (initDryrunResult.error as FailedSimulation).type = type;
@@ -236,6 +241,7 @@ export async function trySimulateTrade(
                 spanAttributes,
                 reason: RouterSimulationHaltReason.NoOpportunity,
             };
+            spanAttributes["duration"] = performance.now() - startTime;
             return Result.err(result);
         }
 
@@ -254,6 +260,7 @@ export async function trySimulateTrade(
         );
         if (finalDryrunResult.isErr()) {
             spanAttributes["stage"] = 2;
+            spanAttributes["duration"] = performance.now() - startTime;
             Object.assign(finalDryrunResult.error.spanAttributes, spanAttributes);
             finalDryrunResult.error.reason = RouterSimulationHaltReason.NoOpportunity;
             (finalDryrunResult.error as FailedSimulation).type = type;
@@ -302,6 +309,7 @@ export async function trySimulateTrade(
                 spanAttributes,
                 reason: RouterSimulationHaltReason.NoOpportunity,
             };
+            spanAttributes["duration"] = performance.now() - startTime;
             return Result.err(result);
         }
 
@@ -332,5 +340,6 @@ export async function trySimulateTrade(
             maximumInputFixed,
         )!,
     };
+    spanAttributes["duration"] = performance.now() - startTime;
     return Result.ok(result);
 }

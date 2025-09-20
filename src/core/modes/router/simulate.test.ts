@@ -104,6 +104,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.reason).toBe(RouterSimulationHaltReason.NoRoute);
         expect(result.error.spanAttributes.route).toBe("no way for sushi and balancer");
         expect(result.error.type).toBe("router");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
         expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
             state: solver.state,
             orderDetails: args.orderDetails,
@@ -149,6 +150,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.spanAttributes.error).toBe("Order's ratio greater than market price");
         expect(Array.isArray(result.error.spanAttributes.route)).toBe(true);
         expect(result.error.type).toBe("routeProcessor");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
         expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
             state: solver.state,
             orderDetails: args.orderDetails,
@@ -196,6 +198,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.spanAttributes.stage).toBe(1);
         expect(result.error.spanAttributes.oppBlockNumber).toBe(123);
         expect(result.error.type).toBe("balancer");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
         expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
             state: solver.state,
             orderDetails: args.orderDetails,
@@ -258,6 +261,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.rawtx).toHaveProperty("to", "0xarb");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
         expect(result.value.type).toBe("routeProcessor");
+        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
 
         // Assert encodeFunctionData was called correctly
         expect(encodeFunctionData).toHaveBeenCalledWith({
@@ -348,6 +352,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.rawtx).toHaveProperty("to", "0xbalancerArb");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
         expect(result.value.type).toBe("balancer");
+        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
 
         // verify called times
         expect(encodeFunctionData).toHaveBeenCalledTimes(3);
@@ -396,6 +401,7 @@ describe("Test trySimulateTrade", () => {
         assert(result.isOk());
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.type).toBe("routeProcessor");
+        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
         expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
             state: solver.state,
             orderDetails: args.orderDetails,
@@ -451,6 +457,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.reason).toBe(RouterSimulationHaltReason.NoOpportunity);
         expect(result.error.spanAttributes.stage).toBe(2);
         expect(result.error.type).toBe("routeProcessor");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
 
         // verify encodeFunctionData was called twice (for both dryruns)
         expect(encodeFunctionData).toHaveBeenCalledTimes(2);
@@ -494,6 +501,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error).toHaveProperty("reason");
         expect(result.error.reason).toBe(RouterSimulationHaltReason.NoOpportunity);
         expect(result.error.type).toBe("balancer");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
         expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
             state: solver.state,
             orderDetails: args.orderDetails,

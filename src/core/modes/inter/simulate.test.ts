@@ -129,6 +129,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.rawtx).toHaveProperty("to", "0xarb");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
         expect(result.value.type).toBe("interOrderbook");
+        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
 
         // Assert encodeFunctionData was called correctly
         expect(encodeFunctionData).toHaveBeenCalledWith({
@@ -202,6 +203,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.rawtx).toHaveProperty("to", "0xarb");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
         expect(result.value.type).toBe("interOrderbook");
+        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
 
         // Verify encodeFunctionData called 3 times (initial, final, and last)
         expect(encodeFunctionData).toHaveBeenCalledTimes(4);
@@ -223,6 +225,7 @@ describe("Test trySimulateTrade", () => {
         assert(result.isOk());
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.type).toBe("interOrderbook");
+        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
 
         // Verify that maxUint256 is used for zero ratio
         expect(encodeFunctionData).toHaveBeenCalledWith({
@@ -267,6 +270,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.spanAttributes["gasEst.initial.gasPrice"]).toBe("1");
         expect(result.error.spanAttributes["gasEst.initial.minBountyExpected"]).toBe("202");
         expect(result.error.type).toBe("interOrderbook");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
 
         // Verify encodeFunctionData was called twice (for both dryruns)
         expect(encodeFunctionData).toHaveBeenCalledTimes(3);
@@ -293,6 +297,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.spanAttributes.maxInput).toBe("10000000"); // scaled to 6 decimals
         expect(result.value.type).toBe("interOrderbook");
+        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
     });
 
     it("should return error when getEnsureBountyTaskBytecode fails", async () => {
@@ -304,5 +309,6 @@ describe("Test trySimulateTrade", () => {
         assert(result.isErr());
         expect(result.error).toHaveProperty("spanAttributes");
         expect(result.error.type).toBe("interOrderbook");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
     });
 });

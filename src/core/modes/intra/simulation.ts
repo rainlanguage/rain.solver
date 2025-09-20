@@ -44,6 +44,7 @@ export async function trySimulateTrade(
     this: RainSolver,
     args: SimulateIntraOrderbookTradeArgs,
 ): Promise<SimulationResult> {
+    const startTime = performance.now();
     const {
         orderDetails,
         counterpartyOrderDetails,
@@ -93,6 +94,7 @@ export async function trySimulateTrade(
             type: TradeType.IntraOrderbook,
             spanAttributes,
         };
+        spanAttributes["duration"] = performance.now() - startTime;
         return Result.err(result);
     }
     const task: TaskType = {
@@ -158,6 +160,7 @@ export async function trySimulateTrade(
     );
     if (initDryrunResult.isErr()) {
         spanAttributes["stage"] = 1;
+        spanAttributes["duration"] = performance.now() - startTime;
         Object.assign(initDryrunResult.error.spanAttributes, spanAttributes);
         (initDryrunResult.error as FailedSimulation).type = TradeType.IntraOrderbook;
         return Result.err(initDryrunResult.error as FailedSimulation);
@@ -219,6 +222,7 @@ export async function trySimulateTrade(
                 type: TradeType.IntraOrderbook,
                 spanAttributes,
             };
+            spanAttributes["duration"] = performance.now() - startTime;
             return Result.err(result);
         }
 
@@ -242,6 +246,7 @@ export async function trySimulateTrade(
         );
         if (finalDryrunResult.isErr()) {
             spanAttributes["stage"] = 2;
+            spanAttributes["duration"] = performance.now() - startTime;
             Object.assign(finalDryrunResult.error.spanAttributes, spanAttributes);
             (finalDryrunResult.error as FailedSimulation).type = TradeType.IntraOrderbook;
             return Result.err(finalDryrunResult.error as FailedSimulation);
@@ -292,6 +297,7 @@ export async function trySimulateTrade(
                 type: TradeType.IntraOrderbook,
                 spanAttributes,
             };
+            spanAttributes["duration"] = performance.now() - startTime;
             return Result.err(result);
         }
 
@@ -327,5 +333,6 @@ export async function trySimulateTrade(
             counterpartyOrderDetails,
         ),
     };
+    spanAttributes["duration"] = performance.now() - startTime;
     return Result.ok(result);
 }
