@@ -147,7 +147,7 @@ describe("Test findBestRouterTrade", () => {
         (trySimulateTrade as Mock)
             .mockResolvedValueOnce(mockFullTradeError)
             .mockResolvedValueOnce(mockPartialTradeSuccess);
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue(1500n);
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue(500n);
 
         const result: SimulationResult = await findBestRouterTrade.call(
             mockRainSolver,
@@ -177,7 +177,7 @@ describe("Test findBestRouterTrade", () => {
             fromToken,
             toToken,
             signer,
-            maximumInputFixed: 1000n,
+            maximumInputFixed: 500n,
             ethPrice,
             isPartial: true,
             blockNumber: 123n,
@@ -275,7 +275,7 @@ describe("Test findBestRouterTrade", () => {
         (trySimulateTrade as Mock)
             .mockResolvedValueOnce(mockFullTradeError)
             .mockResolvedValueOnce(mockPartialTradeSuccess);
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue(1800n);
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue(500n);
 
         const result: SimulationResult = await findBestRouterTrade.call(
             mockRainSolver,
@@ -306,7 +306,7 @@ describe("Test findBestRouterTrade", () => {
             fromToken,
             toToken,
             signer,
-            maximumInputFixed: 1000n,
+            maximumInputFixed: 500n,
             ethPrice,
             isPartial: true,
             blockNumber: 123n,

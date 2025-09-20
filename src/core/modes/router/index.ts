@@ -88,7 +88,7 @@ export async function findBestRouterTrade(
         fromToken,
         toToken,
         signer,
-        maximumInputFixed: maximumInput,
+        maximumInputFixed: partialTradeSize,
         ethPrice,
         isPartial: true,
         blockNumber,
