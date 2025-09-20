@@ -673,14 +673,10 @@ describe("Test RainSolverCli", () => {
             };
             const mockRoundCtx = { test: "context" };
             const mockResults = [
-                { isOk: () => true, value: { txUrl: "https://etherscan.io/tx/0x123" } },
-                { isOk: () => true, value: { txUrl: "https://etherscan.io/tx/0x456" } },
-                { isOk: () => true, value: { txUrl: undefined } },
-                {
-                    isOk: () => false,
-                    isErr: () => true,
-                    error: { txUrl: "https://etherscan.io/tx/0x789" },
-                },
+                Result.ok({ txUrl: "https://etherscan.io/tx/0x123" }),
+                Result.ok({ txUrl: "https://etherscan.io/tx/0x456" }),
+                Result.ok({ txUrl: undefined }),
+                Result.err({ txUrl: "https://etherscan.io/tx/0x789" }),
             ];
             const mockReports = [{ name: "report-1" }, { name: "report-2" }];
             const mockCheckpointReports = [{ name: "checkpoint-1" }];
@@ -715,10 +711,7 @@ describe("Test RainSolverCli", () => {
                 setAttribute: vi.fn(),
             };
             const mockRoundCtx = { test: "context" };
-            const mockResults = [
-                { isOk: () => true, value: { txUrl: undefined } },
-                { isOk: () => false, error: { txUrl: undefined } },
-            ];
+            const mockResults = [Result.ok({ txUrl: undefined }), Result.err({ txUrl: undefined })];
 
             (mockRainSolver.processNextRound as Mock).mockResolvedValue({
                 results: mockResults,
