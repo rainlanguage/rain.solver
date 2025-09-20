@@ -58,8 +58,13 @@ export async function findBestRouterTrade(
     }
     extendObjectWithHeader(spanAttributes, fullTradeSizeSimResult.error.spanAttributes, "full");
 
-    // return early if no route was found for this order's pair
-    if (fullTradeSizeSimResult.error.reason === RouterSimulationHaltReason.NoRoute) {
+    // return early if no route was found for this order's pair or dryrun failed
+    // in other words only try partial trade size if the full trade size failed due
+    // to order ratio being greater than market price
+    if (
+        fullTradeSizeSimResult.error.reason !==
+        RouterSimulationHaltReason.OrderRatioGreaterThanMarketPrice
+    ) {
         return Result.err({
             type: fullTradeSizeSimResult.error.type,
             spanAttributes,
