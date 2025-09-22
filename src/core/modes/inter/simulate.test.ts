@@ -1,314 +1,415 @@
-import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
-import { ONE18 } from "../../../math";
 import { Pair } from "../../../order";
-import { Result } from "../../../common";
-import { SimulationResult } from "../../types";
-import { getEnsureBountyTaskBytecode } from "../../../task";
-import { encodeFunctionData, encodeAbiParameters } from "viem";
+import { TradeType } from "../../types";
+import { ABI, Result } from "../../../common";
+import { ONE18, scaleFrom18 } from "../../../math";
+import { RainSolverSigner } from "../../../signer";
+import { SimulationHaltReason } from "../simulator";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import { trySimulateTrade, SimulateInterOrderbookTradeArgs } from "./simulate";
-
-vi.mock("viem", async (importOriginal) => ({
-    ...(await importOriginal()),
-    encodeFunctionData: vi.fn().mockReturnValue("0xdata"),
-    encodeAbiParameters: vi.fn().mockReturnValue("0xparams"),
-}));
-
-vi.mock("./utils", () => ({
-    estimateProfit: vi.fn().mockReturnValue(150n),
-}));
+import { encodeAbiParameters, encodeFunctionData, formatUnits, parseUnits } from "viem";
+import {
+    InterOrderbookTradeSimulator,
+    SimulateInterOrderbookTradeArgs,
+    InterOrderbookTradePreparedParams,
+} from "./simulate";
+import {
+    EnsureBountyTaskType,
+    EnsureBountyTaskError,
+    EnsureBountyTaskErrorType,
+    getEnsureBountyTaskBytecode,
+} from "../../../task";
 
 vi.mock("../../../task", async (importOriginal) => ({
     ...(await importOriginal()),
-    getEnsureBountyTaskBytecode: vi.fn().mockResolvedValue(Result.ok("0xbytecode")),
+    getEnsureBountyTaskBytecode: vi.fn(),
 }));
 
-vi.mock("../dryrun", () => ({
-    dryrun: vi.fn(),
+vi.mock("viem", async (importOriginal) => ({
+    ...(await importOriginal()),
+    encodeAbiParameters: vi.fn(),
+    encodeFunctionData: vi.fn(),
 }));
 
-function makeOrderDetails(ratio = 1n * ONE18): Pair {
+function makeOrderDetails(ratio: bigint = ONE18): Pair {
     return {
         orderbook: "0xorderbook",
-        sellToken: "0xselltoken",
-        buyToken: "0xbuytoken",
+        buyToken: "0xbuyToken" as `0x${string}`,
+        sellToken: "0xsellToken" as `0x${string}`,
         sellTokenDecimals: 18,
         buyTokenDecimals: 18,
-        takeOrder: { struct: {}, quote: { ratio } },
-    } as Pair;
-}
-
-function makeCounterpartyOrder(): Pair {
-    return {
-        orderbook: "0xcounterpartyorderbook",
         takeOrder: {
             id: "0xid",
-            quote: { maxOutput: 1n, ratio: 2n },
+            struct: { inputIOIndex: 1, outputIOIndex: 0 },
+            quote: { ratio, maxOutput: 100n * ONE18 },
         },
     } as Pair;
 }
 
-describe("Test trySimulateTrade", () => {
-    let solver: RainSolver;
-    let args: SimulateInterOrderbookTradeArgs;
+describe("Test InterOrderbookTradeSimulator", () => {
+    let mockSolver: RainSolver;
+    let mockSigner: RainSolverSigner;
+    let tradeArgs: SimulateInterOrderbookTradeArgs;
+    let simulator: InterOrderbookTradeSimulator;
+    let preparedParams: InterOrderbookTradePreparedParams;
 
     beforeEach(() => {
         vi.clearAllMocks();
-        solver = {
+        mockSolver = {
             state: {
-                gasPrice: 1n,
+                gasPrice: 1000000000000000000n,
+                gasLimitMultiplier: 1.5,
                 chainConfig: {
-                    isSpecialL2: false,
+                    isSpecialL2: true,
                 },
                 dispair: {
-                    interpreter: "0xint",
+                    deployer: "0xdeployer",
+                    interpreter: "0xinterpreter",
                     store: "0xstore",
                 },
-                client: {},
+                router: {
+                    getTradeParams: vi.fn(),
+                },
             },
             appOptions: {
-                genericArbAddress: "0xarb",
-                gasCoveragePercentage: "0",
-                gasLimitMultiplier: 120,
+                arbAddress: "0xarbAddress",
+                genericArbAddress: "0xgenericArbAddress",
+                gasLimitMultiplier: 1.5,
+                gasCoveragePercentage: "100",
             },
-        } as any;
-        args = {
+            client: {},
+        } as any as RainSolver;
+        mockSigner = { account: { address: "0xsigner" } } as any as RainSolverSigner;
+        tradeArgs = {
+            type: TradeType.InterOrderbook,
             orderDetails: makeOrderDetails(),
-            counterpartyOrderDetails: makeCounterpartyOrder(),
-            signer: { account: { address: "0xsigner" } },
-            inputToEthPrice: "0.5",
-            outputToEthPrice: "2.0",
-            maximumInputFixed: 10n * ONE18,
+            signer: mockSigner,
+            inputToEthPrice: "1.2",
+            outputToEthPrice: "1.3",
             blockNumber: 123n,
-        } as any;
-    });
-
-    it("should return error if initial dryrun fails", async () => {
-        (dryrun as Mock).mockResolvedValueOnce(
-            Result.err({
-                spanAttributes: { stage: 1 },
-                reason: "NoOpportunity",
-            }),
-        );
-
-        const result: SimulationResult = await trySimulateTrade.call(solver, args);
-
-        assert(result.isErr());
-        expect(result.error).toHaveProperty("spanAttributes");
-        expect(result.error.spanAttributes.stage).toBe(1);
-        expect(result.error.spanAttributes.oppBlockNumber).toBe(123);
-        expect(result.error.spanAttributes.maxInput).toBe("10000000000000000000");
-        expect(result.error.type).toBe("interOrderbook");
-    });
-
-    it("should return ok result if all steps succeed with gasCoveragePercentage 0", async () => {
-        (dryrun as Mock).mockResolvedValueOnce(
-            Result.ok({
-                estimation: { gas: 100n, totalGasCost: 200n, gasPrice: 1n },
-                estimatedGasCost: 200n,
-                spanAttributes: {},
-            }),
-        );
-        args.orderDetails = makeOrderDetails(1n * ONE18);
-        solver.appOptions.gasCoveragePercentage = "0";
-
-        const result: SimulationResult = await trySimulateTrade.call(solver, args);
-
-        assert(result.isOk());
-        expect(result.value).toHaveProperty("spanAttributes");
-        expect(result.value).toHaveProperty("rawtx");
-        expect(result.value).toHaveProperty("estimatedGasCost");
-        expect(result.value).toHaveProperty("oppBlockNumber");
-        expect(result.value).toHaveProperty("estimatedProfit");
-        expect(result.value.estimatedProfit).toBe(150n);
-        expect(result.value.oppBlockNumber).toBe(Number(args.blockNumber));
-        expect(result.value.spanAttributes.foundOpp).toBe(true);
-        expect(result.value.estimatedGasCost).toBe(200n);
-        expect(result.value.rawtx).toHaveProperty("data", "0xdata");
-        expect(result.value.rawtx).toHaveProperty("to", "0xarb");
-        expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
-        expect(result.value.type).toBe("interOrderbook");
-        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
-
-        // Assert encodeFunctionData was called correctly
-        expect(encodeFunctionData).toHaveBeenCalledWith({
-            abi: expect.any(Array), // ArbAbi
-            functionName: "arb3",
-            args: [
-                "0xorderbook",
-                {
-                    data: "0xparams",
-                    maximumIORatio: expect.any(BigInt),
-                    maximumInput: expect.any(BigInt),
-                    minimumInput: 1n,
-                    orders: [{}],
-                },
-                {
-                    evaluable: {
-                        bytecode: "0x",
-                        interpreter: "0xint",
-                        store: "0xstore",
-                    },
-                    signedContext: [],
-                },
-            ],
-        });
-
-        // Assert encodeAbiParameters was called correctly for takeOrders2
-        expect(encodeAbiParameters).toHaveBeenCalledWith(
-            expect.arrayContaining([
-                expect.objectContaining({ type: "address" }),
-                expect.objectContaining({ type: "address" }),
-                expect.objectContaining({ type: "bytes" }),
-            ]),
-            ["0xcounterpartyorderbook", "0xcounterpartyorderbook", expect.any(String)],
-        );
-    });
-
-    it("should return ok result if all steps succeed with gasCoveragePercentage not 0", async () => {
-        (dryrun as Mock)
-            .mockResolvedValueOnce(
-                Result.ok({
-                    estimation: { gas: 100n, totalGasCost: 200n, gasPrice: 1n },
-                    estimatedGasCost: 200n,
-                    spanAttributes: { initial: "data" },
-                }),
-            )
-            .mockResolvedValueOnce(
-                Result.ok({
-                    estimation: { gas: 150n, totalGasCost: 300n, gasPrice: 1n },
-                    estimatedGasCost: 300n,
-                    spanAttributes: { final: "data" },
-                }),
-            );
-        args.orderDetails = makeOrderDetails(1n * ONE18);
-        solver.appOptions.gasCoveragePercentage = "100";
-
-        const result: SimulationResult = await trySimulateTrade.call(solver, args);
-
-        assert(result.isOk());
-        expect(result.value).toHaveProperty("spanAttributes");
-        expect(result.value).toHaveProperty("rawtx");
-        expect(result.value).toHaveProperty("estimatedGasCost");
-        expect(result.value).toHaveProperty("oppBlockNumber");
-        expect(result.value).toHaveProperty("estimatedProfit");
-        expect(result.value.estimatedProfit).toBe(150n);
-        expect(result.value.oppBlockNumber).toBe(Number(args.blockNumber));
-        expect(result.value.spanAttributes.foundOpp).toBe(true);
-        expect(result.value.estimatedGasCost).toBe(300n);
-        expect(result.value.spanAttributes.initial).toBe("data");
-        expect(result.value.spanAttributes.final).toBe("data");
-        expect(result.value.rawtx).toHaveProperty("data", "0xdata");
-        expect(result.value.rawtx).toHaveProperty("to", "0xarb");
-        expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
-        expect(result.value.type).toBe("interOrderbook");
-        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
-
-        // Verify encodeFunctionData called 3 times (initial, final, and last)
-        expect(encodeFunctionData).toHaveBeenCalledTimes(4);
-        expect(encodeAbiParameters).toHaveBeenCalledTimes(1);
-    });
-
-    it("should handle zero ratio in opposing order calculations", async () => {
-        (dryrun as Mock).mockResolvedValue(
-            Result.ok({
-                estimation: { gas: 100n, totalGasCost: 200n, gasPrice: 1n },
-                estimatedGasCost: 200n,
-                spanAttributes: {},
-            }),
-        );
-        args.orderDetails = makeOrderDetails(0n); // zero ratio
-
-        const result: SimulationResult = await trySimulateTrade.call(solver, args);
-
-        assert(result.isOk());
-        expect(result.value.spanAttributes.foundOpp).toBe(true);
-        expect(result.value.type).toBe("interOrderbook");
-        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
-
-        // Verify that maxUint256 is used for zero ratio
-        expect(encodeFunctionData).toHaveBeenCalledWith({
-            abi: expect.any(Array),
-            functionName: "arb3",
-            args: [
-                "0xorderbook",
-                expect.objectContaining({
-                    maximumInput: expect.any(BigInt),
-                    maximumIORatio: expect.any(BigInt),
-                }),
-                expect.any(Object),
-            ],
-        });
-    });
-
-    it("should return error if final dryrun fails when gasCoveragePercentage is not 0", async () => {
-        (dryrun as Mock)
-            .mockResolvedValueOnce(
-                Result.ok({
-                    estimation: { gas: 100n, totalGasCost: 200n, gasPrice: 1n },
-                    estimatedGasCost: 200n,
-                    spanAttributes: {},
-                }),
-            )
-            .mockResolvedValueOnce(
-                Result.err({
-                    spanAttributes: { stage: 2 },
-                    reason: "NoOpportunity",
-                }),
-            );
-        args.orderDetails = makeOrderDetails(1n * ONE18);
-        solver.appOptions.gasCoveragePercentage = "100";
-
-        const result: SimulationResult = await trySimulateTrade.call(solver, args);
-
-        assert(result.isErr());
-        expect(result.error).toHaveProperty("spanAttributes");
-        expect(result.error.spanAttributes.stage).toBe(2);
-        expect(result.error.spanAttributes["gasEst.initial.gasLimit"]).toBe("100");
-        expect(result.error.spanAttributes["gasEst.initial.totalCost"]).toBe("200");
-        expect(result.error.spanAttributes["gasEst.initial.gasPrice"]).toBe("1");
-        expect(result.error.spanAttributes["gasEst.initial.minBountyExpected"]).toBe("202");
-        expect(result.error.type).toBe("interOrderbook");
-        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
-
-        // Verify encodeFunctionData was called twice (for both dryruns)
-        expect(encodeFunctionData).toHaveBeenCalledTimes(3);
-        expect(encodeAbiParameters).toHaveBeenCalledTimes(1);
-    });
-
-    it("should handle different token decimals correctly", async () => {
-        (dryrun as Mock).mockResolvedValue(
-            Result.ok({
-                estimation: { gas: 100n, totalGasCost: 200n, gasPrice: 1n },
-                estimatedGasCost: 200n,
-                spanAttributes: {},
-            }),
-        );
-        args.orderDetails = {
-            ...makeOrderDetails(1n * ONE18),
-            sellTokenDecimals: 6,
-            buyTokenDecimals: 8,
+            counterpartyOrderDetails: makeOrderDetails(2n * ONE18),
+            maximumInputFixed: 10n * ONE18,
         };
-
-        const result: SimulationResult = await trySimulateTrade.call(solver, args);
-
-        assert(result.isOk());
-        expect(result.value.spanAttributes.foundOpp).toBe(true);
-        expect(result.value.spanAttributes.maxInput).toBe("10000000"); // scaled to 6 decimals
-        expect(result.value.type).toBe("interOrderbook");
-        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
+        preparedParams = {
+            type: TradeType.InterOrderbook,
+            rawtx: {
+                from: "0xfrom",
+                to: "0xto",
+                data: "0xdata",
+            },
+            price: 3n,
+            minimumExpected: 12n,
+            takeOrdersConfigStruct: {} as any,
+        };
+        simulator = new InterOrderbookTradeSimulator(mockSolver, tradeArgs);
     });
 
-    it("should return error when getEnsureBountyTaskBytecode fails", async () => {
-        args.orderDetails = makeOrderDetails(1n * ONE18);
-        (getEnsureBountyTaskBytecode as Mock).mockResolvedValue(Result.err("error"));
+    describe("Test prepareTradeParams method", async () => {
+        it("should return success", async () => {
+            (encodeFunctionData as Mock).mockReturnValue("0xencodedData");
+            (encodeAbiParameters as Mock).mockReturnValue("0xencodedAbi");
 
-        const result: SimulationResult = await trySimulateTrade.call(solver, args);
+            const result = await simulator.prepareTradeParams();
+            assert(result.isOk());
+            expect(result.value.type).toBe(TradeType.InterOrderbook);
+            expect(result.value.rawtx).toEqual({
+                to: "0xgenericArbAddress",
+                gasPrice: mockSolver.state.gasPrice,
+            });
+            expect(result.value.minimumExpected).toBe(0n);
+            expect(simulator.spanAttributes["against"]).toBe(
+                tradeArgs.counterpartyOrderDetails.takeOrder.id,
+            );
+            expect(simulator.spanAttributes["inputToEthPrice"]).toBe(tradeArgs.inputToEthPrice);
+            expect(simulator.spanAttributes["outputToEthPrice"]).toBe(tradeArgs.outputToEthPrice);
+            expect(simulator.spanAttributes["oppBlockNumber"]).toBe(Number(tradeArgs.blockNumber));
+            expect(simulator.spanAttributes["counterpartyOrderQuote"]).toBe(
+                JSON.stringify({
+                    maxOutput: formatUnits(
+                        tradeArgs.counterpartyOrderDetails.takeOrder.quote!.maxOutput,
+                        18,
+                    ),
+                    ratio: formatUnits(
+                        tradeArgs.counterpartyOrderDetails.takeOrder.quote!.ratio,
+                        18,
+                    ),
+                }),
+            );
+            expect(simulator.spanAttributes["maxInput"]).toBe(
+                scaleFrom18(
+                    tradeArgs.maximumInputFixed,
+                    tradeArgs.orderDetails.sellTokenDecimals,
+                ).toString(),
+            );
+            expect(encodeFunctionData).toHaveBeenCalledWith({
+                abi: ABI.Orderbook.Primary.Orderbook,
+                functionName: "takeOrders2",
+                args: [
+                    {
+                        minimumInput: 1n,
+                        maximumInput: expect.any(BigInt),
+                        maximumIORatio: expect.any(BigInt),
+                        orders: [tradeArgs.counterpartyOrderDetails.takeOrder.struct], // opposing orders
+                        data: "0x",
+                    },
+                ],
+            });
+            expect(encodeAbiParameters).toHaveBeenCalledWith(
+                [{ type: "address" }, { type: "address" }, { type: "bytes" }],
+                [
+                    tradeArgs.counterpartyOrderDetails.orderbook as `0x${string}`,
+                    tradeArgs.counterpartyOrderDetails.orderbook as `0x${string}`,
+                    expect.any(String),
+                ],
+            );
+        });
+    });
 
-        assert(result.isErr());
-        expect(result.error).toHaveProperty("spanAttributes");
-        expect(result.error.type).toBe("interOrderbook");
-        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
+    describe("Test setTransactionData method", async () => {
+        it("should return error if getEnsureBountyTaskBytecode fails", async () => {
+            const error = new EnsureBountyTaskError(
+                "some error",
+                EnsureBountyTaskErrorType.ComposeError,
+            );
+            (getEnsureBountyTaskBytecode as Mock).mockResolvedValueOnce(Result.err(error));
+
+            const result = await simulator.setTransactionData(preparedParams);
+            assert(result.isErr());
+            expect(result.error.type).toBe(TradeType.InterOrderbook);
+            expect(result.error.reason).toBe(SimulationHaltReason.FailedToGetTaskBytecode);
+            expect(result.error.spanAttributes["error"]).toContain("some error");
+            expect(result.error.spanAttributes["duration"]).toBeGreaterThan(0);
+            expect(result.error.spanAttributes["isNodeError"]).toBe(false);
+            expect(result.error.reason).toBe(SimulationHaltReason.FailedToGetTaskBytecode);
+            expect(getEnsureBountyTaskBytecode).toHaveBeenCalledTimes(1);
+            expect(getEnsureBountyTaskBytecode).toHaveBeenCalledWith(
+                {
+                    type: EnsureBountyTaskType.External,
+                    inputToEthPrice: parseUnits(simulator.tradeArgs.inputToEthPrice, 18),
+                    outputToEthPrice: parseUnits(simulator.tradeArgs.outputToEthPrice, 18),
+                    minimumExpected: preparedParams.minimumExpected,
+                    sender: simulator.tradeArgs.signer.account.address,
+                },
+                simulator.solver.state.client,
+                simulator.solver.state.dispair,
+            );
+            expect(encodeFunctionData).not.toHaveBeenCalled();
+        });
+
+        it("should return success", async () => {
+            (getEnsureBountyTaskBytecode as Mock).mockResolvedValueOnce(Result.ok("0xdata"));
+            (encodeFunctionData as Mock).mockReturnValue("0xencodedData");
+
+            const result = await simulator.setTransactionData(preparedParams);
+            assert(result.isOk());
+            expect(preparedParams.rawtx.data).toBe("0xencodedData");
+            expect(getEnsureBountyTaskBytecode).toHaveBeenCalledTimes(1);
+            expect(getEnsureBountyTaskBytecode).toHaveBeenCalledWith(
+                {
+                    type: EnsureBountyTaskType.External,
+                    inputToEthPrice: parseUnits(simulator.tradeArgs.inputToEthPrice, 18),
+                    outputToEthPrice: parseUnits(simulator.tradeArgs.outputToEthPrice, 18),
+                    minimumExpected: preparedParams.minimumExpected,
+                    sender: simulator.tradeArgs.signer.account.address,
+                },
+                simulator.solver.state.client,
+                simulator.solver.state.dispair,
+            );
+            expect(encodeFunctionData).toHaveBeenCalledTimes(1);
+            expect(encodeFunctionData).toHaveBeenCalledWith({
+                abi: ABI.Orderbook.Primary.Arb,
+                functionName: "arb3",
+                args: [
+                    tradeArgs.orderDetails.orderbook as `0x${string}`,
+                    preparedParams.takeOrdersConfigStruct,
+                    {
+                        evaluable: {
+                            interpreter: simulator.solver.state.dispair
+                                .interpreter as `0x${string}`,
+                            store: simulator.solver.state.dispair.store as `0x${string}`,
+                            bytecode: "0xdata",
+                        },
+                        signedContext: [],
+                    },
+                ],
+            });
+        });
+    });
+
+    describe("Test estimateProfit method", () => {
+        const ONE17 = 10n ** 17n;
+        function makeOrderDetails(ratio: bigint) {
+            return {
+                takeOrder: {
+                    quote: { ratio },
+                },
+            } as Pair;
+        }
+        function makeCounterpartyOrder(ratio: bigint, maxOutput: bigint): Pair {
+            return {
+                takeOrder: {
+                    quote: {
+                        ratio,
+                        maxOutput,
+                    },
+                },
+            } as Pair;
+        }
+
+        it("should calculate profit correctly for typical values", () => {
+            const orderDetails = makeOrderDetails(2n * ONE18); // ratio = 2.0
+            const inputToEthPrice = 1n * ONE18; // 1 ETH per input token
+            const outputToEthPrice = 3n * ONE18; // 3 ETH per output token
+            const counterpartyOrder = makeCounterpartyOrder(15n * ONE17, 5n * ONE18); // ratio = 1.5, maxOutput = 5
+            const maxInput = 10n * ONE18; // 10 units
+            simulator.tradeArgs.orderDetails = orderDetails;
+            simulator.tradeArgs.inputToEthPrice = formatUnits(inputToEthPrice, 18);
+            simulator.tradeArgs.outputToEthPrice = formatUnits(outputToEthPrice, 18);
+            simulator.tradeArgs.counterpartyOrderDetails = counterpartyOrder;
+            simulator.tradeArgs.maximumInputFixed = maxInput;
+
+            // orderOutput = 10
+            // orderInput = (10 * 2) / 1 = 20
+            // opposingMaxInput = (10 * 2) / 1 = 20
+            // opposingMaxIORatio = 1^2 / 2 = 0.5
+            // Since opposingMaxIORatio (0.5) < counterpartyOrder.ratio (1.5), counterparty conditions not met
+            // counterpartyInput = 0, counterpartyOutput = 0
+            // outputProfit = ((10 - 0) * 3) / 1 = 30
+            // inputProfit = ((0 - 20) * 1) / 1 = -20
+            // total = 30 + (-20) = 10
+            const result = simulator.estimateProfit();
+            expect(result).toBe(10n * ONE18);
+        });
+
+        it("should handle zero ratio in order (maxUint256 case)", () => {
+            const orderDetails = makeOrderDetails(0n); // ratio = 0
+            const inputToEthPrice = 1n * ONE18;
+            const outputToEthPrice = 2n * ONE18;
+            const counterpartyOrder = makeCounterpartyOrder(1n * ONE18, 5n * ONE18); // ratio = 1.0, maxOutput = 5
+            const maxInput = 10n * ONE18;
+            simulator.tradeArgs.orderDetails = orderDetails;
+            simulator.tradeArgs.inputToEthPrice = formatUnits(inputToEthPrice, 18);
+            simulator.tradeArgs.outputToEthPrice = formatUnits(outputToEthPrice, 18);
+            simulator.tradeArgs.counterpartyOrderDetails = counterpartyOrder;
+            simulator.tradeArgs.maximumInputFixed = maxInput;
+
+            // orderOutput = 10
+            // orderInput = (10 * 0) / 1 = 0
+            // opposingMaxInput = maxUint256 (since ratio is 0)
+            // opposingMaxIORatio = maxUint256 (since ratio is 0)
+            // Since opposingMaxIORatio (maxUint256) >= counterpartyOrder.ratio (1.0), counterparty conditions met
+            // maxOut = min(maxUint256, 5) = 5
+            // counterpartyOutput = 5
+            // counterpartyInput = (5 * 1) / 1 = 5
+            // outputProfit = ((10 - 5) * 2) / 1 = 10
+            // inputProfit = ((5 - 0) * 1) / 1 = 5
+            // total = 10 + 5 = 5
+            const result = simulator.estimateProfit();
+            expect(result).toBe(15n * ONE18);
+        });
+
+        it("should handle counterparty trade when opposing max input is limiting factor", () => {
+            const orderDetails = makeOrderDetails(1n * ONE18); // ratio = 1.0
+            const inputToEthPrice = 2n * ONE18;
+            const outputToEthPrice = 1n * ONE18;
+            const counterpartyOrder = makeCounterpartyOrder(5n * ONE17, 20n * ONE18); // ratio = 0.5, maxOutput = 20
+            const maxInput = 10n * ONE18;
+            simulator.tradeArgs.orderDetails = orderDetails;
+            simulator.tradeArgs.inputToEthPrice = formatUnits(inputToEthPrice, 18);
+            simulator.tradeArgs.outputToEthPrice = formatUnits(outputToEthPrice, 18);
+            simulator.tradeArgs.counterpartyOrderDetails = counterpartyOrder;
+            simulator.tradeArgs.maximumInputFixed = maxInput;
+
+            // orderOutput = 10
+            // orderInput = (10 * 1) / 1 = 10
+            // opposingMaxInput = (10 * 1) / 1 = 10
+            // opposingMaxIORatio = 1^2 / 1 = 1
+            // Since opposingMaxIORatio (1.0) >= counterpartyOrder.ratio (0.5), counterparty conditions met
+            // maxOut = min(10, 20) = 10 (opposingMaxInput is limiting)
+            // counterpartyOutput = 10
+            // counterpartyInput = (10 * 0.5) / 1 = 5
+            // outputProfit = ((10 - 5) * 1) / 1 = 5
+            // inputProfit = ((10 - 10) * 2) / 1 = 0
+            // total = 5 + 0 = 5
+            const result = simulator.estimateProfit();
+            expect(result).toBe(5n * ONE18);
+        });
+
+        it("should handle counterparty trade when counterparty max output is limiting factor", () => {
+            const orderDetails = makeOrderDetails(1n * ONE18); // ratio = 1.0
+            const inputToEthPrice = 1n * ONE18;
+            const outputToEthPrice = 1n * ONE18;
+            const counterpartyOrder = makeCounterpartyOrder(5n * ONE17, 3n * ONE18); // ratio = 0.5, maxOutput = 3
+            const maxInput = 10n * ONE18;
+            simulator.tradeArgs.orderDetails = orderDetails;
+            simulator.tradeArgs.inputToEthPrice = formatUnits(inputToEthPrice, 18);
+            simulator.tradeArgs.outputToEthPrice = formatUnits(outputToEthPrice, 18);
+            simulator.tradeArgs.counterpartyOrderDetails = counterpartyOrder;
+            simulator.tradeArgs.maximumInputFixed = maxInput;
+
+            // orderOutput = 10
+            // orderInput = (10 * 1) / 1 = 10
+            // opposingMaxInput = (10 * 1) / 1 = 10
+            // opposingMaxIORatio = 1^2 / 1 = 1
+            // Since opposingMaxIORatio (1.0) >= counterpartyOrder.ratio (0.5), counterparty conditions met
+            // maxOut = min(10, 3) = 3 (counterparty maxOutput is limiting)
+            // counterpartyOutput = 3
+            // counterpartyInput = (3 * 0.5) / 1 = 1.5
+            // outputProfit = 10 - (1.5 * 1) / 1 = 8.5
+            // inputProfit = 3 - (10 * 1) / 1 = -7
+            // total = 8.5 + (-7) = 1.5
+            const result = simulator.estimateProfit();
+            expect(result).toBe(15n * ONE17); // 1.5 * ONE18
+        });
+
+        it("should handle case when opposing max IO ratio is less than counterparty ratio", () => {
+            const orderDetails = makeOrderDetails(4n * ONE18); // ratio = 4.0
+            const inputToEthPrice = 1n * ONE18;
+            const outputToEthPrice = 1n * ONE18;
+            const counterpartyOrder = makeCounterpartyOrder(1n * ONE18, 10n * ONE18); // ratio = 1.0, maxOutput = 10
+            const maxInput = 5n * ONE18;
+            simulator.tradeArgs.orderDetails = orderDetails;
+            simulator.tradeArgs.inputToEthPrice = formatUnits(inputToEthPrice, 18);
+            simulator.tradeArgs.outputToEthPrice = formatUnits(outputToEthPrice, 18);
+            simulator.tradeArgs.counterpartyOrderDetails = counterpartyOrder;
+            simulator.tradeArgs.maximumInputFixed = maxInput;
+
+            // orderOutput = 5
+            // orderInput = (5 * 4) / 1 = 20
+            // opposingMaxInput = (5 * 4) / 1 = 20
+            // opposingMaxIORatio = 1^2 / 4 = 0.25
+            // Since opposingMaxIORatio (0.25) < counterpartyOrder.ratio (1.0), counterparty conditions NOT met
+            // counterpartyInput = 0, counterpartyOutput = 0
+            // outputProfit = 5 - (0 * 1) / 1 = 5
+            // inputProfit = 0 - (20 * 1) / 1 = -20
+            // total = 5 + (-20) = -15
+            const result = simulator.estimateProfit();
+            expect(result).toBe(-15n * ONE18);
+        });
+
+        it("should handle edge case with zero max input", () => {
+            const orderDetails = makeOrderDetails(1n * ONE18);
+            const inputToEthPrice = 1n * ONE18;
+            const outputToEthPrice = 1n * ONE18;
+            const counterpartyOrder = makeCounterpartyOrder(1n * ONE18, 10n * ONE18);
+            const maxInput = 0n;
+            simulator.tradeArgs.orderDetails = orderDetails;
+            simulator.tradeArgs.inputToEthPrice = formatUnits(inputToEthPrice, 18);
+            simulator.tradeArgs.outputToEthPrice = formatUnits(outputToEthPrice, 18);
+            simulator.tradeArgs.counterpartyOrderDetails = counterpartyOrder;
+            simulator.tradeArgs.maximumInputFixed = maxInput;
+
+            // orderOutput = 0
+            // orderInput = (0 * 1) / 1 = 0
+            // opposingMaxInput = (0 * 1) / 1 = 0
+            // opposingMaxIORatio = 1^2 / 1 = 1
+            // Since opposingMaxIORatio (1.0) >= counterpartyOrder.ratio (1.0), counterparty conditions met
+            // maxOut = min(0, 10) = 0
+            // counterpartyOutput = 0, counterpartyInput = 0
+            // outputProfit = 0 - (0 * 1) / 1 = 0
+            // inputProfit = 0 - (0 * 1) / 1 = 0
+            // total = 0
+            const result = simulator.estimateProfit();
+            expect(result).toBe(0n);
+        });
     });
 });

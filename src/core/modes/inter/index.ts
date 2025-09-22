@@ -2,9 +2,9 @@ import assert from "assert";
 import { RainSolver } from "../..";
 import { Result } from "../../../common";
 import { fallbackEthPrice } from "../dryrun";
-import { trySimulateTrade } from "./simulate";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
+import { InterOrderbookTradeSimulator } from "./simulate";
 import { CounterpartySource, Pair } from "../../../order";
 import { extendObjectWithHeader } from "../../../logger";
 import { SimulationResult, TradeType } from "../../types";
@@ -51,7 +51,8 @@ export async function findBestInterOrderbookTrade(
         const cps = orderbookCounterparties.slice(0, 3);
         counterparties.push(...cps);
         return cps.map((counterpartyOrderDetails) => {
-            return trySimulateTrade.call(this, {
+            return InterOrderbookTradeSimulator.withArgs(this, {
+                type: TradeType.InterOrderbook,
                 orderDetails,
                 counterpartyOrderDetails,
                 signer,
@@ -71,7 +72,7 @@ export async function findBestInterOrderbookTrade(
                         inputToEthPrice,
                     ),
                 blockNumber,
-            });
+            }).trySimulateTrade();
         });
     });
 

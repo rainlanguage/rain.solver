@@ -5,10 +5,10 @@ import { BaseError, erc20Abi } from "viem";
 import { fallbackEthPrice } from "../dryrun";
 import { ONE18, scaleTo18 } from "../../../math";
 import { Attributes } from "@opentelemetry/api";
-import { trySimulateTrade } from "./simulation";
 import { RainSolverSigner } from "../../../signer";
 import { CounterpartySource, Pair } from "../../../order";
 import { extendObjectWithHeader } from "../../../logger";
+import { IntraOrderbookTradeSimulator } from "./simulation";
 import { containsNodeError, errorSnapshot } from "../../../error";
 import { FailedSimulation, SimulationResult, TradeType } from "../../types";
 
@@ -101,7 +101,8 @@ export async function findBestIntraOrderbookTrade(
 
     // run simulations for top 3 counterparty orders
     const promises = counterpartyOrders.slice(0, 3).map((counterparty) => {
-        return trySimulateTrade.call(this, {
+        return IntraOrderbookTradeSimulator.withArgs(this, {
+            type: TradeType.IntraOrderbook,
             orderDetails,
             counterpartyOrderDetails: counterparty.takeOrder,
             signer,
@@ -122,7 +123,7 @@ export async function findBestIntraOrderbookTrade(
             blockNumber,
             inputBalance,
             outputBalance,
-        });
+        }).trySimulateTrade();
     });
 
     const results = await Promise.all(promises);

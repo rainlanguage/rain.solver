@@ -461,6 +461,11 @@ export class BalancerRouter extends RainSolverRouterBase {
         return swaps;
     }
 
+    /**
+     * Gets the trade parameters for the best possible market quote for
+     * executing a trade against Balancer BatchRouter with the returned value.
+     * @param args - The trade arguments
+     */
     async getTradeParams(
         args: GetTradeParamsArgs,
     ): Promise<Result<BalancerTradeParams, BalancerRouterError>> {

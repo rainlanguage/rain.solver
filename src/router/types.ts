@@ -104,6 +104,12 @@ export class RainSolverRouterError extends RainSolverBaseError {
     }
 }
 
+/**
+ * Base class for all RainSolverRouter implementations.
+ * It defines the common interface and properties that all routers must implement,
+ * including methods for getting market prices, quoting trades, finding the best route,
+ * and retrieving trade parameters.
+ */
 export abstract class RainSolverRouterBase {
     /** The chain id of the operating chain */
     readonly chainId: number;
@@ -118,20 +124,37 @@ export abstract class RainSolverRouterBase {
         this.client = client;
     }
 
+    /**
+     * Gets the current market price for a given params as decimal string.
+     * @param params - The quote parameters
+     */
     abstract getMarketPrice(
         params: RainSolverRouterQuoteParams,
     ): Promise<Result<{ price: string }, RainSolverRouterError>>;
 
+    /**
+     * Tries to get the best market quote for the given params.
+     * @param params - The quote parameters
+     */
     abstract tryQuote(
         params: RainSolverRouterQuoteParams,
     ): Promise<Result<RainSolverRouterQuote, RainSolverRouterError>>;
 
+    /**
+     * Finds the best route for the given params.
+     * @param params - The quote parameters
+     */
     abstract findBestRoute(
         params: RainSolverRouterQuoteParams,
     ): Promise<Result<RainSolverRouterQuote, RainSolverRouterError>>;
 
+    /** Gets the list of available liquidity providers */
     abstract getLiquidityProvidersList(): string[];
 
+    /**
+     * Gets the trade parameters for executing a trade with the returned value.
+     * @param params - The trade parameters arguments
+     */
     abstract getTradeParams(
         params: GetTradeParamsArgs,
     ): Promise<Result<TradeParamsType, RainSolverRouterError>>;
