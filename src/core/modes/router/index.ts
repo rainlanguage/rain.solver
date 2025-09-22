@@ -1,13 +1,12 @@
 import { RainSolver } from "../..";
 import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
-import { Result } from "../../../common";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { RouterTradeSimulator } from "./simulate";
 import { SimulationHaltReason } from "../simulator";
-import { extendObjectWithHeader } from "../../../logger";
 import { SimulationResult, TradeType } from "../../types";
+import { Result, extendObjectWithHeader } from "../../../common";
 
 /**
  * Tries to find the best trade against rain router (balancer and sushi) for the given order,

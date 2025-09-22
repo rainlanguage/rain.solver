@@ -3,13 +3,14 @@ import { Result } from "../../../common";
 import { fallbackEthPrice } from "../dryrun";
 import { RainSolverSigner } from "../../../signer";
 import { findBestInterOrderbookTrade } from "./index";
-import { extendObjectWithHeader } from "../../../logger";
+import { extendObjectWithHeader } from "../../../common";
 import { SimulationResult, TradeType } from "../../types";
 import { CounterpartySource, Pair } from "../../../order";
 import { InterOrderbookTradeSimulator } from "./simulate";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
-vi.mock("../../../logger", () => ({
+vi.mock("../../../common", async (importOriginal) => ({
+    ...(await importOriginal()),
     extendObjectWithHeader: vi.fn(),
 }));
 

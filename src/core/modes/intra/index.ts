@@ -1,14 +1,13 @@
 import assert from "assert";
 import { RainSolver } from "../..";
-import { Result } from "../../../common";
 import { BaseError, erc20Abi } from "viem";
 import { fallbackEthPrice } from "../dryrun";
 import { ONE18, scaleTo18 } from "../../../math";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { CounterpartySource, Pair } from "../../../order";
-import { extendObjectWithHeader } from "../../../logger";
 import { IntraOrderbookTradeSimulator } from "./simulation";
+import { Result, extendObjectWithHeader } from "../../../common";
 import { containsNodeError, errorSnapshot } from "../../../error";
 import { FailedSimulation, SimulationResult, TradeType } from "../../types";
 

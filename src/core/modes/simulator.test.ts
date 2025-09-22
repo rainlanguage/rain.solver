@@ -4,7 +4,7 @@ import { ONE18 } from "../../math";
 import { TradeType } from "../types";
 import { Result } from "../../common";
 import { RainSolverSigner } from "../../signer";
-import { extendObjectWithHeader } from "../../logger";
+import { extendObjectWithHeader } from "../../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
     SimulateTradeArgs,
@@ -13,7 +13,8 @@ import {
     SimulationHaltReason,
 } from "./simulator";
 
-vi.mock("../../logger", () => ({
+vi.mock("../../common", async (importOriginal) => ({
+    ...(await importOriginal()),
     extendObjectWithHeader: vi.fn(),
 }));
 

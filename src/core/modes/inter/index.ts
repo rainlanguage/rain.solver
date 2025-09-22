@@ -1,13 +1,12 @@
 import assert from "assert";
 import { RainSolver } from "../..";
-import { Result } from "../../../common";
 import { fallbackEthPrice } from "../dryrun";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { InterOrderbookTradeSimulator } from "./simulate";
 import { CounterpartySource, Pair } from "../../../order";
-import { extendObjectWithHeader } from "../../../logger";
 import { SimulationResult, TradeType } from "../../types";
+import { Result, extendObjectWithHeader } from "../../../common";
 
 /**
  * Tries to find the best trade against order orderbooks (inter-orderbook) for the given order,

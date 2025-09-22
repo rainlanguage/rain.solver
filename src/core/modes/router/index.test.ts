@@ -2,12 +2,13 @@ import { Result } from "../../../common";
 import { findBestRouterTrade } from "./index";
 import { RouterTradeSimulator } from "./simulate";
 import { SimulationHaltReason } from "../simulator";
-import { extendObjectWithHeader } from "../../../logger";
+import { extendObjectWithHeader } from "../../../common";
 import { SimulationResult, TradeType } from "../../types";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
 // Mocks
-vi.mock("../../../logger", () => ({
+vi.mock("../../../common", async (importOriginal) => ({
+    ...(await importOriginal()),
     extendObjectWithHeader: vi.fn(),
 }));
 

@@ -2,14 +2,13 @@ import assert from "assert";
 import { RainSolver } from "..";
 import { BaseError } from "viem";
 import { Pair } from "../../order";
-import { Result } from "../../common";
 import { Token } from "sushi/currency";
 import { RainSolverSigner } from "../../signer";
 import { Attributes } from "@opentelemetry/api";
 import { findBestRouterTrade } from "./router";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
-import { extendObjectWithHeader } from "../../logger";
+import { Result, extendObjectWithHeader } from "../../common";
 import { containsNodeError, errorSnapshot } from "../../error";
 import { FindBestTradeFailure, FindBestTradeResult } from "../types";
 

@@ -1,7 +1,6 @@
 import { dryrun } from "./dryrun";
-import { Result } from "../../common";
 import { Attributes } from "@opentelemetry/api";
-import { extendObjectWithHeader } from "../../logger";
+import { Result, extendObjectWithHeader } from "../../common";
 import { FailedSimulation, SimulationResult } from "../types";
 import { RouterTradePreparedParams, SimulateRouterTradeArgs } from "./router/simulate";
 import {

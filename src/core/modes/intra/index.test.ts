@@ -3,7 +3,7 @@ import { Result } from "../../../common";
 import { fallbackEthPrice } from "../dryrun";
 import { RainSolverSigner } from "../../../signer";
 import { findBestIntraOrderbookTrade } from "./index";
-import { extendObjectWithHeader } from "../../../logger";
+import { extendObjectWithHeader } from "../../../common";
 import { SimulationResult, TradeType } from "../../types";
 import { CounterpartySource, Pair } from "../../../order";
 import { IntraOrderbookTradeSimulator } from "./simulation";
@@ -13,7 +13,8 @@ vi.mock("../dryrun", () => ({
     fallbackEthPrice: vi.fn(),
 }));
 
-vi.mock("../../../logger", () => ({
+vi.mock("../../../common", async (importOriginal) => ({
+    ...(await importOriginal()),
     extendObjectWithHeader: vi.fn(),
 }));
 

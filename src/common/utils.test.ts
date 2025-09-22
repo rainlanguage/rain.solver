@@ -1,5 +1,12 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
-import { withBigintSerializer, sleep, promiseTimeout, shuffleArray, iterRandom } from "./utils";
+import {
+    sleep,
+    iterRandom,
+    shuffleArray,
+    promiseTimeout,
+    withBigintSerializer,
+    extendObjectWithHeader,
+} from "./utils";
 
 describe("Test withBigIntSerializer function", async function () {
     it("should test withBigIntSerializer", async function () {
@@ -306,5 +313,28 @@ describe("Test iterRandom function", () => {
         });
 
         expect(iterRandomTime).toBeLessThan(iterShuffleArrayTime);
+    });
+});
+
+describe("Test extendObjectWithHeader", () => {
+    it("should add keys with header prefix", () => {
+        const target = {};
+        const source = { foo: 1, bar: 2 };
+        extendObjectWithHeader(target, source, "test");
+        expect(target).toEqual({
+            "test.foo": 1,
+            "test.bar": 2,
+        });
+    });
+
+    it("should exclude keys from header prefix if specified", () => {
+        const target = {};
+        const source = { foo: 1, bar: 2, baz: 3 };
+        extendObjectWithHeader(target, source, "head", ["bar"]);
+        expect(target).toEqual({
+            "head.foo": 1,
+            bar: 2,
+            "head.baz": 3,
+        });
     });
 });
