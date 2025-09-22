@@ -126,77 +126,87 @@ export abstract class TradeSimulatorBase {
             "gasEst.initial",
         );
 
-        // repeat the same process with headroom if gas
-        // coverage is not 0, 0 gas coverage means 0 minimum
-        // sender output which is already called above
-        if (this.tradeArgs.solver.appOptions.gasCoveragePercentage !== "0") {
-            delete prepareParamsResult.value.rawtx.gas; // delete gas to let signer estimate gas again with updated tx data
-            const headroom = BigInt(
-                (Number(this.tradeArgs.solver.appOptions.gasCoveragePercentage) * 1.01).toFixed(),
-            );
-            let minimumExpected = (estimatedGasCost * headroom) / 100n;
-            this.spanAttributes["gasEst.initial.minBountyExpected"] = minimumExpected.toString();
-
-            // update the tx data with the new min sender output
-            setTransactionDataResult = await this.setTransactionData({
-                ...prepareParamsResult.value,
-                minimumExpected,
-            });
-            if (setTransactionDataResult.isErr()) {
-                return Result.err(setTransactionDataResult.error);
-            }
-
-            const finalDryrunResult = await dryrun(
-                this.tradeArgs.signer,
-                prepareParamsResult.value.rawtx,
-                this.tradeArgs.solver.state.gasPrice,
-                this.tradeArgs.solver.appOptions.gasLimitMultiplier,
-            );
-            if (finalDryrunResult.isErr()) {
-                this.spanAttributes["stage"] = 2;
-                this.spanAttributes["duration"] = performance.now() - this.startTime;
-                Object.assign(finalDryrunResult.error.spanAttributes, this.spanAttributes);
-                finalDryrunResult.error.reason = SimulationHaltReason.NoOpportunity;
-                (finalDryrunResult.error as FailedSimulation).type = prepareParamsResult.value.type;
-                return Result.err(finalDryrunResult.error as FailedSimulation);
-            }
-
-            ({ estimation, estimatedGasCost } = finalDryrunResult.value);
-            // include dryrun final gas estimation in otel logs
-            Object.assign(this.spanAttributes, finalDryrunResult.value.spanAttributes);
-            extendObjectWithHeader(
-                this.spanAttributes,
-                {
-                    gasLimit: estimation.gas.toString(),
-                    totalCost: estimation.totalGasCost.toString(),
-                    gasPrice: estimation.gasPrice.toString(),
-                    ...(this.tradeArgs.solver.state.chainConfig.isSpecialL2
-                        ? {
-                              l1Cost: estimation.l1Cost.toString(),
-                              l1GasPrice: estimation.l1GasPrice.toString(),
-                          }
-                        : {}),
-                },
-                "gasEst.final",
-            );
-
-            // update the tx data again with the new min sender output
-            minimumExpected =
-                (estimatedGasCost *
-                    BigInt(this.tradeArgs.solver.appOptions.gasCoveragePercentage)) /
-                100n;
-            setTransactionDataResult = await this.setTransactionData({
-                ...prepareParamsResult.value,
-                minimumExpected,
-            });
-            if (setTransactionDataResult.isErr()) {
-                return Result.err(setTransactionDataResult.error);
-            }
-
-            this.spanAttributes["gasEst.final.minBountyExpected"] = minimumExpected.toString();
+        // exit early if gas coverage is 0, as we wont need to determine the
+        // profitability of the transaction in this case
+        if (this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0") {
+            this.spanAttributes["foundOpp"] = true;
+            this.spanAttributes["duration"] = performance.now() - this.startTime;
+            const result = {
+                type: prepareParamsResult.value.type,
+                spanAttributes: this.spanAttributes,
+                rawtx: prepareParamsResult.value.rawtx,
+                estimatedGasCost,
+                oppBlockNumber: Number(this.tradeArgs.blockNumber),
+                estimatedProfit: this.estimateProfit(prepareParamsResult.value.price)!,
+            };
+            return Result.ok(result);
         }
 
-        // if reached here, it means there was a success and found opp
+        // repeat the process again with headroom to get more accurate gas cost
+        // and determine the profitability of the transaction
+        delete prepareParamsResult.value.rawtx.gas; // delete gas to let signer estimate gas again with updated tx data
+        const headroom = BigInt(
+            (Number(this.tradeArgs.solver.appOptions.gasCoveragePercentage) * 1.01).toFixed(),
+        );
+        let minimumExpected = (estimatedGasCost * headroom) / 100n;
+        this.spanAttributes["gasEst.initial.minBountyExpected"] = minimumExpected.toString();
+
+        // update the tx data with the new min sender output
+        setTransactionDataResult = await this.setTransactionData({
+            ...prepareParamsResult.value,
+            minimumExpected,
+        });
+        if (setTransactionDataResult.isErr()) {
+            return Result.err(setTransactionDataResult.error);
+        }
+
+        const finalDryrunResult = await dryrun(
+            this.tradeArgs.signer,
+            prepareParamsResult.value.rawtx,
+            this.tradeArgs.solver.state.gasPrice,
+            this.tradeArgs.solver.appOptions.gasLimitMultiplier,
+        );
+        if (finalDryrunResult.isErr()) {
+            this.spanAttributes["stage"] = 2;
+            this.spanAttributes["duration"] = performance.now() - this.startTime;
+            Object.assign(finalDryrunResult.error.spanAttributes, this.spanAttributes);
+            finalDryrunResult.error.reason = SimulationHaltReason.NoOpportunity;
+            (finalDryrunResult.error as FailedSimulation).type = prepareParamsResult.value.type;
+            return Result.err(finalDryrunResult.error as FailedSimulation);
+        }
+
+        ({ estimation, estimatedGasCost } = finalDryrunResult.value);
+        // include dryrun final gas estimation in otel logs
+        Object.assign(this.spanAttributes, finalDryrunResult.value.spanAttributes);
+        extendObjectWithHeader(
+            this.spanAttributes,
+            {
+                gasLimit: estimation.gas.toString(),
+                totalCost: estimation.totalGasCost.toString(),
+                gasPrice: estimation.gasPrice.toString(),
+                ...(this.tradeArgs.solver.state.chainConfig.isSpecialL2
+                    ? {
+                          l1Cost: estimation.l1Cost.toString(),
+                          l1GasPrice: estimation.l1GasPrice.toString(),
+                      }
+                    : {}),
+            },
+            "gasEst.final",
+        );
+
+        // update the tx data again with the new min sender output
+        minimumExpected =
+            (estimatedGasCost * BigInt(this.tradeArgs.solver.appOptions.gasCoveragePercentage)) /
+            100n;
+        setTransactionDataResult = await this.setTransactionData({
+            ...prepareParamsResult.value,
+            minimumExpected,
+        });
+        if (setTransactionDataResult.isErr()) {
+            return Result.err(setTransactionDataResult.error);
+        }
+
+        this.spanAttributes["gasEst.final.minBountyExpected"] = minimumExpected.toString();
         this.spanAttributes["foundOpp"] = true;
         this.spanAttributes["duration"] = performance.now() - this.startTime;
         const result = {
