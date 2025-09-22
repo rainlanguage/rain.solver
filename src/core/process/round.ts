@@ -51,9 +51,11 @@ export async function initializeRound(
                 ?.get(owner)
                 ?.get(orderDetails.sellToken)
                 ?.get(
-                    orderDetails.takeOrder.struct.order.validOutputs[
-                        orderDetails.takeOrder.struct.outputIOIndex
-                    ].vaultId,
+                    BigInt(
+                        orderDetails.takeOrder.struct.order.validOutputs[
+                            orderDetails.takeOrder.struct.outputIOIndex
+                        ].vaultId,
+                    ),
                 )?.balance ?? orderDetails.sellTokenVaultBalance;
         orderDetails.buyTokenVaultBalance =
             this.orderManager.ownerTokenVaultMap
@@ -61,9 +63,11 @@ export async function initializeRound(
                 ?.get(owner)
                 ?.get(orderDetails.buyToken)
                 ?.get(
-                    orderDetails.takeOrder.struct.order.validInputs[
-                        orderDetails.takeOrder.struct.inputIOIndex
-                    ].vaultId,
+                    BigInt(
+                        orderDetails.takeOrder.struct.order.validInputs[
+                            orderDetails.takeOrder.struct.inputIOIndex
+                        ].vaultId,
+                    ),
                 )?.balance ?? orderDetails.buyTokenVaultBalance;
 
         // skip if the output vault is empty

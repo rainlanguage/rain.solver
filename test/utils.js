@@ -2,13 +2,13 @@ const { assert } = require("chai");
 const { ethers } = require("hardhat");
 const { ABI } = require("../src/common");
 const OrderbookArtifact = require("./abis/OrderBook.json");
-const RainterpreterNPE2Artifact = require("./abis/RainterpreterNPE2.json");
-const RainterpreterStoreNPE2Artifact = require("./abis/RainterpreterStoreNPE2.json");
-const RainterpreterParserNPE2Artifact = require("./abis/RainterpreterParserNPE2.json");
-const RainterpreterExpressionDeployerNPE2Artifact = require("./abis/RainterpreterExpressionDeployerNPE2.json");
-const GenericPoolOrderBookV4ArbOrderTakerArtifact = require("./abis/GenericPoolOrderBookV4ArbOrderTaker.json");
-const RouteProcessorOrderBookV4ArbOrderTakerArtifact = require("./abis/RouteProcessorOrderBookV4ArbOrderTaker.json");
-const BalancerRouterOrderBookV4ArbOrderTakerArtifact = require("./abis/BalancerRouterOrderBookV4ArbOrderTaker.json");
+const RainterpreterArtifact = require("./abis/Rainterpreter.json");
+const RainterpreterStoreArtifact = require("./abis/RainterpreterStore.json");
+const RainterpreterParserArtifact = require("./abis/RainterpreterParser.json");
+const RainterpreterExpressionDeployerArtifact = require("./abis/RainterpreterExpressionDeployer.json");
+const GenericPoolOrderBookV5ArbOrderTakerArtifact = require("./abis/GenericPoolOrderBookV5ArbOrderTaker.json");
+const RouteProcessorOrderBookV5ArbOrderTakerArtifact = require("./abis/RouteProcessorOrderBookV5ArbOrderTaker.json");
+const BalancerRouterOrderBookV5ArbOrderTakerArtifact = require("./abis/BalancerRouterOrderBookV5ArbOrderTaker.json");
 
 /**
  * Deploys a simple contracts that takes no arguments for deployment
@@ -25,7 +25,7 @@ exports.basicDeploy = async (artifact, ...args) => {
 };
 
 exports.arbDeploy = async (orderbookAddress, rpAddress) => {
-    return await this.basicDeploy(RouteProcessorOrderBookV4ArbOrderTakerArtifact, {
+    return await this.basicDeploy(RouteProcessorOrderBookV5ArbOrderTakerArtifact, {
         orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
         task: {
             evaluable: ABI.Orderbook.DefaultArbEvaluable,
@@ -36,7 +36,7 @@ exports.arbDeploy = async (orderbookAddress, rpAddress) => {
 };
 
 exports.balancerArbDeploy = async (orderbookAddress, rpAddress) => {
-    return await this.basicDeploy(BalancerRouterOrderBookV4ArbOrderTakerArtifact, {
+    return await this.basicDeploy(BalancerRouterOrderBookV5ArbOrderTakerArtifact, {
         orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
         task: {
             evaluable: ABI.Orderbook.DefaultArbEvaluable,
@@ -47,7 +47,7 @@ exports.balancerArbDeploy = async (orderbookAddress, rpAddress) => {
 };
 
 exports.genericArbrbDeploy = async (orderbookAddress) => {
-    return await this.basicDeploy(GenericPoolOrderBookV4ArbOrderTakerArtifact, {
+    return await this.basicDeploy(GenericPoolOrderBookV5ArbOrderTakerArtifact, {
         orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
         task: {
             evaluable: ABI.Orderbook.DefaultArbEvaluable,
@@ -62,19 +62,19 @@ exports.deployOrderBookNPE2 = async () => {
 };
 
 exports.rainterpreterNPE2Deploy = async () => {
-    return await this.basicDeploy(RainterpreterNPE2Artifact);
+    return await this.basicDeploy(RainterpreterArtifact);
 };
 
 exports.rainterpreterStoreNPE2Deploy = async () => {
-    return await this.basicDeploy(RainterpreterStoreNPE2Artifact);
+    return await this.basicDeploy(RainterpreterStoreArtifact);
 };
 
 exports.rainterpreterParserNPE2Deploy = async () => {
-    return await this.basicDeploy(RainterpreterParserNPE2Artifact);
+    return await this.basicDeploy(RainterpreterParserArtifact);
 };
 
 exports.rainterpreterExpressionDeployerNPE2Deploy = async (deployConfig) => {
-    return await this.basicDeploy(RainterpreterExpressionDeployerNPE2Artifact, deployConfig);
+    return await this.basicDeploy(RainterpreterExpressionDeployerArtifact, deployConfig);
 };
 
 /**
@@ -178,10 +178,11 @@ exports.mockSgFromEvent = async (eventArgs, orderbook, tokens) => {
             token?.knownSymbol ?? (await token.contract?.symbol()) ?? (await token.symbol());
         inputDetails.push({
             symbol,
-            balance: await orderbook.vaultBalance(
+            decimals: token.decimals,
+            balance: await orderbook.vaultBalance2(
                 eventArgs.order.owner,
                 eventArgs.order.validInputs[i].token,
-                eventArgs.order.validInputs[i].vaultId.toString(),
+                eventArgs.order.validInputs[i].vaultId,
             ),
         });
     }
@@ -193,10 +194,11 @@ exports.mockSgFromEvent = async (eventArgs, orderbook, tokens) => {
             token?.knownSymbol ?? (await token.contract?.symbol()) ?? (await token.symbol());
         outputDetails.push({
             symbol,
-            balance: await orderbook.vaultBalance(
+            decimals: token.decimals,
+            balance: await orderbook.vaultBalance2(
                 eventArgs.order.owner,
                 eventArgs.order.validOutputs[i].token,
-                eventArgs.order.validOutputs[i].vaultId.toString(),
+                eventArgs.order.validOutputs[i].vaultId,
             ),
         });
     }
@@ -212,7 +214,7 @@ exports.mockSgFromEvent = async (eventArgs, orderbook, tokens) => {
                 ? eventArgs.orderHash.toLowerCase()
                 : eventArgs.orderHash.toHexString().toLowerCase(),
         orderBytes: ethers.utils.defaultAbiCoder.encode(
-            [ABI.Orderbook.Structs.OrderV3],
+            [ABI.Orderbook.Structs.Order],
             [eventArgs.order],
         ),
         active: true,
@@ -224,7 +226,7 @@ exports.mockSgFromEvent = async (eventArgs, orderbook, tokens) => {
             return {
                 token: {
                     address: v.token.toLowerCase(),
-                    decimals: v.decimals,
+                    decimals: inputDetails[i].decimals,
                     symbol: inputDetails[i].symbol,
                 },
                 balance: inputDetails[i].balance.toString(),
@@ -235,7 +237,7 @@ exports.mockSgFromEvent = async (eventArgs, orderbook, tokens) => {
             return {
                 token: {
                     address: v.token.toLowerCase(),
-                    decimals: v.decimals,
+                    decimals: outputDetails[i].decimals,
                     symbol: outputDetails[i].symbol,
                 },
                 balance: outputDetails[i].balance.toString(),

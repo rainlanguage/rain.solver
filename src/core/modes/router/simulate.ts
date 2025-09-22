@@ -8,11 +8,11 @@ import { errorSnapshot } from "../../../error";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
-import { ONE18, scaleTo18, scaleFrom18 } from "../../../math";
 import { RPoolFilter, visualizeRoute } from "../../../router";
-import { Result, ABI, RawTransaction } from "../../../common";
+import { Result, ABI, RawTransaction, toFloat } from "../../../common";
+import { ONE18, scaleTo18, scaleFrom18, minFloat, maxFloat } from "../../../math";
+import { encodeAbiParameters, encodeFunctionData, formatUnits, parseUnits } from "viem";
 import { TakeOrdersConfigType, SimulationResult, TradeType, FailedSimulation } from "../../types";
-import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
 import {
     EnsureBountyTaskType,
     EnsureBountyTaskErrorType,
@@ -133,6 +133,36 @@ export async function trySimulateTrade(
         this.state.chainConfig.routeProcessors["4"],
     );
 
+    let maximumInputFloat: `0x${string}` = maxFloat(orderDetails.sellTokenDecimals);
+    if (isPartial) {
+        const valueResult = toFloat(maximumInput, orderDetails.sellTokenDecimals);
+        if (valueResult.isErr()) {
+            spanAttributes["error"] = valueResult.error.readableMsg;
+            const result: FailedSimulation = {
+                spanAttributes,
+                type: TradeType.RouteProcessor,
+                noneNodeError: valueResult.error.readableMsg,
+            };
+            return Result.err(result);
+        }
+        maximumInputFloat = valueResult.value;
+    }
+
+    let maximumIORatioFloat: `0x${string}` = maxFloat(18);
+    if (!this.appOptions.maxRatio) {
+        const valueResult = toFloat(price, 18);
+        if (valueResult.isErr()) {
+            spanAttributes["error"] = valueResult.error.readableMsg;
+            const result: FailedSimulation = {
+                spanAttributes,
+                type: TradeType.RouteProcessor,
+                noneNodeError: valueResult.error.readableMsg,
+            };
+            return Result.err(result);
+        }
+        maximumIORatioFloat = valueResult.value;
+    }
+
     // try to get task bytecode for ensure bounty task
     const taskBytecodeResult = await getEnsureBountyTaskBytecode(
         {
@@ -157,11 +187,12 @@ export async function trySimulateTrade(
         };
         return Result.err(result);
     }
+
     const orders = [orderDetails.takeOrder.struct];
     const takeOrdersConfigStruct: TakeOrdersConfigType = {
-        minimumInput: 1n,
-        maximumInput: isPartial ? maximumInput : maxUint256,
-        maximumIORatio: this.appOptions.maxRatio ? maxUint256 : price,
+        minimumInput: minFloat(orderDetails.sellTokenDecimals),
+        maximumInput: maximumInputFloat,
+        maximumIORatio: maximumIORatioFloat,
         orders,
         data: encodeAbiParameters([{ type: "bytes" }], [rpParams.routeCode]),
     };
@@ -177,7 +208,7 @@ export async function trySimulateTrade(
     const rawtx: RawTransaction = {
         data: encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         }),
         to: this.appOptions.arbAddress as `0x${string}`,
@@ -258,7 +289,7 @@ export async function trySimulateTrade(
         task.evaluable.bytecode = taskBytecodeResult.value;
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
 
@@ -324,7 +355,7 @@ export async function trySimulateTrade(
         task.evaluable.bytecode = taskBytecodeResult.value;
         rawtx.data = encodeFunctionData({
             abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
+            functionName: "arb4",
             args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
         });
         spanAttributes["gasEst.final.minBountyExpected"] = (

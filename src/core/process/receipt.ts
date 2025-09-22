@@ -55,7 +55,12 @@ export async function processReceipt({
     if (receipt.status === "success") {
         baseResult.spanAttributes["didClear"] = true;
 
-        const clearActualAmount = getActualClearAmount(rawtx.to, orderbook, receipt);
+        const clearActualAmount = getActualClearAmount(
+            rawtx.to,
+            orderbook,
+            receipt,
+            fromToken.decimals,
+        );
         const inputTokenIncome = getIncome(signer.account.address, receipt, toToken.address);
         const outputTokenIncome = getIncome(signer.account.address, receipt, fromToken.address);
         const income = getTotalIncome(

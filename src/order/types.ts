@@ -1,7 +1,5 @@
 import { ABI, Result, TokenDetails } from "../common";
-import { decodeAbiParameters, DecodeAbiParametersErrorType, parseAbiParameters } from "viem";
-
-export const OrderV3Abi = parseAbiParameters(ABI.Orderbook.Structs.OrderV3);
+import { decodeAbiParameters, DecodeAbiParametersErrorType } from "viem";
 
 export type TakeOrderDetails = {
     id: string;
@@ -19,7 +17,7 @@ export type TakeOrder = {
     signedContext: any[];
 };
 export namespace TakeOrder {
-    /** Get a QuoteConfig type from TakeOrder */
+    /** Get a QuoteConfig type from TakeOrde`r */
     export function getQuoteConfig(takeOrder: TakeOrder) {
         return {
             ...takeOrder,
@@ -37,8 +35,7 @@ export type Evaluable = {
 
 export type IO = {
     token: `0x${string}`;
-    decimals: number;
-    vaultId: bigint;
+    vaultId: `0x${string}`;
 };
 
 export type Order = {
@@ -48,11 +45,15 @@ export type Order = {
     validInputs: IO[];
     validOutputs: IO[];
 };
+
 export namespace Order {
     /** Decodes order bytes into OrderV3 struct */
     export function tryFromBytes(orderBytes: string): Result<Order, DecodeAbiParametersErrorType> {
         try {
-            const decoded = decodeAbiParameters(OrderV3Abi, orderBytes as `0x${string}`)[0];
+            const decoded = decodeAbiParameters(
+                ABI.Orderbook.Primary.OrderStructAbi,
+                orderBytes as `0x${string}`,
+            )[0];
             return Result.ok({
                 owner: decoded.owner.toLowerCase() as `0x${string}`,
                 nonce: decoded.nonce.toLowerCase() as `0x${string}`,
@@ -63,13 +64,11 @@ export namespace Order {
                 },
                 validInputs: decoded.validInputs.map((v) => ({
                     token: v.token.toLowerCase() as `0x${string}`,
-                    decimals: v.decimals,
-                    vaultId: v.vaultId,
+                    vaultId: v.vaultId.toLowerCase() as `0x${string}`,
                 })),
                 validOutputs: decoded.validOutputs.map((v) => ({
                     token: v.token.toLowerCase() as `0x${string}`,
-                    decimals: v.decimals,
-                    vaultId: v.vaultId,
+                    vaultId: v.vaultId.toLowerCase() as `0x${string}`,
                 })),
             });
         } catch (err: any) {
