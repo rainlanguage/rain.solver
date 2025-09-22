@@ -81,6 +81,7 @@ describe("Test InterOrderbookTradeSimulator", () => {
         mockSigner = { account: { address: "0xsigner" } } as any as RainSolverSigner;
         tradeArgs = {
             type: TradeType.InterOrderbook,
+            solver: mockSolver,
             orderDetails: makeOrderDetails(),
             signer: mockSigner,
             inputToEthPrice: "1.2",
@@ -100,7 +101,7 @@ describe("Test InterOrderbookTradeSimulator", () => {
             minimumExpected: 12n,
             takeOrdersConfigStruct: {} as any,
         };
-        simulator = new InterOrderbookTradeSimulator(mockSolver, tradeArgs);
+        simulator = new InterOrderbookTradeSimulator(tradeArgs);
     });
 
     describe("Test prepareTradeParams method", async () => {
@@ -189,8 +190,8 @@ describe("Test InterOrderbookTradeSimulator", () => {
                     minimumExpected: preparedParams.minimumExpected,
                     sender: simulator.tradeArgs.signer.account.address,
                 },
-                simulator.solver.state.client,
-                simulator.solver.state.dispair,
+                simulator.tradeArgs.solver.state.client,
+                simulator.tradeArgs.solver.state.dispair,
             );
             expect(encodeFunctionData).not.toHaveBeenCalled();
         });
@@ -211,8 +212,8 @@ describe("Test InterOrderbookTradeSimulator", () => {
                     minimumExpected: preparedParams.minimumExpected,
                     sender: simulator.tradeArgs.signer.account.address,
                 },
-                simulator.solver.state.client,
-                simulator.solver.state.dispair,
+                simulator.tradeArgs.solver.state.client,
+                simulator.tradeArgs.solver.state.dispair,
             );
             expect(encodeFunctionData).toHaveBeenCalledTimes(1);
             expect(encodeFunctionData).toHaveBeenCalledWith({
@@ -223,9 +224,9 @@ describe("Test InterOrderbookTradeSimulator", () => {
                     preparedParams.takeOrdersConfigStruct,
                     {
                         evaluable: {
-                            interpreter: simulator.solver.state.dispair
+                            interpreter: simulator.tradeArgs.solver.state.dispair
                                 .interpreter as `0x${string}`,
-                            store: simulator.solver.state.dispair.store as `0x${string}`,
+                            store: simulator.tradeArgs.solver.state.dispair.store as `0x${string}`,
                             bytecode: "0xdata",
                         },
                         signedContext: [],

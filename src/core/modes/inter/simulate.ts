@@ -17,6 +17,8 @@ import {
 export type SimulateInterOrderbookTradeArgs = {
     /** The type of trade */
     type: TradeType.InterOrderbook;
+    /** The RainSolver instance used for simulation */
+    solver: RainSolver;
     /** The bundled order details including tokens, decimals, and take orders */
     orderDetails: Pair;
     /** The counterparty order to trade against */
@@ -45,11 +47,8 @@ export type InterOrderbookTradePreparedParams = {
 export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
     declare tradeArgs: SimulateInterOrderbookTradeArgs;
 
-    static withArgs(
-        solver: RainSolver,
-        tradeArgs: SimulateInterOrderbookTradeArgs,
-    ): InterOrderbookTradeSimulator {
-        return new InterOrderbookTradeSimulator(solver, tradeArgs);
+    static withArgs(tradeArgs: SimulateInterOrderbookTradeArgs): InterOrderbookTradeSimulator {
+        return new InterOrderbookTradeSimulator(tradeArgs);
     }
 
     async prepareTradeParams(): Promise<
@@ -63,7 +62,7 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
             inputToEthPrice,
             outputToEthPrice,
         } = this.tradeArgs;
-        const gasPrice = this.solver.state.gasPrice;
+        const gasPrice = this.tradeArgs.solver.state.gasPrice;
 
         this.spanAttributes["against"] = counterpartyOrderDetails.takeOrder.id;
         this.spanAttributes["inputToEthPrice"] = inputToEthPrice;
@@ -120,7 +119,7 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
         };
 
         const rawtx: RawTransaction = {
-            to: this.solver.appOptions.genericArbAddress as `0x${string}`,
+            to: this.tradeArgs.solver.appOptions.genericArbAddress as `0x${string}`,
             gasPrice,
         };
         return Result.ok({
@@ -143,8 +142,8 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
                 minimumExpected: params.minimumExpected,
                 sender: this.tradeArgs.signer.account.address,
             },
-            this.solver.state.client,
-            this.solver.state.dispair,
+            this.tradeArgs.solver.state.client,
+            this.tradeArgs.solver.state.dispair,
         );
         if (taskBytecodeResult.isErr()) {
             const errMsg = await errorSnapshot("", taskBytecodeResult.error);
@@ -161,10 +160,10 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
         }
         const task = {
             evaluable: {
-                interpreter: this.solver.state.dispair.interpreter as `0x${string}`,
-                store: this.solver.state.dispair.store as `0x${string}`,
+                interpreter: this.tradeArgs.solver.state.dispair.interpreter as `0x${string}`,
+                store: this.tradeArgs.solver.state.dispair.store as `0x${string}`,
                 bytecode:
-                    this.solver.appOptions.gasCoveragePercentage === "0"
+                    this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0"
                         ? "0x"
                         : taskBytecodeResult.value,
             },

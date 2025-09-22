@@ -73,6 +73,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
         mockSigner = { account: { address: "0xsigner" } } as any as RainSolverSigner;
         tradeArgs = {
             type: TradeType.IntraOrderbook,
+            solver: mockSolver,
             orderDetails: makeOrderDetails(),
             signer: mockSigner,
             inputToEthPrice: "1.2",
@@ -98,7 +99,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
             },
             minimumExpected: 12n,
         };
-        simulator = new IntraOrderbookTradeSimulator(mockSolver, tradeArgs);
+        simulator = new IntraOrderbookTradeSimulator(tradeArgs);
     });
 
     describe("Test prepareTradeParams method", async () => {
@@ -154,8 +155,8 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                     inputToEthPrice: parseUnits(tradeArgs.inputToEthPrice, 18),
                     outputToEthPrice: parseUnits(tradeArgs.outputToEthPrice, 18),
                 },
-                simulator.solver.state.client,
-                simulator.solver.state.dispair,
+                simulator.tradeArgs.solver.state.client,
+                simulator.tradeArgs.solver.state.dispair,
             );
             expect(encodeFunctionData).not.toHaveBeenCalled();
         });
@@ -181,8 +182,8 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                     inputToEthPrice: parseUnits(tradeArgs.inputToEthPrice, 18),
                     outputToEthPrice: parseUnits(tradeArgs.outputToEthPrice, 18),
                 },
-                simulator.solver.state.client,
-                simulator.solver.state.dispair,
+                simulator.tradeArgs.solver.state.client,
+                simulator.tradeArgs.solver.state.dispair,
             );
             expect(encodeFunctionData).toHaveBeenCalledTimes(4);
             expect(encodeFunctionData).toHaveBeenCalledWith({

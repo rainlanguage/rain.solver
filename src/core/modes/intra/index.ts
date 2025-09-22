@@ -101,8 +101,9 @@ export async function findBestIntraOrderbookTrade(
 
     // run simulations for top 3 counterparty orders
     const promises = counterpartyOrders.slice(0, 3).map((counterparty) => {
-        return IntraOrderbookTradeSimulator.withArgs(this, {
+        return IntraOrderbookTradeSimulator.withArgs({
             type: TradeType.IntraOrderbook,
+            solver: this,
             orderDetails,
             counterpartyOrderDetails: counterparty.takeOrder,
             signer,

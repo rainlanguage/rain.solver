@@ -75,6 +75,7 @@ describe("Test RouterTradeSimulator", () => {
         mockSigner = { account: { address: "0xsigner" } } as any as RainSolverSigner;
         tradeArgs = {
             type: TradeType.Router,
+            solver: mockSolver,
             orderDetails: makeOrderDetails(),
             signer: mockSigner,
             ethPrice: "1.2",
@@ -95,7 +96,7 @@ describe("Test RouterTradeSimulator", () => {
             minimumExpected: 12n,
             takeOrdersConfigStruct: {} as any,
         };
-        simulator = new RouterTradeSimulator(mockSolver, tradeArgs);
+        simulator = new RouterTradeSimulator(tradeArgs);
     });
 
     describe("Test prepareTradeParams method", async () => {
@@ -315,8 +316,8 @@ describe("Test RouterTradeSimulator", () => {
                     minimumExpected: preparedParams.minimumExpected,
                     sender: simulator.tradeArgs.signer.account.address,
                 },
-                simulator.solver.state.client,
-                simulator.solver.state.dispair,
+                simulator.tradeArgs.solver.state.client,
+                simulator.tradeArgs.solver.state.dispair,
             );
             expect(encodeFunctionData).not.toHaveBeenCalled();
         });
@@ -337,8 +338,8 @@ describe("Test RouterTradeSimulator", () => {
                     minimumExpected: preparedParams.minimumExpected,
                     sender: simulator.tradeArgs.signer.account.address,
                 },
-                simulator.solver.state.client,
-                simulator.solver.state.dispair,
+                simulator.tradeArgs.solver.state.client,
+                simulator.tradeArgs.solver.state.dispair,
             );
             expect(encodeFunctionData).toHaveBeenCalledWith({
                 abi: ABI.Orderbook.Primary.Arb,
@@ -348,9 +349,9 @@ describe("Test RouterTradeSimulator", () => {
                     preparedParams.takeOrdersConfigStruct,
                     {
                         evaluable: {
-                            interpreter: simulator.solver.state.dispair
+                            interpreter: simulator.tradeArgs.solver.state.dispair
                                 .interpreter as `0x${string}`,
-                            store: simulator.solver.state.dispair.store as `0x${string}`,
+                            store: simulator.tradeArgs.solver.state.dispair.store as `0x${string}`,
                             bytecode: "0xdata",
                         },
                         signedContext: [],

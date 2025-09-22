@@ -87,8 +87,9 @@ describe("Test findBestRouterTrade", () => {
         expect(result.value.estimatedProfit).toBe(100n);
         expect(result.value.oppBlockNumber).toBe(123);
         expect(result.value.type).toBe("balancer");
-        expect(simulatorWithArgsSpy).toHaveBeenCalledWith(mockRainSolver, {
+        expect(simulatorWithArgsSpy).toHaveBeenCalledWith({
             type: TradeType.Router,
+            solver: mockRainSolver,
             orderDetails,
             fromToken,
             toToken,
@@ -170,8 +171,9 @@ describe("Test findBestRouterTrade", () => {
             undefined,
         );
         expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
-        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith(mockRainSolver, {
+        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith({
             type: TradeType.Router,
+            solver: mockRainSolver,
             orderDetails,
             fromToken,
             toToken,
@@ -300,8 +302,9 @@ describe("Test findBestRouterTrade", () => {
             undefined,
         );
         expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
-        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith(mockRainSolver, {
+        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith({
             type: TradeType.Router,
+            solver: mockRainSolver,
             orderDetails,
             fromToken,
             toToken,

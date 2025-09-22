@@ -51,8 +51,9 @@ export async function findBestInterOrderbookTrade(
         const cps = orderbookCounterparties.slice(0, 3);
         counterparties.push(...cps);
         return cps.map((counterpartyOrderDetails) => {
-            return InterOrderbookTradeSimulator.withArgs(this, {
+            return InterOrderbookTradeSimulator.withArgs({
                 type: TradeType.InterOrderbook,
+                solver: this,
                 orderDetails,
                 counterpartyOrderDetails,
                 signer,

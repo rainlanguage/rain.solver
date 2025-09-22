@@ -44,8 +44,9 @@ export async function findBestRouterTrade(
     const maximumInput = orderDetails.takeOrder.quote!.maxOutput;
 
     // try simulation for full trade size and return if succeeds
-    const fullTradeSizeSimResult = await RouterTradeSimulator.withArgs(this, {
+    const fullTradeSizeSimResult = await RouterTradeSimulator.withArgs({
         type: TradeType.Router,
+        solver: this,
         orderDetails,
         fromToken,
         toToken,
@@ -90,8 +91,9 @@ export async function findBestRouterTrade(
             noneNodeError: fullTradeSizeSimResult.error.noneNodeError,
         });
     }
-    const partialTradeSizeSimResult = await RouterTradeSimulator.withArgs(this, {
+    const partialTradeSizeSimResult = await RouterTradeSimulator.withArgs({
         type: TradeType.Router,
+        solver: this,
         orderDetails,
         fromToken,
         toToken,

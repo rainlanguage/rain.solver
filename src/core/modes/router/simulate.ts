@@ -19,6 +19,8 @@ import {
 export type SimulateRouterTradeArgs = {
     /** The type of trade */
     type: TradeType.Router;
+    /** The RainSolver instance used for simulation */
+    solver: RainSolver;
     /** The bundled order details including tokens, decimals, and take orders */
     orderDetails: Pair;
     /** The RainSolverSigner instance used for signing transactions */
@@ -49,8 +51,8 @@ export type RouterTradePreparedParams = {
 export class RouterTradeSimulator extends TradeSimulatorBase {
     declare tradeArgs: SimulateRouterTradeArgs;
 
-    static withArgs(solver: RainSolver, tradeArgs: SimulateRouterTradeArgs): RouterTradeSimulator {
-        return new RouterTradeSimulator(solver, tradeArgs);
+    static withArgs(tradeArgs: SimulateRouterTradeArgs): RouterTradeSimulator {
+        return new RouterTradeSimulator(tradeArgs);
     }
 
     async prepareTradeParams(): Promise<Result<RouterTradePreparedParams, FailedSimulation>> {
@@ -63,14 +65,14 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
             blockNumber,
             isPartial,
         } = this.tradeArgs;
-        const gasPrice = this.solver.state.gasPrice;
+        const gasPrice = this.tradeArgs.solver.state.gasPrice;
 
         const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
         this.spanAttributes["amountIn"] = formatUnits(maximumInputFixed, 18);
         this.spanAttributes["oppBlockNumber"] = Number(blockNumber);
 
-        const tradeParamsResult = await this.solver.state.router.getTradeParams({
-            state: this.solver.state,
+        const tradeParamsResult = await this.tradeArgs.solver.state.router.getTradeParams({
+            state: this.tradeArgs.solver.state,
             orderDetails,
             fromToken,
             toToken,
@@ -103,12 +105,12 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
 
         // determine trade type based on router type
         let type = TradeType.Router;
-        let arbAddress = this.solver.appOptions.arbAddress;
+        let arbAddress = this.tradeArgs.solver.appOptions.arbAddress;
         if (routeType === RouterType.Sushi) {
             type = TradeType.RouteProcessor;
         } else if (routeType === RouterType.Balancer) {
             type = TradeType.Balancer;
-            arbAddress = this.solver.appOptions.balancerArbAddress!;
+            arbAddress = this.tradeArgs.solver.appOptions.balancerArbAddress!;
         } else {
             type = TradeType.Router;
         }
@@ -154,8 +156,8 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
                 minimumExpected: params.minimumExpected,
                 sender: this.tradeArgs.signer.account.address,
             },
-            this.solver.state.client,
-            this.solver.state.dispair,
+            this.tradeArgs.solver.state.client,
+            this.tradeArgs.solver.state.dispair,
         );
         if (taskBytecodeResult.isErr()) {
             const errMsg = await errorSnapshot("", taskBytecodeResult.error);
@@ -172,10 +174,10 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
         }
         const task = {
             evaluable: {
-                interpreter: this.solver.state.dispair.interpreter as `0x${string}`,
-                store: this.solver.state.dispair.store as `0x${string}`,
+                interpreter: this.tradeArgs.solver.state.dispair.interpreter as `0x${string}`,
+                store: this.tradeArgs.solver.state.dispair.store as `0x${string}`,
                 bytecode:
-                    this.solver.appOptions.gasCoveragePercentage === "0"
+                    this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0"
                         ? "0x"
                         : taskBytecodeResult.value,
             },

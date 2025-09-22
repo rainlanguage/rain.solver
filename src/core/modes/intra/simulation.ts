@@ -17,6 +17,8 @@ import {
 export type SimulateIntraOrderbookTradeArgs = {
     /** The type of trade */
     type: TradeType.IntraOrderbook;
+    /** The RainSolver instance used for simulation */
+    solver: RainSolver;
     /** The bundled order details including tokens, decimals, and take orders */
     orderDetails: Pair;
     /** The counterparty order to trade against */
@@ -48,11 +50,8 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
     readonly inputBountyVaultId = 1n;
     readonly outputBountyVaultId = 1n;
 
-    static withArgs(
-        solver: RainSolver,
-        tradeArgs: SimulateIntraOrderbookTradeArgs,
-    ): IntraOrderbookTradeSimulator {
-        return new IntraOrderbookTradeSimulator(solver, tradeArgs);
+    static withArgs(tradeArgs: SimulateIntraOrderbookTradeArgs): IntraOrderbookTradeSimulator {
+        return new IntraOrderbookTradeSimulator(tradeArgs);
     }
 
     async prepareTradeParams(): Promise<
@@ -65,7 +64,7 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
             outputToEthPrice,
             blockNumber,
         } = this.tradeArgs;
-        const gasPrice = this.solver.state.gasPrice;
+        const gasPrice = this.tradeArgs.solver.state.gasPrice;
 
         this.spanAttributes["against"] = counterpartyOrderDetails.id;
         this.spanAttributes["inputToEthPrice"] = inputToEthPrice;
@@ -104,8 +103,8 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                 minimumExpected: params.minimumExpected,
                 sender: this.tradeArgs.signer.account.address,
             },
-            this.solver.state.client,
-            this.solver.state.dispair,
+            this.tradeArgs.solver.state.client,
+            this.tradeArgs.solver.state.dispair,
         );
         if (taskBytecodeResult.isErr()) {
             const errMsg = await errorSnapshot("", taskBytecodeResult.error);
@@ -122,8 +121,8 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
         }
         const task = {
             evaluable: {
-                interpreter: this.solver.state.dispair.interpreter as `0x${string}`,
-                store: this.solver.state.dispair.store as `0x${string}`,
+                interpreter: this.tradeArgs.solver.state.dispair.interpreter as `0x${string}`,
+                store: this.tradeArgs.solver.state.dispair.store as `0x${string}`,
                 bytecode: taskBytecodeResult.value,
             },
             signedContext: [],
@@ -140,7 +139,7 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                 this.tradeArgs.orderDetails.sellToken,
                 this.outputBountyVaultId,
                 maxUint256,
-                this.solver.appOptions.gasCoveragePercentage === "0" ? [] : [task],
+                this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0" ? [] : [task],
             ],
         });
         const clear2Calldata = encodeFunctionData({

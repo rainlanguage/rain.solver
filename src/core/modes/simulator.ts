@@ -1,4 +1,3 @@
-import { RainSolver } from "..";
 import { dryrun } from "./dryrun";
 import { Result } from "../../common";
 import { Attributes } from "@opentelemetry/api";
@@ -16,10 +15,10 @@ import {
 
 /** Specifies the reason that simulation failed */
 export enum SimulationHaltReason {
-    NoOpportunity = 1,
-    NoRoute = 2,
-    OrderRatioGreaterThanMarketPrice = 3,
-    FailedToGetTaskBytecode = 4,
+    NoOpportunity,
+    NoRoute,
+    OrderRatioGreaterThanMarketPrice,
+    FailedToGetTaskBytecode,
 }
 
 export type SimulateTradeArgs =
@@ -42,12 +41,10 @@ export type PreparedTradeParams =
  */
 export abstract class TradeSimulatorBase {
     startTime: number;
-    solver: RainSolver;
     tradeArgs: SimulateTradeArgs;
     readonly spanAttributes: Attributes = {};
 
-    constructor(solver: RainSolver, tradeArgs: SimulateTradeArgs) {
-        this.solver = solver;
+    constructor(tradeArgs: SimulateTradeArgs) {
         this.tradeArgs = tradeArgs;
         this.startTime = performance.now();
     }
@@ -98,8 +95,8 @@ export abstract class TradeSimulatorBase {
         const initDryrunResult = await dryrun(
             this.tradeArgs.signer,
             prepareParamsResult.value.rawtx,
-            this.solver.state.gasPrice,
-            this.solver.appOptions.gasLimitMultiplier,
+            this.tradeArgs.solver.state.gasPrice,
+            this.tradeArgs.solver.appOptions.gasLimitMultiplier,
         );
         if (initDryrunResult.isErr()) {
             this.spanAttributes["stage"] = 1;
@@ -119,7 +116,7 @@ export abstract class TradeSimulatorBase {
                 gasLimit: estimation.gas.toString(),
                 totalCost: estimation.totalGasCost.toString(),
                 gasPrice: estimation.gasPrice.toString(),
-                ...(this.solver.state.chainConfig.isSpecialL2
+                ...(this.tradeArgs.solver.state.chainConfig.isSpecialL2
                     ? {
                           l1Cost: estimation.l1Cost.toString(),
                           l1GasPrice: estimation.l1GasPrice.toString(),
@@ -132,10 +129,10 @@ export abstract class TradeSimulatorBase {
         // repeat the same process with headroom if gas
         // coverage is not 0, 0 gas coverage means 0 minimum
         // sender output which is already called above
-        if (this.solver.appOptions.gasCoveragePercentage !== "0") {
+        if (this.tradeArgs.solver.appOptions.gasCoveragePercentage !== "0") {
             delete prepareParamsResult.value.rawtx.gas; // delete gas to let signer estimate gas again with updated tx data
             const headroom = BigInt(
-                (Number(this.solver.appOptions.gasCoveragePercentage) * 1.01).toFixed(),
+                (Number(this.tradeArgs.solver.appOptions.gasCoveragePercentage) * 1.01).toFixed(),
             );
             let minimumExpected = (estimatedGasCost * headroom) / 100n;
             this.spanAttributes["gasEst.initial.minBountyExpected"] = minimumExpected.toString();
@@ -152,8 +149,8 @@ export abstract class TradeSimulatorBase {
             const finalDryrunResult = await dryrun(
                 this.tradeArgs.signer,
                 prepareParamsResult.value.rawtx,
-                this.solver.state.gasPrice,
-                this.solver.appOptions.gasLimitMultiplier,
+                this.tradeArgs.solver.state.gasPrice,
+                this.tradeArgs.solver.appOptions.gasLimitMultiplier,
             );
             if (finalDryrunResult.isErr()) {
                 this.spanAttributes["stage"] = 2;
@@ -173,7 +170,7 @@ export abstract class TradeSimulatorBase {
                     gasLimit: estimation.gas.toString(),
                     totalCost: estimation.totalGasCost.toString(),
                     gasPrice: estimation.gasPrice.toString(),
-                    ...(this.solver.state.chainConfig.isSpecialL2
+                    ...(this.tradeArgs.solver.state.chainConfig.isSpecialL2
                         ? {
                               l1Cost: estimation.l1Cost.toString(),
                               l1GasPrice: estimation.l1GasPrice.toString(),
@@ -185,7 +182,9 @@ export abstract class TradeSimulatorBase {
 
             // update the tx data again with the new min sender output
             minimumExpected =
-                (estimatedGasCost * BigInt(this.solver.appOptions.gasCoveragePercentage)) / 100n;
+                (estimatedGasCost *
+                    BigInt(this.tradeArgs.solver.appOptions.gasCoveragePercentage)) /
+                100n;
             setTransactionDataResult = await this.setTransactionData({
                 ...prepareParamsResult.value,
                 minimumExpected,
@@ -199,6 +198,7 @@ export abstract class TradeSimulatorBase {
 
         // if reached here, it means there was a success and found opp
         this.spanAttributes["foundOpp"] = true;
+        this.spanAttributes["duration"] = performance.now() - this.startTime;
         const result = {
             type: prepareParamsResult.value.type,
             spanAttributes: this.spanAttributes,
@@ -207,7 +207,6 @@ export abstract class TradeSimulatorBase {
             oppBlockNumber: Number(this.tradeArgs.blockNumber),
             estimatedProfit: this.estimateProfit(prepareParamsResult.value.price)!,
         };
-        this.spanAttributes["duration"] = performance.now() - this.startTime;
         return Result.ok(result);
     }
 }

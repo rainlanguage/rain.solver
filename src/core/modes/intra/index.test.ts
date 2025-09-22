@@ -596,8 +596,9 @@ describe("Test findBestIntraOrderbookTrade", () => {
             blockNumber,
         );
 
-        expect(simulatorWithArgsSpy).toHaveBeenCalledWith(mockRainSolver, {
+        expect(simulatorWithArgsSpy).toHaveBeenCalledWith({
             type: TradeType.IntraOrderbook,
+            solver: mockRainSolver,
             orderDetails,
             counterpartyOrderDetails: mockCounterpartyOrders[0].takeOrder,
             signer,
@@ -676,8 +677,9 @@ describe("Test findBestIntraOrderbookTrade", () => {
             blockNumber,
         );
 
-        expect(simulatorWithArgsSpy).toHaveBeenCalledWith(mockRainSolver, {
+        expect(simulatorWithArgsSpy).toHaveBeenCalledWith({
             type: TradeType.IntraOrderbook,
+            solver: mockRainSolver,
             orderDetails,
             counterpartyOrderDetails: mockCounterpartyOrders[0].takeOrder,
             signer,

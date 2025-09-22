@@ -53,6 +53,7 @@ describe("Test TradeSimulatorBase", () => {
         mockSigner = { name: "signer" } as RainSolverSigner;
         tradeArgs = {
             type: TradeType.Router,
+            solver: mockSolver,
             orderDetails: {} as any,
             signer: mockSigner,
             ethPrice: "1.2",
@@ -73,13 +74,13 @@ describe("Test TradeSimulatorBase", () => {
             minimumExpected: 0n,
             takeOrdersConfigStruct: {} as any,
         };
-        mockSimulator = new MockTradeSimulator(mockSolver, tradeArgs);
+        mockSimulator = new MockTradeSimulator(tradeArgs);
     });
 
     describe("Test construction args", () => {
         it("should set the tradeArgs and solver properties correctly", () => {
             expect(mockSimulator.tradeArgs).toBe(tradeArgs);
-            expect(mockSimulator.solver).toBe(mockSolver);
+            expect(mockSimulator.tradeArgs.solver).toBe(mockSolver);
             expect(mockSimulator.startTime).toBeGreaterThan(0);
             expect(mockSimulator.spanAttributes).toEqual({});
         });
@@ -216,7 +217,7 @@ describe("Test TradeSimulatorBase", () => {
                     gasLimit: dryrunResult.estimation.gas.toString(),
                     totalCost: dryrunResult.estimation.totalGasCost.toString(),
                     gasPrice: dryrunResult.estimation.gasPrice.toString(),
-                    ...(mockSimulator.solver.state.chainConfig.isSpecialL2
+                    ...(mockSimulator.tradeArgs.solver.state.chainConfig.isSpecialL2
                         ? {
                               l1Cost: dryrunResult.estimation.l1Cost.toString(),
                               l1GasPrice: dryrunResult.estimation.l1GasPrice.toString(),
@@ -288,7 +289,7 @@ describe("Test TradeSimulatorBase", () => {
                     gasLimit: dryrunResult.estimation.gas.toString(),
                     totalCost: dryrunResult.estimation.totalGasCost.toString(),
                     gasPrice: dryrunResult.estimation.gasPrice.toString(),
-                    ...(mockSimulator.solver.state.chainConfig.isSpecialL2
+                    ...(mockSimulator.tradeArgs.solver.state.chainConfig.isSpecialL2
                         ? {
                               l1Cost: dryrunResult.estimation.l1Cost.toString(),
                               l1GasPrice: dryrunResult.estimation.l1GasPrice.toString(),
@@ -364,7 +365,7 @@ describe("Test TradeSimulatorBase", () => {
                     gasLimit: dryrunResult.estimation.gas.toString(),
                     totalCost: dryrunResult.estimation.totalGasCost.toString(),
                     gasPrice: dryrunResult.estimation.gasPrice.toString(),
-                    ...(mockSimulator.solver.state.chainConfig.isSpecialL2
+                    ...(mockSimulator.tradeArgs.solver.state.chainConfig.isSpecialL2
                         ? {
                               l1Cost: dryrunResult.estimation.l1Cost.toString(),
                               l1GasPrice: dryrunResult.estimation.l1GasPrice.toString(),
@@ -463,7 +464,7 @@ describe("Test TradeSimulatorBase", () => {
                     gasLimit: dryrunResult.estimation.gas.toString(),
                     totalCost: dryrunResult.estimation.totalGasCost.toString(),
                     gasPrice: dryrunResult.estimation.gasPrice.toString(),
-                    ...(mockSimulator.solver.state.chainConfig.isSpecialL2
+                    ...(mockSimulator.tradeArgs.solver.state.chainConfig.isSpecialL2
                         ? {
                               l1Cost: dryrunResult.estimation.l1Cost.toString(),
                               l1GasPrice: dryrunResult.estimation.l1GasPrice.toString(),
@@ -478,7 +479,7 @@ describe("Test TradeSimulatorBase", () => {
                     gasLimit: dryrunResult2.estimation.gas.toString(),
                     totalCost: dryrunResult2.estimation.totalGasCost.toString(),
                     gasPrice: dryrunResult2.estimation.gasPrice.toString(),
-                    ...(mockSimulator.solver.state.chainConfig.isSpecialL2
+                    ...(mockSimulator.tradeArgs.solver.state.chainConfig.isSpecialL2
                         ? {
                               l1Cost: dryrunResult2.estimation.l1Cost.toString(),
                               l1GasPrice: dryrunResult2.estimation.l1GasPrice.toString(),
@@ -574,7 +575,7 @@ describe("Test TradeSimulatorBase", () => {
                     gasLimit: dryrunResult.estimation.gas.toString(),
                     totalCost: dryrunResult.estimation.totalGasCost.toString(),
                     gasPrice: dryrunResult.estimation.gasPrice.toString(),
-                    ...(mockSimulator.solver.state.chainConfig.isSpecialL2
+                    ...(mockSimulator.tradeArgs.solver.state.chainConfig.isSpecialL2
                         ? {
                               l1Cost: dryrunResult.estimation.l1Cost.toString(),
                               l1GasPrice: dryrunResult.estimation.l1GasPrice.toString(),
@@ -589,7 +590,7 @@ describe("Test TradeSimulatorBase", () => {
                     gasLimit: dryrunResult2.estimation.gas.toString(),
                     totalCost: dryrunResult2.estimation.totalGasCost.toString(),
                     gasPrice: dryrunResult2.estimation.gasPrice.toString(),
-                    ...(mockSimulator.solver.state.chainConfig.isSpecialL2
+                    ...(mockSimulator.tradeArgs.solver.state.chainConfig.isSpecialL2
                         ? {
                               l1Cost: dryrunResult2.estimation.l1Cost.toString(),
                               l1GasPrice: dryrunResult2.estimation.l1GasPrice.toString(),
