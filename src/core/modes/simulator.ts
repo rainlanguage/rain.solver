@@ -208,14 +208,13 @@ export abstract class TradeSimulatorBase {
         this.spanAttributes["gasEst.final.minBountyExpected"] = minimumExpected.toString();
         this.spanAttributes["foundOpp"] = true;
         this.spanAttributes["duration"] = performance.now() - this.startTime;
-        const result = {
+        return Result.ok({
+            estimatedGasCost,
             type: prepareParamsResult.value.type,
             spanAttributes: this.spanAttributes,
             rawtx: prepareParamsResult.value.rawtx,
-            estimatedGasCost,
             oppBlockNumber: Number(this.tradeArgs.blockNumber),
             estimatedProfit: this.estimateProfit(prepareParamsResult.value.price)!,
-        };
-        return Result.ok(result);
+        });
     }
 }
