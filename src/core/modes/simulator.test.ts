@@ -256,7 +256,7 @@ describe("Test TradeSimulatorBase", () => {
                 Result.err(setTransactionDataError),
             );
             const headroom = BigInt(
-                (Number(mockSolver.appOptions.gasCoveragePercentage) * 1.01).toFixed(),
+                (Number(mockSolver.appOptions.gasCoveragePercentage) * 100.25).toFixed(),
             );
 
             const result = await mockSimulator.trySimulateTrade();
@@ -273,7 +273,7 @@ describe("Test TradeSimulatorBase", () => {
             });
             expect(mockSimulator.setTransactionData).toHaveBeenCalledWith({
                 ...preparedParams,
-                minimumExpected: (dryrunResult.estimatedGasCost * headroom) / 100n,
+                minimumExpected: (dryrunResult.estimatedGasCost * headroom) / 10000n,
             });
             expect(dryrun).toHaveBeenCalledTimes(1);
             expect(dryrun).toHaveBeenCalledWith(
@@ -325,7 +325,7 @@ describe("Test TradeSimulatorBase", () => {
             };
             (dryrun as Mock).mockResolvedValueOnce(Result.err(dryrunError));
             const headroom = BigInt(
-                (Number(mockSolver.appOptions.gasCoveragePercentage) * 1.01).toFixed(),
+                (Number(mockSolver.appOptions.gasCoveragePercentage) * 100.25).toFixed(),
             );
 
             const result = await mockSimulator.trySimulateTrade();
@@ -343,7 +343,7 @@ describe("Test TradeSimulatorBase", () => {
             });
             expect(mockSimulator.setTransactionData).toHaveBeenCalledWith({
                 ...preparedParams,
-                minimumExpected: (dryrunResult.estimatedGasCost * headroom) / 100n,
+                minimumExpected: (dryrunResult.estimatedGasCost * headroom) / 10000n,
             });
             expect(dryrun).toHaveBeenCalledTimes(2);
             expect(dryrun).toHaveBeenCalledWith(
@@ -409,7 +409,7 @@ describe("Test TradeSimulatorBase", () => {
                 .mockResolvedValueOnce(Result.ok(dryrunResult))
                 .mockResolvedValueOnce(Result.ok(dryrunResult2));
             const headroom = BigInt(
-                (Number(mockSolver.appOptions.gasCoveragePercentage) * 1.01).toFixed(),
+                (Number(mockSolver.appOptions.gasCoveragePercentage) * 100.25).toFixed(),
             );
             // last call to setTransactionData fails
             const setTransactionDataError = {
@@ -435,7 +435,7 @@ describe("Test TradeSimulatorBase", () => {
             });
             expect(mockSimulator.setTransactionData).toHaveBeenCalledWith({
                 ...preparedParams,
-                minimumExpected: (dryrunResult.estimatedGasCost * headroom) / 100n,
+                minimumExpected: (dryrunResult.estimatedGasCost * headroom) / 10000n,
             });
             expect(mockSimulator.setTransactionData).toHaveBeenCalledWith({
                 ...preparedParams,
@@ -524,7 +524,7 @@ describe("Test TradeSimulatorBase", () => {
                 .mockResolvedValueOnce(Result.ok(dryrunResult))
                 .mockResolvedValueOnce(Result.ok(dryrunResult2));
             const headroom = BigInt(
-                (Number(mockSolver.appOptions.gasCoveragePercentage) * 1.01).toFixed(),
+                (Number(mockSolver.appOptions.gasCoveragePercentage) * 100.25).toFixed(),
             );
             const profitEstimate = 1234n;
             (mockSimulator.estimateProfit as Mock).mockReturnValueOnce(profitEstimate);
@@ -546,7 +546,7 @@ describe("Test TradeSimulatorBase", () => {
             });
             expect(mockSimulator.setTransactionData).toHaveBeenCalledWith({
                 ...preparedParams,
-                minimumExpected: (dryrunResult.estimatedGasCost * headroom) / 100n,
+                minimumExpected: (dryrunResult.estimatedGasCost * headroom) / 10000n,
             });
             expect(mockSimulator.setTransactionData).toHaveBeenCalledWith({
                 ...preparedParams,
