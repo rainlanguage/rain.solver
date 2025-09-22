@@ -131,15 +131,14 @@ export abstract class TradeSimulatorBase {
         if (this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0") {
             this.spanAttributes["foundOpp"] = true;
             this.spanAttributes["duration"] = performance.now() - this.startTime;
-            const result = {
+            return Result.ok({
+                estimatedGasCost,
                 type: prepareParamsResult.value.type,
                 spanAttributes: this.spanAttributes,
                 rawtx: prepareParamsResult.value.rawtx,
-                estimatedGasCost,
                 oppBlockNumber: Number(this.tradeArgs.blockNumber),
                 estimatedProfit: this.estimateProfit(prepareParamsResult.value.price)!,
-            };
-            return Result.ok(result);
+            });
         }
 
         // repeat the process again with headroom to get more accurate gas cost
