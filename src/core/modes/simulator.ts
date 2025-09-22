@@ -32,6 +32,14 @@ export type PreparedTradeParams =
     | IntraOrderbookTradePrepareedParams
     | InterOrderbookTradePreparedParams;
 
+/**
+ * Base class for simulating trades against different platforms.
+ * Child classes must implement methods to prepare trade parameters,
+ * set transaction data, and estimate profit for specific trade types.
+ * The returned transaction object from the implemented methods then
+ * is used to perform a dryrun to estimate gas costs and check for
+ * profitability and build up the final transaction object.
+ */
 export abstract class TradeSimulatorBase {
     startTime: number;
     solver: RainSolver;
