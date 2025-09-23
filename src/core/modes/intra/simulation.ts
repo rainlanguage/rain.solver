@@ -128,12 +128,12 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
             signedContext: [],
         };
         const withdrawInputCalldata = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Orderbook,
+            abi: ABI.Orderbook.V4.Primary.Orderbook,
             functionName: "withdraw2",
             args: [this.tradeArgs.orderDetails.buyToken, this.inputBountyVaultId, maxUint256, []],
         });
         const withdrawOutputCalldata = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Orderbook,
+            abi: ABI.Orderbook.V4.Primary.Orderbook,
             functionName: "withdraw2",
             args: [
                 this.tradeArgs.orderDetails.sellToken,
@@ -143,7 +143,7 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
             ],
         });
         const clear2Calldata = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Orderbook,
+            abi: ABI.Orderbook.V4.Primary.Orderbook,
             functionName: "clear2",
             args: [
                 this.tradeArgs.orderDetails.takeOrder.struct.order,
@@ -169,7 +169,7 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
             ],
         });
         params.rawtx.data = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Orderbook,
+            abi: ABI.Orderbook.V4.Primary.Orderbook,
             functionName: "multicall",
             args: [[clear2Calldata, withdrawInputCalldata, withdrawOutputCalldata]],
         });

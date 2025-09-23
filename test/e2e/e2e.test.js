@@ -200,7 +200,7 @@ for (let i = 0; i < testData.length; i++) {
 
                 const arb = !arbAddress
                     ? await arbDeploy(orderbook.address, config.routeProcessors[rpVersion])
-                    : await ethers.getContractAt(ABI.Orderbook.Primary.Arb, arbAddress);
+                    : await ethers.getContractAt(ABI.Orderbook.V4.Primary.Arb, arbAddress);
 
                 state.dispair = {
                     interpreter: interpreter.address,
@@ -462,7 +462,7 @@ for (let i = 0; i < testData.length; i++) {
                 const genericArb = await genericArbrbDeploy(orderbook2.address);
                 const arb = !arbAddress
                     ? await arbDeploy(orderbook1.address, config.routeProcessors[rpVersion])
-                    : await ethers.getContractAt(ABI.Orderbook.Primary.Arb, arbAddress);
+                    : await ethers.getContractAt(ABI.Orderbook.V4.Primary.Arb, arbAddress);
 
                 state.dispair = {
                     interpreter: interpreter.address,
@@ -811,7 +811,7 @@ for (let i = 0; i < testData.length; i++) {
                     : await ethers.getContractAt(orderbookAbi, orderbookAddress);
                 const arb = !arbAddress
                     ? await arbDeploy(orderbook.address, config.routeProcessors[rpVersion])
-                    : await ethers.getContractAt(ABI.Orderbook.Primary.Arb, arbAddress);
+                    : await ethers.getContractAt(ABI.Orderbook.V4.Primary.Arb, arbAddress);
 
                 state.dispair = {
                     interpreter: interpreter.address,
@@ -1193,7 +1193,7 @@ for (let i = 0; i < testData.length; i++) {
 
                 const arb = !arbAddress
                     ? await arbDeploy(orderbook.address, config.routeProcessors[rpVersion])
-                    : await ethers.getContractAt(ABI.Orderbook.Primary.Arb, arbAddress);
+                    : await ethers.getContractAt(ABI.Orderbook.V4.Primary.Arb, arbAddress);
 
                 const balancerArb = await balancerArbDeploy(
                     orderbook.address,

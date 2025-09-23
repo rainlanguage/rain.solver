@@ -10,7 +10,6 @@ import { downscaleProtection } from "./protection";
 import { errorSnapshot, RainSolverBaseError } from "../error";
 import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
 import {
-    IO,
     Pair,
     Order,
     OrderbooksPairMap,
@@ -165,7 +164,7 @@ export class OrderManager {
         const orderHash = orderDetails.orderHash.toLowerCase();
         const orderbook = orderDetails.orderbook.id.toLowerCase();
 
-        const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
+        const orderStructResult = Order.V3.tryFromBytes(orderDetails.orderBytes);
         if (orderStructResult.isErr()) {
             return Result.err(
                 new OrderManagerError(
@@ -253,10 +252,10 @@ export class OrderManager {
             owner,
             {
                 address: outputVault.token.toLowerCase(),
-                decimals: outputVault.decimals,
+                decimals: pair.sellTokenDecimals,
                 symbol: pair.sellTokenSymbol,
             },
-            outputVault.vaultId,
+            BigInt(outputVault.vaultId),
             pair.sellTokenVaultBalance,
         );
         this.updateVault(
@@ -264,10 +263,10 @@ export class OrderManager {
             owner,
             {
                 address: inputVault.token.toLowerCase(),
-                decimals: inputVault.decimals,
+                decimals: pair.buyTokenDecimals,
                 symbol: pair.buyTokenSymbol,
             },
-            inputVault.vaultId,
+            BigInt(inputVault.vaultId),
             pair.buyTokenVaultBalance,
         );
     }
@@ -326,7 +325,7 @@ export class OrderManager {
             const orderbook = orderDetails.orderbook.id.toLowerCase();
             const orderHash = orderDetails.orderHash.toLowerCase();
 
-            const orderStructResult = Order.tryFromBytes(orderDetails.orderBytes);
+            const orderStructResult = Order.V3.tryFromBytes(orderDetails.orderBytes);
             if (orderStructResult.isErr()) continue;
 
             const orderStruct = orderStructResult.value;
@@ -381,7 +380,7 @@ export class OrderManager {
      */
     async getOrderPairs(
         orderHash: string,
-        orderStruct: Order,
+        orderStruct: Order.V3,
         orderDetails: SgOrder,
     ): Promise<Result<Pair[], OrderManagerError>> {
         const pairs: Pair[] = [];
@@ -401,7 +400,7 @@ export class OrderManager {
 
         // helper function to handle token details
         const handleToken = async (
-            io: IO,
+            io: Order.V3.IO,
             tokensList: SgOrder["outputs"],
         ): Promise<
             Result<{ symbol: string; decimals: number; balance: string }, OrderManagerError>

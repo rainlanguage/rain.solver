@@ -184,7 +184,7 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
             signedContext: [],
         };
         params.rawtx.data = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Arb,
+            abi: ABI.Orderbook.V4.Primary.Arb,
             functionName: "arb3",
             args: [
                 this.tradeArgs.orderDetails.orderbook as `0x${string}`,

@@ -91,7 +91,7 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
 
         // encode takeOrders2() and build tx fields
         const encodedFN = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Orderbook,
+            abi: ABI.Orderbook.V4.Primary.Orderbook,
             functionName: "takeOrders2",
             args: [
                 {
@@ -171,7 +171,7 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
         };
 
         params.rawtx.data = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Arb,
+            abi: ABI.Orderbook.V4.Primary.Arb,
             functionName: "arb3",
             args: [
                 this.tradeArgs.orderDetails.orderbook as `0x${string}`,

@@ -45,13 +45,15 @@ vi.mock("./types", async (importOriginal) => {
     return {
         ...(await importOriginal()),
         Order: {
-            tryFromBytes: vi.fn().mockImplementation((value: any) =>
-                Result.ok({
-                    owner: value === "0xadminBytes" ? "0xadmin" : "0xowner",
-                    validInputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
-                    validOutputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
-                }),
-            ),
+            V3: {
+                tryFromBytes: vi.fn().mockImplementation((value: any) =>
+                    Result.ok({
+                        owner: value === "0xadminBytes" ? "0xadmin" : "0xowner",
+                        validInputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
+                        validOutputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
+                    }),
+                ),
+            },
         },
     };
 });
@@ -274,10 +276,11 @@ describe("Test OrderManager", () => {
             ],
         };
 
-        (Order.tryFromBytes as Mock).mockReturnValueOnce(Result.err("some error"));
+        (Order.V3.tryFromBytes as Mock).mockReturnValueOnce(Result.err("some error"));
         const result = await orderManager.addOrder(order as any);
         assert(result.isErr());
         expect(result.error).instanceOf(OrderManagerError);
+        expect(Order.V3.tryFromBytes).toHaveBeenCalledTimes(1);
 
         const getOrderPairsSpy = vi.spyOn(orderManager, "getOrderPairs");
         getOrderPairsSpy.mockResolvedValueOnce(Result.err(new OrderManagerError("err", 1)));
@@ -633,23 +636,24 @@ describe("Test OrderManager", () => {
             outputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
             inputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
         };
-        (Order.tryFromBytes as Mock)
+        (Order.V3.tryFromBytes as Mock)
             .mockReturnValueOnce(
                 Result.ok({
                     owner: "0xowner",
-                    validInputs: [{ token: "0xinput", decimals: 18 }],
-                    validOutputs: [{ token: "0xoutput", decimals: 18 }],
+                    validInputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
+                    validOutputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
                 }),
             )
             .mockReturnValueOnce(
                 Result.ok({
                     owner: "0xowner",
-                    validInputs: [{ token: "0xoutput", decimals: 18 }],
-                    validOutputs: [{ token: "0xinput", decimals: 18 }],
+                    validInputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
+                    validOutputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
                 }),
             );
         await orderManager.addOrder(orderA as any);
         await orderManager.addOrder(orderB as any);
+        expect(Order.V3.tryFromBytes).toHaveBeenCalledTimes(2);
 
         // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)
         const roundOrders = orderManager.getNextRoundOrders();
@@ -682,23 +686,24 @@ describe("Test OrderManager", () => {
             outputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
             inputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
         };
-        (Order.tryFromBytes as Mock)
+        (Order.V3.tryFromBytes as Mock)
             .mockReturnValueOnce(
                 Result.ok({
                     owner: "0xowner",
-                    validInputs: [{ token: "0xinput", decimals: 18 }],
-                    validOutputs: [{ token: "0xoutput", decimals: 18 }],
+                    validInputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
+                    validOutputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
                 }),
             )
             .mockReturnValueOnce(
                 Result.ok({
                     owner: "0xowner",
-                    validInputs: [{ token: "0xoutput", decimals: 18 }],
-                    validOutputs: [{ token: "0xinput", decimals: 18 }],
+                    validInputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
+                    validOutputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
                 }),
             );
         await orderManager.addOrder(orderA as any);
         await orderManager.addOrder(orderB as any);
+        expect(Order.V3.tryFromBytes).toHaveBeenCalledTimes(2);
 
         // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)
         const roundOrders = orderManager.getNextRoundOrders();

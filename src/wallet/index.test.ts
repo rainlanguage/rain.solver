@@ -606,10 +606,10 @@ describe("Test WalletManager", () => {
                     txHash: "0xhash2",
                     amount: parseUnits("50", 6),
                     route: "TEST2 -> WETH",
-                    receivedAmount: parseUnits("0.05", 6),
-                    receivedAmountMin: parseUnits("0.0475", 6),
+                    receivedAmount: parseUnits("0.05", 18),
+                    receivedAmountMin: parseUnits("0.0475", 18),
                     status: "Successfully swapped",
-                    expectedGasCost: parseUnits("0.01", 6),
+                    expectedGasCost: parseUnits("0.01", 18),
                 });
 
             const report = await walletManager.convertHoldingsToGas(2n);

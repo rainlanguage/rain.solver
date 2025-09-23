@@ -187,7 +187,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
             );
             expect(encodeFunctionData).toHaveBeenCalledTimes(4);
             expect(encodeFunctionData).toHaveBeenCalledWith({
-                abi: ABI.Orderbook.Primary.Orderbook,
+                abi: ABI.Orderbook.V4.Primary.Orderbook,
                 functionName: "multicall",
                 args: [["0xencodedData", "0xencodedData", "0xencodedData"]],
             });
