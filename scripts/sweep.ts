@@ -56,7 +56,7 @@ export async function main(argv: any[]) {
         .opts();
 
     // run sweep with the given params
-    await sweepFunds(params.mnemonic, params.subgraph, params.rpc, params.length, params.token);
+    await sweepFunds(params.mnemonic, params.sg, params.rpc, params.length, params.token);
 }
 
 /**
