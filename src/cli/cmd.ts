@@ -10,7 +10,7 @@ export async function cmd(argv: any): Promise<OptionValues> {
         .option(
             "-c, --config <path>",
             "Path to config yaml file, can be set in 'CONFIG' env var instead, if none is given, looks for ./config.yaml in curent directory",
-            process.env.CONFIG || "./config.yaml", // defaults to CONFIG env var or./config.yaml
+            process.env.CONFIG || "./.config.env.yaml", // defaults to CONFIG env var or./config.yaml
         )
         .description(
             [

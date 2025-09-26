@@ -4,7 +4,7 @@ import { describe, it, expect } from "vitest";
 describe("Test cli options", () => {
     it("should get cli options", async function () {
         const expected: Record<string, any> = {
-            config: "./config.yaml",
+            config: "./.config.env.yaml",
         };
 
         // default

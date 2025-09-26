@@ -1,19 +1,25 @@
 import { Pair } from "../order";
+import { SushiRouter } from "./sushi";
 import { Token } from "sushi/currency";
 import { Err, Result } from "../common";
 import { LiquidityProviders } from "sushi";
+import { BalancerRouter } from "./balancer";
 import { Account, Chain, PublicClient, Transport, parseUnits } from "viem";
-import { SushiRouter, SushiRouterError, SushiRouterErrorType } from "./sushi";
-import { BalancerRouter, BalancerRouterError, BalancerRouterErrorType } from "./balancer";
 import {
     TradeParamsType,
     GetTradeParamsArgs,
     RainSolverRouterBase,
-    RainSolverRouterError,
     RainSolverRouterQuote,
     RainSolverRouterQuoteParams,
-    RainSolverRouterErrorType,
 } from "./types";
+import {
+    SushiRouterError,
+    BalancerRouterError,
+    SushiRouterErrorType,
+    RainSolverRouterError,
+    BalancerRouterErrorType,
+    RainSolverRouterErrorType,
+} from "./error";
 
 export type RainSolverRouterConfig = {
     /** The chain id of the operating chain */

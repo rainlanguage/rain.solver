@@ -1,5 +1,4 @@
 import { calculatePrice18 } from "../../math";
-import { RainSolverBaseError } from "../../error/types";
 import { ABI, Result, TokenDetails } from "../../common";
 import { TakeOrdersConfigType } from "../../order/types";
 import { Chain, Account, Transport, formatUnits, PublicClient, encodeAbiParameters } from "viem";
@@ -19,6 +18,7 @@ import {
     RainSolverRouterBase,
     RainSolverRouterQuoteParams,
 } from "../types";
+import { BalancerRouterError, BalancerRouterErrorType } from "../error";
 
 // Balancer API URL for fetching routes
 export const BALANCER_API_URL = "https://api-v3.balancer.fi/" as const;
@@ -83,40 +83,6 @@ export type BalancerTradeParams = {
     /** The TakeOrdersConfig struct for onchain execution */
     takeOrdersConfigStruct: TakeOrdersConfigType;
 };
-
-/** Enumerates the possible error types that can occur within the Balancer Router functionalities */
-export enum BalancerRouterErrorType {
-    UnsupportedChain,
-    NoRouteFound,
-    FetchFailed,
-    SwapQueryFailed,
-    WasmEncodedError,
-}
-
-/**
- * Represents an error type for the Balancer Router functionalities.
- * This error class extends the `RainSolverBaseError` error class, with the `type`
- * property indicates the specific category of the error, as defined by the
- * `BalancerRouterErrorType` enum. The optional `cause` property can be used to
- * attach the original error or any relevant context that led to this error.
- *
- * @example
- * ```typescript
- * // without cause
- * throw new BalancerRouterError("msg", BalancerRouterErrorType);
- *
- * // with cause
- * throw new BalancerRouterError("msg", BalancerRouterErrorType, originalError);
- * ```
- */
-export class BalancerRouterError extends RainSolverBaseError {
-    type: BalancerRouterErrorType;
-    constructor(message: string, type: BalancerRouterErrorType, cause?: any) {
-        super(message, cause);
-        this.type = type;
-        this.name = "BalancerRouterError";
-    }
-}
 
 /**
  * The Balancer Router class provides methods to interact with the Balancer protocol,

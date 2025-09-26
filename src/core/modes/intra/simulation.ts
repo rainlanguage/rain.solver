@@ -45,6 +45,19 @@ export type IntraOrderbookTradePrepareedParams = {
     price?: bigint;
 };
 
+/**
+ * Simulates intra-orderbook trades by matching orders within the same orderbook.
+ *
+ * The `IntraOrderbookTradeSimulator` class extends {@link TradeSimulatorBase} and is responsible for:
+ * - Preparing trade parameters and building transaction objects for onchain execution.
+ * - Constructing calldata for both v4 and v5 orderbook (order v3 and v4).
+ * - Estimating the profit from a simulated trade by comparing input and output values, factoring in token prices.
+ * - Handling the simulation flow, including error handling and span attribute tracking for observability.
+ *
+ * @remarks
+ * Use this class to simulate and prepare trades between two orders in the same orderbook,
+ * including all necessary transaction data for execution on Ethereum-compatible blockchains.
+ */
 export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
     declare tradeArgs: SimulateIntraOrderbookTradeArgs;
     readonly inputBountyVaultId = `0x${"0".repeat(63)}1`;

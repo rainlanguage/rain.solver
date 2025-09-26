@@ -2,19 +2,20 @@ import { Pair } from "../order";
 import { ONE18 } from "../math";
 import { Result } from "../common";
 import { PublicClient } from "viem";
+import { SushiRouter } from "./sushi";
 import { Token } from "sushi/currency";
 import { LiquidityProviders } from "sushi";
+import { BalancerRouter } from "./balancer";
 import { RainSolverRouter, RainSolverRouterConfig } from "./router";
 import { describe, it, expect, vi, beforeEach, assert } from "vitest";
-import { SushiRouter, SushiRouterError, SushiRouterErrorType } from "./sushi";
-import { BalancerRouter, BalancerRouterError, BalancerRouterErrorType } from "./balancer";
+import { RouterType, RouteStatus, GetTradeParamsArgs, RainSolverRouterQuoteParams } from "./types";
 import {
-    RouterType,
-    RouteStatus,
-    GetTradeParamsArgs,
+    SushiRouterError,
+    BalancerRouterError,
+    SushiRouterErrorType,
+    BalancerRouterErrorType,
     RainSolverRouterErrorType,
-    RainSolverRouterQuoteParams,
-} from "./types";
+} from "./error";
 
 describe("RainSolverRouter", () => {
     const chainId = 1;

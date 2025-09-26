@@ -2,12 +2,13 @@ import { erc20Abi } from "viem";
 import { syncOrders } from "./sync";
 import { SgOrder } from "../subgraph";
 import { SharedState } from "../state";
+import { errorSnapshot } from "../error";
 import { quoteSingleOrder } from "./quote";
 import { PreAssembledSpan } from "../logger";
 import { SubgraphManager } from "../subgraph";
 import { downscaleProtection } from "./protection";
-import { errorSnapshot, RainSolverBaseError } from "../error";
 import { normalizeFloat, Result, TokenDetails } from "../common";
+import { OrderManagerError, OrderManagerErrorType } from "./error";
 import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
 import {
     Pair,
@@ -21,42 +22,11 @@ import {
 
 export * from "./types";
 export * from "./quote";
+export * from "./error";
 export * from "./config";
 
 /** The default owner limit */
 export const DEFAULT_OWNER_LIMIT = 25 as const;
-
-/** Enumerates the possible error types that can occur within the OrderManager functionalities */
-export enum OrderManagerErrorType {
-    UndefinedTokenDecimals,
-    DecodeAbiParametersError,
-    WasmEncodedError,
-}
-
-/**
- * Represents an error type for the OrderManager functionalities.
- * This error class extends the `RainSolverBaseError` error class, with the `type`
- * property indicates the specific category of the error, as defined by the
- * `OrderManagerErrorType` enum. The optional `cause` property can be used to
- * attach the original error or any relevant context that led to this error.
- *
- * @example
- * ```typescript
- * // without cause
- * throw new OrderManagerError("msg", OrderManagerErrorType);
- *
- * // with cause
- * throw new OrderManagerError("msg", OrderManagerErrorType, originalError);
- * ```
- */
-export class OrderManagerError extends RainSolverBaseError {
-    type: OrderManagerErrorType;
-    constructor(message: string, type: OrderManagerErrorType, cause?: any) {
-        super(message, cause);
-        this.type = type;
-        this.name = "OrderManagerError";
-    }
-}
 
 /**
  * OrderManager is responsible for managing orders state for Rainsolver during runtime, it
