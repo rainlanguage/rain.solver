@@ -1,7 +1,7 @@
 import { RainSolver } from "../..";
-import { Pair } from "../../../order";
+import { Order, Pair } from "../../../order";
 import { TradeType } from "../../types";
-import { ABI, Result } from "../../../common";
+import { ABI, Dispair, Result } from "../../../common";
 import { ONE18, scaleFrom18 } from "../../../math";
 import { RainSolverSigner } from "../../../signer";
 import { SimulationHaltReason } from "../simulator";
@@ -35,7 +35,7 @@ function makeOrderDetails(ratio = ONE18): Pair {
         orderbook: "0xorderbook",
         sellTokenDecimals: 18,
         buyTokenDecimals: 18,
-        takeOrder: { struct: {}, quote: { ratio } },
+        takeOrder: { struct: { order: { type: Order.Type.V3 } }, quote: { ratio } },
     } as Pair;
 }
 
@@ -45,9 +45,17 @@ describe("Test RouterTradeSimulator", () => {
     let tradeArgs: SimulateRouterTradeArgs;
     let simulator: RouterTradeSimulator;
     let preparedParams: RouterTradePreparedParams;
+    let dispair: Dispair;
+    let destination: `0x${string}`;
 
     beforeEach(() => {
         vi.clearAllMocks();
+        dispair = {
+            deployer: "0xdeployer",
+            interpreter: "0xinterpreter",
+            store: "0xstore",
+        };
+        destination = "0xdestination";
         mockSolver = {
             state: {
                 gasPrice: 1000000000000000000n,
@@ -55,18 +63,17 @@ describe("Test RouterTradeSimulator", () => {
                 chainConfig: {
                     isSpecialL2: true,
                 },
-                dispair: {
-                    deployer: "0xdeployer",
-                    interpreter: "0xinterpreter",
-                    store: "0xstore",
-                },
                 router: {
                     getTradeParams: vi.fn(),
                 },
+                contracts: {
+                    getAddressesForTrade: vi.fn().mockReturnValue({
+                        dispair,
+                        destination,
+                    }),
+                },
             },
             appOptions: {
-                arbAddress: "0xarbAddress",
-                balancerArbAddress: "0xbalancerArbAddress",
                 gasLimitMultiplier: 1.5,
                 gasCoveragePercentage: "100",
             },
@@ -135,6 +142,7 @@ describe("Test RouterTradeSimulator", () => {
                 blockNumber: tradeArgs.blockNumber,
                 isPartial: tradeArgs.isPartial,
             });
+            expect(mockSolver.state.contracts.getAddressesForTrade).not.toHaveBeenCalled();
         });
 
         it("should return error if getTradeParams fails with no route", async () => {
@@ -172,6 +180,7 @@ describe("Test RouterTradeSimulator", () => {
                 blockNumber: tradeArgs.blockNumber,
                 isPartial: tradeArgs.isPartial,
             });
+            expect(mockSolver.state.contracts.getAddressesForTrade).not.toHaveBeenCalled();
         });
 
         it("should return error if market price is lower than order's ratio", async () => {
@@ -230,6 +239,7 @@ describe("Test RouterTradeSimulator", () => {
                 blockNumber: tradeArgs.blockNumber,
                 isPartial: tradeArgs.isPartial,
             });
+            expect(mockSolver.state.contracts.getAddressesForTrade).not.toHaveBeenCalled();
         });
 
         it("should return success", async () => {
@@ -256,7 +266,7 @@ describe("Test RouterTradeSimulator", () => {
             assert(result.isOk());
             expect(result.value.type).toBe(TradeType.Balancer);
             expect(result.value.rawtx).toEqual({
-                to: "0xbalancerArbAddress",
+                to: "0xdestination",
                 gasPrice: mockSolver.state.gasPrice,
             });
             expect(result.value.price).toBe(params.quote.price);
@@ -288,6 +298,73 @@ describe("Test RouterTradeSimulator", () => {
                 blockNumber: tradeArgs.blockNumber,
                 isPartial: tradeArgs.isPartial,
             });
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledTimes(1);
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledWith(
+                tradeArgs.orderDetails,
+                TradeType.Balancer,
+            );
+        });
+
+        it("should return error when trade addresses are not configured", async () => {
+            const params = {
+                type: RouterType.Balancer,
+                quote: {
+                    type: RouterType.Balancer,
+                    status: "Success",
+                    price: 1234n * ONE18,
+                    route: {
+                        route: {},
+                        pcMap: new Map(),
+                    },
+                    amountOut: 1234n * ONE18,
+                },
+                routeVisual: ["some route"],
+                takeOrdersConfigStruct: {} as any,
+            };
+            (mockSolver.state.router.getTradeParams as Mock).mockResolvedValueOnce(
+                Result.ok(params),
+            );
+            (mockSolver.state.contracts.getAddressesForTrade as Mock).mockReturnValueOnce(
+                undefined,
+            );
+
+            const result = await simulator.prepareTradeParams();
+            assert(result.isErr());
+            expect(result.error.type).toBe(TradeType.Balancer);
+            expect(result.error.reason).toBe(SimulationHaltReason.UndefinedTradeDestinationAddress);
+            expect(result.error.spanAttributes["route"]).toEqual(["some route"]);
+            expect(result.error.spanAttributes["amountIn"]).toBe(
+                formatUnits(tradeArgs.maximumInputFixed, 18),
+            );
+            expect(result.error.spanAttributes["oppBlockNumber"]).toBe(
+                Number(tradeArgs.blockNumber),
+            );
+            expect(result.error.spanAttributes["amountOut"]).toBe(
+                formatUnits(params.quote.amountOut, tradeArgs.toToken.decimals),
+            );
+            expect(result.error.spanAttributes["marketPrice"]).toBe(
+                formatUnits(params.quote.price, 18),
+            );
+            expect(result.error.spanAttributes["route"]).toBe(params.routeVisual);
+            expect(mockSolver.state.router.getTradeParams).toHaveBeenCalledTimes(1);
+            expect(mockSolver.state.router.getTradeParams).toHaveBeenCalledWith({
+                state: mockSolver.state,
+                orderDetails: tradeArgs.orderDetails,
+                fromToken: tradeArgs.fromToken,
+                toToken: tradeArgs.toToken,
+                maximumInput: scaleFrom18(
+                    tradeArgs.maximumInputFixed,
+                    tradeArgs.orderDetails.sellTokenDecimals,
+                ),
+                signer: tradeArgs.signer,
+                blockNumber: tradeArgs.blockNumber,
+                isPartial: tradeArgs.isPartial,
+            });
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledTimes(1);
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledWith(
+                tradeArgs.orderDetails,
+                TradeType.Balancer,
+            );
         });
     });
 
@@ -298,6 +375,7 @@ describe("Test RouterTradeSimulator", () => {
                 EnsureBountyTaskErrorType.ComposeError,
             );
             (getEnsureBountyTaskBytecode as Mock).mockResolvedValueOnce(Result.err(error));
+            const getCalldataSpy = vi.spyOn(simulator, "getCalldata");
 
             const result = await simulator.setTransactionData(preparedParams);
             assert(result.isErr());
@@ -317,14 +395,24 @@ describe("Test RouterTradeSimulator", () => {
                     sender: simulator.tradeArgs.signer.account.address,
                 },
                 simulator.tradeArgs.solver.state.client,
-                simulator.tradeArgs.solver.state.dispair,
+                dispair,
+            );
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledTimes(1);
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledWith(
+                tradeArgs.orderDetails,
+                TradeType.RouteProcessor,
             );
             expect(encodeFunctionData).not.toHaveBeenCalled();
+            expect(getCalldataSpy).not.toHaveBeenCalled();
+
+            getCalldataSpy.mockRestore();
         });
 
         it("should return success", async () => {
             (getEnsureBountyTaskBytecode as Mock).mockResolvedValueOnce(Result.ok("0xdata"));
             (encodeFunctionData as Mock).mockReturnValue("0xencodedData");
+            const getCalldataSpy = vi.spyOn(simulator, "getCalldata");
+            getCalldataSpy.mockReturnValue("0xencodedData");
 
             const result = await simulator.setTransactionData(preparedParams);
             assert(result.isOk());
@@ -339,25 +427,24 @@ describe("Test RouterTradeSimulator", () => {
                     sender: simulator.tradeArgs.signer.account.address,
                 },
                 simulator.tradeArgs.solver.state.client,
-                simulator.tradeArgs.solver.state.dispair,
+                dispair,
             );
-            expect(encodeFunctionData).toHaveBeenCalledWith({
-                abi: ABI.Orderbook.V4.Primary.Arb,
-                functionName: "arb3",
-                args: [
-                    tradeArgs.orderDetails.orderbook as `0x${string}`,
-                    preparedParams.takeOrdersConfigStruct,
-                    {
-                        evaluable: {
-                            interpreter: simulator.tradeArgs.solver.state.dispair
-                                .interpreter as `0x${string}`,
-                            store: simulator.tradeArgs.solver.state.dispair.store as `0x${string}`,
-                            bytecode: "0xdata",
-                        },
-                        signedContext: [],
-                    },
-                ],
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledTimes(1);
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledWith(
+                tradeArgs.orderDetails,
+                TradeType.RouteProcessor,
+            );
+            expect(getCalldataSpy).toHaveBeenCalledTimes(1);
+            expect(getCalldataSpy).toHaveBeenCalledWith(preparedParams.takeOrdersConfigStruct, {
+                evaluable: {
+                    interpreter: dispair.interpreter as `0x${string}`,
+                    store: dispair.store as `0x${string}`,
+                    bytecode: "0xdata",
+                },
+                signedContext: [],
             });
+
+            getCalldataSpy.mockRestore();
         });
     });
 
@@ -417,6 +504,37 @@ describe("Test RouterTradeSimulator", () => {
             // final = -6
             const result = simulator.estimateProfit(marketPrice);
             expect(result).toBe(-6n * ONE18);
+        });
+    });
+
+    describe("Test getCalldata method", () => {
+        it("should return for pair v3", () => {
+            (encodeFunctionData as Mock).mockReturnValueOnce("0xcalldata");
+            const takeOrderConfig = { key: "value" } as any;
+            const task = { task: "task-value" } as any;
+            const result = simulator.getCalldata(takeOrderConfig, task);
+            expect(result).toBe("0xcalldata");
+            expect(encodeFunctionData).toHaveBeenCalledTimes(1);
+            expect(encodeFunctionData).toHaveBeenCalledWith({
+                abi: ABI.Orderbook.V4.Primary.Arb,
+                functionName: "arb3",
+                args: [simulator.tradeArgs.orderDetails.orderbook, takeOrderConfig, task],
+            });
+        });
+
+        it("should return for pair v4", () => {
+            (encodeFunctionData as Mock).mockReturnValueOnce("0xcalldata");
+            simulator.tradeArgs.orderDetails.takeOrder.struct.order.type = Order.Type.V4;
+            const takeOrderConfig = { key: "value" } as any;
+            const task = { task: "task-value" } as any;
+            const result = simulator.getCalldata(takeOrderConfig, task);
+            expect(result).toBe("0xcalldata");
+            expect(encodeFunctionData).toHaveBeenCalledTimes(1);
+            expect(encodeFunctionData).toHaveBeenCalledWith({
+                abi: ABI.Orderbook.V5.Primary.Arb,
+                functionName: "arb4",
+                args: [simulator.tradeArgs.orderDetails.orderbook, takeOrderConfig, task],
+            });
         });
     });
 });

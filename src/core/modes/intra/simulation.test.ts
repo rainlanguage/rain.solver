@@ -1,11 +1,11 @@
 import { RainSolver } from "../..";
 import { ONE18 } from "../../../math";
 import { TradeType } from "../../types";
-import { ABI, Result } from "../../../common";
 import { RainSolverSigner } from "../../../signer";
 import { SimulationHaltReason } from "../simulator";
-import { Pair, TakeOrderDetails } from "../../../order";
-import { encodeFunctionData, formatUnits, parseUnits } from "viem";
+import { Order, Pair, TakeOrderDetails } from "../../../order";
+import { ABI, Dispair, maxFloat, Result } from "../../../common";
+import { encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
     IntraOrderbookTradeSimulator,
@@ -18,6 +18,11 @@ import {
     EnsureBountyTaskErrorType,
     getEnsureBountyTaskBytecode,
 } from "../../../task";
+
+vi.mock("../../../common", async (importOriginal) => ({
+    ...(await importOriginal()),
+    maxFloat: vi.fn(),
+}));
 
 vi.mock("../../../task", async (importOriginal) => ({
     ...(await importOriginal()),
@@ -36,7 +41,10 @@ function makeOrderDetails(ratio = ONE18): Pair {
         sellToken: "0xsellToken" as `0x${string}`,
         sellTokenDecimals: 18,
         buyTokenDecimals: 18,
-        takeOrder: { struct: { inputIOIndex: 1, outputIOIndex: 0 }, quote: { ratio } },
+        takeOrder: {
+            struct: { order: { type: Order.Type.V3 }, inputIOIndex: 1, outputIOIndex: 0 },
+            quote: { ratio },
+        },
     } as Pair;
 }
 
@@ -46,9 +54,17 @@ describe("Test IntraOrderbookTradeSimulator", () => {
     let tradeArgs: SimulateIntraOrderbookTradeArgs;
     let simulator: IntraOrderbookTradeSimulator;
     let preparedParams: IntraOrderbookTradePrepareedParams;
+    let dispair: Dispair;
+    let destination: `0x${string}`;
 
     beforeEach(() => {
         vi.clearAllMocks();
+        dispair = {
+            deployer: "0xdeployer",
+            interpreter: "0xinterpreter",
+            store: "0xstore",
+        };
+        destination = "0xdestination";
         mockSolver = {
             state: {
                 gasPrice: 1000000000000000000n,
@@ -56,15 +72,14 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                 chainConfig: {
                     isSpecialL2: true,
                 },
-                dispair: {
-                    deployer: "0xdeployer",
-                    interpreter: "0xinterpreter",
-                    store: "0xstore",
+                contracts: {
+                    getAddressesForTrade: vi.fn().mockReturnValue({
+                        dispair,
+                        destination,
+                    }),
                 },
             },
             appOptions: {
-                arbAddress: "0xarbAddress",
-                balancerArbAddress: "0xbalancerArbAddress",
                 gasLimitMultiplier: 1.5,
                 gasCoveragePercentage: "100",
             },
@@ -108,7 +123,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
             assert(result.isOk());
             expect(result.value.type).toBe(TradeType.IntraOrderbook);
             expect(result.value.rawtx).toEqual({
-                to: "0xorderbook",
+                to: "0xdestination",
                 gasPrice: mockSolver.state.gasPrice,
             });
             expect(result.value.minimumExpected).toBe(0n);
@@ -121,6 +136,48 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                     maxOutput: formatUnits(tradeArgs.counterpartyOrderDetails.quote!.maxOutput, 18),
                     ratio: formatUnits(tradeArgs.counterpartyOrderDetails.quote!.ratio, 18),
                 }),
+            );
+            expect(
+                simulator.tradeArgs.solver.state.contracts.getAddressesForTrade,
+            ).toHaveBeenCalledTimes(1);
+            expect(
+                simulator.tradeArgs.solver.state.contracts.getAddressesForTrade,
+            ).toHaveBeenCalledWith(tradeArgs.orderDetails, TradeType.IntraOrderbook);
+        });
+
+        it("should return error for missing trade addresses", async () => {
+            (mockSolver.state.contracts.getAddressesForTrade as Mock).mockReturnValueOnce(
+                undefined,
+            );
+
+            const result = await simulator.prepareTradeParams();
+            assert(result.isErr());
+            expect(result.error.type).toBe(TradeType.IntraOrderbook);
+            expect(result.error.reason).toBe(SimulationHaltReason.UndefinedTradeDestinationAddress);
+            expect(result.error.spanAttributes["duration"]).toBeGreaterThan(0);
+            expect(result.error.spanAttributes["error"]).toContain(
+                "Cannot trade as dispair addresses are not configured for order",
+            );
+            expect(result.error.spanAttributes["against"]).toBe(
+                tradeArgs.counterpartyOrderDetails.id,
+            );
+            expect(result.error.spanAttributes["inputToEthPrice"]).toBe(tradeArgs.inputToEthPrice);
+            expect(result.error.spanAttributes["outputToEthPrice"]).toBe(
+                tradeArgs.outputToEthPrice,
+            );
+            expect(result.error.spanAttributes["oppBlockNumber"]).toBe(
+                Number(tradeArgs.blockNumber),
+            );
+            expect(result.error.spanAttributes["counterpartyOrderQuote"]).toBe(
+                JSON.stringify({
+                    maxOutput: formatUnits(tradeArgs.counterpartyOrderDetails.quote!.maxOutput, 18),
+                    ratio: formatUnits(tradeArgs.counterpartyOrderDetails.quote!.ratio, 18),
+                }),
+            );
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledTimes(1);
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledWith(
+                tradeArgs.orderDetails,
+                TradeType.IntraOrderbook,
             );
         });
     });
@@ -156,9 +213,14 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                     outputToEthPrice: parseUnits(tradeArgs.outputToEthPrice, 18),
                 },
                 simulator.tradeArgs.solver.state.client,
-                simulator.tradeArgs.solver.state.dispair,
+                dispair,
             );
             expect(encodeFunctionData).not.toHaveBeenCalled();
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledTimes(1);
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledWith(
+                tradeArgs.orderDetails,
+                TradeType.IntraOrderbook,
+            );
         });
 
         it("should return success", async () => {
@@ -183,7 +245,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                     outputToEthPrice: parseUnits(tradeArgs.outputToEthPrice, 18),
                 },
                 simulator.tradeArgs.solver.state.client,
-                simulator.tradeArgs.solver.state.dispair,
+                dispair,
             );
             expect(encodeFunctionData).toHaveBeenCalledTimes(4);
             expect(encodeFunctionData).toHaveBeenCalledWith({
@@ -191,6 +253,11 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                 functionName: "multicall",
                 args: [["0xencodedData", "0xencodedData", "0xencodedData"]],
             });
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledTimes(1);
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledWith(
+                tradeArgs.orderDetails,
+                TradeType.IntraOrderbook,
+            );
         });
     });
 
@@ -440,6 +507,167 @@ describe("Test IntraOrderbookTradeSimulator", () => {
             // total = 5 + 2.5 = 7.5
             const result = simulator.estimateProfit();
             expect(result).toBe(75n * ONE17); // 7.5 * ONE18
+        });
+    });
+
+    describe("Test getCalldata method", () => {
+        it("should return for pair v3", () => {
+            const spy = vi.spyOn(simulator, "getCalldataForV3Order");
+            (spy as Mock).mockReturnValueOnce("0xcalldata");
+            const task = { task: "task-value" } as any;
+            const result = simulator.getCalldata(task);
+            expect(result).toBe("0xcalldata");
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(spy).toHaveBeenCalledWith(task);
+
+            spy.mockRestore();
+        });
+
+        it("should return for pair v4", () => {
+            simulator.tradeArgs.orderDetails.takeOrder.struct.order.type = Order.Type.V4;
+            const spy = vi.spyOn(simulator, "getCalldataForV4Order");
+            (spy as Mock).mockReturnValueOnce("0xcalldata");
+            const task = { task: "task-value" } as any;
+            const result = simulator.getCalldata(task);
+            expect(result).toBe("0xcalldata");
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(spy).toHaveBeenCalledWith(task);
+
+            spy.mockRestore();
+        });
+    });
+
+    describe("Test getCalldataForV3Order method", () => {
+        it("should return for pair v3", () => {
+            (encodeFunctionData as Mock)
+                .mockReturnValue("default")
+                .mockReturnValueOnce("0xencodedData1")
+                .mockReturnValueOnce("0xencodedData2")
+                .mockReturnValueOnce("0xencodedData3")
+                .mockReturnValueOnce("0xmulticallData");
+            const task = { task: "task-value" } as any;
+            const result = simulator.getCalldataForV3Order(task);
+            expect(result).toBe("0xmulticallData");
+            expect(encodeFunctionData).toHaveBeenCalledTimes(4);
+            expect(encodeFunctionData).toHaveBeenNthCalledWith(1, {
+                abi: ABI.Orderbook.V4.Primary.Orderbook,
+                functionName: "withdraw2",
+                args: [
+                    simulator.tradeArgs.orderDetails.buyToken,
+                    BigInt(simulator.inputBountyVaultId),
+                    maxUint256,
+                    [],
+                ],
+            });
+            expect(encodeFunctionData).toHaveBeenNthCalledWith(2, {
+                abi: ABI.Orderbook.V4.Primary.Orderbook,
+                functionName: "withdraw2",
+                args: [
+                    simulator.tradeArgs.orderDetails.sellToken,
+                    BigInt(simulator.outputBountyVaultId),
+                    maxUint256,
+                    [task],
+                ],
+            });
+            expect(encodeFunctionData).toHaveBeenNthCalledWith(3, {
+                abi: ABI.Orderbook.V4.Primary.Orderbook,
+                functionName: "clear2",
+                args: [
+                    simulator.tradeArgs.orderDetails.takeOrder.struct.order,
+                    simulator.tradeArgs.counterpartyOrderDetails.struct.order,
+                    {
+                        aliceInputIOIndex: BigInt(
+                            simulator.tradeArgs.orderDetails.takeOrder.struct.inputIOIndex,
+                        ),
+                        aliceOutputIOIndex: BigInt(
+                            simulator.tradeArgs.orderDetails.takeOrder.struct.outputIOIndex,
+                        ),
+                        bobInputIOIndex: BigInt(
+                            simulator.tradeArgs.counterpartyOrderDetails.struct.inputIOIndex,
+                        ),
+                        bobOutputIOIndex: BigInt(
+                            simulator.tradeArgs.counterpartyOrderDetails.struct.outputIOIndex,
+                        ),
+                        aliceBountyVaultId: BigInt(simulator.inputBountyVaultId),
+                        bobBountyVaultId: BigInt(simulator.outputBountyVaultId),
+                    },
+                    [],
+                    [],
+                ],
+            });
+            expect(encodeFunctionData).toHaveBeenNthCalledWith(4, {
+                abi: ABI.Orderbook.V4.Primary.Orderbook,
+                functionName: "multicall",
+                args: [["0xencodedData3", "0xencodedData1", "0xencodedData2"]],
+            });
+        });
+    });
+
+    describe("Test getCalldataForV4Order method", () => {
+        it("should return for pair v4", () => {
+            simulator.tradeArgs.orderDetails.takeOrder.struct.order.type = Order.Type.V4;
+            (maxFloat as Mock).mockReturnValue("0x1234");
+            (encodeFunctionData as Mock)
+                .mockReturnValue("default")
+                .mockReturnValueOnce("0xencodedData1")
+                .mockReturnValueOnce("0xencodedData2")
+                .mockReturnValueOnce("0xencodedData3")
+                .mockReturnValueOnce("0xmulticallData");
+            const task = { task: "task-value" } as any;
+            const result = simulator.getCalldataForV4Order(task);
+            expect(result).toBe("0xmulticallData");
+            expect(encodeFunctionData).toHaveBeenCalledTimes(4);
+            expect(encodeFunctionData).toHaveBeenNthCalledWith(1, {
+                abi: ABI.Orderbook.V5.Primary.Orderbook,
+                functionName: "withdraw3",
+                args: [
+                    simulator.tradeArgs.orderDetails.buyToken,
+                    simulator.inputBountyVaultId,
+                    "0x1234",
+                    [],
+                ],
+            });
+            expect(encodeFunctionData).toHaveBeenNthCalledWith(2, {
+                abi: ABI.Orderbook.V5.Primary.Orderbook,
+                functionName: "withdraw3",
+                args: [
+                    simulator.tradeArgs.orderDetails.sellToken,
+                    simulator.outputBountyVaultId,
+                    "0x1234",
+                    [task],
+                ],
+            });
+            expect(encodeFunctionData).toHaveBeenNthCalledWith(3, {
+                abi: ABI.Orderbook.V5.Primary.Orderbook,
+                functionName: "clear3",
+                args: [
+                    simulator.tradeArgs.orderDetails.takeOrder.struct.order,
+                    simulator.tradeArgs.counterpartyOrderDetails.struct.order,
+                    {
+                        aliceInputIOIndex: BigInt(
+                            simulator.tradeArgs.orderDetails.takeOrder.struct.inputIOIndex,
+                        ),
+                        aliceOutputIOIndex: BigInt(
+                            simulator.tradeArgs.orderDetails.takeOrder.struct.outputIOIndex,
+                        ),
+                        bobInputIOIndex: BigInt(
+                            simulator.tradeArgs.counterpartyOrderDetails.struct.inputIOIndex,
+                        ),
+                        bobOutputIOIndex: BigInt(
+                            simulator.tradeArgs.counterpartyOrderDetails.struct.outputIOIndex,
+                        ),
+                        aliceBountyVaultId: simulator.inputBountyVaultId,
+                        bobBountyVaultId: simulator.outputBountyVaultId,
+                    },
+                    [],
+                    [],
+                ],
+            });
+            expect(encodeFunctionData).toHaveBeenNthCalledWith(4, {
+                abi: ABI.Orderbook.V5.Primary.Orderbook,
+                functionName: "multicall",
+                args: [["0xencodedData3", "0xencodedData1", "0xencodedData2"]],
+            });
         });
     });
 });
