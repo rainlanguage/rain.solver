@@ -1,14 +1,14 @@
 import { RainSolver } from "../..";
-import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
 import { errorSnapshot } from "../../../error";
 import { ONE18, scaleFrom18 } from "../../../math";
 import { RainSolverSigner } from "../../../signer";
+import { Pair, TakeOrdersConfigType } from "../../../order";
 import { Result, ABI, RawTransaction } from "../../../common";
 import { encodeFunctionData, formatUnits, parseUnits } from "viem";
+import { TradeType, FailedSimulation, TaskType } from "../../types";
 import { SimulationHaltReason, TradeSimulatorBase } from "../simulator";
 import { RainSolverRouterErrorType, RouterType } from "../../../router/types";
-import { TradeType, FailedSimulation, TakeOrdersConfigType } from "../../types";
 import {
     EnsureBountyTaskType,
     EnsureBountyTaskErrorType,
@@ -105,13 +105,12 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
 
         // determine trade type based on router type
         let type = TradeType.Router;
-        let arbAddress = this.tradeArgs.solver.appOptions.arbAddress;
         if (routeType === RouterType.Sushi) {
             type = TradeType.RouteProcessor;
         } else if (routeType === RouterType.Balancer) {
             type = TradeType.Balancer;
-            arbAddress = this.tradeArgs.solver.appOptions.balancerArbAddress!;
         } else {
+            // unreachable path
             type = TradeType.Router;
         }
 
@@ -131,8 +130,24 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
             return Result.err(result);
         }
 
+        // exit early if required trade addresses are not configured
+        const addresses = this.tradeArgs.solver.state.contracts.getAddressesForTrade(
+            orderDetails,
+            type,
+        );
+        if (!addresses) {
+            this.spanAttributes["error"] =
+                `Cannot trade as ${routeType} arb addresses are not configured for order ${orderDetails.takeOrder.struct.order.type} trade`;
+            this.spanAttributes["duration"] = performance.now() - this.startTime;
+            return Result.err({
+                type,
+                spanAttributes: this.spanAttributes,
+                reason: SimulationHaltReason.UndefinedTradeDestinationAddress,
+            });
+        }
+
         const rawtx: RawTransaction = {
-            to: arbAddress as `0x${string}`,
+            to: addresses.destination,
             gasPrice,
         };
         return Result.ok({
@@ -147,6 +162,12 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
     async setTransactionData(
         params: RouterTradePreparedParams,
     ): Promise<Result<void, FailedSimulation>> {
+        // we can be sure the addresses exist here since we checked in prepareTradeParams
+        const addresses = this.tradeArgs.solver.state.contracts.getAddressesForTrade(
+            this.tradeArgs.orderDetails,
+            params.type,
+        )!;
+
         // try to get task bytecode for ensure bounty task
         const taskBytecodeResult = await getEnsureBountyTaskBytecode(
             {
@@ -157,7 +178,7 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
                 sender: this.tradeArgs.signer.account.address,
             },
             this.tradeArgs.solver.state.client,
-            this.tradeArgs.solver.state.dispair,
+            addresses.dispair,
         );
         if (taskBytecodeResult.isErr()) {
             const errMsg = await errorSnapshot("", taskBytecodeResult.error);
@@ -174,8 +195,8 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
         }
         const task = {
             evaluable: {
-                interpreter: this.tradeArgs.solver.state.dispair.interpreter as `0x${string}`,
-                store: this.tradeArgs.solver.state.dispair.store as `0x${string}`,
+                interpreter: addresses.dispair.interpreter,
+                store: addresses.dispair.store,
                 bytecode:
                     this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0"
                         ? "0x"
@@ -183,15 +204,8 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
             },
             signedContext: [],
         };
-        params.rawtx.data = encodeFunctionData({
-            abi: ABI.Orderbook.V4.Primary.Arb,
-            functionName: "arb3",
-            args: [
-                this.tradeArgs.orderDetails.orderbook as `0x${string}`,
-                params.takeOrdersConfigStruct,
-                task,
-            ],
-        });
+
+        params.rawtx.data = this.getCalldata(params.takeOrdersConfigStruct, task);
         return Result.ok(void 0);
     }
 
@@ -203,5 +217,34 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
             ONE18;
         const estimatedProfit = marketAmountOut - orderInput;
         return (estimatedProfit * parseUnits(this.tradeArgs.ethPrice, 18)) / ONE18;
+    }
+
+    /**
+     * Builds the calldata based on the order type
+     * @param takeOrdersConfigStruct - The take orders config struct
+     * @param task - The ensure bounty task object
+     */
+    getCalldata(takeOrdersConfigStruct: TakeOrdersConfigType, task: TaskType): `0x${string}` {
+        if (Pair.isV3(this.tradeArgs.orderDetails)) {
+            return encodeFunctionData({
+                abi: ABI.Orderbook.V4.Primary.Arb,
+                functionName: "arb3",
+                args: [
+                    this.tradeArgs.orderDetails.orderbook as `0x${string}`,
+                    takeOrdersConfigStruct,
+                    task,
+                ],
+            });
+        } else {
+            return encodeFunctionData({
+                abi: ABI.Orderbook.V5.Primary.Arb,
+                functionName: "arb4",
+                args: [
+                    this.tradeArgs.orderDetails.orderbook as `0x${string}`,
+                    takeOrdersConfigStruct,
+                    task,
+                ],
+            });
+        }
     }
 }

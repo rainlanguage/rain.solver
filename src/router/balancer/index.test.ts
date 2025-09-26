@@ -1,5 +1,7 @@
 import { ONE18 } from "../../math";
+import { Order } from "../../order";
 import { Token } from "sushi/currency";
+import { AddressProvider } from "@balancer/sdk";
 import { RouterType, RouteStatus } from "../types";
 import { Result, TokenDetails } from "../../common";
 import { encodeAbiParameters, maxUint256, PublicClient } from "viem";
@@ -11,7 +13,6 @@ import {
     BalancerCachedRoute,
     BalancerRouterErrorType,
 } from ".";
-import { AddressProvider } from "@balancer/sdk";
 
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
@@ -1007,7 +1008,7 @@ describe("test BalancerRouter", () => {
             mockOrderDetails = {
                 takeOrder: {
                     struct: {
-                        order: "0xorder",
+                        order: { type: Order.Type.V3 },
                         inputIOIndex: 0,
                         outputIOIndex: 0,
                         signedContext: [],
@@ -1197,6 +1198,62 @@ describe("test BalancerRouter", () => {
             expect(result.error.type).toBe(BalancerRouterErrorType.NoRouteFound);
 
             tryQuoteSpy.mockRestore();
+        });
+
+        it("should return error when getTakeOrdersConfig fails", async () => {
+            const mockQuote = {
+                type: RouterType.Balancer as const,
+                status: RouteStatus.Success,
+                price: 3000n * ONE18,
+                route: [
+                    {
+                        tokenIn: mockTokenIn.address as `0x${string}`,
+                        exactAmountIn: mockSwapAmount,
+                        minAmountOut: 3000000000n,
+                        steps: [
+                            {
+                                pool: "0xpool1" as `0x${string}`,
+                                tokenOut: mockTokenOut.address as `0x${string}`,
+                                isBuffer: false,
+                            },
+                        ],
+                    },
+                ],
+                amountOut: 3000000000n,
+            };
+
+            const tryQuoteSpy = vi.spyOn(router, "tryQuote");
+            tryQuoteSpy.mockResolvedValue(Result.ok(mockQuote));
+
+            const visualizeSpy = vi.spyOn(BalancerRouter, "visualizeRoute");
+            visualizeSpy.mockReturnValue(["some route visual"]);
+
+            (encodeAbiParameters as Mock).mockReturnValue("0xencodedData");
+
+            const getTakeOrdersConfigSpy = vi.spyOn(router, "getTakeOrdersConfig");
+            getTakeOrdersConfigSpy.mockReturnValue(
+                Result.err({ msg: "", readableMsg: "some error" }),
+            );
+
+            const result = await router.getTradeParams(mockGetTradeParamsArgs);
+
+            assert(result.isErr());
+
+            expect(result.error.message).toContain("Failed to build TakeOrdersConfig struct");
+            expect(result.error.type).toBe(BalancerRouterErrorType.WasmEncodedError);
+            expect(result.error.cause).toEqual({ msg: "", readableMsg: "some error" });
+            expect(getTakeOrdersConfigSpy).toHaveBeenCalledWith(
+                mockGetTradeParamsArgs.orderDetails,
+                mockGetTradeParamsArgs.maximumInput,
+                mockQuote.price,
+                "0xencodedData",
+                mockGetTradeParamsArgs.state.appOptions.maxRatio,
+                mockGetTradeParamsArgs.isPartial,
+            );
+
+            visualizeSpy.mockRestore();
+            tryQuoteSpy.mockRestore();
+            getTakeOrdersConfigSpy.mockRestore();
         });
     });
 });

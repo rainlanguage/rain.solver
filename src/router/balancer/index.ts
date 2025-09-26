@@ -1,16 +1,8 @@
 import { calculatePrice18 } from "../../math";
 import { RainSolverBaseError } from "../../error/types";
 import { ABI, Result, TokenDetails } from "../../common";
-import { TakeOrdersConfigType } from "../../core/types";
-import {
-    Chain,
-    Account,
-    Transport,
-    maxUint256,
-    formatUnits,
-    PublicClient,
-    encodeAbiParameters,
-} from "viem";
+import { TakeOrdersConfigType } from "../../order/types";
+import { Chain, Account, Transport, formatUnits, PublicClient, encodeAbiParameters } from "viem";
 import {
     Path,
     Token,
@@ -98,6 +90,7 @@ export enum BalancerRouterErrorType {
     NoRouteFound,
     FetchFailed,
     SwapQueryFailed,
+    WasmEncodedError,
 }
 
 /**
@@ -490,17 +483,27 @@ export class BalancerRouter extends RainSolverRouterBase {
             /**/
         }
 
-        const orders = [orderDetails.takeOrder.struct];
-        const takeOrdersConfigStruct: TakeOrdersConfigType = {
-            minimumInput: 1n,
-            maximumInput: isPartial ? maximumInput : maxUint256,
-            maximumIORatio: state.appOptions.maxRatio ? maxUint256 : quote.price,
-            orders,
-            data: encodeAbiParameters(
+        const takeOrdersConfigStructResult = this.getTakeOrdersConfig(
+            orderDetails,
+            maximumInput,
+            quote.price,
+            encodeAbiParameters(
                 [{ type: "address" }, ABI.BalancerBatchRouter.Structs.SwapPathExactAmountIn],
                 [this.routerAddress, quote.route[0]],
             ),
-        };
+            state.appOptions.maxRatio,
+            isPartial,
+        );
+        if (takeOrdersConfigStructResult.isErr()) {
+            return Result.err(
+                new BalancerRouterError(
+                    "Failed to build TakeOrdersConfig struct",
+                    BalancerRouterErrorType.WasmEncodedError,
+                    takeOrdersConfigStructResult.error,
+                ),
+            );
+        }
+        const takeOrdersConfigStruct = takeOrdersConfigStructResult.value;
 
         return Result.ok({
             type: RouterType.Balancer,

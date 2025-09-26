@@ -3,6 +3,7 @@ import { RainSolver } from "../..";
 import { fallbackEthPrice } from "../dryrun";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
+import { SimulationHaltReason } from "../simulator";
 import { InterOrderbookTradeSimulator } from "./simulate";
 import { CounterpartySource, Pair } from "../../../order";
 import { SimulationResult, TradeType } from "../../types";
@@ -27,17 +28,19 @@ export async function findBestInterOrderbookTrade(
     outputToEthPrice: string,
     blockNumber: bigint,
 ): Promise<SimulationResult> {
-    // bail early if generic arb address is not set
-    if (!this.appOptions.genericArbAddress) {
+    const spanAttributes: Attributes = {};
+
+    // exit early if required trade addresses are not configured
+    if (!this.state.contracts.getAddressesForTrade(orderDetails, TradeType.InterOrderbook)) {
+        spanAttributes["error"] =
+            `Cannot trade as generic arb address is not configured for order ${orderDetails.takeOrder.struct.order.type} trade`;
         return Result.err({
             type: TradeType.InterOrderbook,
-            spanAttributes: {
-                error: "No generic arb address was set in config, cannot perform inter-orderbook trades",
-            },
+            spanAttributes,
+            reason: SimulationHaltReason.UndefinedTradeDestinationAddress,
         });
     }
 
-    const spanAttributes: Attributes = {};
     const counterpartyOrders = this.orderManager.getCounterpartyOrders(
         orderDetails,
         CounterpartySource.InterOrderbook,
@@ -48,6 +51,7 @@ export async function findBestInterOrderbookTrade(
     // run simulations for top 3 counterparty orders of each orderbook
     const promises = counterpartyOrders.flatMap((orderbookCounterparties) => {
         const cps = orderbookCounterparties.slice(0, 3);
+
         counterparties.push(...cps);
         return cps.map((counterpartyOrderDetails) => {
             return InterOrderbookTradeSimulator.withArgs({

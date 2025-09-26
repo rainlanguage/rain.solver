@@ -44,7 +44,7 @@ export async function initializeRound(
             "details.owner": orderDetails.takeOrder.struct.order.owner,
         });
 
-        // update the orderDetails vault balances from owner vaults map
+        // get updated balance for the orderDetails from owner vaults map
         orderDetails.sellTokenVaultBalance =
             this.orderManager.ownerTokenVaultMap
                 .get(orderDetails.orderbook)
@@ -85,6 +85,37 @@ export async function initializeRound(
                         buyToken: orderDetails.buyToken,
                         sellToken: orderDetails.sellToken,
                         status: ProcessOrderStatus.ZeroOutput,
+                        spanAttributes: {
+                            "details.pair": pair,
+                            "details.orders": orderDetails.takeOrder.id,
+                        },
+                    });
+                },
+            });
+            report.end();
+            checkpointReports.push(report);
+
+            // export the report to logger if logger is available
+            this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
+            continue;
+        }
+
+        // skip if the required addresses for trading are not configured
+        if (!this.state.contracts.getAddressesForTrade(orderDetails)) {
+            const endTime = performance.now();
+            settlements.push({
+                pair,
+                startTime,
+                orderHash: orderDetails.takeOrder.id,
+                owner: orderDetails.takeOrder.struct.order.owner,
+                settle: async () => {
+                    return Result.ok({
+                        endTime,
+                        tokenPair: pair,
+                        buyToken: orderDetails.buyToken,
+                        sellToken: orderDetails.sellToken,
+                        status: ProcessOrderStatus.UndefinedTradeAddresses,
+                        message: `Cannot trade as dispair addresses are not configured for order ${orderDetails.takeOrder.struct.order.type} trade`,
                         spanAttributes: {
                             "details.pair": pair,
                             "details.orders": orderDetails.takeOrder.id,
@@ -195,6 +226,10 @@ export async function finalizeRound(
                 }
                 case ProcessOrderStatus.FoundOpportunity: {
                     report.setStatus({ code: SpanStatusCode.OK, message: "found opportunity" });
+                    break;
+                }
+                case ProcessOrderStatus.UndefinedTradeAddresses: {
+                    report.setStatus({ code: SpanStatusCode.OK, message: value.message });
                     break;
                 }
                 default: {

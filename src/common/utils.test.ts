@@ -1,9 +1,11 @@
-import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import { vi, describe, it, expect, beforeEach, afterEach, assert } from "vitest";
 import {
     sleep,
+    toFloat,
     iterRandom,
     shuffleArray,
     promiseTimeout,
+    normalizeFloat,
     withBigintSerializer,
     extendObjectWithHeader,
 } from "./utils";
@@ -336,5 +338,35 @@ describe("Test extendObjectWithHeader", () => {
             bar: 2,
             "head.baz": 3,
         });
+    });
+});
+
+describe("Test normalizeFloat", () => {
+    it("should successfully normalize a valid float hex string", () => {
+        const result = normalizeFloat(
+            "0xffffffee00000000000000000000000000000000000000000de0b6b3a7640000",
+            18,
+        );
+
+        assert(result.isOk());
+        expect(result.value).toBe(1000000000000000000n);
+    });
+
+    it("should return error when Float.fromHex fails", () => {
+        const result = normalizeFloat("0xinvalid", 18);
+
+        assert(result.isErr());
+        expect(result.error.readableMsg).toContain("Invalid hex string");
+    });
+});
+
+describe("Test toFloat", () => {
+    it("should convert bigint to hex float successfully", () => {
+        const result = toFloat(1000000000000000000n, 18);
+
+        assert(result.isOk());
+        expect(result.value).toBe(
+            "0xffffffee00000000000000000000000000000000000000000de0b6b3a7640000",
+        );
     });
 });

@@ -1,17 +1,25 @@
 import { RainSolver } from "../..";
-import { Pair } from "../../../order";
 import { errorSnapshot } from "../../../error";
 import { ONE18, scaleFrom18 } from "../../../math";
 import { RainSolverSigner } from "../../../signer";
-import { Result, ABI, RawTransaction } from "../../../common";
+import { WasmEncodedError } from "@rainlanguage/float";
+import { TradeType, FailedSimulation, TaskType } from "../../types";
 import { SimulationHaltReason, TradeSimulatorBase } from "../simulator";
-import { TradeType, FailedSimulation, TakeOrdersConfigType } from "../../types";
+import { Result, ABI, RawTransaction, maxFloat, toFloat, minFloat } from "../../../common";
 import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
 import {
     EnsureBountyTaskType,
     EnsureBountyTaskErrorType,
     getEnsureBountyTaskBytecode,
 } from "../../../task";
+import {
+    Pair,
+    PairV3,
+    PairV4,
+    TakeOrdersConfigType,
+    TakeOrdersConfigTypeV3,
+    TakeOrdersConfigTypeV4,
+} from "../../../order";
 
 /** Arguments for simulating inter-orderbook trade */
 export type SimulateInterOrderbookTradeArgs = {
@@ -76,50 +84,46 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
         const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
         this.spanAttributes["maxInput"] = maximumInput.toString();
 
-        const opposingMaxInput =
-            orderDetails.takeOrder.quote!.ratio === 0n
-                ? maxUint256
-                : scaleFrom18(
-                      (maximumInputFixed * orderDetails.takeOrder.quote!.ratio) / ONE18,
-                      orderDetails.buyTokenDecimals,
-                  );
+        const encodedFnResult = this.getCounterpartyTakeOrdersConfig(
+            orderDetails,
+            counterpartyOrderDetails,
+            maximumInputFixed,
+        );
+        if (encodedFnResult.isErr()) {
+            this.spanAttributes["error"] = encodedFnResult.error.readableMsg;
+            const result: FailedSimulation = {
+                spanAttributes: this.spanAttributes,
+                type: TradeType.InterOrderbook,
+                noneNodeError: encodedFnResult.error.readableMsg,
+            };
+            return Result.err(result);
+        }
+        const encodedFN = encodedFnResult.value;
 
-        const opposingMaxIORatio =
-            orderDetails.takeOrder.quote!.ratio === 0n
-                ? maxUint256
-                : ONE18 ** 2n / orderDetails.takeOrder.quote!.ratio;
+        const takeOrdersConfigStruct = this.getTakeOrdersConfig(
+            orderDetails,
+            counterpartyOrderDetails,
+            encodedFN,
+        );
 
-        // encode takeOrders2() and build tx fields
-        const encodedFN = encodeFunctionData({
-            abi: ABI.Orderbook.V4.Primary.Orderbook,
-            functionName: "takeOrders2",
-            args: [
-                {
-                    minimumInput: 1n,
-                    maximumInput: opposingMaxInput, // main maxout * main ratio
-                    maximumIORatio: opposingMaxIORatio, // inverse of main ratio (1 / ratio)
-                    orders: [counterpartyOrderDetails.takeOrder.struct], // opposing orders
-                    data: "0x",
-                },
-            ],
-        });
-        const takeOrdersConfigStruct: TakeOrdersConfigType = {
-            minimumInput: 1n,
-            maximumInput: maxUint256,
-            maximumIORatio: maxUint256,
-            orders: [orderDetails.takeOrder.struct],
-            data: encodeAbiParameters(
-                [{ type: "address" }, { type: "address" }, { type: "bytes" }],
-                [
-                    counterpartyOrderDetails.orderbook as `0x${string}`,
-                    counterpartyOrderDetails.orderbook as `0x${string}`,
-                    encodedFN,
-                ],
-            ),
-        };
+        // exit early if required trade addresses are not configured
+        const addresses = this.tradeArgs.solver.state.contracts.getAddressesForTrade(
+            orderDetails,
+            TradeType.InterOrderbook,
+        );
+        if (!addresses) {
+            this.spanAttributes["error"] =
+                `Cannot trade as generic arb address is not configured for order ${orderDetails.takeOrder.struct.order.type} trade`;
+            this.spanAttributes["duration"] = performance.now() - this.startTime;
+            return Result.err({
+                type: TradeType.InterOrderbook,
+                spanAttributes: this.spanAttributes,
+                reason: SimulationHaltReason.UndefinedTradeDestinationAddress,
+            });
+        }
 
         const rawtx: RawTransaction = {
-            to: this.tradeArgs.solver.appOptions.genericArbAddress as `0x${string}`,
+            to: addresses.destination,
             gasPrice,
         };
         return Result.ok({
@@ -133,6 +137,12 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
     async setTransactionData(
         params: InterOrderbookTradePreparedParams,
     ): Promise<Result<void, FailedSimulation>> {
+        // we can be sure the addresses exist here since we checked in prepareTradeParams
+        const addresses = this.tradeArgs.solver.state.contracts.getAddressesForTrade(
+            this.tradeArgs.orderDetails,
+            params.type,
+        )!;
+
         // try to get task bytecode for ensure bounty task
         const taskBytecodeResult = await getEnsureBountyTaskBytecode(
             {
@@ -143,7 +153,7 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
                 sender: this.tradeArgs.signer.account.address,
             },
             this.tradeArgs.solver.state.client,
-            this.tradeArgs.solver.state.dispair,
+            addresses.dispair,
         );
         if (taskBytecodeResult.isErr()) {
             const errMsg = await errorSnapshot("", taskBytecodeResult.error);
@@ -160,8 +170,8 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
         }
         const task = {
             evaluable: {
-                interpreter: this.tradeArgs.solver.state.dispair.interpreter as `0x${string}`,
-                store: this.tradeArgs.solver.state.dispair.store as `0x${string}`,
+                interpreter: addresses.dispair.interpreter as `0x${string}`,
+                store: addresses.dispair.store as `0x${string}`,
                 bytecode:
                     this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0"
                         ? "0x"
@@ -170,15 +180,7 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
             signedContext: [],
         };
 
-        params.rawtx.data = encodeFunctionData({
-            abi: ABI.Orderbook.V4.Primary.Arb,
-            functionName: "arb3",
-            args: [
-                this.tradeArgs.orderDetails.orderbook as `0x${string}`,
-                params.takeOrdersConfigStruct,
-                task,
-            ],
-        });
+        params.rawtx.data = this.getCalldata(params.takeOrdersConfigStruct, task);
         return Result.ok(void 0);
     }
 
@@ -216,5 +218,229 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
             ((counterpartyOutput - orderInput) * parseUnits(this.tradeArgs.inputToEthPrice, 18)) /
             ONE18;
         return outputProfit + inputProfit;
+    }
+
+    /**
+     * Creates a new TakeOrdersConfigType based on the order and counterparty order,
+     * this is unified method to handle any order versions combiations
+     * @param orderDetails - The order pair to create the config for
+     * @param counterpartyOrderDetails - Counterparty order
+     * @param maximumInputFixed - The trade maximum input
+     */
+    getTakeOrdersConfig(
+        orderDetails: Pair,
+        counterpartyOrderDetails: Pair,
+        encodedFN: `0x${string}`,
+    ): TakeOrdersConfigType {
+        if (Pair.isV3(orderDetails)) {
+            return this.getTakeOrdersConfigV3(orderDetails, counterpartyOrderDetails, encodedFN);
+        } else {
+            return this.getTakeOrdersConfigV4(orderDetails, counterpartyOrderDetails, encodedFN);
+        }
+    }
+
+    /**
+     * Creates a new TakeOrdersConfigTypeV3 based on the v3 order and counterparty order
+     * @param orderDetails - The order pair v3 to create the config for
+     * @param counterpartyOrderDetails - Counterparty order
+     * @param maximumInputFixed - The trade maximum input
+     */
+    getTakeOrdersConfigV3(
+        orderDetails: PairV3,
+        counterpartyOrderDetails: Pair,
+        encodedFN: `0x${string}`,
+    ): TakeOrdersConfigTypeV3 {
+        const takeOrdersConfigStruct: TakeOrdersConfigTypeV3 = {
+            minimumInput: 1n,
+            maximumInput: maxUint256,
+            maximumIORatio: maxUint256,
+            orders: [orderDetails.takeOrder.struct],
+            data: encodeAbiParameters(
+                [{ type: "address" }, { type: "address" }, { type: "bytes" }],
+                [
+                    counterpartyOrderDetails.orderbook as `0x${string}`,
+                    counterpartyOrderDetails.orderbook as `0x${string}`,
+                    encodedFN,
+                ],
+            ),
+        };
+        return takeOrdersConfigStruct;
+    }
+
+    /**
+     * Creates a new TakeOrdersConfigTypeV4 based on the v4 order and counterparty order
+     * @param orderDetails - The order pair v4 to create the config for
+     * @param counterpartyOrderDetails - Counterparty order
+     * @param maximumInputFixed - The trade maximum input
+     */
+    getTakeOrdersConfigV4(
+        orderDetails: PairV4,
+        counterpartyOrderDetails: Pair,
+        encodedFN: `0x${string}`,
+    ): TakeOrdersConfigTypeV4 {
+        const takeOrdersConfigStruct: TakeOrdersConfigTypeV4 = {
+            minimumInput: minFloat(orderDetails.sellTokenDecimals),
+            maximumInput: maxFloat(orderDetails.sellTokenDecimals),
+            maximumIORatio: maxFloat(18),
+            orders: [orderDetails.takeOrder.struct],
+            data: encodeAbiParameters(
+                [{ type: "address" }, { type: "address" }, { type: "bytes" }],
+                [
+                    counterpartyOrderDetails.orderbook as `0x${string}`,
+                    counterpartyOrderDetails.orderbook as `0x${string}`,
+                    encodedFN,
+                ],
+            ),
+        };
+        return takeOrdersConfigStruct;
+    }
+
+    /**
+     * Creates the encoded TakeOrdersConfigType based on the order and counterparty order,
+     * this is unified method to handle any order versions combiations
+     * @param orderDetails - The order pair to create the config for
+     * @param counterpartyOrderDetails - Counterparty order
+     * @param maximumInputFixed - The trade maximum input
+     */
+    getCounterpartyTakeOrdersConfig(
+        orderDetails: Pair,
+        counterpartyOrderDetails: Pair,
+        maximumInputFixed: bigint,
+    ): Result<`0x${string}`, WasmEncodedError> {
+        if (Pair.isV3(counterpartyOrderDetails)) {
+            return Result.ok(
+                this.getEncodedCounterpartyTakeOrdersConfigV3(
+                    orderDetails,
+                    counterpartyOrderDetails as PairV3,
+                    maximumInputFixed,
+                ),
+            );
+        } else {
+            return this.getEncodedCounterpartyTakeOrdersConfigV4(
+                orderDetails as PairV4,
+                counterpartyOrderDetails as PairV4,
+                maximumInputFixed,
+            );
+        }
+    }
+
+    /**
+     * Creates encoded TakeOrdersConfigTypeV3 based on the order and counterparty v3 order
+     * @param orderDetails - The order pair
+     * @param counterpartyOrderDetails - Counterparty v3 order
+     * @param maximumInputFixed - The trade maximum input
+     */
+    getEncodedCounterpartyTakeOrdersConfigV3(
+        orderDetails: Pair,
+        counterpartyOrderDetails: PairV3,
+        maximumInputFixed: bigint,
+    ): `0x${string}` {
+        const opposingMaxInput =
+            orderDetails.takeOrder.quote!.ratio === 0n
+                ? maxUint256
+                : scaleFrom18(
+                      (maximumInputFixed * orderDetails.takeOrder.quote!.ratio) / ONE18,
+                      orderDetails.buyTokenDecimals,
+                  );
+
+        const opposingMaxIORatio =
+            orderDetails.takeOrder.quote!.ratio === 0n
+                ? maxUint256
+                : ONE18 ** 2n / orderDetails.takeOrder.quote!.ratio;
+
+        // encode takeOrders2() and build tx fields
+        const encodedFN = encodeFunctionData({
+            abi: ABI.Orderbook.V4.Primary.Orderbook,
+            functionName: "takeOrders2",
+            args: [
+                {
+                    minimumInput: 1n,
+                    maximumInput: opposingMaxInput, // main maxout * main ratio
+                    maximumIORatio: opposingMaxIORatio, // inverse of main ratio (1 / ratio)
+                    orders: [counterpartyOrderDetails.takeOrder.struct], // opposing orders
+                    data: "0x",
+                },
+            ],
+        });
+        return encodedFN;
+    }
+
+    /**
+     * Creates encoded TakeOrdersConfigTypeV4 based on the order and counterparty v4 order
+     * @param orderDetails - The order pair
+     * @param counterpartyOrderDetails - Counterparty v4 order to create config for
+     * @param maximumInputFixed - The trade maximum input
+     */
+    getEncodedCounterpartyTakeOrdersConfigV4(
+        orderDetails: Pair,
+        counterpartyOrderDetails: PairV4,
+        maximumInputFixed: bigint,
+    ): Result<`0x${string}`, WasmEncodedError> {
+        let opposingMaxInput: `0x${string}` = maxFloat(orderDetails.buyTokenDecimals);
+        let opposingMaxIORatio: `0x${string}` = maxFloat(18);
+        if (orderDetails.takeOrder.quote!.ratio !== 0n) {
+            const maxInputResult = toFloat(
+                scaleFrom18(
+                    (maximumInputFixed * orderDetails.takeOrder.quote!.ratio) / ONE18,
+                    orderDetails.buyTokenDecimals,
+                ),
+                orderDetails.buyTokenDecimals,
+            );
+            if (maxInputResult.isErr()) {
+                return Result.err(maxInputResult.error);
+            }
+            opposingMaxInput = maxInputResult.value;
+
+            const maxIoRatioResult = toFloat(ONE18 ** 2n / orderDetails.takeOrder.quote!.ratio, 18);
+            if (maxIoRatioResult.isErr()) {
+                return Result.err(maxIoRatioResult.error);
+            }
+            opposingMaxIORatio = maxIoRatioResult.value;
+        }
+
+        // encode takeOrders3() and build tx fields
+        const encodedFN = encodeFunctionData({
+            abi: ABI.Orderbook.V5.Primary.Orderbook,
+            functionName: "takeOrders3",
+            args: [
+                {
+                    minimumInput: minFloat(orderDetails.sellTokenDecimals),
+                    maximumInput: opposingMaxInput, // main maxout * main ratio
+                    maximumIORatio: opposingMaxIORatio, // inverse of main ratio (1 / ratio)
+                    orders: [counterpartyOrderDetails.takeOrder.struct], // opposing orders
+                    data: "0x",
+                },
+            ],
+        });
+        return Result.ok(encodedFN);
+    }
+
+    /**
+     * Builds the calldata based on the order type
+     * @param takeOrdersConfigStruct - The take orders config struct
+     * @param task - The ensure bounty task object
+     */
+    getCalldata(takeOrdersConfigStruct: TakeOrdersConfigType, task: TaskType): `0x${string}` {
+        if (Pair.isV3(this.tradeArgs.orderDetails)) {
+            return encodeFunctionData({
+                abi: ABI.Orderbook.V4.Primary.Arb,
+                functionName: "arb3",
+                args: [
+                    this.tradeArgs.orderDetails.orderbook as `0x${string}`,
+                    takeOrdersConfigStruct,
+                    task,
+                ],
+            });
+        } else {
+            return encodeFunctionData({
+                abi: ABI.Orderbook.V5.Primary.Arb,
+                functionName: "arb4",
+                args: [
+                    this.tradeArgs.orderDetails.orderbook as `0x${string}`,
+                    takeOrdersConfigStruct,
+                    task,
+                ],
+            });
+        }
     }
 }

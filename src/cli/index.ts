@@ -414,8 +414,12 @@ export class RainSolverCli {
             "meta.chain": ChainKey[this.state.chainConfig.id as ChainId],
             "meta.chainId": this.state.chainConfig.id,
             "meta.sgs": this.subgraphManager.subgraphs,
-            "meta.rpArb": this.appOptions.arbAddress,
-            "meta.genericArb": this.appOptions.genericArbAddress,
+            "meta.contracts.v4": this.state.contracts.v4
+                ? JSON.stringify(this.state.contracts.v4)
+                : "N/A",
+            "meta.contracts.v5": this.state.contracts.v5
+                ? JSON.stringify(this.state.contracts.v5)
+                : "N/A",
             "meta.orderbooks": Array.from(await this.subgraphManager.getOrderbooks()),
             "meta.mainAccount": this.walletManager.mainWallet.address,
             "meta.gitCommitHash": process?.env?.GIT_COMMIT ?? "N/A",

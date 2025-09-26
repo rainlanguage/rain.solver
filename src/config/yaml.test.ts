@@ -18,9 +18,11 @@ topupAmount: 0.5
 writeRpc:
     - url: http://write-rpc.example.com
 subgraph: ["http://subgraph.example.com"]
-arbAddress: "0x1111111111111111111111111111111111111111"
-balancerArbAddress: "0x3333333333333333333333333333333333333333"
-dispair: "0x2222222222222222222222222222222222222222"
+contracts:
+  v4:
+    sushiArbAddress: "0x1111111111111111111111111111111111111111"
+    balancerArbAddress: "0x3333333333333333333333333333333333333333"
+    dispair: "0x2222222222222222222222222222222222222222"
 liquidityProviders: 
  - lp1
  - lp2
@@ -70,10 +72,14 @@ sgFilter:
             topupAmount: "0.5",
             writeRpc: [{ url: "http://write-rpc.example.com" }],
             subgraph: ["http://subgraph.example.com"],
-            arbAddress: "0x1111111111111111111111111111111111111111",
-            balancerArbAddress: "0x3333333333333333333333333333333333333333",
-            dispair: "0x2222222222222222222222222222222222222222",
-            genericArbAddress: undefined,
+            contracts: {
+                v4: {
+                    sushiArb: "0x1111111111111111111111111111111111111111",
+                    balancerArb: "0x3333333333333333333333333333333333333333",
+                    dispair: "0x2222222222222222222222222222222222222222",
+                    genericArb: undefined,
+                },
+            },
             liquidityProviders: ["lp1", "lp2"],
             route: "multi",
             sleep: 20 * 1000,
@@ -137,9 +143,13 @@ sgFilter:
             rpc: "$MY_RPC",
             writeRpc: [{ url: "http://write-rpc.example.com" }],
             subgraph: ["http://subgraph.example.com"],
-            arbAddress: "0x1111111111111111111111111111111111111111",
-            dispair: "0x2222222222222222222222222222222222222222",
-            genericArbAddress: "0x3333333333333333333333333333333333333333",
+            contracts: {
+                v5: {
+                    sushiArbAddress: "0x1111111111111111111111111111111111111111",
+                    dispair: "0x2222222222222222222222222222222222222222",
+                    genericArbAddress: "0x3333333333333333333333333333333333333333",
+                },
+            },
             liquidityProviders: ["lp1", "lp2"],
             route: "multi",
             sleep: "20",
@@ -196,15 +206,15 @@ sgFilter:
         assert.deepEqual(result.writeRpc, [{ url: "http://write-rpc.example.com" }]);
         assert.deepEqual(result.subgraph, ["http://subgraph.example.com"]);
         assert.deepEqual(
-            result.arbAddress,
+            result.contracts.v5?.sushiArb,
             "0x1111111111111111111111111111111111111111".toLowerCase(),
         );
         assert.deepEqual(
-            result.dispair,
+            result.contracts.v5?.dispair,
             "0x2222222222222222222222222222222222222222".toLowerCase(),
         );
         assert.deepEqual(
-            result.genericArbAddress,
+            result.contracts.v5?.genericArb,
             "0x3333333333333333333333333333333333333333".toLowerCase(),
         );
         assert.deepEqual(result.liquidityProviders, ["lp1", "lp2"]);

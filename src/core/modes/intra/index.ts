@@ -5,6 +5,7 @@ import { fallbackEthPrice } from "../dryrun";
 import { ONE18, scaleTo18 } from "../../../math";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
+import { SimulationHaltReason } from "../simulator";
 import { CounterpartySource, Pair } from "../../../order";
 import { IntraOrderbookTradeSimulator } from "./simulation";
 import { Result, extendObjectWithHeader } from "../../../common";
@@ -30,6 +31,17 @@ export async function findBestIntraOrderbookTrade(
     blockNumber: bigint,
 ): Promise<SimulationResult> {
     const spanAttributes: Attributes = {};
+
+    // exit early if required trade addresses are not configured
+    if (!this.state.contracts.getAddressesForTrade(orderDetails, TradeType.IntraOrderbook)) {
+        spanAttributes["error"] =
+            `Cannot trade as dispair addresses are not configured for order ${orderDetails.takeOrder.struct.order.type} trade`;
+        return Result.err({
+            type: TradeType.IntraOrderbook,
+            spanAttributes,
+            reason: SimulationHaltReason.UndefinedTradeDestinationAddress,
+        });
+    }
 
     // get counterparties and perform a general filter on them
     const counterpartyOrders = this.orderManager

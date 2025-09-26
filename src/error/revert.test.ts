@@ -404,6 +404,8 @@ describe("Test revert error handling functions", () => {
                 events: [
                     ABI.Orderbook.V4.Primary.Orderbook[13],
                     ABI.Orderbook.V4.Primary.Orderbook[15],
+                    ABI.Orderbook.V5.Primary.Orderbook[7],
+                    ABI.Orderbook.V5.Primary.Orderbook[8],
                 ],
                 address: "0xOrderbook",
                 blockHash: mockReceipt.blockHash,

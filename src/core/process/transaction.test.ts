@@ -1,11 +1,10 @@
 import { BaseError } from "viem";
-import { Result } from "../../common";
 import { Token } from "sushi/currency";
 import { processReceipt } from "./receipt";
 import { containsNodeError } from "../../error";
-import { withBigintSerializer } from "../../common";
-import { RainSolverSigner, RawTransaction } from "../../signer";
+import { RainSolverSigner } from "../../signer";
 import { processTransaction, ProcessTransactionArgs } from "./transaction";
+import { RawTransaction, Result, withBigintSerializer } from "../../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
     ProcessOrderFailure,

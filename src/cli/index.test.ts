@@ -95,6 +95,11 @@ describe("Test RainSolverCli", () => {
     let mockRainSolver: RainSolver;
     let mockLogger: RainSolverLogger;
     let rainSolverCli: RainSolverCli;
+    const contracts = {
+        v4: {
+            router: "0xrouter",
+        },
+    };
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -173,6 +178,7 @@ describe("Test RainSolverCli", () => {
             client: {},
             avgGasCost: 1000000000000000000n,
             gasCosts: [500000000000000000n, 1500000000000000000n],
+            contracts,
         } as any;
 
         mockOrderManager = {
@@ -427,8 +433,8 @@ describe("Test RainSolverCli", () => {
                 "meta.chain": "ethereum",
                 "meta.chainId": 1,
                 "meta.sgs": ["subgraph1", "subgraph2"],
-                "meta.rpArb": undefined,
-                "meta.genericArb": undefined,
+                "meta.contracts.v4": JSON.stringify(contracts.v4),
+                "meta.contracts.v5": "N/A",
                 "meta.orderbooks": ["orderbook1", "orderbook2"],
                 "meta.mainAccount": "0xMainWallet",
                 "meta.gitCommitHash": "N/A",

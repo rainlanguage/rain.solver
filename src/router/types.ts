@@ -1,12 +1,20 @@
-import { Pair } from "../order";
-import { Result } from "../common";
 import { SharedState } from "../state";
 import { Token } from "sushi/currency";
 import { RainSolverSigner } from "../signer";
-import { SushiRouterError, SushiRouterQuote, SushiTradeParams } from "./sushi";
-import { Account, Chain, PublicClient, Transport } from "viem";
-import { BalancerRouterError, BalancerRouterQuote, BalancerTradeParams } from "./balancer";
 import { RainSolverBaseError } from "../error";
+import { WasmEncodedError } from "@rainlanguage/float";
+import { maxFloat, minFloat, Result, toFloat } from "../common";
+import { Account, Chain, maxUint256, PublicClient, Transport } from "viem";
+import { SushiRouterError, SushiRouterQuote, SushiTradeParams } from "./sushi";
+import { BalancerRouterError, BalancerRouterQuote, BalancerTradeParams } from "./balancer";
+import {
+    Pair,
+    PairV3,
+    PairV4,
+    TakeOrdersConfigType,
+    TakeOrdersConfigTypeV3,
+    TakeOrdersConfigTypeV4,
+} from "../order";
 
 /** Represents the different router types */
 export enum RouterType {
@@ -186,5 +194,114 @@ export abstract class RainSolverRouterBase {
         gasPriceBI;
         routeType;
         return undefined;
+    }
+
+    /**
+     * Creates a new TakeOrdersConfigTypeV4 based on the given v3 order and other parameters
+     * This is the default implementation, but child classes can override it if needed.
+     * @param order The order pair v3 to create the config for
+     * @param maximumInput The maximum input amount
+     * @param price The current market price for input amount
+     * @param data The TakeOrdersConfig data
+     * @param maxRatio Whether to use the maximum IO ratio
+     * @param isPartial Whether the trade is a partial fill
+     */
+    getTakeOrdersConfigV3(
+        order: PairV3,
+        maximumInput: bigint,
+        price: bigint,
+        data: `0x${string}`,
+        maxRatio: boolean,
+        isPartial: boolean,
+    ): TakeOrdersConfigTypeV3 {
+        const takeOrdersConfigStruct: TakeOrdersConfigTypeV3 = {
+            minimumInput: 1n,
+            maximumInput: isPartial ? maximumInput : maxUint256,
+            maximumIORatio: maxRatio ? maxUint256 : price,
+            orders: [order.takeOrder.struct],
+            data,
+        };
+        return takeOrdersConfigStruct;
+    }
+
+    /**
+     * Creates a new TakeOrdersConfigTypeV4 based on the given v4 order and other parameters
+     * This is the default implementation, but child classes can override it if needed.
+     * @param order The order pair v4 to create the config for
+     * @param maximumInput The maximum input amount
+     * @param price The current market price for input amount
+     * @param data The TakeOrdersConfig data
+     * @param maxRatio Whether to use the maximum IO ratio
+     * @param isPartial Whether the trade is a partial fill
+     */
+    getTakeOrdersConfigV4(
+        order: PairV4,
+        maximumInput: bigint,
+        price: bigint,
+        data: `0x${string}`,
+        maxRatio: boolean,
+        isPartial: boolean,
+    ): Result<TakeOrdersConfigTypeV4, WasmEncodedError> {
+        let maximumInputFloat: `0x${string}` = maxFloat(order.sellTokenDecimals);
+        if (isPartial) {
+            const valueResult = toFloat(maximumInput, order.sellTokenDecimals);
+            if (valueResult.isErr()) {
+                return Result.err(valueResult.error);
+            }
+            maximumInputFloat = valueResult.value;
+        }
+
+        let maximumIORatioFloat: `0x${string}` = maxFloat(18);
+        if (!maxRatio) {
+            const valueResult = toFloat(price, 18);
+            if (valueResult.isErr()) {
+                return Result.err(valueResult.error);
+            }
+            maximumIORatioFloat = valueResult.value;
+        }
+
+        const takeOrdersConfigStruct: TakeOrdersConfigTypeV4 = {
+            minimumInput: minFloat(order.sellTokenDecimals),
+            maximumInput: maximumInputFloat,
+            maximumIORatio: maximumIORatioFloat,
+            orders: [order.takeOrder.struct],
+            data,
+        };
+        return Result.ok(takeOrdersConfigStruct);
+    }
+
+    /**
+     * Creates a new TakeOrdersConfigType based on the given order, its version and other parameters
+     * This is the default implementation that works for both V3 and V4 orders, but child classes can
+     * override it if needed.
+     * @param order The order pair to create the config for
+     * @param maximumInput The maximum input amount
+     * @param price The current market price for input amount
+     * @param data The TakeOrdersConfig data
+     * @param maxRatio Whether to use the maximum IO ratio
+     * @param isPartial Whether the trade is a partial fill
+     */
+    getTakeOrdersConfig(
+        order: Pair,
+        maximumInput: bigint,
+        price: bigint,
+        data: `0x${string}`,
+        maxRatio: boolean,
+        isPartial: boolean,
+    ): Result<TakeOrdersConfigType, WasmEncodedError> {
+        if (Pair.isV3(order)) {
+            return Result.ok(
+                this.getTakeOrdersConfigV3(order, maximumInput, price, data, maxRatio, isPartial),
+            );
+        } else {
+            return this.getTakeOrdersConfigV4(
+                order,
+                maximumInput,
+                price,
+                data,
+                maxRatio,
+                isPartial,
+            );
+        }
     }
 }

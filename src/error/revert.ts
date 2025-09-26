@@ -154,6 +154,20 @@ export async function tryDetectFrontrun(
                         data: rawtx.data!,
                     });
                     return (result?.args?.[1] as any)?.orders?.[0];
+                } else if (rawtx.data!.toLowerCase().startsWith("0x4ed39461")) {
+                    // arb4 trade
+                    const result = decodeFunctionData({
+                        abi: [ABI.Orderbook.V5.Primary.Arb[1]],
+                        data: rawtx.data!,
+                    });
+                    return (result?.args?.[1] as any)?.orders?.[0];
+                } else if (rawtx.data!.toLowerCase().startsWith("0xfa501182")) {
+                    // clear3 trade
+                    const result = decodeFunctionData({
+                        abi: [ABI.Orderbook.V5.Primary.Orderbook[19]],
+                        data: rawtx.data!,
+                    });
+                    return result?.args?.[1];
                 } else {
                     // clear2 trade
                     const result = decodeFunctionData({
@@ -173,8 +187,10 @@ export async function tryDetectFrontrun(
             const logs = (
                 await viemClient.getLogs({
                     events: [
-                        ABI.Orderbook.V4.Primary.Orderbook[13],
-                        ABI.Orderbook.V4.Primary.Orderbook[15],
+                        ABI.Orderbook.V4.Primary.Orderbook[13], // TakeOrdersV2
+                        ABI.Orderbook.V4.Primary.Orderbook[15], // ClearV2
+                        ABI.Orderbook.V5.Primary.Orderbook[7], // ClearV3
+                        ABI.Orderbook.V5.Primary.Orderbook[8], // TakeOrdersV3
                     ],
                     address: orderbook,
                     blockHash: receipt.blockHash,
