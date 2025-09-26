@@ -6,14 +6,10 @@ import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { extendObjectWithHeader } from "../../../logger";
 import { SimulationResult, TradeType } from "../../types";
-import {
-    trySimulateTrade,
-    findLargestTradeSize,
-    RouteProcessorSimulationHaltReason,
-} from "./simulate";
+import { trySimulateTrade, RouterSimulationHaltReason } from "./simulate";
 
 /**
- * Tries to find the best trade against route processor for the given order,
+ * Tries to find the best trade against rain router (balancer and sushi) for the given order,
  * it will try to simulate a trade for full trade size (order's max output)
  * and if it was not successful it will try again with partial trade size
  * @param this - RainSolver instance
@@ -24,7 +20,7 @@ import {
  * @param fromToken - The token to trade from
  * @param blockNumber - The current block number
  */
-export async function findBestRouteProcessorTrade(
+export async function findBestRouterTrade(
     this: RainSolver,
     orderDetails: Pair,
     signer: RainSolverSigner,
@@ -39,7 +35,7 @@ export async function findBestRouteProcessorTrade(
     if (!ethPrice) {
         spanAttributes["error"] = "no route to get price of input token to eth";
         return Result.err({
-            type: TradeType.RouteProcessor,
+            type: TradeType.Router,
             spanAttributes,
         });
     }
@@ -62,26 +58,32 @@ export async function findBestRouteProcessorTrade(
     }
     extendObjectWithHeader(spanAttributes, fullTradeSizeSimResult.error.spanAttributes, "full");
 
-    // return early if no route was found for this order's pair
-    if (fullTradeSizeSimResult.error.reason === RouteProcessorSimulationHaltReason.NoRoute) {
+    // return early if no route was found for this order's pair or dryrun failed
+    // in other words only try partial trade size if the full trade size failed due
+    // to order ratio being greater than market price
+    if (
+        fullTradeSizeSimResult.error.reason !==
+        RouterSimulationHaltReason.OrderRatioGreaterThanMarketPrice
+    ) {
         return Result.err({
-            type: TradeType.RouteProcessor,
+            type: fullTradeSizeSimResult.error.type,
             spanAttributes,
             noneNodeError: fullTradeSizeSimResult.error.noneNodeError,
         });
     }
 
     // try simulation for partial trade size
-    const partialTradeSize = findLargestTradeSize.call(
-        this,
+    const partialTradeSize = this.state.router.findLargestTradeSize(
         orderDetails,
         toToken,
         fromToken,
         maximumInput,
+        this.state.gasPrice,
+        this.appOptions.route,
     );
     if (!partialTradeSize) {
         return Result.err({
-            type: TradeType.RouteProcessor,
+            type: fullTradeSizeSimResult.error.type,
             spanAttributes,
             noneNodeError: fullTradeSizeSimResult.error.noneNodeError,
         });
@@ -91,7 +93,7 @@ export async function findBestRouteProcessorTrade(
         fromToken,
         toToken,
         signer,
-        maximumInputFixed: maximumInput,
+        maximumInputFixed: partialTradeSize,
         ethPrice,
         isPartial: true,
         blockNumber,
@@ -105,7 +107,7 @@ export async function findBestRouteProcessorTrade(
         "partial",
     );
     return Result.err({
-        type: TradeType.RouteProcessor,
+        type: fullTradeSizeSimResult.error.type,
         spanAttributes,
         noneNodeError:
             fullTradeSizeSimResult.error.noneNodeError ??

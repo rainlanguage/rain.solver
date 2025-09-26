@@ -2,11 +2,11 @@ import assert from "assert";
 import { RainSolver } from "../..";
 import { Result } from "../../../common";
 import { BaseError, erc20Abi } from "viem";
+import { fallbackEthPrice } from "../dryrun";
 import { ONE18, scaleTo18 } from "../../../math";
 import { Attributes } from "@opentelemetry/api";
 import { trySimulateTrade } from "./simulation";
 import { RainSolverSigner } from "../../../signer";
-import { fallbackEthPrice } from "../../../router";
 import { CounterpartySource, Pair } from "../../../order";
 import { extendObjectWithHeader } from "../../../logger";
 import { containsNodeError, errorSnapshot } from "../../../error";
@@ -145,6 +145,9 @@ export async function findBestIntraOrderbookTrade(
             assert(res.isErr()); // for type check as we know all results are errors
             extendObjectWithHeader(spanAttributes, res.error.spanAttributes, "intraOrderbook." + i);
             allNoneNodeErrors.push(res.error.noneNodeError);
+        }
+        if (!results.length) {
+            spanAttributes["error"] = "no counterparties found for intra-orderbook trade";
         }
         return Result.err({
             type: TradeType.IntraOrderbook,

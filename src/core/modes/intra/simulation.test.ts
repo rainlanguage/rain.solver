@@ -107,6 +107,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.spanAttributes.stage).toBe(1);
         expect(result.error.spanAttributes.oppBlockNumber).toBe(123);
         expect(result.error.type).toBe("intraOrderbook");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
     });
 
     it("should return ok result if all steps succeed with gasCoveragePercentage 0", async () => {
@@ -136,6 +137,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.rawtx).toHaveProperty("to", "0xorderbook");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
         expect(result.value.type).toBe("intraOrderbook");
+        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
 
         // assert encodeFunctionData was called correctly for multicall
         expect(encodeFunctionData).toHaveBeenCalledWith({
@@ -216,6 +218,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.rawtx).toHaveProperty("to", "0xorderbook");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
         expect(result.value.type).toBe("intraOrderbook");
+        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
 
         // verify encodeFunctionData called multiple times (initial, final, and last)
         expect(encodeFunctionData).toHaveBeenCalledTimes(8); // 4 calls * 2 dryruns
@@ -249,6 +252,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.error.spanAttributes["gasEst.initial.gasPrice"]).toBe("1");
         expect(result.error.spanAttributes["gasEst.initial.minBountyExpected"]).toBe("202");
         expect(result.error.type).toBe("intraOrderbook");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
 
         // verify encodeFunctionData was called for both dryruns
         expect(encodeFunctionData).toHaveBeenCalledTimes(6); // 3 calls * 2 dryruns
@@ -272,6 +276,7 @@ describe("Test trySimulateTrade", () => {
 
         assert(result.isOk());
         expect(result.value.spanAttributes.foundOpp).toBe(true);
+        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
 
         // verify clear2 was called with correct IO indices
         expect(encodeFunctionData).toHaveBeenCalledWith({
@@ -303,5 +308,6 @@ describe("Test trySimulateTrade", () => {
         assert(result.isErr());
         expect(result.error).toHaveProperty("spanAttributes");
         expect(result.error.type).toBe("intraOrderbook");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
     });
 });

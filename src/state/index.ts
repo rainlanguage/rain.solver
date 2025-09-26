@@ -3,23 +3,26 @@ import { AppOptions } from "../config";
 import { Token } from "sushi/currency";
 import { getGasPrice } from "./gasPrice";
 import { BalancerRouter } from "../router";
+import { LiquidityProviders } from "sushi";
+import { SushiRouter } from "../router/sushi";
+import { AddressProvider } from "@balancer/sdk";
 import { WalletConfig } from "../wallet/config";
+import { RainSolverRouter } from "../router/router";
 import { SubgraphConfig } from "../subgraph/config";
 import { RainSolverBaseError } from "../error/types";
 import { OrderManagerConfig } from "../order/config";
-import { LiquidityProviders, RainDataFetcher } from "sushi";
+import { RainSolverRouterError } from "../router/types";
 import { ABI, Result, TokenDetails, Dispair } from "../common";
-import { getMarketPrice, processLiquidityProviders } from "../router";
 import { ChainConfig, ChainConfigError, getChainConfig } from "./chain";
-import { createPublicClient, PublicClient, ReadContractErrorType } from "viem";
 import { RpcState, rainSolverTransport, RainSolverTransportConfig } from "../rpc";
+import { createPublicClient, parseUnits, PublicClient, ReadContractErrorType } from "viem";
 
 /** Enumerates the possible error types that can occur within the chain config */
 export enum SharedStateErrorType {
     ChainConfigError,
     FailedToGetDispairInterpreterAddress,
     FailedToGetDispairStoreAddress,
-    SushiRouterInitializationError,
+    RouterInitializationError,
 }
 
 /**
@@ -35,11 +38,11 @@ export enum SharedStateErrorType {
  */
 export class SharedStateError extends RainSolverBaseError {
     type: SharedStateErrorType;
-    override cause?: ReadContractErrorType | ChainConfigError;
+    override cause?: ReadContractErrorType | ChainConfigError | RainSolverRouterError;
     constructor(
         message: string,
         type: SharedStateErrorType,
-        cause?: ReadContractErrorType | ChainConfigError,
+        cause?: ReadContractErrorType | ChainConfigError | RainSolverRouterError,
     ) {
         super(message);
         this.type = type;
@@ -52,6 +55,8 @@ export class SharedStateError extends RainSolverBaseError {
  * SharedState configuration that holds required data for instantiating SharedState
  */
 export type SharedStateConfig = {
+    /** Application options */
+    appOptions: AppOptions;
     /** Dispair, deployer, store and interpreter addresses */
     dispair: Dispair;
     /** Wallet configurations */
@@ -82,10 +87,8 @@ export type SharedStateConfig = {
     transactionGas?: string;
     /** RainSolver transport configuration */
     rainSolverTransportConfig?: RainSolverTransportConfig;
-    /** RainDataFetcher instance */
-    dataFetcher: RainDataFetcher;
-    /** Balancer router instance */
-    balancerRouter?: BalancerRouter;
+    /** RainSolver router instance */
+    router: RainSolverRouter;
 };
 export namespace SharedStateConfig {
     export async function tryFromAppOptions(
@@ -154,45 +157,48 @@ export namespace SharedStateConfig {
         const interpreter = interpreterResult.value;
         const store = storeResult.value;
 
-        const liquidityProviders = processLiquidityProviders(options.liquidityProviders);
-        const rainDataFetcherResult = await (async (): Promise<
-            Result<RainDataFetcher, SharedStateError>
-        > => {
+        const liquidityProviders = SushiRouter.processLiquidityProviders(
+            options.liquidityProviders,
+        );
+        const balancerRouterAddress = (() => {
             try {
-                const res = await RainDataFetcher.init(
-                    chainConfig.id as ChainId,
-                    client,
-                    liquidityProviders,
-                );
-                return Result.ok(res);
-            } catch (error) {
-                return Result.err(
-                    new SharedStateError(
-                        "Failed to init sushi RainDataFetcher",
-                        SharedStateErrorType.SushiRouterInitializationError,
-                        error as ReadContractErrorType,
-                    ),
-                );
+                return AddressProvider.BatchRouter(chainId);
+            } catch {
+                return undefined;
             }
         })();
-        if (rainDataFetcherResult.isErr()) {
-            return Result.err(rainDataFetcherResult.error);
+        const routerResult = await RainSolverRouter.create({
+            chainId,
+            client,
+            sushiRouterConfig: {
+                liquidityProviders,
+                sushiRouteProcessor4Address: chainConfig.routeProcessors["4"] as `0x${string}`,
+            },
+            balancerRouterConfig:
+                options.balancerArbAddress && balancerRouterAddress
+                    ? {
+                          balancerRouterAddress,
+                      }
+                    : undefined,
+        });
+        if (routerResult.isErr()) {
+            return Result.err(
+                new SharedStateError(
+                    "Failed to init RainSolverRouter",
+                    SharedStateErrorType.RouterInitializationError,
+                    routerResult.error,
+                ),
+            );
         }
-        const dataFetcher = rainDataFetcherResult.value;
-
-        const balancerRouter = (() => {
-            const res = BalancerRouter.init(chainId);
-            if (res.isOk()) return res.value;
-            else return undefined;
-        })();
 
         const config: SharedStateConfig = {
+            appOptions: options,
             client,
             rpcState,
             writeRpcState,
             chainConfig,
-            dataFetcher,
             rainSolverTransportConfig,
+            router: routerResult.value,
             transactionGas: options.txGas,
             gasPriceMultiplier: options.gasPriceMultiplier,
             walletConfig: WalletConfig.tryFromAppOptions(options),
@@ -204,7 +210,6 @@ export namespace SharedStateConfig {
                 store,
                 deployer: options.dispair as `0x${string}`,
             },
-            balancerRouter,
         };
 
         // try to get init gas price
@@ -232,6 +237,7 @@ export namespace SharedStateConfig {
  * watches the gas price during runtime by reading it periodically
  */
 export class SharedState {
+    readonly appOptions: AppOptions;
     /** Dispair, deployer, store and interpreter addresses */
     readonly dispair: Dispair;
     /** Wallet configurations */
@@ -256,6 +262,8 @@ export class SharedState {
     readonly rainSolverTransportConfig?: RainSolverTransportConfig;
     /** Balancer router instance */
     readonly balancerRouter?: BalancerRouter;
+    /** RainSolver router instance */
+    readonly router: RainSolverRouter;
 
     /** Current gas price of the operating chain */
     gasPrice = 0n;
@@ -265,14 +273,13 @@ export class SharedState {
     rpc: RpcState;
     /** Keeps the app's write RPC state */
     writeRpc?: RpcState;
-    /** RainDataFetcher instance */
-    dataFetcher: RainDataFetcher;
     /** List of latest successful transactions gas costs */
     gasCosts: bigint[] = [];
 
     private gasPriceWatcher: NodeJS.Timeout | undefined;
 
     constructor(config: SharedStateConfig) {
+        this.appOptions = config.appOptions;
         this.client = config.client;
         this.dispair = config.dispair;
         this.walletConfig = config.walletConfig;
@@ -282,8 +289,7 @@ export class SharedState {
         this.orderManagerConfig = config.orderManagerConfig;
         this.rpc = config.rpcState;
         this.writeRpc = config.writeRpcState;
-        this.dataFetcher = config.dataFetcher;
-        this.balancerRouter = config.balancerRouter;
+        this.router = config.router;
         if (typeof config.gasPriceMultiplier === "number") {
             this.gasPriceMultiplier = config.gasPriceMultiplier;
         }
@@ -363,14 +369,14 @@ export class SharedState {
      * @returns The market price for the token pair or undefined if no route were found
      */
     getMarketPrice(fromToken: Token, toToken: Token, blockNumber?: bigint) {
-        return getMarketPrice(
-            this.chainConfig.id,
-            this.dataFetcher,
+        return this.router.getMarketPrice({
             fromToken,
             toToken,
-            this.gasPrice,
             blockNumber,
-            this.balancerRouter,
-        );
+            gasPrice: this.gasPrice,
+            amountIn: parseUnits("1", fromToken.decimals),
+            sushiRouteType: this.appOptions.route,
+            skipFetch: false,
+        });
     }
 }

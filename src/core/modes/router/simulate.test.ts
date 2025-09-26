@@ -1,25 +1,23 @@
-import { Router } from "sushi";
 import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
 import { ONE18 } from "../../../math";
-import { Token } from "sushi/currency";
 import { Result } from "../../../common";
 import { Pair } from "../../../order";
 import { SimulationResult } from "../../types";
+import { encodeFunctionData, maxUint256 } from "viem";
 import { getEnsureBountyTaskBytecode } from "../../../task";
-import { encodeFunctionData, encodeAbiParameters, maxUint256 } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
+import { trySimulateTrade, SimulateRouterTradeArgs, RouterSimulationHaltReason } from "./simulate";
 import {
-    trySimulateTrade,
-    findLargestTradeSize,
-    SimulateRouteProcessorTradeArgs,
-    RouteProcessorSimulationHaltReason,
-} from "./simulate";
+    RouterType,
+    RouteStatus,
+    RainSolverRouterError,
+    RainSolverRouterErrorType,
+} from "../../../router/types";
 
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
     encodeFunctionData: vi.fn().mockReturnValue("0xdata"),
-    encodeAbiParameters: vi.fn().mockReturnValue("0xparams"),
 }));
 
 vi.mock("./utils", () => ({
@@ -40,14 +38,6 @@ vi.mock("../dryrun", () => ({
     dryrun: vi.fn(),
 }));
 
-vi.mock("sushi", async (importOriginal) => ({
-    ...(await importOriginal()),
-    Router: {
-        findBestRoute: vi.fn(),
-        routeProcessor4Params: vi.fn().mockReturnValue({ routeCode: "0xroute" }),
-    },
-}));
-
 function makeOrderDetails(ratio = 1n * ONE18): Pair {
     return {
         orderbook: "0xorderbook",
@@ -59,15 +49,15 @@ function makeOrderDetails(ratio = 1n * ONE18): Pair {
 
 describe("Test trySimulateTrade", () => {
     let solver: RainSolver;
-    let args: SimulateRouteProcessorTradeArgs;
+    let args: SimulateRouterTradeArgs;
 
     beforeEach(() => {
         vi.clearAllMocks();
         solver = {
             state: {
                 gasPrice: 1n,
-                dataFetcher: {
-                    getCurrentPoolCodeMap: vi.fn().mockReturnValue("mockPcMap"),
+                router: {
+                    getTradeParams: vi.fn(),
                 },
                 chainConfig: {
                     id: 1,
@@ -82,6 +72,7 @@ describe("Test trySimulateTrade", () => {
             },
             appOptions: {
                 arbAddress: "0xarb",
+                balancerArbAddress: "0xbalancerArb",
                 gasCoveragePercentage: "0",
                 maxRatio: false,
                 route: undefined,
@@ -100,25 +91,51 @@ describe("Test trySimulateTrade", () => {
         } as any;
     });
 
-    it("should return NoRoute if Router.findBestRoute returns NoWay", async () => {
-        (Router.findBestRoute as Mock).mockReturnValueOnce({ status: "NoWay" });
+    it("should return NoRoute if getTradeParams returns NoRouteFound", async () => {
+        (solver.state.router.getTradeParams as Mock).mockResolvedValue(
+            Result.err(new RainSolverRouterError("", RainSolverRouterErrorType.NoRouteFound)),
+        );
 
         const result: SimulationResult = await trySimulateTrade.call(solver, args);
 
         assert(result.isErr());
         expect(result.error).toHaveProperty("spanAttributes");
         expect(result.error).toHaveProperty("reason");
-        expect(result.error.reason).toBe(RouteProcessorSimulationHaltReason.NoRoute);
-        expect(result.error.spanAttributes.route).toBe("no-way");
-        expect(result.error.type).toBe("routeProcessor");
+        expect(result.error.reason).toBe(RouterSimulationHaltReason.NoRoute);
+        expect(result.error.spanAttributes.route).toBe("no way for sushi and balancer");
+        expect(result.error.type).toBe("router");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
+        });
     });
 
     it("should return OrderRatioGreaterThanMarketPrice if price < order ratio", async () => {
-        (Router.findBestRoute as Mock).mockReturnValueOnce({
-            status: "OK",
-            amountOutBI: 1n * ONE18,
-            legs: [],
-        });
+        (solver.state.router.getTradeParams as Mock).mockResolvedValue(
+            Result.ok({
+                type: RouterType.Sushi,
+                quote: {
+                    type: RouterType.Sushi,
+                    status: RouteStatus.Success,
+                    price: ONE18 / 10n,
+                    route: {
+                        route: {},
+                        pcMap: new Map(),
+                    },
+                    amountOut: ONE18,
+                },
+                routeVisual: ["route visual"],
+                takeOrdersConfigStruct: {},
+            }),
+        );
+
         // Set order ratio higher than price
         args.orderDetails = makeOrderDetails(2n * ONE18);
 
@@ -128,23 +145,46 @@ describe("Test trySimulateTrade", () => {
         expect(result.error).toHaveProperty("spanAttributes");
         expect(result.error).toHaveProperty("reason");
         expect(result.error.reason).toBe(
-            RouteProcessorSimulationHaltReason.OrderRatioGreaterThanMarketPrice,
+            RouterSimulationHaltReason.OrderRatioGreaterThanMarketPrice,
         );
         expect(result.error.spanAttributes.error).toBe("Order's ratio greater than market price");
         expect(Array.isArray(result.error.spanAttributes.route)).toBe(true);
         expect(result.error.type).toBe("routeProcessor");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
+        });
     });
 
     it("should return NoOpportunity if initial dryrun fails", async () => {
-        (Router.findBestRoute as Mock).mockReturnValueOnce({
-            status: "OK",
-            amountOutBI: 20n * ONE18,
-            legs: [],
-        });
+        (solver.state.router.getTradeParams as Mock).mockResolvedValue(
+            Result.ok({
+                type: RouterType.Balancer,
+                quote: {
+                    type: RouterType.Balancer,
+                    status: RouteStatus.Success,
+                    price: 2n * ONE18,
+                    route: {
+                        route: {},
+                        pcMap: new Map(),
+                    },
+                    amountOut: 20n * ONE18,
+                },
+                routeVisual: ["route visual"],
+                takeOrdersConfigStruct: {},
+            }),
+        );
         (dryrun as Mock).mockResolvedValueOnce(
             Result.err({
                 spanAttributes: { stage: 1 },
-                reason: RouteProcessorSimulationHaltReason.NoOpportunity,
+                reason: RouterSimulationHaltReason.NoOpportunity,
             }),
         );
         args.orderDetails = makeOrderDetails(1n * ONE18);
@@ -154,18 +194,47 @@ describe("Test trySimulateTrade", () => {
         assert(result.isErr());
         expect(result.error).toHaveProperty("spanAttributes");
         expect(result.error).toHaveProperty("reason");
-        expect(result.error.reason).toBe(RouteProcessorSimulationHaltReason.NoOpportunity);
+        expect(result.error.reason).toBe(RouterSimulationHaltReason.NoOpportunity);
         expect(result.error.spanAttributes.stage).toBe(1);
         expect(result.error.spanAttributes.oppBlockNumber).toBe(123);
-        expect(result.error.type).toBe("routeProcessor");
+        expect(result.error.type).toBe("balancer");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
+        });
     });
 
     it("should return ok result if all steps succeed with gasCoveragePercentage 0", async () => {
-        (Router.findBestRoute as Mock).mockReturnValue({
-            status: "OK",
-            amountOutBI: 20n * ONE18,
-            legs: [],
-        });
+        (solver.state.router.getTradeParams as Mock).mockResolvedValue(
+            Result.ok({
+                type: RouterType.Sushi,
+                quote: {
+                    type: RouterType.Sushi,
+                    status: RouteStatus.Success,
+                    price: 2n * ONE18,
+                    route: {
+                        route: {},
+                        pcMap: new Map(),
+                    },
+                    amountOut: 20n * ONE18,
+                },
+                routeVisual: ["route visual"],
+                takeOrdersConfigStruct: {
+                    data: "0xparams",
+                    maximumIORatio: 2000000000000000000n,
+                    maximumInput: maxUint256,
+                    minimumInput: 1n,
+                    orders: [{}],
+                },
+            }),
+        );
         (dryrun as Mock).mockResolvedValueOnce(
             Result.ok({
                 estimation: { gas: 100n, totalGasCost: 200n, gasPrice: 1n },
@@ -192,6 +261,7 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.rawtx).toHaveProperty("to", "0xarb");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
         expect(result.value.type).toBe("routeProcessor");
+        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
 
         // Assert encodeFunctionData was called correctly
         expect(encodeFunctionData).toHaveBeenCalledWith({
@@ -216,20 +286,36 @@ describe("Test trySimulateTrade", () => {
                 },
             ],
         });
-
-        // Assert encodeAbiParameters was called correctly
-        expect(encodeAbiParameters).toHaveBeenCalledWith(
-            expect.arrayContaining([expect.objectContaining({ type: "bytes" })]),
-            ["0xroute"],
-        );
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
+        });
     });
 
     it("should return ok result if all steps succeed with gasCoveragePercentage not 0", async () => {
-        (Router.findBestRoute as Mock).mockReturnValue({
-            status: "OK",
-            amountOutBI: 20n * ONE18,
-            legs: [],
-        });
+        (solver.state.router.getTradeParams as Mock).mockResolvedValue(
+            Result.ok({
+                type: RouterType.Balancer,
+                quote: {
+                    type: RouterType.Balancer,
+                    status: RouteStatus.Success,
+                    price: 2n * ONE18,
+                    route: {
+                        route: {},
+                        pcMap: new Map(),
+                    },
+                    amountOut: 20n * ONE18,
+                },
+                routeVisual: ["route visual"],
+                takeOrdersConfigStruct: {},
+            }),
+        );
         (dryrun as Mock)
             .mockResolvedValueOnce(
                 Result.ok({
@@ -263,21 +349,43 @@ describe("Test trySimulateTrade", () => {
         expect(result.value.spanAttributes.initial).toBe("data");
         expect(result.value.spanAttributes.final).toBe("data");
         expect(result.value.rawtx).toHaveProperty("data", "0xdata");
-        expect(result.value.rawtx).toHaveProperty("to", "0xarb");
+        expect(result.value.rawtx).toHaveProperty("to", "0xbalancerArb");
         expect(result.value.rawtx).toHaveProperty("gasPrice", 1n);
-        expect(result.value.type).toBe("routeProcessor");
+        expect(result.value.type).toBe("balancer");
+        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
 
         // verify called times
         expect(encodeFunctionData).toHaveBeenCalledTimes(3);
-        expect(encodeAbiParameters).toHaveBeenCalledTimes(1);
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
+        });
     });
 
     it("should handle isPartial flag correctly in takeOrdersConfigStruct", async () => {
-        (Router.findBestRoute as Mock).mockReturnValue({
-            status: "OK",
-            amountOutBI: 20n * ONE18,
-            legs: [],
-        });
+        (solver.state.router.getTradeParams as Mock).mockResolvedValue(
+            Result.ok({
+                type: RouterType.Sushi,
+                quote: {
+                    type: RouterType.Sushi,
+                    status: RouteStatus.Success,
+                    price: 2n * ONE18,
+                    route: {
+                        route: {},
+                        pcMap: new Map(),
+                    },
+                    amountOut: 20n * ONE18,
+                },
+                routeVisual: ["route visual"],
+                takeOrdersConfigStruct: {},
+            }),
+        );
         (dryrun as Mock).mockResolvedValue(
             Result.ok({
                 estimation: { gas: 100n, totalGasCost: 200n, gasPrice: 1n },
@@ -293,20 +401,37 @@ describe("Test trySimulateTrade", () => {
         assert(result.isOk());
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.type).toBe("routeProcessor");
-
-        // verify encodeAbiParameters was called with partial flag affecting maximumInput
-        expect(encodeAbiParameters).toHaveBeenCalledWith(
-            expect.arrayContaining([expect.objectContaining({ type: "bytes" })]),
-            ["0xroute"],
-        );
+        expect(result.value.spanAttributes.duration).toBeGreaterThan(0);
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: true,
+            signer: args.signer,
+        });
     });
 
     it("should return NoOpportunity if final dryrun fails when gasCoveragePercentage is not 0", async () => {
-        (Router.findBestRoute as Mock).mockReturnValue({
-            status: "OK",
-            amountOutBI: 20n * ONE18,
-            legs: [],
-        });
+        (solver.state.router.getTradeParams as Mock).mockResolvedValue(
+            Result.ok({
+                type: RouterType.Sushi,
+                quote: {
+                    type: RouterType.Sushi,
+                    status: RouteStatus.Success,
+                    price: 2n * ONE18,
+                    route: {
+                        route: {},
+                        pcMap: new Map(),
+                    },
+                    amountOut: 20n * ONE18,
+                },
+                routeVisual: ["route visual"],
+                takeOrdersConfigStruct: {},
+            }),
+        );
         (dryrun as Mock)
             .mockResolvedValueOnce(
                 Result.ok({
@@ -318,7 +443,7 @@ describe("Test trySimulateTrade", () => {
             .mockResolvedValueOnce(
                 Result.err({
                     spanAttributes: { stage: 2 },
-                    reason: RouteProcessorSimulationHaltReason.NoOpportunity,
+                    reason: RouterSimulationHaltReason.NoOpportunity,
                 }),
             );
         args.orderDetails = makeOrderDetails(1n * ONE18);
@@ -329,21 +454,43 @@ describe("Test trySimulateTrade", () => {
         assert(result.isErr());
         expect(result.error).toHaveProperty("spanAttributes");
         expect(result.error).toHaveProperty("reason");
-        expect(result.error.reason).toBe(RouteProcessorSimulationHaltReason.NoOpportunity);
+        expect(result.error.reason).toBe(RouterSimulationHaltReason.NoOpportunity);
         expect(result.error.spanAttributes.stage).toBe(2);
         expect(result.error.type).toBe("routeProcessor");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
 
         // verify encodeFunctionData was called twice (for both dryruns)
         expect(encodeFunctionData).toHaveBeenCalledTimes(2);
-        expect(encodeAbiParameters).toHaveBeenCalledTimes(1);
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
+        });
     });
 
     it("should return error when getEnsureBountyTaskBytecode fails", async () => {
-        (Router.findBestRoute as Mock).mockReturnValue({
-            status: "OK",
-            amountOutBI: 20n * ONE18,
-            legs: [],
-        });
+        (solver.state.router.getTradeParams as Mock).mockResolvedValue(
+            Result.ok({
+                type: RouterType.Balancer,
+                quote: {
+                    type: RouterType.Balancer,
+                    status: RouteStatus.Success,
+                    price: 2n * ONE18,
+                    route: {
+                        route: {},
+                        pcMap: new Map(),
+                    },
+                    amountOut: 20n * ONE18,
+                },
+                routeVisual: ["route visual"],
+                takeOrdersConfigStruct: {},
+            }),
+        );
         args.orderDetails = makeOrderDetails(1n * ONE18);
         (getEnsureBountyTaskBytecode as Mock).mockResolvedValue(Result.err("error"));
 
@@ -352,103 +499,18 @@ describe("Test trySimulateTrade", () => {
         assert(result.isErr());
         expect(result.error).toHaveProperty("spanAttributes");
         expect(result.error).toHaveProperty("reason");
-        expect(result.error.reason).toBe(RouteProcessorSimulationHaltReason.NoOpportunity);
-        expect(result.error.type).toBe("routeProcessor");
-    });
-});
-
-describe("Test findLargestTradeSize", () => {
-    let solver: RainSolver;
-    let fromToken: Token;
-    let toToken: Token;
-    let maximumInputFixed: bigint;
-
-    beforeEach(() => {
-        vi.clearAllMocks();
-        solver = {
-            state: {
-                gasPrice: 1n,
-                dataFetcher: {
-                    getCurrentPoolCodeMap: vi.fn().mockReturnValue("mockPcMap"),
-                },
-                chainConfig: {
-                    id: 1,
-                },
-            },
-            appOptions: {
-                route: undefined,
-            },
-        } as any;
-        fromToken = { address: "0xFrom", decimals: 18 } as any;
-        toToken = { address: "0xTo", decimals: 18 } as any;
-        maximumInputFixed = 10n * ONE18;
-    });
-
-    it("should return undefined if no valid trade size found (all NoWay)", () => {
-        (Router.findBestRoute as Mock).mockReturnValue({ status: "NoWay" });
-
-        const result = findLargestTradeSize.call(
-            solver,
-            makeOrderDetails(1n * ONE18),
-            toToken,
-            fromToken,
-            maximumInputFixed,
-        );
-
-        expect(result).toBeUndefined();
-    });
-
-    it("should return the largest valid trade size when some routes are valid", () => {
-        (Router.findBestRoute as Mock).mockImplementation(() => {
-            return { status: "OK", amountOutBI: 4n * ONE18 };
+        expect(result.error.reason).toBe(RouterSimulationHaltReason.NoOpportunity);
+        expect(result.error.type).toBe("balancer");
+        expect(result.error.spanAttributes.duration).toBeGreaterThan(0);
+        expect(solver.state.router.getTradeParams).toHaveBeenCalledWith({
+            state: solver.state,
+            orderDetails: args.orderDetails,
+            fromToken: args.fromToken,
+            toToken: args.toToken,
+            maximumInput: args.maximumInputFixed,
+            blockNumber: args.blockNumber,
+            isPartial: false,
+            signer: args.signer,
         });
-
-        const orderDetails = makeOrderDetails(1n * ONE18);
-
-        const result = findLargestTradeSize.call(
-            solver,
-            orderDetails,
-            toToken,
-            fromToken,
-            maximumInputFixed,
-        );
-
-        expect(typeof result).toBe("bigint");
-        expect(result).toBe(3999999761581420898n);
-    });
-
-    it("should return undefined if all OK routes have price < ratio", () => {
-        (Router.findBestRoute as Mock).mockImplementation(() => ({
-            status: "OK",
-            amountOutBI: 1n, // price = 1
-        }));
-        const orderDetails = makeOrderDetails(2n * ONE18); // ratio = 2
-
-        const result = findLargestTradeSize.call(
-            solver,
-            orderDetails,
-            toToken,
-            fromToken,
-            maximumInputFixed,
-        );
-
-        expect(result).toBeUndefined();
-    });
-
-    it("should handle fromToken decimals other than 18", () => {
-        fromToken = { address: "0xFrom", decimals: 6 } as any;
-        (Router.findBestRoute as Mock).mockReturnValue({ status: "OK", amountOutBI: 2n * ONE18 });
-        const orderDetails = makeOrderDetails(1n * ONE18);
-
-        const result = findLargestTradeSize.call(
-            solver,
-            orderDetails,
-            toToken,
-            fromToken,
-            maximumInputFixed,
-        );
-
-        expect(typeof result).toBe("bigint");
-        expect(result).toBeGreaterThan(0n);
     });
 });

@@ -1,12 +1,12 @@
 import { RainSolver } from "../..";
 import { Result } from "../../../common";
+import { fallbackEthPrice } from "../dryrun";
 import { trySimulateTrade } from "./simulate";
 import { SimulationResult } from "../../types";
-import { fallbackEthPrice } from "../../../router";
 import { RainSolverSigner } from "../../../signer";
 import { findBestInterOrderbookTrade } from "./index";
 import { extendObjectWithHeader } from "../../../logger";
-import { BundledOrders, CounterpartySource } from "../../../order";
+import { CounterpartySource, Pair } from "../../../order";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
 vi.mock("./simulate", () => ({
@@ -17,13 +17,13 @@ vi.mock("../../../logger", () => ({
     extendObjectWithHeader: vi.fn(),
 }));
 
-vi.mock("../../../router", () => ({
+vi.mock("../dryrun", () => ({
     fallbackEthPrice: vi.fn(),
 }));
 
 describe("Test findBestInterOrderbookTrade", () => {
     let mockRainSolver: RainSolver;
-    let orderDetails: BundledOrders;
+    let orderDetails: Pair;
     let signer: RainSolverSigner;
     let inputToEthPrice: string;
     let outputToEthPrice: string;
@@ -207,7 +207,7 @@ describe("Test findBestInterOrderbookTrade", () => {
     });
 
     it("should handle empty counterparty orders", async () => {
-        const mockCounterpartyOrders = [];
+        const mockCounterpartyOrders: any[] = [];
         (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
             mockCounterpartyOrders,
         );

@@ -87,7 +87,7 @@ export function getSortedPairList<
     orderbook: string,
     output: string,
     input: string,
-    counterpartySource: CounterpartySource,
+    counterpartySource: counterpartySource,
 ): counterpartySource extends CounterpartySource.IntraOrderbook ? Pair[] : Pair[][] {
     const empty = new Map<string, Pair>();
     if (counterpartySource === CounterpartySource.IntraOrderbook) {

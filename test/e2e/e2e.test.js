@@ -1,13 +1,12 @@
 require("dotenv").config();
 const { assert } = require("chai");
 const testData = require("./data");
+const { ChainKey, ChainId } = require("sushi");
 const { RainSolver } = require("../../src/core");
 const { ABI, Result } = require("../../src/common");
 const { RpcState } = require("../../src/rpc");
 const mockServer = require("mockttp").getLocal();
-const { sendTx, waitUntilFree, estimateGasCost } = require("../../src/signer/actions");
 const { ethers, viem, network } = require("hardhat");
-const { ChainKey, RainDataFetcher } = require("sushi");
 const { publicClientConfig } = require("sushi/config");
 const { Resource } = require("@opentelemetry/resources");
 const { getChainConfig } = require("../../src/state/chain");
@@ -19,6 +18,7 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { publicActions, walletActions, createPublicClient } = require("viem");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
 const { SEMRESATTRS_SERVICE_NAME } = require("@opentelemetry/semantic-conventions");
+const { sendTx, waitUntilFree, estimateGasCost } = require("../../src/signer/actions");
 const { BasicTracerProvider, BatchSpanProcessor } = require("@opentelemetry/sdk-trace-base");
 const { OrderManager } = require("../../src/order");
 const {
@@ -37,6 +37,11 @@ const {
 } = require("../utils");
 const { SharedState } = require("../../src/state");
 const balancerHelpers = require("../../src/router/balancer");
+const { RainSolverRouter } = require("../../src/router/router");
+const { SushiRouter } = require("../../src/router/sushi");
+const { AddressProvider } = require("@balancer/sdk");
+const { RouterType } = require("../../src/router/types");
+const { USDC } = require("sushi/currency");
 
 // run tests on each network in the provided data
 for (let i = 0; i < testData.length; i++) {
@@ -83,11 +88,27 @@ for (let i = 0; i < testData.length; i++) {
 
         config.rpc = [rpc];
         const rpcState = new RpcState(config.rpc.map((v) => ({ url: v })));
-        const balancerRouter = (() => {
-            const balancerRouterInit = balancerHelpers.BalancerRouter.init(chainId);
-            if (balancerRouterInit.isOk()) return balancerRouterInit.value;
-            else return undefined;
-        })();
+        const client = createPublicClient({
+            chain: publicClientConfig[chainId].chain,
+            transport: rainSolverTransport(rpcState, {
+                retryCountNext: 50,
+                timeout: 600_000,
+            }),
+        });
+        const getBalancerRouter = async () => {
+            try {
+                const routerAddress = AddressProvider.BatchRouter(chainId);
+                const balancerRouterInit = await balancerHelpers.BalancerRouter.create(
+                    chainId,
+                    client,
+                    routerAddress,
+                );
+                if (balancerRouterInit.isOk()) return balancerRouterInit.value;
+                else return undefined;
+            } catch (error) {
+                return undefined;
+            }
+        };
         const state = new SharedState({
             chainConfig: config,
             client: {},
@@ -100,16 +121,15 @@ for (let i = 0; i < testData.length; i++) {
                 ownerLimits: {},
                 quoteGas: 1_000_000n,
             },
-            balancerRouter,
+            router: {},
+            appOptions: {},
         });
-        const client = createPublicClient({
-            chain: publicClientConfig[chainId].chain,
-            transport: rainSolverTransport(rpcState, {
-                retryCountNext: 50,
-                timeout: 600_000,
-            }),
-        });
-        const dataFetcherPromise = RainDataFetcher.init(chainId, client, liquidityProviders);
+        const sushiRouterPromise = SushiRouter.create(
+            chainId,
+            client,
+            config.routeProcessors["4"],
+            liquidityProviders,
+        );
 
         // run tests on each rp version
         for (let j = 0; j < rpVersions.length; j++) {
@@ -119,9 +139,15 @@ for (let i = 0; i < testData.length; i++) {
                 config.rpc = [rpc];
                 const viemClient = await viem.getPublicClient();
                 state.client = viemClient;
-                const dataFetcher = await dataFetcherPromise;
-                state.dataFetcher = dataFetcher;
-                dataFetcher.web3Client.transport.retryCount = 3;
+                const sushiRouterResult = await sushiRouterPromise;
+                assert(sushiRouterResult.isOk());
+                state.router = new RainSolverRouter(
+                    chainId,
+                    client,
+                    sushiRouterResult.value,
+                    await getBalancerRouter(),
+                );
+                sushiRouterResult.value.dataFetcher.web3Client.transport.retryCount = 3;
                 const testSpan = tracer.startSpan("test-clearing");
 
                 // reset network before each test
@@ -181,6 +207,7 @@ for (let i = 0; i < testData.length; i++) {
                     store: store.address,
                     deployer: deployer.address,
                 };
+                state.appOptions.arbAddress = arb.address;
 
                 // set up tokens contracts and impersonate owners
                 const owners = [];
@@ -286,7 +313,6 @@ for (let i = 0; i < testData.length; i++) {
                 config.testBlockNumberInc = BigInt(blockNumber); // increments during test updating to new block height
                 config.gasCoveragePercentage = "1";
                 config.viemClient = viemClient;
-                config.dataFetcher = dataFetcher;
                 config.accounts = [];
                 config.mainAccount = bot;
                 config.gasPriceMultiplier = 107;
@@ -373,9 +399,15 @@ for (let i = 0; i < testData.length; i++) {
                 config.rpc = [rpc];
                 const viemClient = await viem.getPublicClient();
                 state.client = viemClient;
-                const dataFetcher = await dataFetcherPromise;
-                state.dataFetcher = dataFetcher;
-                dataFetcher.web3Client.transport.retryCount = 3;
+                const sushiRouterResult = await sushiRouterPromise;
+                assert(sushiRouterResult.isOk());
+                state.router = new RainSolverRouter(
+                    chainId,
+                    client,
+                    sushiRouterResult.value,
+                    await getBalancerRouter(),
+                );
+                sushiRouterResult.value.dataFetcher.web3Client.transport.retryCount = 3;
                 const testSpan = tracer.startSpan("test-clearing");
 
                 // reset network before each test
@@ -437,6 +469,7 @@ for (let i = 0; i < testData.length; i++) {
                     store: store.address,
                     deployer: deployer.address,
                 };
+                state.appOptions.arbAddress = arb.address;
 
                 // set up tokens contracts and impersonate owners
                 const owners = [];
@@ -598,7 +631,6 @@ for (let i = 0; i < testData.length; i++) {
                 config.testBlockNumber = BigInt(blockNumber);
                 config.gasCoveragePercentage = "1";
                 config.viemClient = viemClient;
-                config.dataFetcher = dataFetcher;
                 config.accounts = [];
                 config.mainAccount = bot;
                 config.gasPriceMultiplier = 107;
@@ -718,10 +750,15 @@ for (let i = 0; i < testData.length; i++) {
             it("should clear orders successfully using intra-orderbook", async function () {
                 config.rpc = [rpc];
                 const viemClient = await viem.getPublicClient();
-                const dataFetcher = await dataFetcherPromise;
-                state.client = viemClient;
-                state.dataFetcher = dataFetcher;
-                dataFetcher.web3Client.transport.retryCount = 3;
+                const sushiRouterResult = await sushiRouterPromise;
+                assert(sushiRouterResult.isOk());
+                state.router = new RainSolverRouter(
+                    chainId,
+                    client,
+                    sushiRouterResult.value,
+                    await getBalancerRouter(),
+                );
+                sushiRouterResult.value.dataFetcher.web3Client.transport.retryCount = 3;
                 const testSpan = tracer.startSpan("test-clearing");
 
                 // reset network before each test
@@ -781,6 +818,7 @@ for (let i = 0; i < testData.length; i++) {
                     store: store.address,
                     deployer: deployer.address,
                 };
+                state.appOptions.arbAddress = arb.address;
 
                 // set up tokens contracts and impersonate owners
                 const owners = [];
@@ -954,7 +992,6 @@ for (let i = 0; i < testData.length; i++) {
                 config.testBlockNumber = BigInt(blockNumber);
                 config.gasCoveragePercentage = "1";
                 config.viemClient = viemClient;
-                config.dataFetcher = dataFetcher;
                 config.accounts = [];
                 config.mainAccount = bot;
                 config.gasPriceMultiplier = 107;
@@ -1067,32 +1104,44 @@ for (let i = 0; i < testData.length; i++) {
                 const viemClient = await viem.getPublicClient();
                 state.client = viemClient;
                 state.client.simulateContract = client.simulateContract;
-                const dataFetcher = await dataFetcherPromise;
-                state.dataFetcher = dataFetcher;
-                dataFetcher.web3Client.transport.retryCount = 3;
+                const sushiRouterResult = await sushiRouterPromise;
+                assert(sushiRouterResult.isOk());
+                state.router = new RainSolverRouter(
+                    chainId,
+                    client,
+                    sushiRouterResult.value,
+                    await getBalancerRouter(),
+                );
+                sushiRouterResult.value.dataFetcher.web3Client.transport.retryCount = 3;
                 const testSpan = tracer.startSpan("test-clearing");
 
                 // set as the route for POC
-                balancerHelpers.BalancerRouter.prototype.tryQuote = async function (params) {
-                    return Result.ok({
-                        route: [
-                            {
-                                steps: [
-                                    {
-                                        pool: "0x88c044fb203b58b12252be7242926b1eeb113b4a",
-                                        tokenOut: "0x4200000000000000000000000000000000000006",
-                                        isBuffer: false,
-                                    },
-                                ],
-                                tokenIn: params.tokenIn.address,
-                                exactAmountIn: params.swapAmount,
-                                minAmountOut: 0n,
-                            },
-                        ],
-                        price: 100000000000000000000000n,
-                        amountOut: 100000000000000000000000n,
-                    });
-                };
+                if (state.router.balancer)
+                    state.router.balancer.tryQuote = async function (params) {
+                        return Result.ok({
+                            type: RouterType.Balancer,
+                            route: [
+                                {
+                                    steps: [
+                                        {
+                                            pool: "0x88c044fb203b58b12252be7242926b1eeb113b4a",
+                                            tokenOut: "0x4200000000000000000000000000000000000006",
+                                            isBuffer: false,
+                                        },
+                                    ],
+                                    tokenIn: params.fromToken.address,
+                                    exactAmountIn: params.amountIn,
+                                    minAmountOut: 0n,
+                                },
+                            ],
+                            price: 100000000000000000000000n,
+                            amountOut:
+                                USDC[ChainId.BASE].address.toLowerCase() ===
+                                params.fromToken.address.toLowerCase()
+                                    ? 100000000000000000000000n
+                                    : 0n,
+                        });
+                    };
 
                 // reset network before each test
                 await helpers.reset(rpc, blockNumber);
@@ -1156,6 +1205,8 @@ for (let i = 0; i < testData.length; i++) {
                     store: store.address,
                     deployer: deployer.address,
                 };
+                state.appOptions.arbAddress = arb.address;
+                state.appOptions.balancerArbAddress = balancerArb.address;
 
                 // set up tokens contracts and impersonate owners
                 const owners = [];
@@ -1262,7 +1313,6 @@ for (let i = 0; i < testData.length; i++) {
                 config.testBlockNumberInc = BigInt(blockNumber); // increments during test updating to new block height
                 config.gasCoveragePercentage = "1";
                 config.viemClient = viemClient;
-                config.dataFetcher = dataFetcher;
                 config.accounts = [];
                 config.mainAccount = bot;
                 config.gasPriceMultiplier = 107;

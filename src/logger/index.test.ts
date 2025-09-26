@@ -11,6 +11,8 @@ describe("Test RainSolverLogger", async function () {
         process.stdout.write = (function (write) {
             return function (string: any) {
                 stdoutText += string;
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
                 // eslint-disable-next-line prefer-rest-params
                 write.apply(process.stdout, arguments);
             };

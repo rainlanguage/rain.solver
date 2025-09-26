@@ -91,8 +91,8 @@ describe("Test RPC hooks", () => {
         });
 
         it("should record success for JSON response with result", async () => {
-            mockResponse.headers.get = vi.fn().mockReturnValue("application/json");
-            mockResponse.json = vi.fn().mockResolvedValue({ result: "success" });
+            (mockResponse.headers.get as Mock) = vi.fn().mockReturnValue("application/json");
+            (mockResponse.json as Mock) = vi.fn().mockResolvedValue({ result: "success" });
 
             await onFetchResponse.call(mockRpcState, mockResponse);
 
@@ -100,8 +100,8 @@ describe("Test RPC hooks", () => {
         });
 
         it("should record success for JSON response with throwable error", async () => {
-            mockResponse.headers.get = vi.fn().mockReturnValue("application/json");
-            mockResponse.json = vi.fn().mockResolvedValue({ error: { code: -32000 } });
+            (mockResponse.headers.get as Mock) = vi.fn().mockReturnValue("application/json");
+            (mockResponse.json as Mock) = vi.fn().mockResolvedValue({ error: { code: -32000 } });
             (shouldThrow as Mock).mockReturnValue(true);
 
             await onFetchResponse.call(mockRpcState, mockResponse);
@@ -111,8 +111,8 @@ describe("Test RPC hooks", () => {
         });
 
         it("should record failure for JSON response with non-throwable error", async () => {
-            mockResponse.headers.get = vi.fn().mockReturnValue("application/json");
-            mockResponse.json = vi.fn().mockResolvedValue({ error: { code: -32001 } });
+            (mockResponse.headers.get as Mock) = vi.fn().mockReturnValue("application/json");
+            (mockResponse.json as Mock) = vi.fn().mockResolvedValue({ error: { code: -32001 } });
             (shouldThrow as Mock).mockReturnValue(false);
 
             await onFetchResponse.call(mockRpcState, mockResponse);
@@ -121,8 +121,8 @@ describe("Test RPC hooks", () => {
         });
 
         it("should record failure for invalid JSON response", async () => {
-            mockResponse.headers.get = vi.fn().mockReturnValue("application/json");
-            mockResponse.json = vi.fn().mockRejectedValue(new Error("Invalid JSON"));
+            (mockResponse.headers.get as Mock) = vi.fn().mockReturnValue("application/json");
+            (mockResponse.json as Mock) = vi.fn().mockRejectedValue(new Error("Invalid JSON"));
 
             await onFetchResponse.call(mockRpcState, mockResponse);
 
@@ -130,8 +130,8 @@ describe("Test RPC hooks", () => {
         });
 
         it("should handle text response with valid JSON", async () => {
-            mockResponse.headers.get = vi.fn().mockReturnValue("text/plain");
-            mockResponse.text = vi.fn().mockResolvedValue('{"result": "success"}');
+            (mockResponse.headers.get as Mock) = vi.fn().mockReturnValue("text/plain");
+            (mockResponse.text as Mock) = vi.fn().mockResolvedValue('{"result": "success"}');
 
             await onFetchResponse.call(mockRpcState, mockResponse);
 
@@ -139,8 +139,8 @@ describe("Test RPC hooks", () => {
         });
 
         it("should record failure for text response with invalid JSON", async () => {
-            mockResponse.headers.get = vi.fn().mockReturnValue("text/plain");
-            mockResponse.text = vi.fn().mockResolvedValue("invalid json");
+            (mockResponse.headers.get as Mock) = vi.fn().mockReturnValue("text/plain");
+            (mockResponse.text as Mock) = vi.fn().mockResolvedValue("invalid json");
 
             await onFetchResponse.call(mockRpcState, mockResponse);
 
@@ -149,8 +149,8 @@ describe("Test RPC hooks", () => {
 
         it("should create new metrics if not found", async () => {
             delete mockRpcState.metrics["https://api.example.com/rpc"];
-            mockResponse.headers.get = vi.fn().mockReturnValue("application/json");
-            mockResponse.json = vi.fn().mockResolvedValue({ result: "success" });
+            (mockResponse.headers.get as Mock) = vi.fn().mockReturnValue("application/json");
+            (mockResponse.json as Mock) = vi.fn().mockResolvedValue({ result: "success" });
 
             await onFetchResponse.call(mockRpcState, mockResponse);
 
