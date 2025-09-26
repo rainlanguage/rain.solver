@@ -18,6 +18,7 @@ export enum SimulationHaltReason {
     NoRoute,
     OrderRatioGreaterThanMarketPrice,
     FailedToGetTaskBytecode,
+    UndefinedTradeDestinationAddress,
 }
 
 export type SimulateTradeArgs =

@@ -1,7 +1,8 @@
 import { RainSolver } from "../..";
-import { Result } from "../../../common";
 import { fallbackEthPrice } from "../dryrun";
+import { Dispair, Result } from "../../../common";
 import { RainSolverSigner } from "../../../signer";
+import { SimulationHaltReason } from "../simulator";
 import { findBestIntraOrderbookTrade } from "./index";
 import { extendObjectWithHeader } from "../../../common";
 import { SimulationResult, TradeType } from "../../types";
@@ -32,10 +33,18 @@ describe("Test findBestIntraOrderbookTrade", () => {
     let blockNumber: bigint;
     let trySimulateTradeSpy: any;
     let simulatorWithArgsSpy: any;
+    let dispair: Dispair;
+    let destination: `0x${string}`;
 
     beforeEach(() => {
         vi.clearAllMocks();
 
+        dispair = {
+            deployer: "0xdeployer",
+            interpreter: "0xinterpreter",
+            store: "0xstore",
+        };
+        destination = "0xdestination";
         mockRainSolver = {
             state: {
                 client: {
@@ -44,6 +53,12 @@ describe("Test findBestIntraOrderbookTrade", () => {
                         .fn()
                         .mockResolvedValueOnce(5000000000000000000n) // input balance
                         .mockResolvedValueOnce(3000000000000000000n), // output balance
+                },
+                contracts: {
+                    getAddressesForTrade: vi.fn().mockReturnValue({
+                        dispair,
+                        destination,
+                    }),
                 },
             },
             orderManager: {
@@ -742,5 +757,25 @@ describe("Test findBestIntraOrderbookTrade", () => {
         expect(outputResult.error.noneNodeError).toContain("some error");
         expect(outputResult.error.noneNodeError).toContain("Failed to get output token balance");
         expect(outputResult.error.type).toBe("intraOrderbook");
+    });
+
+    it("should return error when trade addresses are not configured", async () => {
+        (mockRainSolver.state.contracts.getAddressesForTrade as Mock).mockReturnValue(undefined);
+        const result: SimulationResult = await findBestIntraOrderbookTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            inputToEthPrice,
+            outputToEthPrice,
+            blockNumber,
+        );
+
+        assert(result.isErr());
+        expect(result.error.type).toBe(TradeType.IntraOrderbook);
+        expect(result.error.reason).toBe(SimulationHaltReason.UndefinedTradeDestinationAddress);
+        expect(mockRainSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledWith(
+            orderDetails,
+            TradeType.IntraOrderbook,
+        );
     });
 });

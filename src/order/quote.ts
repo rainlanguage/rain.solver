@@ -1,7 +1,7 @@
 import { ChainId } from "sushi";
-import { ABI } from "../common";
 import { SharedState } from "../state";
 import { AppOptions } from "../config";
+import { ABI, normalizeFloat } from "../common";
 import { BundledOrders, Pair, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData, PublicClient } from "viem";
 
@@ -13,6 +13,26 @@ import { decodeFunctionResult, encodeFunctionData, PublicClient } from "viem";
  * @param gas - Optional read gas
  */
 export async function quoteSingleOrder(
+    orderDetails: Pair,
+    viemClient: PublicClient,
+    blockNumber?: bigint,
+    gas?: bigint,
+) {
+    if (Pair.isV3(orderDetails)) {
+        return quoteSingleOrderV3(orderDetails, viemClient, blockNumber, gas);
+    } else {
+        return quoteSingleOrderV4(orderDetails, viemClient, blockNumber, gas);
+    }
+}
+
+/**
+ * Quotes a single order v3
+ * @param orderDetails - Order details to quote
+ * @param viemClient - Viem client
+ * @param blockNumber - Optional block number
+ * @param gas - Optional read gas
+ */
+export async function quoteSingleOrderV3(
     orderDetails: Pair,
     viemClient: PublicClient,
     blockNumber?: bigint,
@@ -42,6 +62,67 @@ export async function quoteSingleOrder(
         orderDetails.takeOrder.quote = {
             maxOutput: quoteResult[1],
             ratio: quoteResult[2],
+        };
+        return;
+    } else {
+        return Promise.reject(`Failed to quote order, reason: required no data`);
+    }
+}
+
+/**
+ * Quotes a single order v4
+ * @param orderDetails - Order details to quote
+ * @param viemClient - Viem client
+ * @param blockNumber - Optional block number
+ * @param gas - Optional read gas
+ */
+export async function quoteSingleOrderV4(
+    orderDetails: Pair,
+    viemClient: PublicClient,
+    blockNumber?: bigint,
+    gas?: bigint,
+) {
+    const { data } = await viemClient
+        .call({
+            to: orderDetails.orderbook as `0x${string}`,
+            data: encodeFunctionData({
+                abi: ABI.Orderbook.V5.Primary.Orderbook,
+                functionName: "quote2",
+                args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.struct)],
+            }),
+            blockNumber,
+            gas,
+        })
+        .catch((error) => {
+            orderDetails.takeOrder.quote = undefined;
+            throw error;
+        });
+    if (typeof data !== "undefined") {
+        const quoteResult = decodeFunctionResult({
+            abi: [ABI.Orderbook.V5.Primary.Orderbook[17]],
+            functionName: "quote2",
+            data,
+        });
+
+        // handle quote result floats
+        const maxoutputResult = normalizeFloat(quoteResult[1], 18);
+        if (maxoutputResult.isErr()) {
+            orderDetails.takeOrder.quote = undefined;
+            return Promise.reject(
+                `Failed to handle quote maxoutput float, reason: ${maxoutputResult.error.readableMsg}`,
+            );
+        }
+        const ratioResult = normalizeFloat(quoteResult[2], 18);
+        if (ratioResult.isErr()) {
+            orderDetails.takeOrder.quote = undefined;
+            return Promise.reject(
+                `Failed to handle quote ratio float, reason: ${ratioResult.error.readableMsg}`,
+            );
+        }
+
+        orderDetails.takeOrder.quote = {
+            maxOutput: maxoutputResult.value,
+            ratio: ratioResult.value,
         };
         return;
     } else {

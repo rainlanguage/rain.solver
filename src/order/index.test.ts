@@ -1,3 +1,4 @@
+import * as common from "../common";
 import * as pairFns from "./pair";
 import { Result } from "../common";
 import { syncOrders } from "./sync";
@@ -45,15 +46,18 @@ vi.mock("./types", async (importOriginal) => {
     return {
         ...(await importOriginal()),
         Order: {
-            V3: {
-                tryFromBytes: vi.fn().mockImplementation((value: any) =>
-                    Result.ok({
-                        owner: value === "0xadminBytes" ? "0xadmin" : "0xowner",
-                        validInputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
-                        validOutputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
-                    }),
-                ),
+            Type: {
+                V3: "V3",
+                V4: "V4",
             },
+            tryFromBytes: vi.fn().mockImplementation((value: any) =>
+                Result.ok({
+                    type: Order.Type.V3,
+                    owner: value === "0xadminBytes" ? "0xadmin" : "0xowner",
+                    validInputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
+                    validOutputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
+                }),
+            ),
         },
     };
 });
@@ -122,7 +126,7 @@ describe("Test OrderManager", () => {
         expect(syncOrders).toHaveBeenCalledOnce();
     });
 
-    it("should correctly add orders", async () => {
+    it("should correctly add v3 orders", async () => {
         const orders = [
             {
                 orderHash: "0xhash1",
@@ -137,6 +141,182 @@ describe("Test OrderManager", () => {
                 orderBytes: "0xbytes",
                 outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 3n }],
                 inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 4n }],
+            },
+        ];
+        await orderManager.addOrder(orders[0] as any);
+        await orderManager.addOrder(orders[1] as any);
+
+        expect(orderManager.ownersMap.size).toBe(2);
+        expect(orderManager.ownersMap.get("0xorderbook1")).toBeDefined();
+        expect(orderManager.ownersMap.get("0xorderbook2")).toBeDefined();
+
+        // check first order in owner map
+        const ownerProfileMap1 = orderManager.ownersMap.get("0xorderbook1");
+        expect(ownerProfileMap1).toBeDefined();
+        const ownerProfile1 = ownerProfileMap1?.get("0xowner");
+        expect(ownerProfile1).toBeDefined();
+        expect(ownerProfile1?.orders.size).toBe(1);
+        const orderProfile1 = ownerProfile1?.orders.get("0xhash1");
+        expect(orderProfile1).toBeDefined();
+        expect(orderProfile1?.active).toBe(true);
+        expect(orderProfile1?.order).toBeDefined();
+        expect(Array.isArray(orderProfile1?.takeOrders)).toBe(true);
+        expect(orderProfile1?.takeOrders.length).toBeGreaterThan(0);
+
+        // check pairMap for first order
+        const pairMap1 = orderManager.oiPairMap.get("0xorderbook1");
+        expect(pairMap1).toBeDefined();
+        const pairArr1 = pairMap1?.get("0xoutput")?.get("0xinput");
+        expect(pairArr1).toBeInstanceOf(Map);
+        expect(pairArr1?.size).toBeGreaterThan(0);
+        expect(pairArr1?.get("0xhash1")?.buyToken).toBe("0xinput");
+        expect(pairArr1?.get("0xhash1")?.sellToken).toBe("0xoutput");
+        expect(pairArr1?.get("0xhash1")?.takeOrder.id).toBe("0xhash1");
+
+        // check second order in owner map
+        const ownerProfileMap2 = orderManager.ownersMap.get("0xorderbook2");
+        expect(ownerProfileMap2).toBeDefined();
+        const ownerProfile2 = ownerProfileMap2?.get("0xowner");
+        expect(ownerProfile2).toBeDefined();
+        expect(ownerProfile2?.orders.size).toBe(1);
+        const orderProfile2 = ownerProfile2?.orders.get("0xhash2");
+        expect(orderProfile2).toBeDefined();
+        expect(orderProfile2?.active).toBe(true);
+        expect(orderProfile2?.order).toBeDefined();
+        expect(Array.isArray(orderProfile2?.takeOrders)).toBe(true);
+        expect(orderProfile2?.takeOrders.length).toBeGreaterThan(0);
+
+        // check pairMap for second order
+        const pairMap2 = orderManager.oiPairMap.get("0xorderbook2");
+        expect(pairMap2).toBeDefined();
+        const pairArr2 = pairMap2?.get("0xoutput")?.get("0xinput");
+        expect(pairArr2).toBeInstanceOf(Map);
+        expect(pairArr2?.size).toBeGreaterThan(0);
+        expect(pairArr2?.get("0xhash2")?.buyToken).toBe("0xinput");
+        expect(pairArr2?.get("0xhash2")?.sellToken).toBe("0xoutput");
+        expect(pairArr2?.get("0xhash2")?.takeOrder.id).toBe("0xhash2");
+
+        // check ownerTokenVaultMap for first order (orderbook1)
+        const orderbookVaultMap1 = orderManager.ownerTokenVaultMap.get("0xorderbook1");
+        expect(orderbookVaultMap1).toBeDefined();
+        const ownerVaultMap1 = orderbookVaultMap1?.get("0xowner");
+        expect(ownerVaultMap1).toBeDefined();
+
+        // check output vault for first order
+        const outputTokenVaultMap1 = ownerVaultMap1?.get("0xoutput");
+        expect(outputTokenVaultMap1).toBeDefined();
+        const outputVault1 = outputTokenVaultMap1?.get(1n);
+        expect(outputVault1).toBeDefined();
+        expect(outputVault1?.id).toBe(1n);
+        expect(outputVault1?.balance).toBe(1n);
+        expect(outputVault1?.token).toEqual({
+            address: "0xoutput",
+            symbol: "OUT",
+            decimals: 18,
+        });
+
+        // check input vault for first order
+        const inputTokenVaultMap1 = ownerVaultMap1?.get("0xinput");
+        expect(inputTokenVaultMap1).toBeDefined();
+        const inputVault1 = inputTokenVaultMap1?.get(1n);
+        expect(inputVault1).toBeDefined();
+        expect(inputVault1?.id).toBe(1n);
+        expect(inputVault1?.balance).toBe(2n);
+        expect(inputVault1?.token).toEqual({
+            address: "0xinput",
+            symbol: "IN",
+            decimals: 18,
+        });
+
+        // check ownerTokenVaultMap for second order (orderbook2)
+        const orderbookVaultMap2 = orderManager.ownerTokenVaultMap.get("0xorderbook2");
+        expect(orderbookVaultMap2).toBeDefined();
+        const ownerVaultMap2 = orderbookVaultMap2?.get("0xowner");
+        expect(ownerVaultMap2).toBeDefined();
+
+        // check output vault for second order
+        const outputTokenVaultMap2 = ownerVaultMap2?.get("0xoutput");
+        expect(outputTokenVaultMap2).toBeDefined();
+        const outputVault2 = outputTokenVaultMap2?.get(1n);
+        expect(outputVault2).toBeDefined();
+        expect(outputVault2?.id).toBe(1n);
+        expect(outputVault2?.balance).toBe(3n);
+        expect(outputVault2?.token).toEqual({
+            address: "0xoutput",
+            symbol: "OUT",
+            decimals: 18,
+        });
+
+        // check input vault for second order
+        const inputTokenVaultMap2 = ownerVaultMap2?.get("0xinput");
+        expect(inputTokenVaultMap2).toBeDefined();
+        const inputVault2 = inputTokenVaultMap2?.get(1n);
+        expect(inputVault2).toBeDefined();
+        expect(inputVault2?.id).toBe(1n);
+        expect(inputVault2?.balance).toBe(4n);
+        expect(inputVault2?.token).toEqual({
+            address: "0xinput",
+            symbol: "IN",
+            decimals: 18,
+        });
+    });
+
+    it("should correctly add v4 orders", async () => {
+        const res = Result.ok({
+            type: Order.Type.V4,
+            owner: "0xowner",
+            validInputs: [
+                {
+                    token: "0xinput",
+                    vaultId: "0x0000000000000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            validOutputs: [
+                {
+                    token: "0xoutput",
+                    vaultId: "0x0000000000000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+        });
+        (Order.tryFromBytes as Mock).mockReturnValueOnce(res).mockReturnValueOnce(res);
+        const orders = [
+            {
+                orderHash: "0xhash1",
+                orderbook: { id: "0xorderbook1" },
+                orderBytes: "0xbytes",
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000002",
+                    },
+                ],
+            },
+            {
+                orderHash: "0xhash2",
+                orderbook: { id: "0xorderbook2" },
+                orderBytes: "0xbytes",
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000003",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000004",
+                    },
+                ],
             },
         ];
         await orderManager.addOrder(orders[0] as any);
@@ -276,11 +456,11 @@ describe("Test OrderManager", () => {
             ],
         };
 
-        (Order.V3.tryFromBytes as Mock).mockReturnValueOnce(Result.err("some error"));
+        (Order.tryFromBytes as Mock).mockReturnValueOnce(Result.err("some error"));
         const result = await orderManager.addOrder(order as any);
         assert(result.isErr());
         expect(result.error).instanceOf(OrderManagerError);
-        expect(Order.V3.tryFromBytes).toHaveBeenCalledTimes(1);
+        expect(Order.tryFromBytes).toHaveBeenCalledTimes(1);
 
         const getOrderPairsSpy = vi.spyOn(orderManager, "getOrderPairs");
         getOrderPairsSpy.mockResolvedValueOnce(Result.err(new OrderManagerError("err", 1)));
@@ -291,13 +471,69 @@ describe("Test OrderManager", () => {
         getOrderPairsSpy.mockRestore();
     });
 
-    it("should remove orders", async () => {
+    it("should remove v3 orders", async () => {
         const mockOrder = {
             orderHash: "0xhash",
             orderbook: { id: "0xorderbook" },
             orderBytes: "0xbytes",
             outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
             inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+        };
+        await orderManager.addOrder(mockOrder as any);
+        expect(orderManager.ownersMap.size).toBe(1);
+
+        // check pairMap before removal
+        const pairMapBefore = orderManager.oiPairMap.get("0xorderbook");
+        expect(pairMapBefore).toBeDefined();
+        const pairArrBefore = pairMapBefore?.get("0xoutput")?.get("0xinput");
+        expect(pairArrBefore).toBeInstanceOf(Map);
+        expect(pairArrBefore?.size).toBeGreaterThan(0);
+        expect(pairArrBefore?.get("0xhash")?.takeOrder.id).toBe("0xhash");
+
+        await orderManager.removeOrders([mockOrder as any]);
+        const ownerProfileMap = orderManager.ownersMap.get("0xorderbook");
+        expect(ownerProfileMap?.get("0xowner")?.orders.size).toBe(0);
+
+        // check pairMap after removal
+        const pairMapAfter = orderManager.oiPairMap.get("0xorderbook");
+        // the pair should be deleted from the map after removal
+        expect(pairMapAfter?.get("0xinput/0xoutput")).toBeUndefined();
+    });
+
+    it("should remove v4 orders", async () => {
+        const res = Result.ok({
+            type: Order.Type.V4,
+            owner: "0xowner",
+            validInputs: [
+                {
+                    token: "0xinput",
+                    vaultId: "0x0000000000000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            validOutputs: [
+                {
+                    token: "0xoutput",
+                    vaultId: "0x0000000000000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+        });
+        (Order.tryFromBytes as Mock).mockReturnValueOnce(res);
+        const mockOrder = {
+            orderHash: "0xhash",
+            orderbook: { id: "0xorderbook" },
+            orderBytes: "0xbytes",
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
         };
         await orderManager.addOrder(mockOrder as any);
         expect(orderManager.ownersMap.size).toBe(1);
@@ -386,8 +622,9 @@ describe("Test OrderManager", () => {
         expect(ownerProfileMap?.get("0xadmin")?.limit).toBe(75); // admin set limit should not reset
     });
 
-    it("getOrderPairs should return all valid input/output pairs", async () => {
+    it("getOrderPairs should return all valid input/output v3 pairs", async () => {
         const orderStruct = {
+            type: Order.Type.V3,
             owner: "0xowner",
             validInputs: [
                 { token: "0xinput1", decimals: 18 },
@@ -407,6 +644,90 @@ describe("Test OrderManager", () => {
             inputs: [
                 { token: { address: "0xinput1", symbol: "IN1" }, balance: 1n },
                 { token: { address: "0xinput2", symbol: "IN2" }, balance: 1n },
+            ],
+        };
+        const pairsResult = await orderManager.getOrderPairs(
+            "0xhash",
+            orderStruct as any,
+            orderDetails as any,
+        );
+        assert(pairsResult.isOk());
+        const pairs = pairsResult.value;
+
+        // should be 4 pairs (2 inputs x 2 outputs)
+        expect(pairs.length).toBe(4);
+        expect(pairs).toMatchObject([
+            {
+                buyToken: "0xinput1",
+                buyTokenSymbol: "IN1",
+                buyTokenDecimals: 18,
+                sellToken: "0xoutput1",
+                sellTokenSymbol: "OUT1",
+                sellTokenDecimals: 18,
+                sellTokenVaultBalance: 1n,
+                buyTokenVaultBalance: 1n,
+            },
+            {
+                buyToken: "0xinput2",
+                buyTokenSymbol: "IN2",
+                buyTokenDecimals: 6,
+                sellToken: "0xoutput1",
+                sellTokenSymbol: "OUT1",
+                sellTokenDecimals: 18,
+                sellTokenVaultBalance: 1n,
+                buyTokenVaultBalance: 1n,
+            },
+            {
+                buyToken: "0xinput1",
+                buyTokenSymbol: "IN1",
+                buyTokenDecimals: 18,
+                sellToken: "0xoutput2",
+                sellTokenSymbol: "OUT2",
+                sellTokenDecimals: 6,
+                sellTokenVaultBalance: 1n,
+                buyTokenVaultBalance: 1n,
+            },
+            {
+                buyToken: "0xinput2",
+                buyTokenSymbol: "IN2",
+                buyTokenDecimals: 6,
+                sellToken: "0xoutput2",
+                sellTokenSymbol: "OUT2",
+                sellTokenDecimals: 6,
+                sellTokenVaultBalance: 1n,
+                buyTokenVaultBalance: 1n,
+            },
+        ]);
+    });
+
+    it("getOrderPairs should return all valid input/output v4 pairs", async () => {
+        const orderStruct = {
+            type: Order.Type.V4,
+            owner: "0xowner",
+            validInputs: [{ token: "0xinput1" }, { token: "0xinput2" }],
+            validOutputs: [{ token: "0xoutput1" }, { token: "0xoutput2" }],
+        };
+        const orderDetails = {
+            orderbook: { id: "0xorderbook" },
+            outputs: [
+                {
+                    token: { address: "0xoutput1", symbol: "OUT1", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+                {
+                    token: { address: "0xoutput2", symbol: "OUT2", decimals: "6" },
+                    balance: "0xfffffffa00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput1", symbol: "IN1", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+                {
+                    token: { address: "0xinput2", symbol: "IN2", decimals: "6" },
+                    balance: "0xfffffffa00000000000000000000000000000000000000000000000000000001",
+                },
             ],
         };
         const pairsResult = await orderManager.getOrderPairs(
@@ -507,6 +828,7 @@ describe("Test OrderManager", () => {
                 id: "0xhash",
                 struct: {
                     order: {
+                        type: Order.Type.V3,
                         owner: "0xowner",
                         validInputs: [{ token: "0xinput", decimals: 18 }],
                         validOutputs: [{ token: "0xoutput", decimals: 18 }],
@@ -525,21 +847,62 @@ describe("Test OrderManager", () => {
     });
 
     it("should rotate owner orders correctly across getNextRoundOrders() calls", async () => {
+        const res = Result.ok({
+            type: Order.Type.V4,
+            owner: "0xowner",
+            validInputs: [
+                {
+                    token: "0xinput",
+                    vaultId: "0x0000000000000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            validOutputs: [
+                {
+                    token: "0xoutput",
+                    vaultId: "0x0000000000000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+        });
+        (Order.tryFromBytes as Mock).mockReturnValueOnce(res).mockReturnValueOnce(res);
         // add four orders for the same owner/orderbook with different hashes
         const orders = [
             {
                 orderHash: "0xhash1",
                 orderbook: { id: "0xorderbook" },
                 orderBytes: "0xbytes1",
-                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
             },
             {
                 orderHash: "0xhash2",
                 orderbook: { id: "0xorderbook" },
                 orderBytes: "0xbytes2",
-                outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-                inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
             },
             {
                 orderHash: "0xhash3",
@@ -636,9 +999,10 @@ describe("Test OrderManager", () => {
             outputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
             inputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
         };
-        (Order.V3.tryFromBytes as Mock)
+        (Order.tryFromBytes as Mock)
             .mockReturnValueOnce(
                 Result.ok({
+                    type: Order.Type.V3,
                     owner: "0xowner",
                     validInputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
                     validOutputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
@@ -646,6 +1010,7 @@ describe("Test OrderManager", () => {
             )
             .mockReturnValueOnce(
                 Result.ok({
+                    type: Order.Type.V3,
                     owner: "0xowner",
                     validInputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
                     validOutputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
@@ -653,7 +1018,7 @@ describe("Test OrderManager", () => {
             );
         await orderManager.addOrder(orderA as any);
         await orderManager.addOrder(orderB as any);
-        expect(Order.V3.tryFromBytes).toHaveBeenCalledTimes(2);
+        expect(Order.tryFromBytes).toHaveBeenCalledTimes(2);
 
         // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)
         const roundOrders = orderManager.getNextRoundOrders();
@@ -676,8 +1041,18 @@ describe("Test OrderManager", () => {
             orderHash: "0xhashA",
             orderbook: { id: "0xorderbookA" },
             orderBytes: "0xbytesA",
-            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
-            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
+            outputs: [
+                {
+                    token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
+            inputs: [
+                {
+                    token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                    balance: "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                },
+            ],
         };
         const orderB = {
             orderHash: "0xhashB",
@@ -686,16 +1061,30 @@ describe("Test OrderManager", () => {
             outputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
             inputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
         };
-        (Order.V3.tryFromBytes as Mock)
+        (Order.tryFromBytes as Mock)
             .mockReturnValueOnce(
                 Result.ok({
+                    type: Order.Type.V4,
                     owner: "0xowner",
-                    validInputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
-                    validOutputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
+                    validInputs: [
+                        {
+                            token: "0xinput",
+                            vaultId:
+                                "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        },
+                    ],
+                    validOutputs: [
+                        {
+                            token: "0xoutput",
+                            vaultId:
+                                "0x0000000000000000000000000000000000000000000000000000000000000001",
+                        },
+                    ],
                 }),
             )
             .mockReturnValueOnce(
                 Result.ok({
+                    type: Order.Type.V3,
                     owner: "0xowner",
                     validInputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
                     validOutputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
@@ -703,7 +1092,7 @@ describe("Test OrderManager", () => {
             );
         await orderManager.addOrder(orderA as any);
         await orderManager.addOrder(orderB as any);
-        expect(Order.V3.tryFromBytes).toHaveBeenCalledTimes(2);
+        expect(Order.tryFromBytes).toHaveBeenCalledTimes(2);
 
         // get a bundled order for orderA (buyToken: 0xinput, sellToken: 0xoutput)
         const roundOrders = orderManager.getNextRoundOrders();
@@ -772,6 +1161,25 @@ describe("Test OrderManager", () => {
         removeFromPairMapSpy.mockRestore();
     });
 
+    it("should return undefined when balance is invalid float", () => {
+        const orderbook = "0xorderbook1";
+        const owner = "0xowner1";
+        const token = {
+            address: "0xtoken1",
+            symbol: "TOKEN1",
+            decimals: 18,
+        };
+        const vaultId = 123n;
+        const balance = "0x1234";
+        const spy = vi.spyOn(common, "normalizeFloat");
+
+        const result = orderManager.updateVault(orderbook, owner, token, vaultId, balance);
+        expect(result).toBeUndefined();
+        expect(spy).toHaveBeenCalledWith(balance, token.decimals);
+
+        spy.mockRestore();
+    });
+
     it("should update vault correctly when vault doesn't exist", () => {
         const orderbook = "0xorderbook1";
         const owner = "0xowner1";
@@ -799,6 +1207,74 @@ describe("Test OrderManager", () => {
         expect(vault?.id).toBe(vaultId);
         expect(vault?.balance).toBe(balance);
         expect(vault?.token).toEqual(token);
+    });
+
+    it("should update vault correctly when balance is float", () => {
+        const orderbook = "0xorderbook1";
+        const owner = "0xowner1";
+        const token = {
+            address: "0xtoken1",
+            symbol: "TOKEN1",
+            decimals: 18,
+        };
+        const vaultId = 123n;
+        const balance = "0xffffffee00000000000000000000000000000000000000000000000000000001";
+        const spy = vi.spyOn(common, "normalizeFloat");
+
+        orderManager.updateVault(orderbook, owner, token, vaultId, balance);
+
+        expect(spy).toHaveBeenCalledWith(balance, token.decimals);
+
+        const orderbookMap = orderManager.ownerTokenVaultMap.get(orderbook);
+        expect(orderbookMap).toBeDefined();
+
+        const ownerMap = orderbookMap?.get(owner);
+        expect(ownerMap).toBeDefined();
+
+        const tokenMap = ownerMap?.get(token.address);
+        expect(tokenMap).toBeDefined();
+
+        const vault = tokenMap?.get(vaultId);
+        expect(vault).toBeDefined();
+        expect(vault?.id).toBe(vaultId);
+        expect(vault?.balance).toBe(1n);
+        expect(vault?.token).toEqual(token);
+
+        spy.mockRestore();
+    });
+
+    it("should update vault correctly when balance is decimal string", () => {
+        const orderbook = "0xorderbook1";
+        const owner = "0xowner1";
+        const token = {
+            address: "0xtoken1",
+            symbol: "TOKEN1",
+            decimals: 18,
+        };
+        const vaultId = 123n;
+        const balance = "1000000000000000000";
+        const spy = vi.spyOn(common, "normalizeFloat");
+
+        orderManager.updateVault(orderbook, owner, token, vaultId, balance);
+
+        expect(spy).not.toHaveBeenCalled();
+
+        const orderbookMap = orderManager.ownerTokenVaultMap.get(orderbook);
+        expect(orderbookMap).toBeDefined();
+
+        const ownerMap = orderbookMap?.get(owner);
+        expect(ownerMap).toBeDefined();
+
+        const tokenMap = ownerMap?.get(token.address);
+        expect(tokenMap).toBeDefined();
+
+        const vault = tokenMap?.get(vaultId);
+        expect(vault).toBeDefined();
+        expect(vault?.id).toBe(vaultId);
+        expect(vault?.balance).toBe(BigInt(balance));
+        expect(vault?.token).toEqual(token);
+
+        spy.mockRestore();
     });
 
     it("should update existing vault balance", () => {
@@ -916,6 +1392,7 @@ describe("Test OrderManager", () => {
                 id: "0xHash",
                 struct: {
                     order: {
+                        type: Order.Type.V3,
                         owner: "0xOwner",
                         validOutputs: [
                             { token: "0xToken0", decimals: 8, vaultId: 10n },

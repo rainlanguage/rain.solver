@@ -4,15 +4,16 @@ import { Token } from "sushi/currency";
 import { getGasPrice } from "./gasPrice";
 import { BalancerRouter } from "../router";
 import { LiquidityProviders } from "sushi";
+import { SolverContracts } from "./contracts";
 import { SushiRouter } from "../router/sushi";
 import { AddressProvider } from "@balancer/sdk";
 import { WalletConfig } from "../wallet/config";
+import { Result, TokenDetails } from "../common";
 import { RainSolverRouter } from "../router/router";
 import { SubgraphConfig } from "../subgraph/config";
 import { RainSolverBaseError } from "../error/types";
 import { OrderManagerConfig } from "../order/config";
 import { RainSolverRouterError } from "../router/types";
-import { ABI, Result, TokenDetails, Dispair } from "../common";
 import { ChainConfig, ChainConfigError, getChainConfig } from "./chain";
 import { RpcState, rainSolverTransport, RainSolverTransportConfig } from "../rpc";
 import { createPublicClient, parseUnits, PublicClient, ReadContractErrorType } from "viem";
@@ -57,8 +58,8 @@ export class SharedStateError extends RainSolverBaseError {
 export type SharedStateConfig = {
     /** Application options */
     appOptions: AppOptions;
-    /** Dispair, deployer, store and interpreter addresses */
-    dispair: Dispair;
+    /** Contract addresses required for solving */
+    contracts: SolverContracts;
     /** Wallet configurations */
     walletConfig: WalletConfig;
     /** List of watched tokens at runtime */
@@ -123,39 +124,7 @@ export namespace SharedStateConfig {
             transport: rainSolverTransport(rpcState, rainSolverTransportConfig),
         });
 
-        const getDispairAddress = async (
-            functionName: "iInterpreter" | "iStore",
-        ): Promise<Result<`0x${string}`, SharedStateError>> => {
-            try {
-                return Result.ok(
-                    await client.readContract({
-                        address: options.dispair,
-                        abi: ABI.Deployer.Primary.Deployer,
-                        functionName,
-                    }),
-                );
-            } catch (error) {
-                return Result.err(
-                    new SharedStateError(
-                        `failed to get dispair ${functionName} address`,
-                        functionName === "iInterpreter"
-                            ? SharedStateErrorType.FailedToGetDispairInterpreterAddress
-                            : SharedStateErrorType.FailedToGetDispairStoreAddress,
-                        error as ReadContractErrorType,
-                    ),
-                );
-            }
-        };
-        const interpreterResult = await getDispairAddress("iInterpreter");
-        if (interpreterResult.isErr()) {
-            return Result.err(interpreterResult.error);
-        }
-        const storeResult = await getDispairAddress("iStore");
-        if (storeResult.isErr()) {
-            return Result.err(storeResult.error);
-        }
-        const interpreter = interpreterResult.value;
-        const store = storeResult.value;
+        const contracts = await SolverContracts.fromAppOptions(client, options);
 
         const liquidityProviders = SushiRouter.processLiquidityProviders(
             options.liquidityProviders,
@@ -175,7 +144,8 @@ export namespace SharedStateConfig {
                 sushiRouteProcessor4Address: chainConfig.routeProcessors["4"] as `0x${string}`,
             },
             balancerRouterConfig:
-                options.balancerArbAddress && balancerRouterAddress
+                (options.contracts.v4?.balancerArb || options.contracts.v5?.balancerArb) &&
+                balancerRouterAddress
                     ? {
                           balancerRouterAddress,
                       }
@@ -205,11 +175,7 @@ export namespace SharedStateConfig {
             subgraphConfig: SubgraphConfig.tryFromAppOptions(options),
             orderManagerConfig: OrderManagerConfig.tryFromAppOptions(options),
             liquidityProviders,
-            dispair: {
-                interpreter,
-                store,
-                deployer: options.dispair as `0x${string}`,
-            },
+            contracts,
         };
 
         // try to get init gas price
@@ -232,14 +198,14 @@ export namespace SharedStateConfig {
 
 /**
  * Maintains the shared state for RainSolver runtime operations, holds chain
- * configuration, dispair addresses, RPC state, wallet key, watched tokens,
+ * configuration, contract addresses, RPC state, wallet key, watched tokens,
  * liquidity provider information required for application execution and also
  * watches the gas price during runtime by reading it periodically
  */
 export class SharedState {
     readonly appOptions: AppOptions;
     /** Dispair, deployer, store and interpreter addresses */
-    readonly dispair: Dispair;
+    readonly contracts: SolverContracts;
     /** Wallet configurations */
     readonly walletConfig: WalletConfig;
     /** Chain configurations */
@@ -281,7 +247,7 @@ export class SharedState {
     constructor(config: SharedStateConfig) {
         this.appOptions = config.appOptions;
         this.client = config.client;
-        this.dispair = config.dispair;
+        this.contracts = config.contracts;
         this.walletConfig = config.walletConfig;
         this.chainConfig = config.chainConfig;
         this.subgraphConfig = config.subgraphConfig;

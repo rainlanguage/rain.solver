@@ -1,5 +1,6 @@
 import { ONE18 } from "../../math";
-import { Result } from "../../common";
+import { Order } from "../../order";
+import { Dispair, Result } from "../../common";
 import { RouteLeg } from "sushi/tines";
 import { Token } from "sushi/currency";
 import { SharedState } from "../../state";
@@ -39,6 +40,8 @@ describe("test SushiRouter methods", () => {
     let mockSharedState: SharedState;
     let mockDataFetcher: RainDataFetcher;
     let mockClient: PublicClient;
+    let dispair: Dispair;
+    let destination: `0x${string}`;
 
     const chainId = 1;
     const routerAddress = "0xsushiRouter" as `0x${string}`;
@@ -62,6 +65,12 @@ describe("test SushiRouter methods", () => {
     beforeEach(() => {
         vi.clearAllMocks();
 
+        dispair = {
+            deployer: "0xdeployer",
+            interpreter: "0xinterpreter",
+            store: "0xstore",
+        };
+        destination = "0xdestination";
         mockClient = {} as any;
 
         // Mock SharedState
@@ -74,9 +83,14 @@ describe("test SushiRouter methods", () => {
             },
             gasPrice: 20000000000n,
             client: {},
-            dataFetcher: {},
             appOptions: {
                 liquidityProviders: ["lp1"],
+            },
+            contracts: {
+                getAddressesForTrade: vi.fn().mockReturnValue({
+                    dispair,
+                    destination,
+                }),
             },
         } as any;
 
@@ -631,7 +645,7 @@ describe("test SushiRouter methods", () => {
             mockOrderDetails = {
                 takeOrder: {
                     struct: {
-                        order: "0xorder",
+                        order: { type: Order.Type.V3 },
                         inputIOIndex: 0,
                         outputIOIndex: 0,
                         signedContext: [],
@@ -647,8 +661,13 @@ describe("test SushiRouter methods", () => {
                 state: {
                     gasPrice: gasPrice,
                     appOptions: {
-                        arbAddress: "0xarbAddress" as `0x${string}`,
                         maxRatio: true,
+                    },
+                    contracts: {
+                        getAddressesForTrade: vi.fn().mockReturnValue({
+                            dispair,
+                            destination,
+                        }),
                     },
                     chainConfig: {
                         routeProcessors: {
@@ -735,7 +754,7 @@ describe("test SushiRouter methods", () => {
                 mockQuote.route.route,
                 mockTokenIn,
                 mockTokenOut,
-                "0xarbAddress",
+                "0xdestination",
                 "0xrouteProcessor4",
             );
 
@@ -806,7 +825,7 @@ describe("test SushiRouter methods", () => {
                 mockQuote.route.route,
                 mockTokenIn,
                 mockTokenOut,
-                "0xarbAddress",
+                "0xdestination",
                 "0xrouteProcessor4",
             );
 
@@ -831,6 +850,83 @@ describe("test SushiRouter methods", () => {
             expect(result.error.type).toBe(SushiRouterErrorType.NoRouteFound);
 
             tryQuoteSpy.mockRestore();
+        });
+
+        it("should return error when fails to get trade addresses", async () => {
+            (
+                mockGetTradeParamsArgs.state.contracts.getAddressesForTrade as Mock
+            ).mockReturnValueOnce(undefined);
+
+            const result = await router.getTradeParams(mockGetTradeParamsArgs);
+
+            assert(result.isErr());
+            expect(result.error.message).toContain(
+                "Sushi RouterProcessor contract not configured for trading order",
+            );
+            expect(result.error.type).toBe(SushiRouterErrorType.UndefinedTradeDestinationAddress);
+        });
+
+        it("should return error when getTakeOrdersConfig fails", async () => {
+            const mockQuote = {
+                type: RouterType.Sushi as const,
+                status: RouteStatus.Success,
+                price: 3000n * ONE18,
+                route: {
+                    route: {
+                        status: "Success",
+                        legs: [
+                            {
+                                tokenFrom: mockTokenIn,
+                                tokenTo: mockTokenOut,
+                                poolAddress: "0xpool1",
+                                poolName: "UniswapV3",
+                                absolutePortion: 1.0,
+                            } as any as RouteLeg,
+                        ],
+                    },
+                    pcMap: new Map(),
+                } as any,
+                amountOut: 3000000000n,
+            };
+
+            const mockRpParams = {
+                routeCode: "0xrouteCode" as `0x${string}`,
+            };
+
+            const tryQuoteSpy = vi.spyOn(router, "tryQuote");
+            tryQuoteSpy.mockResolvedValue(Result.ok(mockQuote));
+
+            const visSpy = vi.spyOn(SushiRouter, "visualizeRoute");
+            visSpy.mockReturnValue(["some route"]);
+
+            const routeProcessor4ParamsSpy = vi.spyOn(Router, "routeProcessor4Params");
+            routeProcessor4ParamsSpy.mockReturnValue(mockRpParams as any);
+
+            const getTakeOrdersConfigSpy = vi.spyOn(router, "getTakeOrdersConfig");
+            getTakeOrdersConfigSpy.mockReturnValue(
+                Result.err({ msg: "", readableMsg: "some error" }),
+            );
+
+            const result = await router.getTradeParams(mockGetTradeParamsArgs);
+
+            assert(result.isErr());
+
+            expect(result.error.message).toContain("Failed to build TakeOrdersConfig struct");
+            expect(result.error.type).toBe(SushiRouterErrorType.WasmEncodedError);
+            expect(result.error.cause).toEqual({ msg: "", readableMsg: "some error" });
+            expect(getTakeOrdersConfigSpy).toHaveBeenCalledWith(
+                mockGetTradeParamsArgs.orderDetails,
+                mockGetTradeParamsArgs.maximumInput,
+                mockQuote.price,
+                "0xencodedData",
+                mockGetTradeParamsArgs.state.appOptions.maxRatio,
+                mockGetTradeParamsArgs.isPartial,
+            );
+
+            visSpy.mockRestore();
+            tryQuoteSpy.mockRestore();
+            routeProcessor4ParamsSpy.mockRestore();
+            getTakeOrdersConfigSpy.mockRestore();
         });
     });
 

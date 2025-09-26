@@ -1,9 +1,9 @@
 import { RainSolver } from "..";
 import { TimeoutError } from "viem";
-import { Result } from "../../common";
+import { Dispair, Result } from "../../common";
 import { SharedState } from "../../state";
 import { AppOptions } from "../../config";
-import { OrderManager } from "../../order";
+import { Order, OrderManager } from "../../order";
 import { ErrorSeverity } from "../../error";
 import { WalletManager } from "../../wallet";
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -19,10 +19,19 @@ describe("Test initializeRound", () => {
     let mockWalletManager: WalletManager;
     let mockState: SharedState;
     let mockAppOptions: AppOptions;
+    let dispair: Dispair;
+    let destination: `0x${string}`;
     const mockSigner = { account: { address: "0xSigner123" } };
 
     beforeEach(() => {
         vi.clearAllMocks();
+
+        dispair = {
+            deployer: "0xdeployer",
+            interpreter: "0xinterpreter",
+            store: "0xstore",
+        };
+        destination = "0xdestination";
 
         // mock order manager
         mockOrderManager = {
@@ -38,14 +47,16 @@ describe("Test initializeRound", () => {
         // mock state
         mockState = {
             client: { name: "viem-client" },
-            dataFetcher: { name: "data-fetcher" },
+            contracts: {
+                getAddressesForTrade: vi.fn().mockReturnValue({
+                    dispair,
+                    destination,
+                }),
+            },
         } as any;
 
         // mock app options
-        mockAppOptions = {
-            arbAddress: "0x1111111111111111111111111111111111111111",
-            genericArbAddress: "0x2222222222222222222222222222222222222222",
-        } as any;
+        mockAppOptions = {} as any;
 
         // mock RainSolver
         mockSolver = {
@@ -156,34 +167,6 @@ describe("Test initializeRound", () => {
             // Verify all reports are ended
             result.checkpointReports.forEach((report) => {
                 expect(report.endTime).toBeTypeOf("number");
-            });
-        });
-
-        it("should handle missing genericArbAddress", async () => {
-            mockSolver.appOptions.genericArbAddress = undefined;
-
-            const mockOrders = [
-                {
-                    orderbook: "0x3333333333333333333333333333333333333333",
-                    buyTokenSymbol: "ETH",
-                    sellTokenSymbol: "USDC",
-                    takeOrder: {
-                        id: "0xOrder123",
-                        struct: { order: { owner: "0xOwner123" } },
-                    },
-                },
-            ];
-
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
-
-            const result: initializeRoundType = await initializeRound.call(mockSolver);
-
-            expect(result.settlements).toHaveLength(1);
-            expect(result.checkpointReports).toHaveLength(1);
-            expect(mockSolver.processOrder).toHaveBeenCalledWith({
-                orderDetails: expect.objectContaining(mockOrders[0]),
-                signer: mockSigner,
             });
         });
     });
@@ -540,6 +523,60 @@ describe("Test initializeRound", () => {
         expect(normalReport.attributes["details.sender"]).toBe("0xSigner123");
         expect(normalReport.endTime).toBeTypeOf("number");
     });
+
+    it("should skip orders when trade addresses are not configured", async () => {
+        const mockOrders = [
+            {
+                orderbook: "0x3333333333333333333333333333333333333333",
+                buyTokenSymbol: "ETH",
+                buyToken: "0xBuyToken1",
+                sellTokenSymbol: "USDC",
+                sellToken: "0xSellToken1",
+                sellTokenVaultBalance: 123n,
+                takeOrder: {
+                    id: "0xOrder1",
+                    struct: { order: { owner: "0xOwner1", type: Order.Type.V4 } },
+                },
+            },
+        ];
+        const mockSettleFn = vi.fn();
+        (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+        (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+        (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
+        (mockState.contracts.getAddressesForTrade as Mock).mockReturnValue(undefined); // simulate missing trade addresses
+
+        const result: initializeRoundType = await initializeRound.call(
+            mockSolver,
+            undefined,
+            false,
+        );
+
+        // should have 1 settlements total
+        expect(result.settlements).toHaveLength(1);
+        expect(result.checkpointReports).toHaveLength(1);
+
+        // first settlement (zero balance) - should be skipped and have ZeroOutput status
+        const zeroBalanceSettlement = result.settlements[0];
+        expect(zeroBalanceSettlement.pair).toBe("ETH/USDC");
+        expect(zeroBalanceSettlement.owner).toBe("0xOwner1");
+        expect(zeroBalanceSettlement.orderHash).toBe("0xOrder1");
+
+        // test the settle function for missing trade addresses
+        const missingTradeAddresses = await zeroBalanceSettlement.settle();
+        assert(missingTradeAddresses.isOk());
+        expect(missingTradeAddresses.value.tokenPair).toBe("ETH/USDC");
+        expect(missingTradeAddresses.value.buyToken).toBe("0xBuyToken1");
+        expect(missingTradeAddresses.value.sellToken).toBe("0xSellToken1");
+        expect(missingTradeAddresses.value.spanAttributes).toEqual({
+            "details.pair": "ETH/USDC",
+            "details.orders": "0xOrder1",
+        });
+        expect(missingTradeAddresses.value.endTime).toBeTypeOf("number");
+        expect(missingTradeAddresses.value.status).toBe(ProcessOrderStatus.UndefinedTradeAddresses);
+        expect(missingTradeAddresses.value.message).toBe(
+            "Cannot trade as dispair addresses are not configured for order V4 trade",
+        );
+    });
 });
 
 describe("Test finalizeRound", () => {
@@ -789,6 +826,53 @@ describe("Test finalizeRound", () => {
             expect(addEventSpy).toHaveBeenCalledWith("another", undefined, 5678);
 
             addEventSpy.mockRestore();
+        });
+
+        it("should handle UndefinedTradeAddresses status when trade addresses were undefined", async () => {
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.ok({
+                    status: ProcessOrderStatus.UndefinedTradeAddresses,
+                    tokenPair: "ETH/USDC",
+                    spanAttributes: { "test.attr": "value" },
+                    endTime: 789,
+                    message: "undefined addresses",
+                }),
+            );
+
+            settlements = [
+                {
+                    settle: mockSettle,
+                    pair: "ETH/USDC",
+                    owner: "0x123",
+                    orderHash: "0xabc",
+                    startTime: 123,
+                },
+            ];
+
+            const result: finalizeRoundType = await finalizeRound.call(mockSolver, settlements);
+
+            // assert function behavior
+            expect(result.results).toHaveLength(1);
+            expect(result.reports).toHaveLength(1);
+            const result1 = result.results[0];
+            assert(result1.isOk());
+            expect(result1.value).toEqual({
+                status: ProcessOrderStatus.UndefinedTradeAddresses,
+                tokenPair: "ETH/USDC",
+                spanAttributes: { "test.attr": "value" },
+                endTime: 789,
+                message: "undefined addresses",
+            });
+
+            // assert span creation and attributes
+            const report = result.reports[0];
+            expect(report.name).toBe("order_ETH/USDC");
+            expect(report.startTime).toBe(123);
+            expect(report.endTime).toBe(789);
+            expect(report.attributes["details.owner"]).toBe("0x123");
+            expect(report.attributes["test.attr"]).toBe("value");
+            expect(report.status?.code).toBe(SpanStatusCode.OK);
+            expect(report.status?.message).toBe("undefined addresses");
         });
     });
 

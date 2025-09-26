@@ -4,6 +4,7 @@ import { getGasPrice } from "./gasPrice";
 import { getChainConfig } from "./chain";
 import { createPublicClient } from "viem";
 import { LiquidityProviders } from "sushi";
+import { SolverContracts } from "./contracts";
 import { RainSolverRouter } from "../router/router";
 import { Result, sleep, TokenDetails } from "../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
@@ -28,6 +29,12 @@ vi.mock("./chain", () => ({
     getChainConfig: vi.fn(),
 }));
 
+vi.mock("./contracts", () => ({
+    SolverContracts: {
+        fromAppOptions: vi.fn(),
+    },
+}));
+
 describe("Test SharedStateConfig tryFromAppOptions", () => {
     let options: any;
     let mockClient: any;
@@ -37,13 +44,23 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             key: "0xkey",
             rpc: [{ url: "http://example.com" }],
             writeRpc: undefined,
-            dispair: "0xdispair",
             gasPriceMultiplier: 123,
             liquidityProviders: ["UniswapV2"],
             timeout: 1000,
             txGas: "120%",
             botMinBalance: "0.0000000001",
-            balancerArbAddress: "0xbalancerArb",
+            contracts: {
+                v4: {
+                    sushiArb: "0xsushiArb",
+                    genericArb: "0xgenericArb",
+                    balancerArb: "0xbalancerArb",
+                    dispair: {
+                        deployer: "0xdispair",
+                        iInterpreter: "0xinterpreter",
+                        iStore: "0xstore",
+                    },
+                },
+            },
         };
         mockClient = {
             getChainId: vi.fn().mockResolvedValue(1),
@@ -53,6 +70,18 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
                 .mockImplementationOnce(() => Promise.resolve("0xinterpreter"))
                 .mockImplementationOnce(() => Promise.resolve("0xstore")),
         };
+        (SolverContracts.fromAppOptions as Mock).mockResolvedValue({
+            v4: {
+                sushiArb: "0xsushiArb",
+                genericArb: "0xgenericArb",
+                balancerArb: "0xbalancerArb",
+                dispair: {
+                    deployer: "0xdispair",
+                    interpreter: "0xinterpreter",
+                    store: "0xstore",
+                },
+            },
+        } as any as SolverContracts);
         (getChainConfig as Mock).mockReturnValue(
             Result.ok({
                 id: 1,
@@ -69,6 +98,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
 
     it("should build SharedStateConfig from AppOptions (happy path)", async () => {
         const spy = vi.spyOn(RainSolverRouter, "create");
+        const solverContractsSpy = vi.spyOn(SolverContracts, "fromAppOptions");
         const configResult = await SharedStateConfig.tryFromAppOptions(options);
         assert(configResult.isOk());
         const config = configResult.value;
@@ -77,7 +107,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
         expect(config.liquidityProviders).toEqual([LiquidityProviders.UniswapV2]);
         expect(config.client).toBeDefined();
         expect(config.chainConfig.id).toBe(1);
-        expect(config.dispair).toEqual({
+        expect(config.contracts.v4?.dispair).toEqual({
             interpreter: "0xinterpreter",
             store: "0xstore",
             deployer: "0xdispair",
@@ -100,28 +130,10 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
                 balancerRouterAddress: expect.any(String),
             },
         });
+        expect(solverContractsSpy).toHaveBeenCalledWith(mockClient, options);
 
         spy.mockRestore();
-    });
-
-    it("should throw if iInterpreter contract call fails", async () => {
-        mockClient.readContract = vi
-            .fn()
-            .mockRejectedValueOnce(new Error("fail"))
-            .mockResolvedValueOnce("0xstore");
-        const result = await SharedStateConfig.tryFromAppOptions(options);
-        assert(result.isErr());
-        expect(result.error.type).toBe(SharedStateErrorType.FailedToGetDispairInterpreterAddress);
-    });
-
-    it("should throw if iStore contract call fails", async () => {
-        mockClient.readContract = vi
-            .fn()
-            .mockResolvedValueOnce("0xinterpreter")
-            .mockRejectedValueOnce(new Error("fail"));
-        const result = await SharedStateConfig.tryFromAppOptions(options);
-        assert(result.isErr());
-        expect(result.error.type).toBe(SharedStateErrorType.FailedToGetDispairStoreAddress);
+        solverContractsSpy.mockRestore();
     });
 
     it("should throw if getChainConfig returns undefined", async () => {
@@ -154,7 +166,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
     });
 
     it("should not include balancer router if balancerArbAddress is not set", async () => {
-        options.balancerArbAddress = undefined;
+        options.contracts.v4.balancerArb = undefined;
         const spy = vi.spyOn(RainSolverRouter, "create");
         const result = await SharedStateConfig.tryFromAppOptions(options);
         assert(result.isOk());
@@ -204,6 +216,18 @@ describe("Test SharedState", () => {
                 store: "0xstore",
                 deployer: "0xdispair",
             },
+            contracts: {
+                v5: {
+                    sushiArb: "0xsushiArb",
+                    genericArb: "0xgenericArb",
+                    balancerArb: "0xbalancerArb",
+                    dispair: {
+                        deployer: "0xdispair",
+                        iInterpreter: "0xinterpreter",
+                        iStore: "0xstore",
+                    },
+                },
+            },
             walletConfig: {
                 key: "0xkey",
             },
@@ -225,7 +249,7 @@ describe("Test SharedState", () => {
 
     describe("Test initialization event and properties", () => {
         it("should initialize properties from config", () => {
-            expect(sharedState.dispair).toEqual(config.dispair);
+            expect(sharedState.contracts.v5?.dispair).toEqual(config.contracts.v5.dispair);
             expect(sharedState.walletConfig).toEqual({ key: "0xkey" });
             expect(sharedState.chainConfig).toEqual(config.chainConfig);
             expect(sharedState.liquidityProviders).toEqual([LiquidityProviders.UniswapV2]);

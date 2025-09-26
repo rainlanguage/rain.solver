@@ -1,21 +1,14 @@
 import { Pair } from "../../order";
 import { Result } from "../../common";
 import { Token } from "sushi/currency";
+import { TradeType } from "../../core/types";
 import { MultiRoute, RouteLeg } from "sushi/tines";
 import { RainSolverBaseError } from "../../error/types";
 import { BlackListSet, RPoolFilter } from "./blacklist";
-import { TakeOrdersConfigType } from "../../core/types";
+import { TakeOrdersConfigType } from "../../order/types";
 import { calculatePrice18, scaleFrom18, scaleTo18 } from "../../math";
 import { ChainId, LiquidityProviders, PoolCode, RainDataFetcher, Router } from "sushi";
-import {
-    Chain,
-    Account,
-    Transport,
-    maxUint256,
-    formatUnits,
-    PublicClient,
-    encodeAbiParameters,
-} from "viem";
+import { Chain, Account, Transport, formatUnits, PublicClient, encodeAbiParameters } from "viem";
 import {
     RouterType,
     RouteStatus,
@@ -90,6 +83,8 @@ export enum SushiRouterErrorType {
     InitializationError,
     NoRouteFound,
     FetchFailed,
+    WasmEncodedError,
+    UndefinedTradeDestinationAddress,
 }
 
 /**
@@ -419,6 +414,20 @@ export class SushiRouter extends RainSolverRouterBase {
             args;
         const gasPrice = state.gasPrice;
 
+        // get the addresses required for building trade params
+        const addresses = state.contracts.getAddressesForTrade(
+            orderDetails,
+            TradeType.RouteProcessor,
+        );
+        if (!addresses) {
+            return Result.err(
+                new SushiRouterError(
+                    `Sushi RouterProcessor contract not configured for trading order ${orderDetails.takeOrder.struct.order.type}`,
+                    SushiRouterErrorType.UndefinedTradeDestinationAddress,
+                ),
+            );
+        }
+
         // get route details from sushi dataFetcher
         const quoteResult = await this.tryQuote({
             fromToken,
@@ -454,18 +463,28 @@ export class SushiRouter extends RainSolverRouterBase {
             quoteResult.value.route.route,
             fromToken,
             toToken,
-            state.appOptions.arbAddress as `0x${string}`,
+            addresses.destination, // destination is the sushi rp arb address
             state.chainConfig.routeProcessors["4"],
         );
 
-        const orders = [orderDetails.takeOrder.struct];
-        const takeOrdersConfigStruct: TakeOrdersConfigType = {
-            minimumInput: 1n,
-            maximumInput: isPartial ? maximumInput : maxUint256,
-            maximumIORatio: state.appOptions.maxRatio ? maxUint256 : quote.price,
-            orders,
-            data: encodeAbiParameters([{ type: "bytes" }], [rpParams.routeCode]),
-        };
+        const takeOrdersConfigStructResult = this.getTakeOrdersConfig(
+            orderDetails,
+            maximumInput,
+            quote.price,
+            encodeAbiParameters([{ type: "bytes" }], [rpParams.routeCode]),
+            state.appOptions.maxRatio,
+            isPartial,
+        );
+        if (takeOrdersConfigStructResult.isErr()) {
+            return Result.err(
+                new SushiRouterError(
+                    "Failed to build TakeOrdersConfig struct",
+                    SushiRouterErrorType.WasmEncodedError,
+                    takeOrdersConfigStructResult.error,
+                ),
+            );
+        }
+        const takeOrdersConfigStruct = takeOrdersConfigStructResult.value;
 
         return Result.ok({
             type: RouterType.Sushi,

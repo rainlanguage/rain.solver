@@ -1,25 +1,26 @@
-import { Evaluable, TakeOrder } from "../order";
+import { Evaluable } from "../order";
 import { Attributes } from "@opentelemetry/api";
 import { Result, RawTransaction } from "../common";
 import { EstimateGasCostResult } from "../signer";
 
 /** Specifies reason that order process halted with failure */
 export enum ProcessOrderHaltReason {
-    FailedToQuote = 1,
-    FailedToGetEthPrice = 2,
-    FailedToGetPools = 3,
-    TxFailed = 4,
-    TxMineFailed = 5,
-    TxReverted = 6,
-    FailedToUpdatePools = 7,
-    UnexpectedError = 8,
+    FailedToQuote,
+    FailedToGetEthPrice,
+    FailedToGetPools,
+    TxFailed,
+    TxMineFailed,
+    TxReverted,
+    FailedToUpdatePools,
+    UnexpectedError,
 }
 
 /** Specifies status of an processed order */
 export enum ProcessOrderStatus {
-    ZeroOutput = 1,
-    NoOpportunity = 2,
-    FoundOpportunity = 3,
+    ZeroOutput,
+    NoOpportunity,
+    FoundOpportunity,
+    UndefinedTradeAddresses,
 }
 
 /** Specifies types of trades */
@@ -60,14 +61,6 @@ export type ProcessOrderFailure = ProcessOrderResultBase & {
     reason: ProcessOrderHaltReason;
     error?: any;
     txUrl?: string;
-};
-
-export type TakeOrdersConfigType = {
-    minimumInput: bigint;
-    maximumInput: bigint;
-    maximumIORatio: bigint;
-    orders: TakeOrder[];
-    data: `0x${string}`;
 };
 
 export type TaskType = {

@@ -31,6 +31,17 @@ export async function findBestRouterTrade(
 ): Promise<SimulationResult> {
     const spanAttributes: Attributes = {};
 
+    // exit early if required trade addresses are not configured
+    if (!this.state.contracts.getAddressesForTrade(orderDetails, TradeType.Router)) {
+        spanAttributes["error"] =
+            `Cannot trade as sushi route processor and balancer arb addresses are not configured for order ${orderDetails.takeOrder.struct.order.type} trade`;
+        return Result.err({
+            type: TradeType.Router,
+            spanAttributes,
+            reason: SimulationHaltReason.UndefinedTradeDestinationAddress,
+        });
+    }
+
     // exit early if eth price is unknown
     if (!ethPrice) {
         spanAttributes["error"] = "no route to get price of input token to eth";

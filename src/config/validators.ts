@@ -1,6 +1,6 @@
 import assert from "assert";
 import { isAddress } from "viem";
-import { SelfFundVault } from ".";
+import { AppOptionsContracts, SelfFundVault } from ".";
 import { RpcConfig } from "../rpc";
 import { isBigNumberish } from "../math";
 import { SgFilter } from "../subgraph/filter";
@@ -448,6 +448,59 @@ export namespace Validator {
         } else {
             return undefined;
         }
+    }
+
+    export function resolveContracts(input: any): AppOptionsContracts {
+        const dispairV4 = resolveAddress(input?.contracts?.v4?.dispair, "dispair v4", true);
+        const sushiArbAddressV4 = resolveAddress(
+            input?.contracts?.v4?.sushiArbAddress,
+            "sushiArbAddress v4",
+            true,
+        );
+        const genericArbAddressV4 = resolveAddress(
+            input?.contracts?.v4?.genericArbAddress,
+            "genericArbAddress v4",
+            true,
+        );
+        const balancerArbAddressV4 = resolveAddress(
+            input?.contracts?.v4?.balancerArbAddress,
+            "balancerArbAddress v4",
+            true,
+        );
+        const dispairV5 = resolveAddress(input?.contracts?.v5?.dispair, "dispair v5", true);
+        const sushiArbAddressV5 = resolveAddress(
+            input?.contracts?.v5?.sushiArbAddress,
+            "sushiArbAddress v5",
+            true,
+        );
+        const genericArbAddressV5 = resolveAddress(
+            input?.contracts?.v5?.genericArbAddress,
+            "genericArbAddress v5",
+            true,
+        );
+        const balancerArbAddressV5 = resolveAddress(
+            input?.contracts?.v5?.balancerArbAddress,
+            "balancerArbAddress v5",
+            true,
+        );
+        const contracts: AppOptionsContracts = {};
+        if (dispairV4 || sushiArbAddressV4 || genericArbAddressV4 || balancerArbAddressV4) {
+            contracts.v4 = {
+                sushiArb: sushiArbAddressV4 as `0x${string}` | undefined,
+                dispair: dispairV4 as `0x${string}` | undefined,
+                genericArb: genericArbAddressV4 as `0x${string}` | undefined,
+                balancerArb: balancerArbAddressV4 as `0x${string}` | undefined,
+            };
+        }
+        if (dispairV5 || sushiArbAddressV5 || genericArbAddressV5 || balancerArbAddressV5) {
+            contracts.v5 = {
+                sushiArb: sushiArbAddressV5 as `0x${string}` | undefined,
+                dispair: dispairV5 as `0x${string}` | undefined,
+                genericArb: genericArbAddressV5 as `0x${string}` | undefined,
+                balancerArb: balancerArbAddressV5 as `0x${string}` | undefined,
+            };
+        }
+        return contracts;
     }
 }
 

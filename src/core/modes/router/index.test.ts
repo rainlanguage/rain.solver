@@ -1,5 +1,6 @@
-import { Result } from "../../../common";
+import { Order } from "../../../order";
 import { findBestRouterTrade } from "./index";
+import { Dispair, Result } from "../../../common";
 import { RouterTradeSimulator } from "./simulate";
 import { SimulationHaltReason } from "../simulator";
 import { extendObjectWithHeader } from "../../../common";
@@ -33,10 +34,18 @@ describe("Test findBestRouterTrade", () => {
     let blockNumber: bigint;
     let trySimulateTradeSpy: any;
     let simulatorWithArgsSpy: any;
+    let dispair: Dispair;
+    let destination: `0x${string}`;
 
     beforeEach(() => {
         vi.clearAllMocks();
 
+        dispair = {
+            deployer: "0xdeployer",
+            interpreter: "0xinterpreter",
+            store: "0xstore",
+        };
+        destination = "0xdestination";
         mockRainSolver = {
             appOptions: {},
             state: {
@@ -47,11 +56,17 @@ describe("Test findBestRouterTrade", () => {
                 router: {
                     findLargestTradeSize: vi.fn(),
                 },
+                contracts: {
+                    getAddressesForTrade: vi.fn().mockReturnValue({
+                        dispair,
+                        destination,
+                    }),
+                },
             },
         };
 
         orderDetails = {
-            takeOrder: { quote: { maxOutput: 1000n } },
+            takeOrder: { quote: { maxOutput: 1000n }, struct: { order: { type: Order.Type.V4 } } },
         };
 
         signer = { account: { address: "0xsigner" } };
@@ -337,6 +352,27 @@ describe("Test findBestRouterTrade", () => {
         expect(result.error.type).toBe("router");
         expect(result.error.spanAttributes.error).toBe(
             "no route to get price of input token to eth",
+        );
+    });
+
+    it("should return error when trade addresses are not configured", async () => {
+        (mockRainSolver.state.contracts.getAddressesForTrade as Mock).mockReturnValue(undefined);
+        const result: SimulationResult = await findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+        );
+
+        assert(result.isErr());
+        expect(result.error.type).toBe(TradeType.Router);
+        expect(result.error.reason).toBe(SimulationHaltReason.UndefinedTradeDestinationAddress);
+        expect(mockRainSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledWith(
+            orderDetails,
+            TradeType.Router,
         );
     });
 });

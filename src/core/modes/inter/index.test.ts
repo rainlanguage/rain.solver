@@ -1,12 +1,13 @@
 import { RainSolver } from "../..";
-import { Result } from "../../../common";
 import { fallbackEthPrice } from "../dryrun";
+import { Dispair, Result } from "../../../common";
 import { RainSolverSigner } from "../../../signer";
+import { SimulationHaltReason } from "../simulator";
 import { findBestInterOrderbookTrade } from "./index";
 import { extendObjectWithHeader } from "../../../common";
 import { SimulationResult, TradeType } from "../../types";
-import { CounterpartySource, Pair } from "../../../order";
 import { InterOrderbookTradeSimulator } from "./simulate";
+import { CounterpartySource, Order, Pair } from "../../../order";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
 vi.mock("../../../common", async (importOriginal) => ({
@@ -27,26 +28,41 @@ describe("Test findBestInterOrderbookTrade", () => {
     let blockNumber: bigint;
     let trySimulateTradeSpy: any;
     let simulatorWithArgsSpy: any;
+    let dispair: Dispair;
+    let destination: `0x${string}`;
 
     beforeEach(() => {
         vi.clearAllMocks();
 
+        dispair = {
+            deployer: "0xdeployer",
+            interpreter: "0xinterpreter",
+            store: "0xstore",
+        };
+        destination = "0xdestination";
         mockRainSolver = {
             state: {
                 client: {
                     getBlockNumber: vi.fn().mockResolvedValue(123n),
                 },
+                contracts: {
+                    getAddressesForTrade: vi.fn().mockReturnValue({
+                        dispair,
+                        destination,
+                    }),
+                },
             },
             orderManager: {
                 getCounterpartyOrders: vi.fn(),
             },
-            appOptions: {
-                genericArbAddress: "0xarb",
-            },
+            appOptions: {},
         } as any;
 
         orderDetails = {
-            takeOrder: { quote: { maxOutput: 1000n, ratio: 5n } },
+            takeOrder: {
+                quote: { maxOutput: 1000n, ratio: 5n },
+                struct: { order: { type: Order.Type.V4 } },
+            },
         } as any;
 
         signer = { account: { address: "0xsigner" } } as any;
@@ -61,10 +77,24 @@ describe("Test findBestInterOrderbookTrade", () => {
     it("should return success result with highest profit when simulations succeed", async () => {
         const mockCounterpartyOrders = [
             [
-                { orderbook: "0xorderbook1", id: "order1" },
-                { orderbook: "0xorderbook1", id: "order2" },
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order1",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order2",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
             ],
-            [{ orderbook: "0xorderbook2", id: "order3" }],
+            [
+                {
+                    orderbook: "0xorderbook2",
+                    id: "order3",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
+            ],
         ];
         (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
             mockCounterpartyOrders,
@@ -119,8 +149,16 @@ describe("Test findBestInterOrderbookTrade", () => {
     it("should return success result when only some simulations succeed", async () => {
         const mockCounterpartyOrders = [
             [
-                { orderbook: "0xorderbook1", id: "order1" },
-                { orderbook: "0xorderbook1", id: "order2" },
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order1",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order2",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
             ],
         ];
         (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
@@ -163,8 +201,20 @@ describe("Test findBestInterOrderbookTrade", () => {
 
     it("should return error when all simulations fail", async () => {
         const mockCounterpartyOrders = [
-            [{ orderbook: "0xorderbook1", id: "order1" }],
-            [{ orderbook: "0xorderbook2", id: "order2" }],
+            [
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order1",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
+            ],
+            [
+                {
+                    orderbook: "0xorderbook2",
+                    id: "order2",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
+            ],
         ];
         (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
             mockCounterpartyOrders,
@@ -232,11 +282,31 @@ describe("Test findBestInterOrderbookTrade", () => {
     it("should limit to top 3 counterparty orders per orderbook", async () => {
         const mockCounterpartyOrders = [
             [
-                { orderbook: "0xorderbook1", id: "order1" },
-                { orderbook: "0xorderbook1", id: "order2" },
-                { orderbook: "0xorderbook1", id: "order3" },
-                { orderbook: "0xorderbook1", id: "order4" }, // should be ignored
-                { orderbook: "0xorderbook1", id: "order5" }, // should be ignored
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order1",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order2",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order3",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order4",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                }, // should be ignored
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order5",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                }, // should be ignored
             ],
         ];
         (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
@@ -267,7 +337,15 @@ describe("Test findBestInterOrderbookTrade", () => {
     });
 
     it("should call trySimulateTradeSpy with correct parameters", async () => {
-        const mockCounterpartyOrders = [[{ orderbook: "0xorderbook1", id: "order1" }]];
+        const mockCounterpartyOrders = [
+            [
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order1",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
+            ],
+        ];
         (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
             mockCounterpartyOrders,
         );
@@ -292,7 +370,11 @@ describe("Test findBestInterOrderbookTrade", () => {
             type: TradeType.InterOrderbook,
             solver: mockRainSolver,
             orderDetails,
-            counterpartyOrderDetails: { orderbook: "0xorderbook1", id: "order1" },
+            counterpartyOrderDetails: {
+                orderbook: "0xorderbook1",
+                id: "order1",
+                takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+            },
             signer,
             maximumInputFixed: 1000n,
             inputToEthPrice,
@@ -304,9 +386,21 @@ describe("Test findBestInterOrderbookTrade", () => {
     it("should sort results by estimated profit in descending order", async () => {
         const mockCounterpartyOrders = [
             [
-                { orderbook: "0xorderbook1", id: "order1" },
-                { orderbook: "0xorderbook1", id: "order2" },
-                { orderbook: "0xorderbook1", id: "order3" },
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order1",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order2",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
+                {
+                    orderbook: "0xorderbook1",
+                    id: "order3",
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                },
             ],
         ];
         (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
@@ -358,7 +452,10 @@ describe("Test findBestInterOrderbookTrade", () => {
                 {
                     orderbook: "0xorderbook1",
                     id: "order1",
-                    takeOrder: { quote: { maxOutput: 1n, ratio: 2n } },
+                    takeOrder: {
+                        quote: { maxOutput: 1n, ratio: 2n },
+                        struct: { order: { type: Order.Type.V4 } },
+                    },
                 },
             ],
         ];
@@ -395,5 +492,25 @@ describe("Test findBestInterOrderbookTrade", () => {
         });
         expect(fallbackEthPrice).toHaveBeenCalledWith(5n, 2n, ""); // first call for inputToEthPrice
         expect(fallbackEthPrice).toHaveBeenCalledWith(2n, 5n, ""); // second call for outputToEthPrice
+    });
+
+    it("should return error when trade addresses are not configured", async () => {
+        (mockRainSolver.state.contracts.getAddressesForTrade as Mock).mockReturnValue(undefined);
+        const result: SimulationResult = await findBestInterOrderbookTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            inputToEthPrice,
+            outputToEthPrice,
+            blockNumber,
+        );
+
+        assert(result.isErr());
+        expect(result.error.type).toBe(TradeType.InterOrderbook);
+        expect(result.error.reason).toBe(SimulationHaltReason.UndefinedTradeDestinationAddress);
+        expect(mockRainSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledWith(
+            orderDetails,
+            TradeType.InterOrderbook,
+        );
     });
 });

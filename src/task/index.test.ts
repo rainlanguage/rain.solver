@@ -36,7 +36,7 @@ total-bounty-eth: add(
     mul(${formatUnits(outputToEthPrice, 18)} context<1 1>())
 ),
 :ensure(
-    greater-than-or-equal-to(
+    greater-than(
         total-bounty-eth
         ${formatUnits(minimumExpected, 18)}
     )
@@ -82,7 +82,7 @@ total-bounty-eth: add(
     mul(output-bounty ${formatUnits(outputToEthPrice, 18)})
 ),
 :ensure(
-    greater-than-or-equal-to(
+    greater-than(
         total-bounty-eth
         ${formatUnits(minimumExpected, 18)}
     )
