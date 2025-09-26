@@ -795,6 +795,402 @@ for (let i = 0; i < testData.length; i++) {
                     testSpan.end();
                 });
 
+                it("should clear orders successfully using against v5 orderbook", async function () {
+                    config.rpc = [rpc];
+                    const viemClient = await viem.getPublicClient();
+                    state.client = viemClient;
+                    const sushiRouterResult = await sushiRouterPromise;
+                    assert(sushiRouterResult.isOk());
+                    state.router = new RainSolverRouter(
+                        chainId,
+                        client,
+                        sushiRouterResult.value,
+                        await getBalancerRouter(),
+                    );
+                    sushiRouterResult.value.dataFetcher.web3Client.transport.retryCount = 3;
+                    const testSpan = tracer.startSpan("test-clearing");
+
+                    // reset network before each test
+                    await helpers.reset(rpc, blockNumber);
+
+                    // get bot signer
+                    const bot = botAddress
+                        ? (await viem.getTestClient({ account: botAddress }))
+                              .extend(publicActions)
+                              .extend(walletActions)
+                        : (
+                              await viem.getTestClient({
+                                  account: "0x22025257BeF969A81eDaC0b343ce82d777931327",
+                              })
+                          )
+                              .extend(publicActions)
+                              .extend(walletActions);
+                    bot.sendTx = async (tx) => {
+                        return await sendTx(bot, tx);
+                    };
+                    bot.waitUntilFree = async () => {
+                        return await waitUntilFree(bot);
+                    };
+                    bot.estimateGasCost = async (tx) => {
+                        return await estimateGasCost(bot, tx);
+                    };
+                    bot.asWriteSigner = () => bot;
+                    bot.state = state;
+                    bot.impersonateAccount({
+                        address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
+                    });
+                    await network.provider.send("hardhat_setBalance", [
+                        bot.account.address,
+                        "0x4563918244F40000",
+                    ]);
+                    bot.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
+                    bot.BOUNTY = [];
+
+                    // deploy v4 contracts
+                    const interpreter = await rainterpreterNPE2Deploy();
+                    const store = await rainterpreterStoreNPE2Deploy();
+                    const parser = await rainterpreterParserNPE2Deploy();
+                    const deployer = await rainterpreterExpressionDeployerNPE2Deploy({
+                        interpreter: interpreter.address,
+                        store: store.address,
+                        parser: parser.address,
+                    });
+                    const orderbook1 = !orderbookAddress
+                        ? await deployOrderBookNPE2()
+                        : await ethers.getContractAt(orderbookAbi, orderbookAddress);
+                    const arb = !arbAddress
+                        ? await arbDeploy(orderbook1.address, config.routeProcessors[rpVersion])
+                        : await ethers.getContractAt(ABI.Orderbook.V4.Primary.Arb, arbAddress);
+
+                    // deploy v5 contracts
+                    const interpreterv5 = await rainterpreterV5Deploy();
+                    const storev5 = await rainterpreterStoreV5Deploy();
+                    const parserv5 = await rainterpreterParserV5Deploy();
+                    const deployerv5 = await rainterpreterExpressionDeployerV5Deploy({
+                        interpreter: interpreterv5.address,
+                        store: storev5.address,
+                        parser: parserv5.address,
+                    });
+                    const orderbook2 = !orderbookAddress
+                        ? await deployOrderBookV5()
+                        : await ethers.getContractAt(orderbookAbi, orderbookAddress);
+                    const genericArb = await genericArbrbDeploy(orderbook2.address);
+
+                    state.contracts = await SolverContracts.fromAppOptions(viemClient, {
+                        contracts: {
+                            v4: {
+                                dispair: deployer.address,
+                                sushiArb: arb.address,
+                                genericArb: genericArb.address,
+                            },
+                            v5: {
+                                dispair: deployerv5.address,
+                            },
+                        },
+                    });
+
+                    // set up tokens contracts and impersonate owners
+                    const owners = [];
+                    for (let i = 0; i < tokens.length; i++) {
+                        tokens[i].contract = await ethers.getContractAt(
+                            ERC20Artifact.abi,
+                            tokens[i].address,
+                        );
+                        if (i === 0) {
+                            tokens[0].vaultIds = [];
+                            for (let j = 0; j < tokens.length - 1; j++) {
+                                tokens[0].vaultIds.push(ethers.BigNumber.from(randomUint256()));
+                            }
+                        }
+                        tokens[i].vaultId = ethers.BigNumber.from(randomUint256());
+                        i > 0
+                            ? (tokens[i].depositAmount = ethers.utils.parseUnits(
+                                  deposits[i] ?? "100",
+                                  tokens[i].decimals,
+                              ))
+                            : (tokens[i].depositAmount = ethers.utils
+                                  .parseUnits(deposits[i] ?? "100", tokens[i].decimals)
+                                  .div(tokens.length - 1));
+                        owners.push(await ethers.getImpersonatedSigner(addressesWithBalance[i]));
+                        await network.provider.send("hardhat_setBalance", [
+                            addressesWithBalance[i],
+                            "0x4563918244F40000",
+                        ]);
+                    }
+
+                    // bot original token balances
+                    const originalBotTokenBalances = [];
+                    for (const t of tokens) {
+                        originalBotTokenBalances.push(
+                            await t.contract.balanceOf(bot.account.address),
+                        );
+                    }
+
+                    // dposit and add orders for each owner and return
+                    // the deployed orders in format of a sg query.
+                    // all orders have WETH as output and other specified
+                    // tokens as input
+                    let orders = [];
+                    for (let i = 1; i < tokens.length; i++) {
+                        const depositConfigStruct1 = {
+                            token: tokens[i].address,
+                            vaultId: tokens[i].vaultId,
+                            amount: tokens[i].depositAmount.toString(),
+                        };
+                        await tokens[i].contract
+                            .connect(owners[i])
+                            .approve(orderbook1.address, depositConfigStruct1.amount);
+                        await orderbook1
+                            .connect(owners[i])
+                            .deposit2(
+                                depositConfigStruct1.token,
+                                depositConfigStruct1.vaultId,
+                                depositConfigStruct1.amount,
+                                [],
+                            );
+
+                        // prebuild bytecode: "_ _: 0 max; :;"
+                        const ratio = "0".repeat(64); // 0
+                        const maxOutput = "f".repeat(64); // max
+                        const bytecode = `0x0000000000000000000000000000000000000000000000000000000000000002${maxOutput}${ratio}0000000000000000000000000000000000000000000000000000000000000015020000000c02020002011000000110000100000000`;
+                        const addOrderConfig1 = {
+                            evaluable: {
+                                interpreter: interpreter.address,
+                                store: store.address,
+                                bytecode,
+                            },
+                            nonce: "0x" + "0".repeat(63) + "1",
+                            secret: "0x" + "0".repeat(63) + "1",
+                            validInputs: [
+                                {
+                                    token: tokens[0].address,
+                                    decimals: tokens[0].decimals,
+                                    vaultId: tokens[0].vaultId,
+                                },
+                            ],
+                            validOutputs: [
+                                {
+                                    token: tokens[i].address,
+                                    decimals: tokens[i].decimals,
+                                    vaultId: tokens[i].vaultId,
+                                },
+                            ],
+                            meta: encodeMeta("some_order"),
+                        };
+                        const tx1 = await orderbook1
+                            .connect(owners[i])
+                            .addOrder2(addOrderConfig1, []);
+                        orders.push(
+                            await mockSgFromEvent(
+                                await getEventArgs(tx1, "AddOrderV2", orderbook1),
+                                orderbook1,
+                                tokens.map((v) => ({ ...v.contract, knownSymbol: v.symbol })),
+                            ),
+                        );
+
+                        // opposing orders
+                        const depositConfigStruct2 = {
+                            token: tokens[0].address,
+                            vaultId: tokens[0].vaultIds[i - 1],
+                            amount: tokens[0].depositAmount.toString(),
+                        };
+                        await tokens[0].contract
+                            .connect(owners[0])
+                            .approve(orderbook2.address, depositConfigStruct2.amount);
+                        await orderbook2
+                            .connect(owners[0])
+                            .deposit3(
+                                depositConfigStruct2.token,
+                                depositConfigStruct2.vaultId,
+                                toFloat(depositConfigStruct2.amount, tokens[0].decimals).value,
+                                [],
+                            );
+                        // prebuild bytecode: "_ _: 0 max; :;"
+                        const opposingRatio = "0".repeat(64); // 0
+                        const oposingMaxOutput = maxFloat(18).substring(2).padStart(64, "0"); // max
+                        const oposingBytecode = `0x0000000000000000000000000000000000000000000000000000000000000002${oposingMaxOutput}${opposingRatio}0000000000000000000000000000000000000000000000000000000000000015020000000c02020002011000000110000100000000`;
+                        const addOrderConfig2 = {
+                            evaluable: {
+                                interpreter: interpreterv5.address,
+                                store: storev5.address,
+                                bytecode: oposingBytecode,
+                            },
+                            nonce: "0x" + "0".repeat(63) + "1",
+                            secret: "0x" + "0".repeat(63) + "1",
+                            validInputs: [
+                                {
+                                    token: tokens[i].address,
+                                    vaultId: tokens[i].vaultId,
+                                },
+                            ],
+                            validOutputs: [
+                                {
+                                    token: tokens[0].address,
+                                    vaultId: tokens[0].vaultIds[i - 1],
+                                },
+                            ],
+                            meta: encodeMeta("some_order"),
+                        };
+                        const tx2 = await orderbook2.connect(owners[0]).addOrder3(addOrderConfig2, [
+                            {
+                                evaluable: {
+                                    interpreter: interpreterv5.address,
+                                    store: storev5.address,
+                                    bytecode:
+                                        "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000701000000000000",
+                                },
+                                signedContext: [],
+                            },
+                        ]);
+                        orders.push(
+                            await mockSgFromEventV5(
+                                await getEventArgs(tx2, "AddOrderV3", orderbook2),
+                                orderbook2,
+                                tokens.map((v) => ({
+                                    ...v.contract,
+                                    knownSymbol: v.symbol,
+                                    decimals: v.decimals,
+                                })),
+                            ),
+                        );
+                    }
+
+                    // run the clearing process
+                    config.isTest = true;
+                    config.shuffle = false;
+                    config.signer = bot;
+                    config.hops = 2;
+                    config.retries = 1;
+                    config.lps = liquidityProviders;
+                    config.rpVersion = rpVersion;
+                    config.orderbookAddress = orderbook1.address;
+                    config.testBlockNumber = BigInt(blockNumber);
+                    config.gasCoveragePercentage = "0";
+                    config.viemClient = viemClient;
+                    config.accounts = [];
+                    config.mainAccount = bot;
+                    config.gasPriceMultiplier = 107;
+                    config.gasLimitMultiplier = 120;
+                    config.dispair = {
+                        interpreter: interpreter.address,
+                        store: store.address,
+                        deployer: deployer.address,
+                    };
+
+                    const orderManager = new OrderManager(state);
+                    for (const order of orders) {
+                        const res = await orderManager.addOrder(order);
+                        assert(res.isOk());
+                    }
+                    orders = orderManager.getNextRoundOrders(false);
+
+                    // mock init quotes
+                    orders.forEach((pair) => {
+                        pair.takeOrder.quote = {
+                            ratio: ethers.constants.Zero.toBigInt(),
+                            maxOutput: tokens
+                                .find(
+                                    (t) =>
+                                        t.contract.address.toLowerCase() ===
+                                        pair.sellToken.toLowerCase(),
+                                )
+                                ?.depositAmount.mul("1" + "0".repeat(18 - pair.sellTokenDecimals))
+                                .toBigInt(),
+                        };
+                    });
+                    state.gasPrice = await bot.getGasPrice();
+                    orderManager.getNextRoundOrders = () => orders;
+                    const rainSolver = new RainSolver(
+                        state,
+                        config,
+                        orderManager,
+                        {
+                            mainSigner: bot,
+                            getRandomSigner: () => bot,
+                        },
+                        // config,
+                    );
+                    const { results: reports } = await rainSolver.processNextRound(
+                        undefined,
+                        false,
+                    );
+
+                    // should have cleared correct number of orders
+                    assert.ok(
+                        reports.length == (tokens.length - 1) * 2,
+                        "Failed to clear all given orders",
+                    );
+
+                    // validate each cleared order
+                    let gasSpent = ethers.constants.Zero;
+                    let inputProfit = ethers.constants.Zero;
+                    for (let i = 0; i < reports.length / 2; i++) {
+                        const report = reports[i].value;
+                        assert.equal(report.status, ProcessOrderStatus.FoundOpportunity);
+
+                        const pair = `${tokens[0].symbol}/${tokens[i + 1].symbol}`;
+                        const clearedAmount = ethers.BigNumber.from(report.clearedAmount);
+                        const outputVault = await orderbook1.vaultBalance(
+                            owners[i + 1].address,
+                            tokens[i + 1].address,
+                            tokens[i + 1].vaultId,
+                        );
+                        const inputVault = await orderbook1.vaultBalance(
+                            owners[0].address,
+                            tokens[0].address,
+                            tokens[0].vaultId,
+                        );
+                        const botTokenBalance = await tokens[i + 1].contract.balanceOf(
+                            bot.account.address,
+                        );
+
+                        assert.equal(report.tokenPair, pair);
+
+                        // should have cleared equal to vault balance or lower
+                        assert.ok(
+                            tokens[i + 1].depositAmount.gte(clearedAmount),
+                            `Did not clear expected amount for: ${pair}`,
+                        );
+                        assert.ok(
+                            outputVault.eq(tokens[i + 1].depositAmount.sub(clearedAmount)),
+                            `Unexpected current output vault balance: ${pair}`,
+                        );
+                        assert.ok(
+                            inputVault.eq(0),
+                            `Unexpected current input vault balance: ${pair}`,
+                        );
+
+                        // output bounties should equal to current bot's token balance
+                        assert.ok(
+                            originalBotTokenBalances[i + 1]
+                                .add(
+                                    ethers.utils.parseUnits(
+                                        report.outputTokenIncome,
+                                        tokens[i + 1].decimals,
+                                    ),
+                                )
+                                .eq(botTokenBalance),
+                            `Unexpected current bot ${tokens[i + 1].symbol} balance`,
+                        );
+
+                        // collect all bot's input income (bounty) and gas cost
+                        inputProfit = inputProfit.add(
+                            ethers.utils.parseUnits(report.inputTokenIncome),
+                        );
+                        gasSpent = gasSpent.add(ethers.utils.parseUnits(report.gasCost.toString()));
+                    }
+
+                    // all input bounties (+ old balance) should be equal to current bot's balance
+                    assert.ok(
+                        originalBotTokenBalances[0]
+                            .add(inputProfit)
+                            .eq(await tokens[0].contract.balanceOf(bot.account.address)),
+                        "Unexpected bot bounty",
+                    );
+
+                    testSpan.end();
+                });
+
                 it("should clear orders successfully using intra-orderbook", async function () {
                     config.rpc = [rpc];
                     const viemClient = await viem.getPublicClient();
@@ -2037,6 +2433,395 @@ for (let i = 0; i < testData.length; i++) {
                     config.rpVersion = rpVersion;
                     config.arbAddress = arb.address;
                     config.genericArbAddress = genericArb.address;
+                    config.orderbookAddress = orderbook1.address;
+                    config.testBlockNumber = BigInt(blockNumber);
+                    config.gasCoveragePercentage = "1";
+                    config.viemClient = viemClient;
+                    config.accounts = [];
+                    config.mainAccount = bot;
+                    config.gasPriceMultiplier = 107;
+                    config.gasLimitMultiplier = 120;
+                    config.dispair = {
+                        interpreter: interpreter.address,
+                        store: store.address,
+                        deployer: deployer.address,
+                    };
+
+                    const orderManager = new OrderManager(state);
+                    for (const order of orders) {
+                        const res = await orderManager.addOrder(order);
+                        assert(res.isOk());
+                    }
+                    orders = orderManager.getNextRoundOrders(false);
+
+                    // mock init quotes
+                    orders.forEach((pair) => {
+                        pair.takeOrder.quote = {
+                            ratio: ethers.constants.Zero.toBigInt(),
+                            maxOutput: tokens
+                                .find(
+                                    (t) =>
+                                        t.contract.address.toLowerCase() ===
+                                        pair.sellToken.toLowerCase(),
+                                )
+                                ?.depositAmount.mul("1" + "0".repeat(18 - pair.sellTokenDecimals))
+                                .toBigInt(),
+                        };
+                    });
+                    state.gasPrice = await bot.getGasPrice();
+                    orderManager.getNextRoundOrders = () => orders;
+                    const rainSolver = new RainSolver(
+                        state,
+                        config,
+                        orderManager,
+                        {
+                            mainSigner: bot,
+                            getRandomSigner: () => bot,
+                        },
+                        // config,
+                    );
+                    const { results: reports } = await rainSolver.processNextRound(
+                        undefined,
+                        false,
+                    );
+
+                    // should have cleared correct number of orders
+                    assert.ok(
+                        reports.length == (tokens.length - 1) * 2,
+                        "Failed to clear all given orders",
+                    );
+
+                    // validate each cleared order
+                    let gasSpent = ethers.constants.Zero;
+                    let inputProfit = ethers.constants.Zero;
+                    for (let i = 0; i < reports.length / 2; i++) {
+                        const report = reports[i].value;
+                        assert.equal(report.status, ProcessOrderStatus.FoundOpportunity);
+
+                        const pair = `${tokens[0].symbol}/${tokens[i + 1].symbol}`;
+                        const clearedAmount = ethers.BigNumber.from(report.clearedAmount);
+                        const outputVault = ethers.BigNumber.from(
+                            normalizeFloat(
+                                await orderbook1.vaultBalance2(
+                                    owners[i + 1].address,
+                                    tokens[i + 1].address,
+                                    tokens[i + 1].vaultId,
+                                ),
+                                tokens[i + 1].decimals,
+                            ).value,
+                        );
+                        const inputVault = ethers.BigNumber.from(
+                            normalizeFloat(
+                                await orderbook1.vaultBalance2(
+                                    owners[0].address,
+                                    tokens[0].address,
+                                    tokens[0].vaultId,
+                                ),
+                                tokens[0].decimals,
+                            ).value,
+                        );
+
+                        assert.equal(report.tokenPair, pair);
+
+                        // should have cleared equal to vault balance or lower
+                        assert.ok(
+                            tokens[i + 1].depositAmount.gte(clearedAmount),
+                            `Did not clear expected amount for: ${pair}`,
+                        );
+                        assert.ok(
+                            outputVault.eq(tokens[i + 1].depositAmount.sub(clearedAmount)),
+                            `Unexpected current output vault balance: ${pair}`,
+                        );
+                        assert.ok(
+                            inputVault.eq(0),
+                            `Unexpected current input vault balance: ${pair}`,
+                        );
+
+                        // collect all bot's input income (bounty) and gas cost
+                        inputProfit = inputProfit.add(
+                            ethers.utils.parseUnits(report.inputTokenIncome),
+                        );
+                        gasSpent = gasSpent.add(ethers.utils.parseUnits(report.gasCost.toString()));
+                    }
+
+                    // all input bounties (+ old balance) should be equal to current bot's balance
+                    assert.ok(
+                        originalBotTokenBalances[0]
+                            .add(inputProfit)
+                            .eq(await tokens[0].contract.balanceOf(bot.account.address)),
+                        "Unexpected bot bounty",
+                    );
+
+                    testSpan.end();
+                });
+
+                it("should clear orders successfully against v4 orderbook", async function () {
+                    config.rpc = [rpc];
+                    const viemClient = await viem.getPublicClient();
+                    state.client = viemClient;
+                    const sushiRouterResult = await sushiRouterPromise;
+                    assert(sushiRouterResult.isOk());
+                    state.router = new RainSolverRouter(
+                        chainId,
+                        client,
+                        sushiRouterResult.value,
+                        await getBalancerRouter(),
+                    );
+                    sushiRouterResult.value.dataFetcher.web3Client.transport.retryCount = 3;
+                    const testSpan = tracer.startSpan("test-clearing");
+
+                    // reset network before each test
+                    await helpers.reset(rpc, blockNumber);
+
+                    // get bot signer
+                    const bot = botAddress
+                        ? (await viem.getTestClient({ account: botAddress }))
+                              .extend(publicActions)
+                              .extend(walletActions)
+                        : (
+                              await viem.getTestClient({
+                                  account: "0x22025257BeF969A81eDaC0b343ce82d777931327",
+                              })
+                          )
+                              .extend(publicActions)
+                              .extend(walletActions);
+                    bot.sendTx = async (tx) => {
+                        return await sendTx(bot, tx);
+                    };
+                    bot.waitUntilFree = async () => {
+                        return await waitUntilFree(bot);
+                    };
+                    bot.estimateGasCost = async (tx) => {
+                        return await estimateGasCost(bot, tx);
+                    };
+                    bot.asWriteSigner = () => bot;
+                    bot.state = state;
+                    bot.impersonateAccount({
+                        address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
+                    });
+                    await network.provider.send("hardhat_setBalance", [
+                        bot.account.address,
+                        "0x4563918244F40000",
+                    ]);
+                    bot.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
+                    bot.BOUNTY = [];
+
+                    // deploy v5 contracts
+                    const interpreter = await rainterpreterV5Deploy();
+                    const store = await rainterpreterStoreV5Deploy();
+                    const parser = await rainterpreterParserV5Deploy();
+                    const deployer = await rainterpreterExpressionDeployerV5Deploy({
+                        interpreter: interpreter.address,
+                        store: store.address,
+                        parser: parser.address,
+                    });
+                    const orderbook1 = !orderbookAddress
+                        ? await deployOrderBookV5()
+                        : await ethers.getContractAt(orderbookAbi, orderbookAddress);
+                    const arb = !arbAddress
+                        ? await arbDeployV5(orderbook1.address, config.routeProcessors[rpVersion])
+                        : await ethers.getContractAt(ABI.Orderbook.V5.Primary.Arb, arbAddress);
+
+                    // deploy v4 contracts
+                    const interpreterv4 = await rainterpreterNPE2Deploy();
+                    const storev4 = await rainterpreterStoreNPE2Deploy();
+                    const parserv4 = await rainterpreterParserNPE2Deploy();
+                    const deployerv4 = await rainterpreterExpressionDeployerNPE2Deploy({
+                        interpreter: interpreterv4.address,
+                        store: storev4.address,
+                        parser: parserv4.address,
+                    });
+                    const orderbook2 = await deployOrderBookNPE2();
+                    const genericArb = await genericArbrbDeployV5(orderbook2.address);
+
+                    state.contracts = await SolverContracts.fromAppOptions(viemClient, {
+                        contracts: {
+                            v5: {
+                                dispair: deployer.address,
+                                sushiArb: arb.address,
+                                genericArb: genericArb.address,
+                            },
+                            v4: {
+                                dispair: deployerv4.address,
+                            },
+                        },
+                    });
+
+                    // set up tokens contracts and impersonate owners
+                    const owners = [];
+                    for (let i = 0; i < tokens.length; i++) {
+                        tokens[i].contract = await ethers.getContractAt(
+                            ERC20Artifact.abi,
+                            tokens[i].address,
+                        );
+                        if (i === 0) {
+                            tokens[0].vaultIds = [];
+                            for (let j = 0; j < tokens.length - 1; j++) {
+                                tokens[0].vaultIds.push(randomUint256());
+                            }
+                        }
+                        tokens[i].vaultId = randomUint256();
+                        i > 0
+                            ? (tokens[i].depositAmount = ethers.utils.parseUnits(
+                                  deposits[i] ?? "100",
+                                  tokens[i].decimals,
+                              ))
+                            : (tokens[i].depositAmount = ethers.utils
+                                  .parseUnits(deposits[i] ?? "100", tokens[i].decimals)
+                                  .div(tokens.length - 1));
+                        owners.push(await ethers.getImpersonatedSigner(addressesWithBalance[i]));
+                        await network.provider.send("hardhat_setBalance", [
+                            addressesWithBalance[i],
+                            "0x4563918244F40000",
+                        ]);
+                    }
+
+                    // bot original token balances
+                    const originalBotTokenBalances = [];
+                    for (const t of tokens) {
+                        originalBotTokenBalances.push(
+                            await t.contract.balanceOf(bot.account.address),
+                        );
+                    }
+
+                    // dposit and add orders for each owner and return
+                    // the deployed orders in format of a sg query.
+                    // all orders have WETH as output and other specified
+                    // tokens as input
+                    let orders = [];
+                    for (let i = 1; i < tokens.length; i++) {
+                        const depositConfigStruct1 = {
+                            token: tokens[i].address,
+                            vaultId: tokens[i].vaultId,
+                            amount: tokens[i].depositAmount.toString(),
+                        };
+                        await tokens[i].contract
+                            .connect(owners[i])
+                            .approve(orderbook1.address, depositConfigStruct1.amount);
+                        await orderbook1
+                            .connect(owners[i])
+                            .deposit3(
+                                depositConfigStruct1.token,
+                                depositConfigStruct1.vaultId,
+                                toFloat(depositConfigStruct1.amount, tokens[i].decimals).value,
+                                [],
+                            );
+
+                        // prebuild bytecode: "_ _: 0 max; :;"
+                        const ratio = "0".repeat(64); // 0
+                        const maxOutput = maxFloat(18).substring(2).padStart(64, "0"); // max
+                        const bytecode = `0x0000000000000000000000000000000000000000000000000000000000000002${maxOutput}${ratio}0000000000000000000000000000000000000000000000000000000000000015020000000c02020002011000000110000100000000`;
+                        const addOrderConfig1 = {
+                            evaluable: {
+                                interpreter: interpreter.address,
+                                store: store.address,
+                                bytecode,
+                            },
+                            nonce: "0x" + "0".repeat(63) + "1",
+                            secret: "0x" + "0".repeat(63) + "1",
+                            validInputs: [
+                                {
+                                    token: tokens[0].address,
+                                    vaultId: tokens[0].vaultId,
+                                },
+                            ],
+                            validOutputs: [
+                                {
+                                    token: tokens[i].address,
+                                    vaultId: tokens[i].vaultId,
+                                },
+                            ],
+                            meta: encodeMeta("some_order"),
+                        };
+                        const tx1 = await orderbook1.connect(owners[i]).addOrder3(addOrderConfig1, [
+                            {
+                                evaluable: {
+                                    interpreter: interpreter.address,
+                                    store: store.address,
+                                    bytecode:
+                                        "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000701000000000000",
+                                },
+                                signedContext: [],
+                            },
+                        ]);
+                        orders.push(
+                            await mockSgFromEventV5(
+                                await getEventArgs(tx1, "AddOrderV3", orderbook1),
+                                orderbook1,
+                                tokens.map((v) => ({
+                                    ...v.contract,
+                                    knownSymbol: v.symbol,
+                                    decimals: v.decimals,
+                                })),
+                            ),
+                        );
+
+                        // opposing orders
+                        const depositConfigStruct2 = {
+                            token: tokens[0].address,
+                            vaultId: tokens[0].vaultIds[i - 1],
+                            amount: tokens[0].depositAmount.toString(),
+                        };
+                        await tokens[0].contract
+                            .connect(owners[0])
+                            .approve(orderbook2.address, depositConfigStruct2.amount);
+                        await orderbook2
+                            .connect(owners[0])
+                            .deposit2(
+                                depositConfigStruct2.token,
+                                depositConfigStruct2.vaultId,
+                                depositConfigStruct2.amount,
+                                [],
+                            );
+
+                        // prebuild bytecode: "_ _: 0 max; :;"
+                        const opposingRatio = "0".repeat(64); // 0
+                        const opposingMaxOutput = "f".repeat(64); // max
+                        const opposingBytecode = `0x0000000000000000000000000000000000000000000000000000000000000002${opposingMaxOutput}${opposingRatio}0000000000000000000000000000000000000000000000000000000000000015020000000c02020002011000000110000100000000`;
+                        const addOrderConfig2 = {
+                            evaluable: {
+                                interpreter: interpreterv4.address,
+                                store: storev4.address,
+                                bytecode: opposingBytecode,
+                            },
+                            nonce: "0x" + "0".repeat(63) + "1",
+                            secret: "0x" + "0".repeat(63) + "1",
+                            validInputs: [
+                                {
+                                    token: tokens[i].address,
+                                    decimals: tokens[i].decimals,
+                                    vaultId: tokens[i].vaultId,
+                                },
+                            ],
+                            validOutputs: [
+                                {
+                                    token: tokens[0].address,
+                                    decimals: tokens[0].decimals,
+                                    vaultId: tokens[0].vaultIds[i - 1],
+                                },
+                            ],
+                            meta: encodeMeta("some_order"),
+                        };
+                        const tx2 = await orderbook2
+                            .connect(owners[0])
+                            .addOrder2(addOrderConfig2, []);
+                        orders.push(
+                            await mockSgFromEvent(
+                                await getEventArgs(tx2, "AddOrderV2", orderbook2),
+                                orderbook2,
+                                tokens.map((v) => ({ ...v.contract, knownSymbol: v.symbol })),
+                            ),
+                        );
+                    }
+
+                    // run the clearing process
+                    config.isTest = true;
+                    config.shuffle = false;
+                    config.signer = bot;
+                    config.hops = 2;
+                    config.retries = 1;
+                    config.lps = liquidityProviders;
+                    config.rpVersion = rpVersion;
                     config.orderbookAddress = orderbook1.address;
                     config.testBlockNumber = BigInt(blockNumber);
                     config.gasCoveragePercentage = "1";

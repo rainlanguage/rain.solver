@@ -52,16 +52,6 @@ export async function findBestInterOrderbookTrade(
     const promises = counterpartyOrders.flatMap((orderbookCounterparties) => {
         const cps = orderbookCounterparties.slice(0, 3);
 
-        // skip if no counterparty orders or order type mismatch
-        // as we currently cant trade v4 against v5 due generic arb contarcts
-        // need to implement onTakeOrder2() for v4 ob and onTakeOrder() for v5 ob
-        if (
-            cps.length === 0 ||
-            cps[0].takeOrder.struct.order.type !== orderDetails.takeOrder.struct.order.type
-        ) {
-            return [];
-        }
-
         counterparties.push(...cps);
         return cps.map((counterpartyOrderDetails) => {
             return InterOrderbookTradeSimulator.withArgs({
