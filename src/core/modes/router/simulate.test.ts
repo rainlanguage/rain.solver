@@ -342,7 +342,7 @@ describe("Test RouterTradeSimulator", () => {
                 simulator.tradeArgs.solver.state.dispair,
             );
             expect(encodeFunctionData).toHaveBeenCalledWith({
-                abi: ABI.Orderbook.Primary.Arb,
+                abi: ABI.Orderbook.V4.Primary.Arb,
                 functionName: "arb3",
                 args: [
                     tradeArgs.orderDetails.orderbook as `0x${string}`,

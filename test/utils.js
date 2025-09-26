@@ -28,7 +28,7 @@ exports.arbDeploy = async (orderbookAddress, rpAddress) => {
     return await this.basicDeploy(RouteProcessorOrderBookV4ArbOrderTakerArtifact, {
         orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
         task: {
-            evaluable: ABI.Orderbook.DefaultArbEvaluable,
+            evaluable: ABI.Orderbook.V4.DefaultArbEvaluable,
             signedContext: [],
         },
         implementationData: ethers.utils.defaultAbiCoder.encode(["address"], [rpAddress]),
@@ -39,7 +39,7 @@ exports.balancerArbDeploy = async (orderbookAddress, rpAddress) => {
     return await this.basicDeploy(BalancerRouterOrderBookV4ArbOrderTakerArtifact, {
         orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
         task: {
-            evaluable: ABI.Orderbook.DefaultArbEvaluable,
+            evaluable: ABI.Orderbook.V4.DefaultArbEvaluable,
             signedContext: [],
         },
         implementationData: ethers.utils.defaultAbiCoder.encode(["address"], [rpAddress]),
@@ -50,7 +50,7 @@ exports.genericArbrbDeploy = async (orderbookAddress) => {
     return await this.basicDeploy(GenericPoolOrderBookV4ArbOrderTakerArtifact, {
         orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
         task: {
-            evaluable: ABI.Orderbook.DefaultArbEvaluable,
+            evaluable: ABI.Orderbook.V4.DefaultArbEvaluable,
             signedContext: [],
         },
         implementationData: "0x",
@@ -212,7 +212,7 @@ exports.mockSgFromEvent = async (eventArgs, orderbook, tokens) => {
                 ? eventArgs.orderHash.toLowerCase()
                 : eventArgs.orderHash.toHexString().toLowerCase(),
         orderBytes: ethers.utils.defaultAbiCoder.encode(
-            [ABI.Orderbook.Structs.OrderV3],
+            [ABI.Orderbook.V4.Structs.Order],
             [eventArgs.order],
         ),
         active: true,

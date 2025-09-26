@@ -22,7 +22,7 @@ export async function quoteSingleOrder(
         .call({
             to: orderDetails.orderbook as `0x${string}`,
             data: encodeFunctionData({
-                abi: ABI.Orderbook.Primary.Orderbook,
+                abi: ABI.Orderbook.V4.Primary.Orderbook,
                 functionName: "quote",
                 args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.struct)],
             }),
@@ -35,7 +35,7 @@ export async function quoteSingleOrder(
         });
     if (typeof data !== "undefined") {
         const quoteResult = decodeFunctionResult({
-            abi: [ABI.Orderbook.Primary.Orderbook[14]],
+            abi: [ABI.Orderbook.V4.Primary.Orderbook[14]],
             functionName: "quote",
             data,
         });
@@ -61,7 +61,7 @@ export async function getQuoteGas(
     if (state.chainConfig.id === ChainId.ARBITRUM) {
         // build the calldata of a quote call
         const calldata = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Orderbook,
+            abi: ABI.Orderbook.V4.Primary.Orderbook,
             functionName: "quote",
             args: [TakeOrder.getQuoteConfig(orderDetails.takeOrders[0].struct)],
         });

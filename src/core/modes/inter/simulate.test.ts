@@ -142,7 +142,7 @@ describe("Test InterOrderbookTradeSimulator", () => {
                 ).toString(),
             );
             expect(encodeFunctionData).toHaveBeenCalledWith({
-                abi: ABI.Orderbook.Primary.Orderbook,
+                abi: ABI.Orderbook.V4.Primary.Orderbook,
                 functionName: "takeOrders2",
                 args: [
                     {
@@ -217,7 +217,7 @@ describe("Test InterOrderbookTradeSimulator", () => {
             );
             expect(encodeFunctionData).toHaveBeenCalledTimes(1);
             expect(encodeFunctionData).toHaveBeenCalledWith({
-                abi: ABI.Orderbook.Primary.Arb,
+                abi: ABI.Orderbook.V4.Primary.Arb,
                 functionName: "arb3",
                 args: [
                     tradeArgs.orderDetails.orderbook as `0x${string}`,

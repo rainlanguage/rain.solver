@@ -1,7 +1,7 @@
-import { ABI, Result, TokenDetails } from "../common";
-import { decodeAbiParameters, DecodeAbiParametersErrorType, parseAbiParameters } from "viem";
+import { Order } from "./versions";
+import { TokenDetails } from "../common";
 
-export const OrderV3Abi = parseAbiParameters(ABI.Orderbook.Structs.OrderV3);
+export { Order };
 
 export type TakeOrderDetails = {
     id: string;
@@ -34,49 +34,6 @@ export type Evaluable = {
     store: `0x${string}`;
     bytecode: `0x${string}`;
 };
-
-export type IO = {
-    token: `0x${string}`;
-    decimals: number;
-    vaultId: bigint;
-};
-
-export type Order = {
-    owner: `0x${string}`;
-    nonce: `0x${string}`;
-    evaluable: Evaluable;
-    validInputs: IO[];
-    validOutputs: IO[];
-};
-export namespace Order {
-    /** Decodes order bytes into OrderV3 struct */
-    export function tryFromBytes(orderBytes: string): Result<Order, DecodeAbiParametersErrorType> {
-        try {
-            const decoded = decodeAbiParameters(OrderV3Abi, orderBytes as `0x${string}`)[0];
-            return Result.ok({
-                owner: decoded.owner.toLowerCase() as `0x${string}`,
-                nonce: decoded.nonce.toLowerCase() as `0x${string}`,
-                evaluable: {
-                    interpreter: decoded.evaluable.interpreter.toLowerCase() as `0x${string}`,
-                    store: decoded.evaluable.store.toLowerCase() as `0x${string}`,
-                    bytecode: decoded.evaluable.bytecode.toLowerCase() as `0x${string}`,
-                },
-                validInputs: decoded.validInputs.map((v) => ({
-                    token: v.token.toLowerCase() as `0x${string}`,
-                    decimals: v.decimals,
-                    vaultId: v.vaultId,
-                })),
-                validOutputs: decoded.validOutputs.map((v) => ({
-                    token: v.token.toLowerCase() as `0x${string}`,
-                    decimals: v.decimals,
-                    vaultId: v.vaultId,
-                })),
-            });
-        } catch (err: any) {
-            return Result.err(err);
-        }
-    }
-}
 
 /** Represents the source of the counterparty order for an order */
 export enum CounterpartySource {
