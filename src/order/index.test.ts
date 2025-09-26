@@ -1,12 +1,13 @@
-import * as common from "../common";
 import * as pairFns from "./pair";
 import { Result } from "../common";
+import * as common from "../common";
 import { syncOrders } from "./sync";
 import { SharedState } from "../state";
+import { OrderManagerError } from "./error";
 import { SubgraphManager } from "../subgraph";
 import { downscaleProtection } from "./protection";
 import { CounterpartySource, Order, Pair } from "./types";
-import { OrderManager, DEFAULT_OWNER_LIMIT, OrderManagerError } from "./index";
+import { OrderManager, DEFAULT_OWNER_LIMIT } from "./index";
 import { describe, it, expect, beforeEach, vi, Mock, assert } from "vitest";
 
 vi.mock("./sync", () => ({

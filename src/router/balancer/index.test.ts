@@ -5,14 +5,9 @@ import { AddressProvider } from "@balancer/sdk";
 import { RouterType, RouteStatus } from "../types";
 import { Result, TokenDetails } from "../../common";
 import { encodeAbiParameters, maxUint256, PublicClient } from "viem";
+import { BalancerRouterError, BalancerRouterErrorType } from "../error";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import {
-    BalancerRouter,
-    BalancerRouterPath,
-    BalancerRouterError,
-    BalancerCachedRoute,
-    BalancerRouterErrorType,
-} from ".";
+import { BalancerRouter, BalancerRouterPath, BalancerCachedRoute } from ".";
 
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),

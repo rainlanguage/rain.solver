@@ -3,9 +3,9 @@ import { Result } from "../../common";
 import { Token } from "sushi/currency";
 import { TradeType } from "../../core/types";
 import { MultiRoute, RouteLeg } from "sushi/tines";
-import { RainSolverBaseError } from "../../error/types";
 import { BlackListSet, RPoolFilter } from "./blacklist";
 import { TakeOrdersConfigType } from "../../order/types";
+import { SushiRouterError, SushiRouterErrorType } from "../error";
 import { calculatePrice18, scaleFrom18, scaleTo18 } from "../../math";
 import { ChainId, LiquidityProviders, PoolCode, RainDataFetcher, Router } from "sushi";
 import { Chain, Account, Transport, formatUnits, PublicClient, encodeAbiParameters } from "viem";
@@ -77,40 +77,6 @@ export type SushiTradeParams = {
     /** The TakeOrdersConfig struct for onchain execution */
     takeOrdersConfigStruct: TakeOrdersConfigType;
 };
-
-/** Enumerates the possible error types that can occur within the Sushi Router functionalities */
-export enum SushiRouterErrorType {
-    InitializationError,
-    NoRouteFound,
-    FetchFailed,
-    WasmEncodedError,
-    UndefinedTradeDestinationAddress,
-}
-
-/**
- * Represents an error type for the Sushi Router functionalities.
- * This error class extends the `RainSolverBaseError` error class, with the `type`
- * property indicates the specific category of the error, as defined by the
- * `SushiRouterErrorType` enum. The optional `cause` property can be used to
- * attach the original error or any relevant context that led to this error.
- *
- * @example
- * ```typescript
- * // without cause
- * throw new SushiRouterError("msg", SushiRouterErrorType);
- *
- * // with cause
- * throw new SushiRouterError("msg", SushiRouterErrorType, originalError);
- * ```
- */
-export class SushiRouterError extends RainSolverBaseError {
-    type: SushiRouterErrorType;
-    constructor(message: string, type: SushiRouterErrorType, cause?: any) {
-        super(message, cause);
-        this.type = type;
-        this.name = "SushiRouterError";
-    }
-}
 
 /**
  * The Sushi Router class provides methods to interact with the sushi router library, mainly `RainDataFetcher`,
