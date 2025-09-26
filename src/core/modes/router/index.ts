@@ -1,12 +1,12 @@
 import { RainSolver } from "../..";
 import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
-import { Result } from "../../../common";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
-import { extendObjectWithHeader } from "../../../logger";
+import { RouterTradeSimulator } from "./simulate";
+import { SimulationHaltReason } from "../simulator";
 import { SimulationResult, TradeType } from "../../types";
-import { trySimulateTrade, RouterSimulationHaltReason } from "./simulate";
+import { Result, extendObjectWithHeader } from "../../../common";
 
 /**
  * Tries to find the best trade against rain router (balancer and sushi) for the given order,
@@ -43,7 +43,9 @@ export async function findBestRouterTrade(
     const maximumInput = orderDetails.takeOrder.quote!.maxOutput;
 
     // try simulation for full trade size and return if succeeds
-    const fullTradeSizeSimResult = await trySimulateTrade.call(this, {
+    const fullTradeSizeSimResult = await RouterTradeSimulator.withArgs({
+        type: TradeType.Router,
+        solver: this,
         orderDetails,
         fromToken,
         toToken,
@@ -52,7 +54,7 @@ export async function findBestRouterTrade(
         ethPrice,
         isPartial: false,
         blockNumber,
-    });
+    }).trySimulateTrade();
     if (fullTradeSizeSimResult.isOk()) {
         return fullTradeSizeSimResult;
     }
@@ -63,7 +65,7 @@ export async function findBestRouterTrade(
     // to order ratio being greater than market price
     if (
         fullTradeSizeSimResult.error.reason !==
-        RouterSimulationHaltReason.OrderRatioGreaterThanMarketPrice
+        SimulationHaltReason.OrderRatioGreaterThanMarketPrice
     ) {
         return Result.err({
             type: fullTradeSizeSimResult.error.type,
@@ -88,7 +90,9 @@ export async function findBestRouterTrade(
             noneNodeError: fullTradeSizeSimResult.error.noneNodeError,
         });
     }
-    const partialTradeSizeSimResult = await trySimulateTrade.call(this, {
+    const partialTradeSizeSimResult = await RouterTradeSimulator.withArgs({
+        type: TradeType.Router,
+        solver: this,
         orderDetails,
         fromToken,
         toToken,
@@ -97,7 +101,7 @@ export async function findBestRouterTrade(
         ethPrice,
         isPartial: true,
         blockNumber,
-    });
+    }).trySimulateTrade();
     if (partialTradeSizeSimResult.isOk()) {
         return partialTradeSizeSimResult;
     }

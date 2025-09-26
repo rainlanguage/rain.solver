@@ -407,6 +407,11 @@ export class SushiRouter extends RainSolverRouterBase {
             );
     }
 
+    /**
+     * Gets the trade parameters for the best possible market quote for
+     * executing a trade against Sushi RouteProcessor with the returned value.
+     * @param args - The trade arguments
+     */
     async getTradeParams(
         args: GetTradeParamsArgs,
     ): Promise<Result<SushiTradeParams, SushiRouterError>> {
