@@ -41,11 +41,7 @@ export async function transferTokenFrom(
     if (totalCost > gasBalance) {
         // fund the wallet
         const hash = await to.sendTx({ to: from.account.address, value: totalCost });
-        const receipt = await to.waitForTransactionReceipt({
-            hash,
-            confirmations: 4,
-            timeout: 100_000,
-        });
+        const receipt = await to.waitForReceipt({ hash });
         if (receipt.status !== "success") {
             throw {
                 txHash: hash,
@@ -63,11 +59,7 @@ export async function transferTokenFrom(
         functionName: "transfer",
         args: [to.account.address, balance],
     });
-    const receipt = await from.waitForTransactionReceipt({
-        hash,
-        confirmations: 4,
-        timeout: 100_000,
-    });
+    const receipt = await from.waitForReceipt({ hash });
     if (receipt.status === "success") {
         return { amount: balance, txHash: hash };
     } else {
@@ -93,11 +85,7 @@ export async function transferRemainingGasFrom(from: RainSolverSigner, to: `0x${
     if (balance > totalCost) {
         const amount = balance - totalCost;
         const hash = await from.sendTx({ to, value: amount });
-        const receipt = await from.waitForTransactionReceipt({
-            hash,
-            confirmations: 4,
-            timeout: 100_000,
-        });
+        const receipt = await from.waitForReceipt({ hash });
         if (receipt.status === "success") {
             return { amount, txHash: hash };
         } else {
@@ -164,11 +152,7 @@ export async function convertToGas(
             functionName: "approve",
             args: [rp4Address, maxUint256],
         });
-        await from.waitForTransactionReceipt({
-            hash,
-            confirmations: 4,
-            timeout: 100_000,
-        });
+        await from.waitForReceipt({ hash });
     }
 
     // find best route and build swap contract call params
@@ -218,11 +202,7 @@ export async function convertToGas(
             to: rp4Address,
             data: rpParams.data as `0x${string}`,
         });
-        const receipt = await from.waitForTransactionReceipt({
-            hash,
-            confirmations: 4,
-            timeout: 100_000,
-        });
+        const receipt = await from.waitForReceipt({ hash });
         if (receipt.status === "success") {
             return {
                 txHash: hash,

@@ -27,8 +27,8 @@ export async function getGasPrice(
     // try to fetch gas prices concurrently
     const promises = [client.getGasPrice()];
     if (chainConfig.isSpecialL2) {
-        const l1Client = client.extend(publicActionsL2());
-        promises.push(l1Client.getL1BaseFee());
+        const l2Client = client.extend(publicActionsL2());
+        promises.push(l2Client.getL1BaseFee());
     }
     const [gasPriceResult, l1GasPriceResult = undefined] = await Promise.allSettled(promises);
 

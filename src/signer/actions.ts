@@ -1,6 +1,6 @@
-import { sleep } from "../common";
 import { SharedState } from "../state";
 import { publicActionsL2 } from "viem/op-stack";
+import { promiseTimeout, sleep } from "../common";
 import { RainSolverSigner, EstimateGasCostResult } from ".";
 import {
     Chain,
@@ -8,6 +8,8 @@ import {
     PrivateKeyAccount,
     EstimateGasParameters,
     SendTransactionParameters,
+    TransactionReceipt,
+    WaitForTransactionReceiptTimeoutError,
 } from "viem";
 
 /**
@@ -66,6 +68,20 @@ export type RainSolverSignerActions<
      * MEV attacks and dont suite read calls as they are paid or have high ratelimit
      * */
     asWriteSigner: () => RainSolverSigner<account>;
+
+    /**
+     * Waits for a transaction receipt by polling it until it's available or a timeout occurs.
+     * This method does not leak memory as the viem's default `waitForTransactionReceipt` method.
+     * @param hash - The transaction hash to get the receipt for
+     * @param timeout - The timeout in ms (default 60 sec)
+     * @param pollingInterval - The polling interval in ms (default 3 sec)
+     * @returns Resolves with the transaction receipt or rejects with timeout error
+     */
+    waitForReceipt: (params: {
+        hash: `0x${string}`;
+        timeout?: number;
+        pollingInterval?: number;
+    }) => Promise<TransactionReceipt>;
 };
 
 export namespace RainSolverSignerActions {
@@ -87,6 +103,14 @@ export namespace RainSolverSignerActions {
             },
             asWriteSigner() {
                 return getWriteSignerFrom(this as RainSolverSigner);
+            },
+            waitForReceipt(params) {
+                return tryGetReceipt(
+                    this as RainSolverSigner,
+                    params.hash,
+                    params.timeout,
+                    params.pollingInterval,
+                );
             },
         });
     }
@@ -245,4 +269,37 @@ export function getWriteSignerFrom(signer: RainSolverSigner): RainSolverSigner {
     // if state doesnt have write rpc configured, return the signer as is
     if (!signer.state.writeRpc) return signer;
     return RainSolverSigner.create(signer.account, signer.state, true);
+}
+
+/**
+ * Tries to get the transaction receipt for a given transaction hash.
+ * this method does not leak memory as the viem's default `waitForTransactionReceipt`
+ * method.
+ * @param signer - The RainSolverSigner instance
+ * @param hash - The transaction hash
+ * @param timeout - The timeout in ms (default 60 sec)
+ * @param pollingInterval - The polling interval in ms (default 3 sec)
+ */
+export async function tryGetReceipt(
+    signer: RainSolverSigner,
+    hash: `0x${string}`,
+    timeout = 60_000,
+    pollingInterval = 3_000,
+): Promise<TransactionReceipt> {
+    // ping "getTransactionReceipt" every "pollingInterval" until "success" or "timeout"
+    return await promiseTimeout(
+        (async () => {
+            for (;;) {
+                try {
+                    await sleep(pollingInterval);
+                    return await signer.state.client.getTransactionReceipt({ hash });
+                } catch {
+                    // Ignore errors and continue polling until timeout or success
+                    continue;
+                }
+            }
+        })(),
+        timeout,
+        new WaitForTransactionReceiptTimeoutError({ hash }),
+    );
 }
