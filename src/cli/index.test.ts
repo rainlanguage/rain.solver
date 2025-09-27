@@ -95,6 +95,11 @@ describe("Test RainSolverCli", () => {
     let mockRainSolver: RainSolver;
     let mockLogger: RainSolverLogger;
     let rainSolverCli: RainSolverCli;
+    const contracts = {
+        v4: {
+            router: "0xrouter",
+        },
+    };
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -161,11 +166,19 @@ describe("Test RainSolverCli", () => {
                 ["ETH", { address: "0xETH", symbol: "ETH", decimals: 18 }],
                 ["USDC", { address: "0xUSDC", symbol: "USDC", decimals: 6 }],
             ]),
-            dataFetcher: { test: "data" },
+            router: {
+                sushi: {
+                    reset: vi.fn(),
+                    dataFetcher: {
+                        test: "data",
+                    },
+                },
+            },
             liquidityProviders: ["uniswap"],
             client: {},
             avgGasCost: 1000000000000000000n,
             gasCosts: [500000000000000000n, 1500000000000000000n],
+            contracts,
         } as any;
 
         mockOrderManager = {
@@ -420,8 +433,8 @@ describe("Test RainSolverCli", () => {
                 "meta.chain": "ethereum",
                 "meta.chainId": 1,
                 "meta.sgs": ["subgraph1", "subgraph2"],
-                "meta.rpArb": undefined,
-                "meta.genericArb": undefined,
+                "meta.contracts.v4": JSON.stringify(contracts.v4),
+                "meta.contracts.v5": "N/A",
                 "meta.orderbooks": ["orderbook1", "orderbook2"],
                 "meta.mainAccount": "0xMainWallet",
                 "meta.gitCommitHash": "N/A",
@@ -533,24 +546,15 @@ describe("Test RainSolverCli", () => {
             const pastTime = Date.now() - 100000;
             (rainSolverCli as any).nextDatafetcherReset = pastTime;
 
-            const mockNewDataFetcher = { test: "new_data" };
-            const RainDataFetcher = await import("sushi");
-            (RainDataFetcher.RainDataFetcher.init as Mock).mockResolvedValue(mockNewDataFetcher);
-
             await rainSolverCli.maybeResetDataFetcher();
 
             expect((rainSolverCli as any).nextDatafetcherReset).toBeGreaterThan(pastTime);
-            expect(RainDataFetcher.RainDataFetcher.init).toHaveBeenCalledWith(
-                1,
-                mockState.client,
-                mockState.liquidityProviders,
-            );
-            expect(rainSolverCli.state.dataFetcher).toBe(mockNewDataFetcher);
+            expect(mockState.router.sushi?.reset).toHaveBeenCalledTimes(1);
         });
 
         it("should not reset when time has not passed", async () => {
             const futureTime = Date.now() + 100000;
-            const originalDataFetcher = rainSolverCli.state.dataFetcher;
+            const originalDataFetcher = rainSolverCli.state.router.sushi!.dataFetcher;
             (rainSolverCli as any).nextDatafetcherReset = futureTime;
 
             const RainDataFetcher = await import("sushi");
@@ -560,13 +564,13 @@ describe("Test RainSolverCli", () => {
 
             expect((rainSolverCli as any).nextDatafetcherReset).toBe(futureTime);
             expect(initSpy).not.toHaveBeenCalled();
-            expect(rainSolverCli.state.dataFetcher).toBe(originalDataFetcher);
+            expect(rainSolverCli.state.router.sushi!.dataFetcher).toBe(originalDataFetcher);
         });
 
         it("should handle data fetcher init failure gracefully", async () => {
             const pastTime = Date.now() - 100000;
             (rainSolverCli as any).nextDatafetcherReset = pastTime;
-            const originalDataFetcher = rainSolverCli.state.dataFetcher;
+            const originalDataFetcher = rainSolverCli.state.router.sushi!.dataFetcher;
 
             const RainDataFetcher = await import("sushi");
             (RainDataFetcher.RainDataFetcher.init as Mock).mockRejectedValue(
@@ -576,7 +580,7 @@ describe("Test RainSolverCli", () => {
             await rainSolverCli.maybeResetDataFetcher();
 
             expect((rainSolverCli as any).nextDatafetcherReset).toBeGreaterThan(pastTime);
-            expect(rainSolverCli.state.dataFetcher).toBe(originalDataFetcher);
+            expect(rainSolverCli.state.router.sushi!.dataFetcher).toBe(originalDataFetcher);
         });
     });
 
@@ -675,9 +679,10 @@ describe("Test RainSolverCli", () => {
             };
             const mockRoundCtx = { test: "context" };
             const mockResults = [
-                { isOk: () => true, value: { txUrl: "https://etherscan.io/tx/0x123" } },
-                { isOk: () => false, error: { txUrl: "https://etherscan.io/tx/0x456" } },
-                { isOk: () => true, value: { txUrl: undefined } },
+                Result.ok({ txUrl: "https://etherscan.io/tx/0x123" }),
+                Result.ok({ txUrl: "https://etherscan.io/tx/0x456" }),
+                Result.ok({ txUrl: undefined }),
+                Result.err({ txUrl: "https://etherscan.io/tx/0x789" }),
             ];
             const mockReports = [{ name: "report-1" }, { name: "report-2" }];
             const mockCheckpointReports = [{ name: "checkpoint-1" }];
@@ -696,9 +701,12 @@ describe("Test RainSolverCli", () => {
                 context: mockRoundCtx,
             });
             expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("foundOpp", true);
-            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("txUrls", [
+            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("txUrls.success", [
                 "https://etherscan.io/tx/0x123",
                 "https://etherscan.io/tx/0x456",
+            ]);
+            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("txUrls.failed", [
+                "https://etherscan.io/tx/0x789",
             ]);
             expect(mockOrderManager.getCurrentMetadata).toHaveBeenCalledTimes(1);
             expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("ordersMetadata.key", "value");
@@ -709,10 +717,7 @@ describe("Test RainSolverCli", () => {
                 setAttribute: vi.fn(),
             };
             const mockRoundCtx = { test: "context" };
-            const mockResults = [
-                { isOk: () => true, value: { txUrl: undefined } },
-                { isOk: () => false, error: { txUrl: undefined } },
-            ];
+            const mockResults = [Result.ok({ txUrl: undefined }), Result.err({ txUrl: undefined })];
 
             (mockRainSolver.processNextRound as Mock).mockResolvedValue({
                 results: mockResults,

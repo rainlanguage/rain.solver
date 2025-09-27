@@ -1,0 +1,22 @@
+{
+    "include": ["./src/**/*.ts"],
+    "exclude": ["node_modules", "./test", "dist"],
+    "compilerOptions": {
+      "noEmit": true,
+      "target": "ES2022",
+      "lib": ["ES6", "ES2022"],
+      "module": "CommonJS",
+      "rootDir": "./src",
+      "moduleResolution": "Node",
+      "resolveJsonModule": true,
+      "allowJs": true,
+      "declaration": true,
+      "outDir": "./dist",
+      "esModuleInterop": true,
+      "strict": true,
+      "noUnusedLocals": true,
+      "noUnusedParameters": true,
+      "skipLibCheck": true,
+      "inlineSourceMap": true,
+    }
+  }

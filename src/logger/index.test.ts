@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import { SpanStatusCode } from "@opentelemetry/api";
-import { describe, it, assert, expect } from "vitest";
-import { PreAssembledSpan, RainSolverLogger, extendObjectWithHeader } from ".";
+import { describe, it, assert } from "vitest";
+import { PreAssembledSpan, RainSolverLogger } from ".";
 
 describe("Test RainSolverLogger", async function () {
     it("should successfully collect data and logs and export to otel channel", async function () {
@@ -11,6 +11,8 @@ describe("Test RainSolverLogger", async function () {
         process.stdout.write = (function (write) {
             return function (string: any) {
                 stdoutText += string;
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
                 // eslint-disable-next-line prefer-rest-params
                 write.apply(process.stdout, arguments);
             };
@@ -187,28 +189,5 @@ describe("Test PreAssembledSpan", async function () {
         span.end(now + 500);
         expected.endTime = now + 500;
         assert.deepEqual(span, expected);
-    });
-});
-
-describe("Test extendObjectWithHeader", () => {
-    it("should add keys with header prefix", () => {
-        const target = {};
-        const source = { foo: 1, bar: 2 };
-        extendObjectWithHeader(target, source, "test");
-        expect(target).toEqual({
-            "test.foo": 1,
-            "test.bar": 2,
-        });
-    });
-
-    it("should exclude keys from header prefix if specified", () => {
-        const target = {};
-        const source = { foo: 1, bar: 2, baz: 3 };
-        extendObjectWithHeader(target, source, "head", ["bar"]);
-        expect(target).toEqual({
-            "head.foo": 1,
-            bar: 2,
-            "head.baz": 3,
-        });
     });
 });

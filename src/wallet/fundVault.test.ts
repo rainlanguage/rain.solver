@@ -72,12 +72,19 @@ describe("Test fundVault", () => {
                 },
                 watchedTokens: new Map(),
                 watchToken: vi.fn(),
-                dataFetcher: {
-                    updatePools: vi.fn(),
-                    fetchPoolsForToken: vi.fn(),
-                    getCurrentPoolCodeMap: vi
-                        .fn()
-                        .mockReturnValue(new Map([["0xpool", { pool: {}, poolName: "TestPool" }]])),
+                router: {
+                    sushi: {
+                        update: vi.fn(),
+                        dataFetcher: {
+                            updatePools: vi.fn(),
+                            fetchPoolsForToken: vi.fn(),
+                            getCurrentPoolCodeMap: vi
+                                .fn()
+                                .mockReturnValue(
+                                    new Map([["0xpool", { pool: {}, poolName: "TestPool" }]]),
+                                ),
+                        },
+                    },
                 },
                 gasPrice: parseUnits("20", 9), // 20 gwei
             },
@@ -169,8 +176,8 @@ describe("Test fundVault", () => {
         });
 
         // verify dataFetcher methods were called for swap preparation
-        expect(mockSigner.state.dataFetcher.updatePools).toHaveBeenCalled();
-        expect(mockSigner.state.dataFetcher.fetchPoolsForToken).toHaveBeenCalled();
+        expect(mockSigner.state.router.sushi!.update).toHaveBeenCalled();
+        expect(mockSigner.state.router.sushi!.dataFetcher.fetchPoolsForToken).toHaveBeenCalled();
     });
 
     it("should fetch token details and cache them when not available", async () => {

@@ -302,21 +302,3 @@ export class PreAssembledSpan {
         return this;
     }
 }
-
-/**
- * Adds the given k/v pairs to the target object by prepending the key with given header
- */
-export function extendObjectWithHeader(
-    targetObj: Record<string, any>,
-    sourceObj: Record<string, any>,
-    header: string,
-    excludeHeaderForKeys: string[] = [],
-) {
-    for (const attrKey in sourceObj) {
-        if (!excludeHeaderForKeys.includes(attrKey)) {
-            Object.assign(targetObj, { [header + "." + attrKey]: sourceObj[attrKey] });
-        } else {
-            Object.assign(targetObj, { [attrKey]: sourceObj[attrKey] });
-        }
-    }
-}

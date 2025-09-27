@@ -16,6 +16,22 @@ export type SelfFundVault = {
     topupAmount: string;
 };
 
+/** Represents a type for app options contracts addresses */
+export type AppOptionsContracts = {
+    v4?: {
+        sushiArb?: `0x${string}`;
+        dispair?: `0x${string}`;
+        genericArb?: `0x${string}`;
+        balancerArb?: `0x${string}`;
+    };
+    v5?: {
+        sushiArb?: `0x${string}`;
+        dispair?: `0x${string}`;
+        genericArb?: `0x${string}`;
+        balancerArb?: `0x${string}`;
+    };
+};
+
 /** Rain Solver app yaml configurations */
 export type AppOptions = {
     /** Private key of the bot's wallet, only one of this or mnemonic must be set */
@@ -30,14 +46,6 @@ export type AppOptions = {
     rpc: RpcConfig[];
     /** List of write rpc configs used explicitly for write transactions */
     writeRpc?: RpcConfig[];
-    /** Arb contract address */
-    arbAddress: string;
-    /** Dispair contract address */
-    dispair: string;
-    /** Generic arb contract address */
-    genericArbAddress?: string;
-    /** Balancer arb contract address */
-    balancerArbAddress?: string;
     /** List of subgraph urls */
     subgraph: string[];
     /** Option to maximize maxIORatio, default is true */
@@ -52,10 +60,6 @@ export type AppOptions = {
     gasCoveragePercentage: string;
     /** Optional seconds to wait for the transaction to mine before disregarding it, default is 15 */
     timeout: number;
-    /** Number of hops of binary search, if left unspecified will be 1 by default */
-    hops: number;
-    /** The amount of retries for the same order, maximum allowed 3, minimum allowed 1, default is 1 */
-    retries: number;
     /** Option to specify time (in minutes) between pools data resets, default is 0 minutes */
     poolUpdateInterval: number;
     /** Minimum bot's wallet gas token balance required for operating, required */
@@ -76,6 +80,8 @@ export type AppOptions = {
     ownerProfile?: Record<string, number>;
     /** Optional filters for inc/exc orders, owner and orderbooks */
     sgFilter?: SgFilter;
+    /** List of contract addresses required for solving */
+    contracts: AppOptionsContracts;
 };
 
 /** Provides methods to instantiate and validate AppOptions */
@@ -130,23 +136,12 @@ export namespace AppOptions {
         try {
             return Result.ok({
                 ...Validator.resolveWalletKey(input),
+                contracts: Validator.resolveContracts(input),
                 rpc: Validator.resolveRpc(input.rpc),
                 writeRpc: Validator.resolveRpc(input.writeRpc, true),
                 subgraph: Validator.resolveUrls(
                     input.subgraph,
                     "expected array of subgraph urls with at least 1 url",
-                ),
-                dispair: Validator.resolveAddress(input.dispair, "dispair"),
-                arbAddress: Validator.resolveAddress(input.arbAddress, "arbAddress"),
-                genericArbAddress: Validator.resolveAddress(
-                    input.genericArbAddress,
-                    "genericArbAddress",
-                    true,
-                ),
-                balancerArbAddress: Validator.resolveAddress(
-                    input.balancerArbAddress,
-                    "balancerArbAddress",
-                    true,
                 ),
                 liquidityProviders: Validator.resolveLiquidityProviders(input.liquidityProviders),
                 route: Validator.resolveRouteType(input.route),
@@ -243,27 +238,6 @@ export namespace AppOptions {
                     undefined,
                     (timeout) =>
                         assert(timeout > 0, "invalid timeout, must be an integer greater than 0"),
-                ),
-                hops: Validator.resolveNumericValue(
-                    input.hops,
-                    INT_PATTERN,
-                    "invalid hops value, must be an integer greater than 0",
-                    "1",
-                    undefined,
-                    (hops) =>
-                        assert(hops > 0, "invalid hops value, must be an integer greater than 0"),
-                ),
-                retries: Validator.resolveNumericValue(
-                    input.retries,
-                    INT_PATTERN,
-                    "invalid retries value, must be an integer between 1 - 3",
-                    "1",
-                    undefined,
-                    (retries) =>
-                        assert(
-                            retries >= 1 && retries <= 3,
-                            "invalid retries value, must be an integer between 1 - 3",
-                        ),
                 ),
             } as AppOptions);
         } catch (error: any) {

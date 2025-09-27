@@ -19,7 +19,7 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
     // get cuirrent vault balance
     const balance = await signer.readContract({
         address: details.orderbook as `0x${string}`,
-        abi: [ABI.Orderbook.Primary.Orderbook[3]],
+        abi: [ABI.Orderbook.V4.Primary.Orderbook[3]],
         functionName: "vaultBalance",
         args: [
             signer.account.address as `0x${string}`, // owner
@@ -73,9 +73,12 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
 
         // convert gas to the vault token for depositing only in case the current balance is insufficient
         if (topupAmount > signerTokenBalance) {
-            await signer.state.dataFetcher.updatePools();
-            await signer.state.dataFetcher.fetchPoolsForToken(gasToken, vaultToken);
-            const pcMap = signer.state.dataFetcher.getCurrentPoolCodeMap(gasToken, vaultToken);
+            await signer.state.router.sushi?.update();
+            await signer.state.router.sushi?.dataFetcher.fetchPoolsForToken(gasToken, vaultToken);
+            const pcMap = signer.state.router.sushi!.dataFetcher.getCurrentPoolCodeMap(
+                gasToken,
+                vaultToken,
+            );
             const network = {
                 chainId: signer.chain.id,
                 gasPrice: Number(signer.state.gasPrice),
@@ -159,7 +162,7 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
         // deposit the topup amount into the vault
         const hash = await signer.writeContract({
             address: details.orderbook as `0x${string}`,
-            abi: [ABI.Orderbook.Primary.Orderbook[4]],
+            abi: [ABI.Orderbook.V4.Primary.Orderbook[4]],
             functionName: "deposit2",
             args: [vaultToken.address, BigInt(details.vaultId), topupAmount, []],
         });

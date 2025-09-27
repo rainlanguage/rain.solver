@@ -1,6 +1,6 @@
-import { OrderManager } from ".";
 import { Result } from "../common";
 import { syncOrders } from "./sync";
+import { OrderManager } from ".";
 import { PreAssembledSpan } from "../logger";
 import { applyFilters } from "../subgraph/filter";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
@@ -83,7 +83,7 @@ describe("Test syncOrders", () => {
                 decimals: 18,
             },
             123n,
-            1000000000000000000n,
+            "1000000000000000000",
         );
         expect(mockUpdateVault).toHaveBeenCalledTimes(1);
     });
@@ -127,7 +127,7 @@ describe("Test syncOrders", () => {
                 decimals: 6,
             },
             456n,
-            500000000n,
+            "500000000",
         );
         expect(mockUpdateVault).toHaveBeenCalledTimes(1);
     });
@@ -192,7 +192,7 @@ describe("Test syncOrders", () => {
                 decimals: 18,
             },
             100n,
-            2000000000000000000n,
+            "2000000000000000000",
         );
         expect(mockUpdateVault).toHaveBeenNthCalledWith(
             2,
@@ -204,7 +204,7 @@ describe("Test syncOrders", () => {
                 decimals: 6,
             },
             200n,
-            1000000000n,
+            "1000000000",
         );
     });
 
@@ -268,7 +268,7 @@ describe("Test syncOrders", () => {
                 decimals: 8,
             },
             789n,
-            50000000n,
+            "50000000",
         );
         expect(mockUpdateVault).toHaveBeenNthCalledWith(
             2,
@@ -280,7 +280,7 @@ describe("Test syncOrders", () => {
                 decimals: 18,
             },
             101112n,
-            3000000000000000000n,
+            "3000000000000000000",
         );
     });
 
@@ -303,7 +303,7 @@ describe("Test syncOrders", () => {
                 },
             ],
         };
-        const mockSyncStatus = {
+        const mockSyncStatus: any = {
             "https://subgraph1.com": {},
         };
         (applyFilters as Mock).mockReturnValue(true);
@@ -344,7 +344,7 @@ describe("Test syncOrders", () => {
             ],
         };
 
-        const mockSyncStatus = {
+        const mockSyncStatus: any = {
             "https://subgraph1.com": {},
         };
         const mockError = new Error("Failed to add order to database");
@@ -388,7 +388,7 @@ describe("Test syncOrders", () => {
                 },
             ],
         };
-        const mockSyncStatus = {
+        const mockSyncStatus: any = {
             "https://subgraph2.com": {},
         };
         mockSubgraphManager.getUpstreamEvents.mockResolvedValue({

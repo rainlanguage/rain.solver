@@ -4,12 +4,12 @@ import { Result } from "../../common";
 import { toNumber } from "../../math";
 import { Token } from "sushi/currency";
 import { errorSnapshot } from "../../error";
-import { PoolBlackList } from "../../router";
 import { formatUnits, parseUnits } from "viem";
 import { RainDataFetcherOptions } from "sushi";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../signer";
 import { processTransaction } from "./transaction";
+import { BlackListSet } from "../../router/sushi/blacklist";
 import {
     ProcessOrderStatus,
     ProcessOrderSuccess,
@@ -58,16 +58,18 @@ export async function processOrder(
     spanAttributes["details.orders"] = orderDetails.takeOrder.id;
     spanAttributes["details.pair"] = tokenPair;
 
-    spanAttributes["event.quoteOrder"] = Date.now();
+    spanAttributes["event.quoteOrder"] = performance.now();
     try {
         await this.orderManager.quoteOrder(orderDetails);
         if (orderDetails.takeOrder.quote?.maxOutput === 0n) {
             // remove from pair maps if quote fails, to keep the pair map list free
             // of orders with 0 maxoutput this will make counterparty lookups faster
             this.orderManager.removeFromPairMaps(orderDetails);
+            const endTime = performance.now();
             return async () => {
                 return Result.ok({
                     ...baseResult,
+                    endTime,
                     status: ProcessOrderStatus.ZeroOutput,
                 });
             };
@@ -76,10 +78,12 @@ export async function processOrder(
         this.orderManager.addToPairMaps(orderDetails);
     } catch (e) {
         this.orderManager.removeFromPairMaps(orderDetails);
+        const endTime = performance.now();
         return async () =>
             Result.err({
                 ...baseResult,
                 error: e,
+                endTime,
                 reason: ProcessOrderHaltReason.FailedToQuote,
             });
     }
@@ -91,98 +95,104 @@ export async function processOrder(
     });
 
     // get current block number
-    spanAttributes["event.getBlockNumber"] = Date.now();
+    spanAttributes["event.getBlockNumber"] = performance.now();
     const dataFetcherBlockNumber = await this.state.client.getBlockNumber().catch(() => {
         return undefined;
     });
 
     // update pools by events watching until current block
-    spanAttributes["event.updatePoolsData"] = Date.now();
+    spanAttributes["event.updatePoolsData"] = performance.now();
     try {
-        await this.state.dataFetcher.updatePools(dataFetcherBlockNumber);
+        await this.state.router.sushi?.update(dataFetcherBlockNumber);
     } catch (e) {
         if (typeof e !== "string" || !e.includes("fetchPoolsForToken")) {
+            const endTime = performance.now();
             return async () =>
                 Result.err({
                     ...baseResult,
                     error: e,
+                    endTime,
                     reason: ProcessOrderHaltReason.FailedToUpdatePools,
                 });
         }
     }
 
     // get pool details
-    spanAttributes["event.getPoolsData"] = Date.now();
+    spanAttributes["event.getPoolsData"] = performance.now();
     try {
         const options: RainDataFetcherOptions = {
             fetchPoolsTimeout: 90000,
             blockNumber: dataFetcherBlockNumber,
         };
-        await this.state.dataFetcher.fetchPoolsForToken(fromToken, toToken, PoolBlackList, options);
+        await this.state.router.sushi?.dataFetcher.fetchPoolsForToken(
+            fromToken,
+            toToken,
+            BlackListSet,
+            options,
+        );
     } catch (e) {
+        const endTime = performance.now();
         return async () =>
             Result.err({
                 ...baseResult,
                 error: e,
+                endTime,
                 reason: ProcessOrderHaltReason.FailedToGetPools,
             });
     }
 
     // record market price in span attributes
-    spanAttributes["event.getPairMarketPrice"] = Date.now();
-    await this.state
-        .getMarketPrice(fromToken, toToken, dataFetcherBlockNumber)
-        .catch(() => {})
-        .then((marketQuote) => {
-            if (marketQuote) {
-                spanAttributes["details.marketQuote.str"] = marketQuote.price;
-                spanAttributes["details.marketQuote.num"] = toNumber(
-                    parseUnits(marketQuote.price, 18),
-                );
-            }
-        });
+    spanAttributes["event.getPairMarketPrice"] = performance.now();
+    const marketPriceResult = await this.state.getMarketPrice(
+        fromToken,
+        toToken,
+        dataFetcherBlockNumber,
+    );
+    if (marketPriceResult.isOk()) {
+        spanAttributes["details.marketQuote.str"] = marketPriceResult.value.price;
+        spanAttributes["details.marketQuote.num"] = toNumber(
+            parseUnits(marketPriceResult.value.price, 18),
+        );
+    }
 
     // get in/out tokens to eth price
-    spanAttributes["event.getEthMarketPrice"] = Date.now();
+    spanAttributes["event.getEthMarketPrice"] = performance.now();
     let inputToEthPrice = "";
     let outputToEthPrice = "";
-    try {
-        inputToEthPrice =
-            (
-                await this.state.getMarketPrice(
-                    toToken,
-                    this.state.chainConfig.nativeWrappedToken,
-                    dataFetcherBlockNumber,
-                )
-            )?.price ?? (this.appOptions.gasCoveragePercentage === "0" ? "0" : "");
-        outputToEthPrice =
-            (
-                await this.state.getMarketPrice(
-                    fromToken,
-                    this.state.chainConfig.nativeWrappedToken,
-                    dataFetcherBlockNumber,
-                )
-            )?.price ?? (this.appOptions.gasCoveragePercentage === "0" ? "0" : "");
-
-        if (!inputToEthPrice && !outputToEthPrice) {
-            return async () => {
-                return Result.err({
-                    ...baseResult,
-                    reason: ProcessOrderHaltReason.FailedToGetEthPrice,
-                    error: "no-route for both in/out tokens",
-                });
-            };
-        }
-    } catch (e) {
-        if (!inputToEthPrice && !outputToEthPrice) {
-            return async () => {
-                return Result.err({
-                    ...baseResult,
-                    error: e,
-                    reason: ProcessOrderHaltReason.FailedToGetEthPrice,
-                });
-            };
-        }
+    const inputToEthPriceResult = await this.state.getMarketPrice(
+        toToken,
+        this.state.chainConfig.nativeWrappedToken,
+        dataFetcherBlockNumber,
+    );
+    const outputToEthPriceResult = await this.state.getMarketPrice(
+        fromToken,
+        this.state.chainConfig.nativeWrappedToken,
+        dataFetcherBlockNumber,
+    );
+    if (
+        inputToEthPriceResult.isErr() &&
+        outputToEthPriceResult.isErr() &&
+        this.appOptions.gasCoveragePercentage !== "0"
+    ) {
+        const endTime = performance.now();
+        return async () => {
+            return Result.err({
+                ...baseResult,
+                endTime,
+                reason: ProcessOrderHaltReason.FailedToGetEthPrice,
+                error: "no-route for both in/out tokens for both balancer and sushi",
+            });
+        };
+    }
+    if (inputToEthPriceResult.isOk()) {
+        inputToEthPrice = inputToEthPriceResult.value.price;
+    } else if (this.appOptions.gasCoveragePercentage === "0") {
+        inputToEthPrice = "0";
+    }
+    if (outputToEthPriceResult.isOk()) {
+        outputToEthPrice = outputToEthPriceResult.value.price;
+    } else if (this.appOptions.gasCoveragePercentage === "0") {
+        outputToEthPrice = "0";
     }
 
     // record in/out tokens to eth price andgas price for otel
@@ -193,7 +203,7 @@ export async function processOrder(
         spanAttributes["details.gasPriceL1"] = this.state.l1GasPrice.toString();
     }
 
-    spanAttributes["event.findBestTrade"] = Date.now();
+    spanAttributes["event.findBestTrade"] = performance.now();
     const trade = await this.findBestTrade({
         orderDetails,
         signer,
@@ -205,6 +215,7 @@ export async function processOrder(
     if (trade.isErr()) {
         const result: ProcessOrderSuccess = {
             ...baseResult,
+            endTime: performance.now(),
         };
         // record all span attributes
         for (const attrKey in trade.error.spanAttributes) {
@@ -250,7 +261,7 @@ export async function processOrder(
     }
 
     // process the found transaction opportunity
-    spanAttributes["event.processTransaction"] = Date.now();
+    spanAttributes["event.processTransaction"] = performance.now();
     return processTransaction({
         rawtx,
         signer,

@@ -1,4 +1,5 @@
 export * from "./common";
+export * from "./router";
 export * as sushi from "sushi";
 export { main } from "./cli/main";
 export { RainSolver } from "./core";

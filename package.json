@@ -38,8 +38,9 @@
         "rain-solver": "ts-node rain-solver",
         "build": "tsc",
         "vitest:logger": "vitest run ./src/logger/index.test.ts --disableConsoleIntercept",
-        "vitest": "npm run vitest:logger && vitest run --exclude ./src/logger/index.test.ts",
-        "sweep": "ts-node ./scripts/sweep.ts"
+        "vitest": "npm run check && npm run vitest:logger && vitest run --exclude ./src/logger/index.test.ts",
+        "sweep": "ts-node ./scripts/sweep.ts",
+        "check": "tsc -p ./tsconfig.check.json"
     },
     "dependencies": {
         "@balancer/sdk": "^4.5.2",
@@ -52,6 +53,7 @@
         "@opentelemetry/sdk-trace-base": "^1.22.0",
         "@opentelemetry/semantic-conventions": "^1.22.0",
         "@rainlanguage/dotrain": "^6.0.1-alpha.24",
+        "@rainlanguage/float": "^0.0.0-alpha.30",
         "axios": "^1.3.4",
         "commander": "^11.0.0",
         "dotenv": "^16.0.3",

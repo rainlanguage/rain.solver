@@ -1,26 +1,15 @@
-import { Result } from "../../../common";
-import { SimulationResult } from "../../types";
-import { findBestRouteProcessorTrade } from "./index";
-import { extendObjectWithHeader } from "../../../logger";
+import { Order } from "../../../order";
+import { findBestRouterTrade } from "./index";
+import { Dispair, Result } from "../../../common";
+import { RouterTradeSimulator } from "./simulate";
+import { SimulationHaltReason } from "../simulator";
+import { extendObjectWithHeader } from "../../../common";
+import { SimulationResult, TradeType } from "../../types";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import {
-    trySimulateTrade,
-    findLargestTradeSize,
-    RouteProcessorSimulationHaltReason,
-} from "./simulate";
 
 // Mocks
-vi.mock("./simulate", () => ({
-    trySimulateTrade: vi.fn(),
-    findLargestTradeSize: vi.fn(),
-    RouteProcessorSimulationHaltReason: {
-        NoRoute: "NoRoute",
-        OrderRatioGreaterThanMarketPrice: "OrderRatioGreaterThanMarketPrice",
-        NoOpportunity: "NoOpportunity",
-    },
-}));
-
-vi.mock("../../../logger", () => ({
+vi.mock("../../../common", async (importOriginal) => ({
+    ...(await importOriginal()),
     extendObjectWithHeader: vi.fn(),
 }));
 
@@ -35,59 +24,88 @@ vi.mock("sushi/currency", async (importOriginal) => {
     };
 });
 
-describe("Test findBestRouteProcessorTrade", () => {
+describe("Test findBestRouterTrade", () => {
     let mockRainSolver: any;
     let orderDetails: any;
     let signer: any;
     let ethPrice: string;
     let toToken: any;
     let fromToken: any;
+    let blockNumber: bigint;
+    let trySimulateTradeSpy: any;
+    let simulatorWithArgsSpy: any;
+    let dispair: Dispair;
+    let destination: `0x${string}`;
 
     beforeEach(() => {
         vi.clearAllMocks();
 
+        dispair = {
+            deployer: "0xdeployer",
+            interpreter: "0xinterpreter",
+            store: "0xstore",
+        };
+        destination = "0xdestination";
         mockRainSolver = {
+            appOptions: {},
             state: {
+                gasPrice: 100n,
                 client: {
                     getBlockNumber: vi.fn().mockResolvedValue(123n),
+                },
+                router: {
+                    findLargestTradeSize: vi.fn(),
+                },
+                contracts: {
+                    getAddressesForTrade: vi.fn().mockReturnValue({
+                        dispair,
+                        destination,
+                    }),
                 },
             },
         };
 
         orderDetails = {
-            takeOrder: { quote: { maxOutput: 1000n } },
+            takeOrder: { quote: { maxOutput: 1000n }, struct: { order: { type: Order.Type.V4 } } },
         };
 
         signer = { account: { address: "0xsigner" } };
         ethPrice = "2000";
         toToken = { address: "0xTo", decimals: 18, symbol: "TO" };
         fromToken = { address: "0xFrom", decimals: 18, symbol: "FROM" };
+        blockNumber = 123n;
+
+        simulatorWithArgsSpy = vi.spyOn(RouterTradeSimulator, "withArgs");
+        trySimulateTradeSpy = vi.spyOn(RouterTradeSimulator.prototype, "trySimulateTrade");
     });
 
     it("should return success result if full trade size simulation succeeds", async () => {
         const mockSuccessResult = Result.ok({
-            type: "routeProcessor",
+            type: "balancer",
             spanAttributes: { foundOpp: true },
             estimatedProfit: 100n,
             oppBlockNumber: 123,
         });
-        (trySimulateTrade as Mock).mockResolvedValue(mockSuccessResult);
+        (trySimulateTradeSpy as Mock).mockResolvedValue(mockSuccessResult);
 
-        const result: SimulationResult = await findBestRouteProcessorTrade.call(
+        const result: SimulationResult = await findBestRouterTrade.call(
             mockRainSolver,
             orderDetails,
             signer,
             ethPrice,
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isOk());
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.estimatedProfit).toBe(100n);
         expect(result.value.oppBlockNumber).toBe(123);
-        expect(result.value.type).toBe("routeProcessor");
-        expect(trySimulateTrade).toHaveBeenCalledWith({
+        expect(result.value.type).toBe("balancer");
+        expect(simulatorWithArgsSpy).toHaveBeenCalledWith({
+            type: TradeType.Router,
+            solver: mockRainSolver,
             orderDetails,
             fromToken,
             toToken,
@@ -101,24 +119,26 @@ describe("Test findBestRouteProcessorTrade", () => {
 
     it("should return error if no route found", async () => {
         const mockErrorResult = Result.err({
-            reason: RouteProcessorSimulationHaltReason.NoRoute,
+            type: TradeType.Router,
+            reason: SimulationHaltReason.NoRoute,
             spanAttributes: { route: "no-way" },
             noneNodeError: "no route available",
         });
-        (trySimulateTrade as Mock).mockResolvedValue(mockErrorResult);
+        (trySimulateTradeSpy as Mock).mockResolvedValue(mockErrorResult);
 
-        const result: SimulationResult = await findBestRouteProcessorTrade.call(
+        const result: SimulationResult = await findBestRouterTrade.call(
             mockRainSolver,
             orderDetails,
             signer,
             ethPrice,
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isErr());
         expect(result.error.noneNodeError).toBe("no route available");
-        expect(result.error.type).toBe("routeProcessor");
+        expect(result.error.type).toBe("router");
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             { route: "no-way" },
@@ -128,7 +148,7 @@ describe("Test findBestRouteProcessorTrade", () => {
 
     it("should try partial trade if full trade fails with non-NoRoute reason", async () => {
         const mockFullTradeError = Result.err({
-            reason: RouteProcessorSimulationHaltReason.OrderRatioGreaterThanMarketPrice,
+            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
             spanAttributes: { error: "ratio too high" },
             noneNodeError: "order ratio issue",
         });
@@ -139,32 +159,42 @@ describe("Test findBestRouteProcessorTrade", () => {
             oppBlockNumber: 123,
         });
 
-        (trySimulateTrade as Mock)
+        (trySimulateTradeSpy as Mock)
             .mockResolvedValueOnce(mockFullTradeError)
             .mockResolvedValueOnce(mockPartialTradeSuccess);
-        (findLargestTradeSize as Mock).mockReturnValue(1500n);
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue(500n);
 
-        const result: SimulationResult = await findBestRouteProcessorTrade.call(
+        const result: SimulationResult = await findBestRouterTrade.call(
             mockRainSolver,
             orderDetails,
             signer,
             ethPrice,
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isOk());
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.estimatedProfit).toBe(50n);
         expect(result.value.type).toBe("routeProcessor");
-        expect(findLargestTradeSize).toHaveBeenCalledWith(orderDetails, toToken, fromToken, 1000n);
-        expect(trySimulateTrade).toHaveBeenCalledTimes(2);
-        expect(trySimulateTrade).toHaveBeenLastCalledWith({
+        expect(mockRainSolver.state.router.findLargestTradeSize).toHaveBeenCalledWith(
+            orderDetails,
+            toToken,
+            fromToken,
+            1000n,
+            100n,
+            undefined,
+        );
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
+        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith({
+            type: TradeType.Router,
+            solver: mockRainSolver,
             orderDetails,
             fromToken,
             toToken,
             signer,
-            maximumInputFixed: 1000n,
+            maximumInputFixed: 500n,
             ethPrice,
             isPartial: true,
             blockNumber: 123n,
@@ -173,26 +203,28 @@ describe("Test findBestRouteProcessorTrade", () => {
 
     it("should return error if partial trade size cannot be found", async () => {
         const mockFullTradeError = Result.err({
-            reason: RouteProcessorSimulationHaltReason.OrderRatioGreaterThanMarketPrice,
+            type: TradeType.Router,
+            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
             spanAttributes: { error: "ratio too high" },
             noneNodeError: "order ratio issue",
         });
 
-        (trySimulateTrade as Mock).mockResolvedValue(mockFullTradeError);
-        (findLargestTradeSize as Mock).mockReturnValue(undefined);
+        (trySimulateTradeSpy as Mock).mockResolvedValue(mockFullTradeError);
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue(undefined);
 
-        const result: SimulationResult = await findBestRouteProcessorTrade.call(
+        const result: SimulationResult = await findBestRouterTrade.call(
             mockRainSolver,
             orderDetails,
             signer,
             ethPrice,
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isErr());
         expect(result.error.noneNodeError).toBe("order ratio issue");
-        expect(result.error.type).toBe("routeProcessor");
+        expect(result.error.type).toBe("router");
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             { error: "ratio too high" },
@@ -202,33 +234,36 @@ describe("Test findBestRouteProcessorTrade", () => {
 
     it("should return error if partial trade simulation also fails", async () => {
         const mockFullTradeError = Result.err({
-            reason: RouteProcessorSimulationHaltReason.OrderRatioGreaterThanMarketPrice,
+            type: TradeType.Balancer,
+            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
             spanAttributes: { error: "ratio too high" },
             noneNodeError: "order ratio issue",
         });
         const mockPartialTradeError = Result.err({
-            reason: RouteProcessorSimulationHaltReason.NoOpportunity,
+            type: TradeType.RouteProcessor,
+            reason: SimulationHaltReason.NoOpportunity,
             spanAttributes: { error: "no opportunity" },
             noneNodeError: "partial failed",
         });
 
-        (trySimulateTrade as Mock)
+        (trySimulateTradeSpy as Mock)
             .mockResolvedValueOnce(mockFullTradeError)
             .mockResolvedValueOnce(mockPartialTradeError);
-        (findLargestTradeSize as Mock).mockReturnValue(1500n);
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue(1500n);
 
-        const result: SimulationResult = await findBestRouteProcessorTrade.call(
+        const result: SimulationResult = await findBestRouterTrade.call(
             mockRainSolver,
             orderDetails,
             signer,
             ethPrice,
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isErr());
         expect(result.error.noneNodeError).toBe("order ratio issue"); // from full trade error
-        expect(result.error.type).toBe("routeProcessor");
+        expect(result.error.type).toBe("balancer");
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             { error: "ratio too high" },
@@ -243,7 +278,7 @@ describe("Test findBestRouteProcessorTrade", () => {
 
     it("should return success result if partial trade simulation succeeds", async () => {
         const mockFullTradeError = Result.err({
-            reason: RouteProcessorSimulationHaltReason.OrderRatioGreaterThanMarketPrice,
+            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
             spanAttributes: { error: "ratio too high" },
             noneNodeError: "order ratio issue",
         });
@@ -254,18 +289,19 @@ describe("Test findBestRouteProcessorTrade", () => {
             oppBlockNumber: 123,
         });
 
-        (trySimulateTrade as Mock)
+        (trySimulateTradeSpy as Mock)
             .mockResolvedValueOnce(mockFullTradeError)
             .mockResolvedValueOnce(mockPartialTradeSuccess);
-        (findLargestTradeSize as Mock).mockReturnValue(1800n);
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue(500n);
 
-        const result: SimulationResult = await findBestRouteProcessorTrade.call(
+        const result: SimulationResult = await findBestRouterTrade.call(
             mockRainSolver,
             orderDetails,
             signer,
             ethPrice,
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isOk());
@@ -273,14 +309,23 @@ describe("Test findBestRouteProcessorTrade", () => {
         expect(result.value.estimatedProfit).toBe(75n);
         expect(result.value.oppBlockNumber).toBe(123);
         expect(result.value.type).toBe("routeProcessor");
-        expect(findLargestTradeSize).toHaveBeenCalledWith(orderDetails, toToken, fromToken, 1000n);
-        expect(trySimulateTrade).toHaveBeenCalledTimes(2);
-        expect(trySimulateTrade).toHaveBeenLastCalledWith({
+        expect(mockRainSolver.state.router.findLargestTradeSize).toHaveBeenCalledWith(
+            orderDetails,
+            toToken,
+            fromToken,
+            1000n,
+            100n,
+            undefined,
+        );
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
+        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith({
+            type: TradeType.Router,
+            solver: mockRainSolver,
             orderDetails,
             fromToken,
             toToken,
             signer,
-            maximumInputFixed: 1000n,
+            maximumInputFixed: 500n,
             ethPrice,
             isPartial: true,
             blockNumber: 123n,
@@ -293,19 +338,41 @@ describe("Test findBestRouteProcessorTrade", () => {
     });
 
     it("should return early if ethPrice is unknown", async () => {
-        const result: SimulationResult = await findBestRouteProcessorTrade.call(
+        const result: SimulationResult = await findBestRouterTrade.call(
             mockRainSolver,
             orderDetails,
             signer,
             "",
             toToken,
             fromToken,
+            blockNumber,
         );
 
         assert(result.isErr());
-        expect(result.error.type).toBe("routeProcessor");
+        expect(result.error.type).toBe("router");
         expect(result.error.spanAttributes.error).toBe(
             "no route to get price of input token to eth",
+        );
+    });
+
+    it("should return error when trade addresses are not configured", async () => {
+        (mockRainSolver.state.contracts.getAddressesForTrade as Mock).mockReturnValue(undefined);
+        const result: SimulationResult = await findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+        );
+
+        assert(result.isErr());
+        expect(result.error.type).toBe(TradeType.Router);
+        expect(result.error.reason).toBe(SimulationHaltReason.UndefinedTradeDestinationAddress);
+        expect(mockRainSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledWith(
+            orderDetails,
+            TradeType.Router,
         );
     });
 });

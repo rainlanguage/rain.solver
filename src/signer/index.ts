@@ -12,7 +12,6 @@ import {
     WalletRpcSchema,
     PrivateKeyAccount,
     createWalletClient,
-    TransactionRequestBase,
 } from "viem";
 
 export { RainSolverSignerActions } from "./actions";
@@ -96,14 +95,6 @@ export type RainSolverMnemonicSigner = RainSolverSigner<HDAccount>;
 
 /** Type of RainSolverSigner for private key accounts */
 export type RainSolverPrivateKeySigner = RainSolverSigner<PrivateKeyAccount>;
-
-/** Represents a raw transaction type with base fields that can be sent to the network */
-export type RawTransaction = Prettify<
-    Omit<TransactionRequestBase, "to"> & {
-        to: `0x${string}`;
-        gasPrice?: bigint;
-    }
->;
 
 /** Result type for gas cost estimation that includes both L1 and L2 costs */
 export type EstimateGasCostResult = {

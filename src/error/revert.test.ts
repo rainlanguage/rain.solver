@@ -397,11 +397,16 @@ describe("Test revert error handling functions", () => {
 
             expect(result).toBe(frontrunHash);
             expect(decodeFunctionData).toHaveBeenCalledWith({
-                abi: [ABI.Orderbook.Primary.Arb[1]],
+                abi: [ABI.Orderbook.V4.Primary.Arb[1]],
                 data: mockRawTx.data,
             });
             expect(mockViemClient.getLogs).toHaveBeenCalledWith({
-                events: [ABI.Orderbook.Primary.Orderbook[13], ABI.Orderbook.Primary.Orderbook[15]],
+                events: [
+                    ABI.Orderbook.V4.Primary.Orderbook[13],
+                    ABI.Orderbook.V4.Primary.Orderbook[15],
+                    ABI.Orderbook.V5.Primary.Orderbook[7],
+                    ABI.Orderbook.V5.Primary.Orderbook[8],
+                ],
                 address: "0xOrderbook",
                 blockHash: mockReceipt.blockHash,
             });
@@ -432,7 +437,7 @@ describe("Test revert error handling functions", () => {
 
             expect(result).toBe(frontrunHash);
             expect(decodeFunctionData).toHaveBeenCalledWith({
-                abi: [ABI.Orderbook.Primary.Orderbook[12]],
+                abi: [ABI.Orderbook.V4.Primary.Orderbook[12]],
                 data: mockRawTx.data,
             });
         });

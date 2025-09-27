@@ -36,17 +36,27 @@ subgraph:
   - https://subgraph-url1.com
   - https://subgraph-url2.com
 
-# Arb contract address, required
-arbAddress: "0x1234...5678"
-
-# Generic arb contract address, optional
-genericArbAddress: "0x1234...5678"
-
-# Balancer arb contract address, optional
-balancerArbAddress: "0x1234...5678"
-
-# Dispair contract address, required
-dispair: "0x1234...5678"
+# Contract addresses for different versions requireed for operating and solving trades
+# at least one version should be partially or fully specified
+contracts:
+  v4:
+    # Sushi RP arb v4 contract address
+    sushiArbAddress: "0x1234...5678"
+    # Generic arb v4 contract address
+    genericArbAddress: "0x1234...5678"
+    # Balancer arb v4 contract address
+    balancerArbAddress: "0x1234...5678"
+    # Dispair v4 contract address
+    dispair: "0x1234...5678"
+  v5:
+    # Sushi RP arb v5 contract address
+    sushiArbAddress: "0x1234...5678"
+    # Generic arb v5 contract address
+    genericArbAddress: "0x1234...5678"
+    # Balancer arb v5 contract address
+    balancerArbAddress: "0x1234...5678"
+    # Dispair v5 contract address
+    dispair: "0x1234...5678"
 
 # list of liquidity providers
 # if provided through an env var, they should be separated by a comma
@@ -85,12 +95,6 @@ gasLimitMultiplier: 100
 
 # Optional seconds to wait for the transaction to mine before disregarding it, default is 15
 timeout: 15
-
-# number of hops of binary search, if left unspecified will be 1 by default
-hops: 1
-
-# The amount of retries for the same order, maximum allowed 3, minimum allowed 1, default is 1
-retries: 1
 
 # Option to maximize maxIORatio, default true
 maxRatio: true

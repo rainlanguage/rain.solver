@@ -34,7 +34,7 @@ export async function syncOrders(this: OrderManager) {
                     decimals: Number(event.vault.token.decimals),
                 },
                 BigInt(event.vault.vaultId),
-                BigInt(event.vault.balance),
+                event.vault.balance,
             );
         }
         if (event.__typename === "Clear" || event.__typename === "TakeOrder") {
@@ -49,7 +49,7 @@ export async function syncOrders(this: OrderManager) {
                         decimals: Number(trade.inputVaultBalanceChange.vault.token.decimals),
                     },
                     BigInt(trade.inputVaultBalanceChange.vault.vaultId),
-                    BigInt(trade.inputVaultBalanceChange.vault.balance),
+                    trade.inputVaultBalanceChange.vault.balance,
                 );
                 this.updateVault(
                     trade.outputVaultBalanceChange.orderbook.id,
@@ -60,7 +60,7 @@ export async function syncOrders(this: OrderManager) {
                         decimals: Number(trade.outputVaultBalanceChange.vault.token.decimals),
                     },
                     BigInt(trade.outputVaultBalanceChange.vault.vaultId),
-                    BigInt(trade.outputVaultBalanceChange.vault.balance),
+                    trade.outputVaultBalanceChange.vault.balance,
                 );
             });
         }

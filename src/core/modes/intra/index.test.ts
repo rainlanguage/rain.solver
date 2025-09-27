@@ -1,23 +1,21 @@
 import { RainSolver } from "../..";
-import { Result } from "../../../common";
-import { SimulationResult } from "../../types";
-import { trySimulateTrade } from "./simulation";
+import { fallbackEthPrice } from "../dryrun";
+import { Dispair, Result } from "../../../common";
 import { RainSolverSigner } from "../../../signer";
-import { fallbackEthPrice } from "../../../router";
+import { SimulationHaltReason } from "../simulator";
 import { findBestIntraOrderbookTrade } from "./index";
-import { extendObjectWithHeader } from "../../../logger";
+import { extendObjectWithHeader } from "../../../common";
+import { SimulationResult, TradeType } from "../../types";
 import { CounterpartySource, Pair } from "../../../order";
+import { IntraOrderbookTradeSimulator } from "./simulation";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
-vi.mock("../../../router", () => ({
+vi.mock("../dryrun", () => ({
     fallbackEthPrice: vi.fn(),
 }));
 
-vi.mock("./simulation", () => ({
-    trySimulateTrade: vi.fn(),
-}));
-
-vi.mock("../../../logger", () => ({
+vi.mock("../../../common", async (importOriginal) => ({
+    ...(await importOriginal()),
     extendObjectWithHeader: vi.fn(),
 }));
 
@@ -32,10 +30,21 @@ describe("Test findBestIntraOrderbookTrade", () => {
     let signer: RainSolverSigner;
     let inputToEthPrice: string;
     let outputToEthPrice: string;
+    let blockNumber: bigint;
+    let trySimulateTradeSpy: any;
+    let simulatorWithArgsSpy: any;
+    let dispair: Dispair;
+    let destination: `0x${string}`;
 
     beforeEach(() => {
         vi.clearAllMocks();
 
+        dispair = {
+            deployer: "0xdeployer",
+            interpreter: "0xinterpreter",
+            store: "0xstore",
+        };
+        destination = "0xdestination";
         mockRainSolver = {
             state: {
                 client: {
@@ -44,6 +53,12 @@ describe("Test findBestIntraOrderbookTrade", () => {
                         .fn()
                         .mockResolvedValueOnce(5000000000000000000n) // input balance
                         .mockResolvedValueOnce(3000000000000000000n), // output balance
+                },
+                contracts: {
+                    getAddressesForTrade: vi.fn().mockReturnValue({
+                        dispair,
+                        destination,
+                    }),
                 },
             },
             orderManager: {
@@ -70,6 +85,10 @@ describe("Test findBestIntraOrderbookTrade", () => {
         signer = { account: { address: "0xsigner" } } as any;
         inputToEthPrice = "0.5";
         outputToEthPrice = "2.0";
+        blockNumber = 123n;
+
+        simulatorWithArgsSpy = vi.spyOn(IntraOrderbookTradeSimulator, "withArgs");
+        trySimulateTradeSpy = vi.spyOn(IntraOrderbookTradeSimulator.prototype, "trySimulateTrade");
     });
 
     it("should return success result with highest profit when simulations succeed", async () => {
@@ -132,7 +151,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
                 oppBlockNumber: 123,
             }),
         ];
-        (trySimulateTrade as Mock)
+        (trySimulateTradeSpy as Mock)
             .mockResolvedValueOnce(mockResults[0])
             .mockResolvedValueOnce(mockResults[1])
             .mockResolvedValueOnce(mockResults[2]);
@@ -143,6 +162,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         assert(result.isOk());
@@ -153,7 +173,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             orderDetails,
             CounterpartySource.IntraOrderbook,
         );
-        expect(trySimulateTrade).toHaveBeenCalledTimes(3);
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(3);
         expect(result.value.type).toBe("intraOrderbook");
     });
 
@@ -199,7 +219,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
                 oppBlockNumber: 123,
             }),
         ];
-        (trySimulateTrade as Mock)
+        (trySimulateTradeSpy as Mock)
             .mockResolvedValueOnce(mockResults[0])
             .mockResolvedValueOnce(mockResults[1]);
 
@@ -209,13 +229,14 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         assert(result.isOk());
         expect(result.value.spanAttributes.foundOpp).toBe(true);
         expect(result.value.estimatedProfit).toBe(300n);
         expect(result.value.oppBlockNumber).toBe(123);
-        expect(trySimulateTrade).toHaveBeenCalledTimes(2);
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
         expect(result.value.type).toBe("intraOrderbook");
     });
 
@@ -258,7 +279,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
                 noneNodeError: "simulation failed 2",
             }),
         ];
-        (trySimulateTrade as Mock)
+        (trySimulateTradeSpy as Mock)
             .mockResolvedValueOnce(mockResults[0])
             .mockResolvedValueOnce(mockResults[1]);
 
@@ -268,6 +289,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         assert(result.isErr());
@@ -314,7 +336,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             mockCounterpartyOrders,
         );
 
-        (trySimulateTrade as Mock).mockResolvedValue(
+        (trySimulateTradeSpy as Mock).mockResolvedValue(
             Result.ok({
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 200n,
@@ -328,10 +350,11 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
-        // should only call trySimulateTrade once (filtered out same ID order)
-        expect(trySimulateTrade).toHaveBeenCalledTimes(1);
+        // should only call trySimulateTradeSpy once (filtered out same ID order)
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(1);
     });
 
     it("should filter out orders with same owner", async () => {
@@ -363,7 +386,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             mockCounterpartyOrders,
         );
 
-        (trySimulateTrade as Mock).mockResolvedValue(
+        (trySimulateTradeSpy as Mock).mockResolvedValue(
             Result.ok({
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 200n,
@@ -377,10 +400,11 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
-        // should only call trySimulateTrade once (filtered out same owner order)
-        expect(trySimulateTrade).toHaveBeenCalledTimes(1);
+        // should only call trySimulateTradeSpy once (filtered out same owner order)
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(1);
     });
 
     it("should filter out orders where price multiplication >= 1", async () => {
@@ -412,7 +436,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             mockCounterpartyOrders,
         );
 
-        (trySimulateTrade as Mock).mockResolvedValue(
+        (trySimulateTradeSpy as Mock).mockResolvedValue(
             Result.ok({
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 200n,
@@ -426,10 +450,11 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
-        // should only call trySimulateTrade once (filtered out high ratio order)
-        expect(trySimulateTrade).toHaveBeenCalledTimes(1);
+        // should only call trySimulateTradeSpy once (filtered out high ratio order)
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(1);
     });
 
     it("should filter out orders without quote", async () => {
@@ -461,7 +486,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             mockCounterpartyOrders,
         );
 
-        (trySimulateTrade as Mock).mockResolvedValue(
+        (trySimulateTradeSpy as Mock).mockResolvedValue(
             Result.ok({
                 spanAttributes: { foundOpp: true },
                 estimatedProfit: 200n,
@@ -475,10 +500,11 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
-        // should only call trySimulateTrade once (filtered out order without quote)
-        expect(trySimulateTrade).toHaveBeenCalledTimes(1);
+        // should only call trySimulateTradeSpy once (filtered out order without quote)
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(1);
     });
 
     it("should limit to top 3 counterparty orders", async () => {
@@ -532,7 +558,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             mockCounterpartyOrders,
         );
 
-        (trySimulateTrade as Mock).mockResolvedValue(
+        (trySimulateTradeSpy as Mock).mockResolvedValue(
             Result.err({
                 spanAttributes: { error: "failed" },
                 noneNodeError: "simulation failed",
@@ -545,13 +571,14 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
-        // should only call trySimulateTrade 3 times (top 3 orders)
-        expect(trySimulateTrade).toHaveBeenCalledTimes(3);
+        // should only call trySimulateTradeSpy 3 times (top 3 orders)
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(3);
     });
 
-    it("should call trySimulateTrade with correct parameters", async () => {
+    it("should call trySimulateTradeSpy with correct parameters", async () => {
         const mockCounterpartyOrders = [
             {
                 takeOrder: {
@@ -569,7 +596,7 @@ describe("Test findBestIntraOrderbookTrade", () => {
             mockCounterpartyOrders,
         );
 
-        (trySimulateTrade as Mock).mockResolvedValue(
+        (trySimulateTradeSpy as Mock).mockResolvedValue(
             Result.err({
                 spanAttributes: { error: "failed" },
                 noneNodeError: "simulation failed",
@@ -582,9 +609,12 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
-        expect(trySimulateTrade).toHaveBeenCalledWith({
+        expect(simulatorWithArgsSpy).toHaveBeenCalledWith({
+            type: TradeType.IntraOrderbook,
+            solver: mockRainSolver,
             orderDetails,
             counterpartyOrderDetails: mockCounterpartyOrders[0].takeOrder,
             signer,
@@ -620,11 +650,12 @@ describe("Test findBestIntraOrderbookTrade", () => {
             signer,
             inputToEthPrice,
             outputToEthPrice,
+            blockNumber,
         );
 
         assert(result.isErr());
         expect(result.error.noneNodeError).toBeUndefined();
-        expect(trySimulateTrade).not.toHaveBeenCalled();
+        expect(trySimulateTradeSpy).not.toHaveBeenCalled();
         expect(result.error.type).toBe("intraOrderbook");
     });
 
@@ -646,16 +677,25 @@ describe("Test findBestIntraOrderbookTrade", () => {
             mockCounterpartyOrders,
         );
         (fallbackEthPrice as Mock).mockReturnValueOnce("1").mockReturnValueOnce("2");
-        (trySimulateTrade as Mock).mockResolvedValue(
+        (trySimulateTradeSpy as Mock).mockResolvedValue(
             Result.err({
                 spanAttributes: { error: "failed" },
                 noneNodeError: "simulation failed",
             }),
         );
 
-        await findBestIntraOrderbookTrade.call(mockRainSolver, orderDetails, signer, "", "");
+        await findBestIntraOrderbookTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            "",
+            "",
+            blockNumber,
+        );
 
-        expect(trySimulateTrade).toHaveBeenCalledWith({
+        expect(simulatorWithArgsSpy).toHaveBeenCalledWith({
+            type: TradeType.IntraOrderbook,
+            solver: mockRainSolver,
             orderDetails,
             counterpartyOrderDetails: mockCounterpartyOrders[0].takeOrder,
             signer,
@@ -667,5 +707,75 @@ describe("Test findBestIntraOrderbookTrade", () => {
         });
         expect(fallbackEthPrice).toHaveBeenCalledWith(1000000000000000000n, 2n, ""); // first call for inputToEthPrice
         expect(fallbackEthPrice).toHaveBeenCalledWith(2n, 1000000000000000000n, ""); // second call for outputToEthPrice
+    });
+
+    it("should return error if getting input/output balance fails", async () => {
+        const mockCounterpartyOrders = [
+            {
+                takeOrder: {
+                    id: "order2",
+                    struct: {
+                        order: {
+                            owner: "0xowner2",
+                        },
+                    },
+                    quote: { ratio: 2n, maxOutput: 1n },
+                },
+            },
+        ];
+        (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
+            mockCounterpartyOrders,
+        );
+        mockRainSolver.state.client.readContract = vi
+            .fn()
+            .mockRejectedValueOnce(new Error("some error")) // reject input call
+            .mockResolvedValueOnce(5000000000000000000n) // pass input balance
+            .mockRejectedValueOnce(new Error("some error")); /// reject output call
+
+        const inputResult: SimulationResult = await findBestIntraOrderbookTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            inputToEthPrice,
+            outputToEthPrice,
+            blockNumber,
+        );
+        assert(inputResult.isErr());
+        expect(inputResult.error.noneNodeError).toContain("some error");
+        expect(inputResult.error.noneNodeError).toContain("Failed to get input token balance");
+        expect(inputResult.error.type).toBe("intraOrderbook");
+
+        const outputResult: SimulationResult = await findBestIntraOrderbookTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            inputToEthPrice,
+            outputToEthPrice,
+            blockNumber,
+        );
+        assert(outputResult.isErr());
+        expect(outputResult.error.noneNodeError).toContain("some error");
+        expect(outputResult.error.noneNodeError).toContain("Failed to get output token balance");
+        expect(outputResult.error.type).toBe("intraOrderbook");
+    });
+
+    it("should return error when trade addresses are not configured", async () => {
+        (mockRainSolver.state.contracts.getAddressesForTrade as Mock).mockReturnValue(undefined);
+        const result: SimulationResult = await findBestIntraOrderbookTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            inputToEthPrice,
+            outputToEthPrice,
+            blockNumber,
+        );
+
+        assert(result.isErr());
+        expect(result.error.type).toBe(TradeType.IntraOrderbook);
+        expect(result.error.reason).toBe(SimulationHaltReason.UndefinedTradeDestinationAddress);
+        expect(mockRainSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledWith(
+            orderDetails,
+            TradeType.IntraOrderbook,
+        );
     });
 });

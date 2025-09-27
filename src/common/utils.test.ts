@@ -1,5 +1,14 @@
-import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
-import { withBigintSerializer, sleep, promiseTimeout, shuffleArray, iterRandom } from "./utils";
+import { vi, describe, it, expect, beforeEach, afterEach, assert } from "vitest";
+import {
+    sleep,
+    toFloat,
+    iterRandom,
+    shuffleArray,
+    promiseTimeout,
+    normalizeFloat,
+    withBigintSerializer,
+    extendObjectWithHeader,
+} from "./utils";
 
 describe("Test withBigIntSerializer function", async function () {
     it("should test withBigIntSerializer", async function () {
@@ -306,5 +315,58 @@ describe("Test iterRandom function", () => {
         });
 
         expect(iterRandomTime).toBeLessThan(iterShuffleArrayTime);
+    });
+});
+
+describe("Test extendObjectWithHeader", () => {
+    it("should add keys with header prefix", () => {
+        const target = {};
+        const source = { foo: 1, bar: 2 };
+        extendObjectWithHeader(target, source, "test");
+        expect(target).toEqual({
+            "test.foo": 1,
+            "test.bar": 2,
+        });
+    });
+
+    it("should exclude keys from header prefix if specified", () => {
+        const target = {};
+        const source = { foo: 1, bar: 2, baz: 3 };
+        extendObjectWithHeader(target, source, "head", ["bar"]);
+        expect(target).toEqual({
+            "head.foo": 1,
+            bar: 2,
+            "head.baz": 3,
+        });
+    });
+});
+
+describe("Test normalizeFloat", () => {
+    it("should successfully normalize a valid float hex string", () => {
+        const result = normalizeFloat(
+            "0xffffffee00000000000000000000000000000000000000000de0b6b3a7640000",
+            18,
+        );
+
+        assert(result.isOk());
+        expect(result.value).toBe(1000000000000000000n);
+    });
+
+    it("should return error when Float.fromHex fails", () => {
+        const result = normalizeFloat("0xinvalid", 18);
+
+        assert(result.isErr());
+        expect(result.error.readableMsg).toContain("Invalid hex string");
+    });
+});
+
+describe("Test toFloat", () => {
+    it("should convert bigint to hex float successfully", () => {
+        const result = toFloat(1000000000000000000n, 18);
+
+        assert(result.isOk());
+        expect(result.value).toBe(
+            "0xffffffee00000000000000000000000000000000000000000de0b6b3a7640000",
+        );
     });
 });

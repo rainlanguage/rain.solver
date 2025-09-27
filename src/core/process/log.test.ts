@@ -1,6 +1,6 @@
+import { parseEventLogs, parseUnits } from "viem";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { getIncome, getActualClearAmount, getActualPrice, getTotalIncome } from "./log";
-import { parseEventLogs, parseUnits } from "viem";
 
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
@@ -9,7 +9,7 @@ vi.mock("viem", async (importOriginal) => ({
     parseUnits: vi.fn((value, decimals) => BigInt(Number(value) * 10 ** decimals)),
 }));
 
-describe("Test log functions", () => {
+describe("Test log functions", async () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -66,7 +66,7 @@ describe("Test log functions", () => {
                     },
                 } as any,
             ]);
-            const result = getActualClearAmount("0xTo", "0xOb", { logs: [] } as any);
+            const result = getActualClearAmount("0xTo", "0xOb", { logs: [] } as any, 18);
             expect(result).toBe(555n);
         });
 
@@ -81,7 +81,7 @@ describe("Test log functions", () => {
                     },
                 } as any,
             ]);
-            const result = getActualClearAmount("0xTo", "0xOb", { logs: [] } as any);
+            const result = getActualClearAmount("0xTo", "0xOb", { logs: [] } as any, 18);
             expect(result).toBeUndefined();
         });
 
@@ -96,7 +96,23 @@ describe("Test log functions", () => {
                     },
                 } as any,
             ]);
-            const result = getActualClearAmount("0xOb", "0xOb", { logs: [] } as any);
+            const result = getActualClearAmount("0xOb", "0xOb", { logs: [] } as any, 18);
+            expect(result).toBe(999n);
+        });
+
+        it("should return value from AfterClearV2 log when to == ob", () => {
+            vi.mocked(parseEventLogs).mockReturnValue([
+                {
+                    eventName: "AfterClearV2",
+                    args: {
+                        clearStateChange: {
+                            aliceOutput:
+                                "0xffffffee000000000000000000000000000000000000000000000000000003e7",
+                        },
+                    },
+                } as any,
+            ]);
+            const result = getActualClearAmount("0xOb", "0xOb", { logs: [] } as any, 18);
             expect(result).toBe(999n);
         });
 
@@ -104,7 +120,7 @@ describe("Test log functions", () => {
             vi.mocked(parseEventLogs).mockImplementation(() => {
                 throw new Error("fail");
             });
-            const result = getActualClearAmount("0xTo", "0xOb", { logs: [] } as any);
+            const result = getActualClearAmount("0xTo", "0xOb", { logs: [] } as any, 18);
             expect(result).toBeUndefined();
         });
     });

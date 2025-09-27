@@ -1,9 +1,9 @@
 /* eslint-disable no-console */
 import assert from "assert";
+import { ChainId } from "sushi";
 import { Command } from "commander";
 import { createPublicClient } from "viem";
 import { AppOptions } from "../src/config";
-import { ChainId, RainDataFetcher } from "sushi";
 import { sleep, TokenDetails } from "../src/common";
 import { getChainConfig } from "../src/state/chain";
 import { rainSolverTransport, RpcState } from "../src/rpc";
@@ -11,6 +11,7 @@ import { WalletConfig, WalletManager } from "../src/wallet";
 import { SharedState, SharedStateConfig } from "../src/state";
 import { OrderManager, OrderManagerConfig } from "../src/order";
 import { SubgraphConfig, SubgraphManager } from "../src/subgraph";
+import { RainSolverRouter } from "../src/router/router";
 
 /**
  * Command-line interface for the sweep script
@@ -55,7 +56,7 @@ export async function main(argv: any[]) {
         .opts();
 
     // run sweep with the given params
-    await sweepFunds(params.mnemonic, params.subgraph, params.rpc, params.length, params.token);
+    await sweepFunds(params.mnemonic, params.sg, params.rpc, params.length, params.token);
 }
 
 /**
@@ -90,8 +91,6 @@ export async function sweepFunds(
         sleep: 0,
         gasCoveragePercentage: "",
         timeout: 15,
-        hops: 0,
-        retries: 0,
         botMinBalance: "0",
         poolUpdateInterval: 0,
         route: "single",
@@ -118,14 +117,24 @@ export async function sweepFunds(
         chain: chainConfig,
         transport: rainSolverTransport(rpcState, rainSolverTransportConfig),
     });
-    const dataFetcher = await RainDataFetcher.init(chainConfig.id as ChainId, client);
+    const routerResult = await RainSolverRouter.create({
+        chainId,
+        client,
+        sushiRouterConfig: {
+            sushiRouteProcessor4Address: chainConfig.routeProcessors["4"] as `0x${string}`,
+        },
+    });
+    if (routerResult.isErr()) {
+        throw routerResult.error;
+    }
 
     // start state
     const stateConfig: SharedStateConfig = {
         client,
         rpcState,
         chainConfig,
-        dataFetcher,
+        router: routerResult.value,
+        appOptions: options,
         rainSolverTransportConfig,
         transactionGas: options.txGas,
         gasPriceMultiplier: options.gasPriceMultiplier,

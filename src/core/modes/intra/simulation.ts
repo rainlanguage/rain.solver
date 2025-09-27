@@ -1,17 +1,24 @@
 import { RainSolver } from "../..";
-import { dryrun } from "../dryrun";
-import { estimateProfit } from "./utils";
-import { ABI, Result } from "../../../common";
-import { Attributes } from "@opentelemetry/api";
+import { ONE18 } from "../../../math";
+import { errorSnapshot } from "../../../error";
 import { RainSolverSigner } from "../../../signer";
-import { extendObjectWithHeader } from "../../../logger";
 import { Pair, TakeOrderDetails } from "../../../order";
-import { getWithdrawEnsureRainlang, parseRainlang } from "../../../task";
+import { TradeType, FailedSimulation, TaskType } from "../../types";
+import { Result, ABI, RawTransaction, maxFloat } from "../../../common";
+import { SimulationHaltReason, TradeSimulatorBase } from "../simulator";
 import { encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
-import { FailedSimulation, SimulationResult, TaskType, TradeType } from "../../types";
+import {
+    EnsureBountyTaskType,
+    EnsureBountyTaskErrorType,
+    getEnsureBountyTaskBytecode,
+} from "../../../task";
 
 /** Arguments for simulating inter-orderbook trade */
 export type SimulateIntraOrderbookTradeArgs = {
+    /** The type of trade */
+    type: TradeType.IntraOrderbook;
+    /** The RainSolver instance used for simulation */
+    solver: RainSolver;
     /** The bundled order details including tokens, decimals, and take orders */
     orderDetails: Pair;
     /** The counterparty order to trade against */
@@ -30,254 +37,300 @@ export type SimulateIntraOrderbookTradeArgs = {
     blockNumber: bigint;
 };
 
+/** Arguments for preparing router trade type parameters required for simulation and building tx object */
+export type IntraOrderbookTradePrepareedParams = {
+    type: TradeType.IntraOrderbook;
+    rawtx: RawTransaction;
+    minimumExpected: bigint;
+    price?: bigint;
+};
+
 /**
- * Attempts to simulate a intra-orderbook trade against the given counterparty order
- * @param this - The RainSolver instance context
- * @param args - The arguments for simulating the trade
+ * Simulates intra-orderbook trades by matching orders within the same orderbook.
+ *
+ * The `IntraOrderbookTradeSimulator` class extends {@link TradeSimulatorBase} and is responsible for:
+ * - Preparing trade parameters and building transaction objects for onchain execution.
+ * - Constructing calldata for both v4 and v5 orderbook (order v3 and v4).
+ * - Estimating the profit from a simulated trade by comparing input and output values, factoring in token prices.
+ * - Handling the simulation flow, including error handling and span attribute tracking for observability.
+ *
+ * @remarks
+ * Use this class to simulate and prepare trades between two orders in the same orderbook,
+ * including all necessary transaction data for execution on Ethereum-compatible blockchains.
  */
-export async function trySimulateTrade(
-    this: RainSolver,
-    args: SimulateIntraOrderbookTradeArgs,
-): Promise<SimulationResult> {
-    const {
-        orderDetails,
-        counterpartyOrderDetails,
-        signer,
-        inputToEthPrice,
-        outputToEthPrice,
-        inputBalance,
-        outputBalance,
-        blockNumber,
-    } = args;
-    const gasPrice = this.state.gasPrice;
-    const spanAttributes: Attributes = {};
-    const inputBountyVaultId = 1n;
-    const outputBountyVaultId = 1n;
+export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
+    declare tradeArgs: SimulateIntraOrderbookTradeArgs;
+    readonly inputBountyVaultId = `0x${"0".repeat(63)}1`;
+    readonly outputBountyVaultId = `0x${"0".repeat(63)}1`;
 
-    spanAttributes["against"] = counterpartyOrderDetails.id;
-    spanAttributes["inputToEthPrice"] = inputToEthPrice;
-    spanAttributes["outputToEthPrice"] = outputToEthPrice;
-    spanAttributes["counterpartyOrderQuote"] = JSON.stringify({
-        maxOutput: formatUnits(counterpartyOrderDetails.quote!.maxOutput, 18),
-        ratio: formatUnits(counterpartyOrderDetails.quote!.ratio, 18),
-    });
-
-    // build clear2 function call data and withdraw tasks
-    const task: TaskType = {
-        evaluable: {
-            interpreter: this.state.dispair.interpreter as `0x${string}`,
-            store: this.state.dispair.store as `0x${string}`,
-            bytecode: (await parseRainlang(
-                await getWithdrawEnsureRainlang(
-                    signer.account.address,
-                    orderDetails.buyToken,
-                    orderDetails.sellToken,
-                    inputBalance,
-                    outputBalance,
-                    parseUnits(inputToEthPrice, 18),
-                    parseUnits(outputToEthPrice, 18),
-                    0n,
-                    signer.account.address,
-                ),
-                this.state.client,
-                this.state.dispair,
-            )) as `0x${string}`,
-        },
-        signedContext: [],
-    };
-    const withdrawInputCalldata = encodeFunctionData({
-        abi: ABI.Orderbook.Primary.Orderbook,
-        functionName: "withdraw2",
-        args: [orderDetails.buyToken, inputBountyVaultId, maxUint256, []],
-    });
-    let withdrawOutputCalldata = encodeFunctionData({
-        abi: ABI.Orderbook.Primary.Orderbook,
-        functionName: "withdraw2",
-        args: [
-            orderDetails.sellToken,
-            outputBountyVaultId,
-            maxUint256,
-            this.appOptions.gasCoveragePercentage === "0" ? [] : [task],
-        ],
-    });
-    const clear2Calldata = encodeFunctionData({
-        abi: ABI.Orderbook.Primary.Orderbook,
-        functionName: "clear2",
-        args: [
-            orderDetails.takeOrder.struct.order,
-            counterpartyOrderDetails.struct.order,
-            {
-                aliceInputIOIndex: BigInt(orderDetails.takeOrder.struct.inputIOIndex),
-                aliceOutputIOIndex: BigInt(orderDetails.takeOrder.struct.outputIOIndex),
-                bobInputIOIndex: BigInt(counterpartyOrderDetails.struct.inputIOIndex),
-                bobOutputIOIndex: BigInt(counterpartyOrderDetails.struct.outputIOIndex),
-                aliceBountyVaultId: inputBountyVaultId,
-                bobBountyVaultId: outputBountyVaultId,
-            },
-            [],
-            [],
-        ],
-    });
-    const rawtx: any = {
-        data: encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Orderbook,
-            functionName: "multicall",
-            args: [[clear2Calldata, withdrawInputCalldata, withdrawOutputCalldata]],
-        }),
-        to: orderDetails.orderbook,
-        gasPrice,
-    };
-    spanAttributes["oppBlockNumber"] = Number(blockNumber);
-
-    // initial dryrun with 0 minimum sender output to get initial
-    // pass and tx gas cost to calc minimum sender output
-    spanAttributes["oppBlockNumber"] = Number(blockNumber);
-    const initDryrunResult = await dryrun(
-        signer,
-        rawtx,
-        gasPrice,
-        this.appOptions.gasLimitMultiplier,
-    );
-    if (initDryrunResult.isErr()) {
-        spanAttributes["stage"] = 1;
-        Object.assign(initDryrunResult.error.spanAttributes, spanAttributes);
-        (initDryrunResult.error as FailedSimulation).type = TradeType.IntraOrderbook;
-        return Result.err(initDryrunResult.error as FailedSimulation);
+    static withArgs(tradeArgs: SimulateIntraOrderbookTradeArgs): IntraOrderbookTradeSimulator {
+        return new IntraOrderbookTradeSimulator(tradeArgs);
     }
 
-    let { estimation, estimatedGasCost } = initDryrunResult.value;
-    delete rawtx.gas; // delete gas to let signer estimate gas again with updated tx data
-    // include dryrun initial gas estimation in logs
-    Object.assign(spanAttributes, initDryrunResult.value.spanAttributes);
-    // include dryrun headroom gas estimation in otel logs
-    extendObjectWithHeader(
-        spanAttributes,
-        {
-            gasLimit: estimation.gas.toString(),
-            totalCost: estimation.totalGasCost.toString(),
-            gasPrice: estimation.gasPrice.toString(),
-            ...(this.state.chainConfig.isSpecialL2
-                ? {
-                      l1Cost: estimation.l1Cost.toString(),
-                      l1GasPrice: estimation.l1GasPrice.toString(),
-                  }
-                : {}),
-        },
-        "gasEst.initial",
-    );
+    async prepareTradeParams(): Promise<
+        Result<IntraOrderbookTradePrepareedParams, FailedSimulation>
+    > {
+        const {
+            orderDetails,
+            counterpartyOrderDetails,
+            inputToEthPrice,
+            outputToEthPrice,
+            blockNumber,
+        } = this.tradeArgs;
+        const gasPrice = this.tradeArgs.solver.state.gasPrice;
 
-    // repeat the same process with heaedroom if gas
-    // coverage is not 0, 0 gas coverage means 0 minimum
-    // sender output which is already called above
-    if (this.appOptions.gasCoveragePercentage !== "0") {
-        const headroom = BigInt((Number(this.appOptions.gasCoveragePercentage) * 1.01).toFixed());
-        spanAttributes["gasEst.initial.minBountyExpected"] = (
-            (estimatedGasCost * headroom) /
-            100n
-        ).toString();
-        task.evaluable.bytecode = (await parseRainlang(
-            await getWithdrawEnsureRainlang(
-                signer.account.address,
-                orderDetails.buyToken,
-                orderDetails.sellToken,
-                inputBalance,
-                outputBalance,
-                parseUnits(inputToEthPrice, 18),
-                parseUnits(outputToEthPrice, 18),
-                (estimatedGasCost * headroom) / 100n,
-                signer.account.address,
-            ),
-            this.state.client,
-            this.state.dispair,
-        )) as `0x${string}`;
-        withdrawOutputCalldata = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Orderbook,
-            functionName: "withdraw2",
-            args: [orderDetails.sellToken, outputBountyVaultId, maxUint256, [task]],
-        });
-        rawtx.data = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Orderbook,
-            functionName: "multicall",
-            args: [[clear2Calldata, withdrawInputCalldata, withdrawOutputCalldata]],
+        this.spanAttributes["against"] = counterpartyOrderDetails.id;
+        this.spanAttributes["inputToEthPrice"] = inputToEthPrice;
+        this.spanAttributes["outputToEthPrice"] = outputToEthPrice;
+        this.spanAttributes["oppBlockNumber"] = Number(blockNumber);
+        this.spanAttributes["counterpartyOrderQuote"] = JSON.stringify({
+            maxOutput: formatUnits(counterpartyOrderDetails.quote!.maxOutput, 18),
+            ratio: formatUnits(counterpartyOrderDetails.quote!.ratio, 18),
         });
 
-        const finalDryrunResult = await dryrun(
-            signer,
-            rawtx,
-            gasPrice,
-            this.appOptions.gasLimitMultiplier,
+        // exit early if required trade addresses are not configured
+        const addresses = this.tradeArgs.solver.state.contracts.getAddressesForTrade(
+            orderDetails,
+            TradeType.IntraOrderbook,
         );
-        if (finalDryrunResult.isErr()) {
-            spanAttributes["stage"] = 2;
-            Object.assign(finalDryrunResult.error.spanAttributes, spanAttributes);
-            (finalDryrunResult.error as FailedSimulation).type = TradeType.IntraOrderbook;
-            return Result.err(finalDryrunResult.error as FailedSimulation);
+        if (!addresses) {
+            this.spanAttributes["error"] =
+                `Cannot trade as dispair addresses are not configured for order ${orderDetails.takeOrder.struct.order.type} trade`;
+            this.spanAttributes["duration"] = performance.now() - this.startTime;
+            return Result.err({
+                type: TradeType.IntraOrderbook,
+                spanAttributes: this.spanAttributes,
+                reason: SimulationHaltReason.UndefinedTradeDestinationAddress,
+            });
         }
 
-        ({ estimation, estimatedGasCost } = finalDryrunResult.value);
-        // include dryrun final gas estimation in otel logs
-        Object.assign(spanAttributes, finalDryrunResult.value.spanAttributes);
-        extendObjectWithHeader(
-            spanAttributes,
-            {
-                gasLimit: estimation.gas.toString(),
-                totalCost: estimation.totalGasCost.toString(),
-                gasPrice: estimation.gasPrice.toString(),
-                ...(this.state.chainConfig.isSpecialL2
-                    ? {
-                          l1Cost: estimation.l1Cost.toString(),
-                          l1GasPrice: estimation.l1GasPrice.toString(),
-                      }
-                    : {}),
-            },
-            "gasEst.final",
-        );
-
-        task.evaluable.bytecode = (await parseRainlang(
-            await getWithdrawEnsureRainlang(
-                signer.account.address,
-                orderDetails.buyToken,
-                orderDetails.sellToken,
-                inputBalance,
-                outputBalance,
-                parseUnits(inputToEthPrice, 18),
-                parseUnits(outputToEthPrice, 18),
-                (estimatedGasCost * BigInt(this.appOptions.gasCoveragePercentage)) / 100n,
-                signer.account.address,
-            ),
-            this.state.client,
-            this.state.dispair,
-        )) as `0x${string}`;
-        withdrawOutputCalldata = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Orderbook,
-            functionName: "withdraw2",
-            args: [orderDetails.sellToken, outputBountyVaultId, maxUint256, [task]],
+        const rawtx: RawTransaction = {
+            to: addresses.destination,
+            gasPrice,
+        };
+        return Result.ok({
+            type: TradeType.IntraOrderbook,
+            rawtx,
+            minimumExpected: 0n,
         });
-        rawtx.data = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Orderbook,
+    }
+
+    async setTransactionData(
+        params: IntraOrderbookTradePrepareedParams,
+    ): Promise<Result<void, FailedSimulation>> {
+        // we can be sure the addresses exist here since we checked in prepareTradeParams
+        const addresses = this.tradeArgs.solver.state.contracts.getAddressesForTrade(
+            this.tradeArgs.orderDetails,
+            params.type,
+        )!;
+
+        // build clear function call data and withdraw tasks
+        const taskBytecodeResult = await getEnsureBountyTaskBytecode(
+            {
+                type: EnsureBountyTaskType.Internal,
+                botAddress: this.tradeArgs.signer.account.address,
+                inputToken: this.tradeArgs.orderDetails.buyToken,
+                outputToken: this.tradeArgs.orderDetails.sellToken,
+                orgInputBalance: this.tradeArgs.inputBalance,
+                orgOutputBalance: this.tradeArgs.outputBalance,
+                inputToEthPrice: parseUnits(this.tradeArgs.inputToEthPrice, 18),
+                outputToEthPrice: parseUnits(this.tradeArgs.outputToEthPrice, 18),
+                minimumExpected: params.minimumExpected,
+                sender: this.tradeArgs.signer.account.address,
+            },
+            this.tradeArgs.solver.state.client,
+            addresses.dispair,
+        );
+        if (taskBytecodeResult.isErr()) {
+            const errMsg = await errorSnapshot("", taskBytecodeResult.error);
+            this.spanAttributes["isNodeError"] =
+                taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
+            this.spanAttributes["error"] = errMsg;
+            const result = {
+                type: TradeType.IntraOrderbook,
+                spanAttributes: this.spanAttributes,
+                reason: SimulationHaltReason.FailedToGetTaskBytecode,
+            };
+            this.spanAttributes["duration"] = performance.now() - this.startTime;
+            return Result.err(result);
+        }
+        const task = {
+            evaluable: {
+                interpreter: addresses.dispair.interpreter as `0x${string}`,
+                store: addresses.dispair.store as `0x${string}`,
+                bytecode: taskBytecodeResult.value,
+            },
+            signedContext: [],
+        };
+
+        params.rawtx.data = this.getCalldata(task);
+        return Result.ok(void 0);
+    }
+
+    estimateProfit(): bigint {
+        const orderMaxInput =
+            (this.tradeArgs.orderDetails.takeOrder.quote!.maxOutput *
+                this.tradeArgs.orderDetails.takeOrder.quote!.ratio) /
+            ONE18;
+        const opposingMaxInput =
+            (this.tradeArgs.counterpartyOrderDetails.quote!.maxOutput *
+                this.tradeArgs.counterpartyOrderDetails.quote!.ratio) /
+            ONE18;
+
+        const orderOutput =
+            this.tradeArgs.counterpartyOrderDetails.quote!.ratio === 0n
+                ? this.tradeArgs.orderDetails.takeOrder.quote!.maxOutput
+                : this.tradeArgs.orderDetails.takeOrder.quote!.maxOutput <= opposingMaxInput
+                  ? this.tradeArgs.orderDetails.takeOrder.quote!.maxOutput
+                  : opposingMaxInput;
+        const orderInput =
+            (orderOutput * this.tradeArgs.orderDetails.takeOrder.quote!.ratio) / ONE18;
+
+        const opposingOutput =
+            this.tradeArgs.counterpartyOrderDetails.quote!.ratio === 0n
+                ? this.tradeArgs.counterpartyOrderDetails.quote!.maxOutput
+                : orderMaxInput <= this.tradeArgs.counterpartyOrderDetails.quote!.maxOutput
+                  ? orderMaxInput
+                  : this.tradeArgs.counterpartyOrderDetails.quote!.maxOutput;
+        const opposingInput =
+            (opposingOutput * this.tradeArgs.counterpartyOrderDetails.quote!.ratio) / ONE18;
+
+        let outputProfit = orderOutput - opposingInput;
+        if (outputProfit < 0n) outputProfit = 0n;
+        outputProfit = (outputProfit * parseUnits(this.tradeArgs.outputToEthPrice, 18)) / ONE18;
+
+        let inputProfit = opposingOutput - orderInput;
+        if (inputProfit < 0n) inputProfit = 0n;
+        inputProfit = (inputProfit * parseUnits(this.tradeArgs.inputToEthPrice, 18)) / ONE18;
+
+        return outputProfit + inputProfit;
+    }
+
+    /**
+     * Builds the calldata for v3 order
+     * @param task - The ensure withdraw bounty task object
+     */
+    getCalldataForV3Order(task: TaskType): `0x${string}` {
+        const withdrawInputCalldata = encodeFunctionData({
+            abi: ABI.Orderbook.V4.Primary.Orderbook,
+            functionName: "withdraw2",
+            args: [
+                this.tradeArgs.orderDetails.buyToken,
+                BigInt(this.inputBountyVaultId),
+                maxUint256,
+                [],
+            ],
+        });
+        const withdrawOutputCalldata = encodeFunctionData({
+            abi: ABI.Orderbook.V4.Primary.Orderbook,
+            functionName: "withdraw2",
+            args: [
+                this.tradeArgs.orderDetails.sellToken,
+                BigInt(this.outputBountyVaultId),
+                maxUint256,
+                this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0" ? [] : [task],
+            ],
+        });
+        const clear2Calldata = encodeFunctionData({
+            abi: ABI.Orderbook.V4.Primary.Orderbook,
+            functionName: "clear2",
+            args: [
+                this.tradeArgs.orderDetails.takeOrder.struct.order,
+                this.tradeArgs.counterpartyOrderDetails.struct.order,
+                {
+                    aliceInputIOIndex: BigInt(
+                        this.tradeArgs.orderDetails.takeOrder.struct.inputIOIndex,
+                    ),
+                    aliceOutputIOIndex: BigInt(
+                        this.tradeArgs.orderDetails.takeOrder.struct.outputIOIndex,
+                    ),
+                    bobInputIOIndex: BigInt(
+                        this.tradeArgs.counterpartyOrderDetails.struct.inputIOIndex,
+                    ),
+                    bobOutputIOIndex: BigInt(
+                        this.tradeArgs.counterpartyOrderDetails.struct.outputIOIndex,
+                    ),
+                    aliceBountyVaultId: BigInt(this.inputBountyVaultId),
+                    bobBountyVaultId: BigInt(this.outputBountyVaultId),
+                },
+                [],
+                [],
+            ],
+        });
+        return encodeFunctionData({
+            abi: ABI.Orderbook.V4.Primary.Orderbook,
             functionName: "multicall",
             args: [[clear2Calldata, withdrawInputCalldata, withdrawOutputCalldata]],
         });
-        spanAttributes["gasEst.final.minBountyExpected"] = (
-            (estimatedGasCost * BigInt(this.appOptions.gasCoveragePercentage)) /
-            100n
-        ).toString();
     }
 
-    // if reached here, it means there was a success and found opp
-    spanAttributes["foundOpp"] = true;
-    const result = {
-        type: TradeType.IntraOrderbook,
-        spanAttributes,
-        rawtx,
-        estimatedGasCost,
-        oppBlockNumber: Number(blockNumber),
-        estimatedProfit: estimateProfit(
-            orderDetails,
-            parseUnits(inputToEthPrice, 18),
-            parseUnits(outputToEthPrice, 18),
-            counterpartyOrderDetails,
-        ),
-    };
-    return Result.ok(result);
+    /**
+     * Builds the calldata for v4 order
+     * @param task - The ensure withdraw bounty task object
+     */
+    getCalldataForV4Order(task: TaskType): `0x${string}` {
+        const withdrawInputCalldata = encodeFunctionData({
+            abi: ABI.Orderbook.V5.Primary.Orderbook,
+            functionName: "withdraw3",
+            args: [
+                this.tradeArgs.orderDetails.buyToken,
+                this.inputBountyVaultId,
+                maxFloat(this.tradeArgs.orderDetails.buyTokenDecimals),
+                [],
+            ],
+        });
+        const withdrawOutputCalldata = encodeFunctionData({
+            abi: ABI.Orderbook.V5.Primary.Orderbook,
+            functionName: "withdraw3",
+            args: [
+                this.tradeArgs.orderDetails.sellToken,
+                this.outputBountyVaultId,
+                maxFloat(this.tradeArgs.orderDetails.sellTokenDecimals),
+                this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0" ? [] : [task],
+            ],
+        });
+        const clear2Calldata = encodeFunctionData({
+            abi: ABI.Orderbook.V5.Primary.Orderbook,
+            functionName: "clear3",
+            args: [
+                this.tradeArgs.orderDetails.takeOrder.struct.order,
+                this.tradeArgs.counterpartyOrderDetails.struct.order,
+                {
+                    aliceInputIOIndex: BigInt(
+                        this.tradeArgs.orderDetails.takeOrder.struct.inputIOIndex,
+                    ),
+                    aliceOutputIOIndex: BigInt(
+                        this.tradeArgs.orderDetails.takeOrder.struct.outputIOIndex,
+                    ),
+                    bobInputIOIndex: BigInt(
+                        this.tradeArgs.counterpartyOrderDetails.struct.inputIOIndex,
+                    ),
+                    bobOutputIOIndex: BigInt(
+                        this.tradeArgs.counterpartyOrderDetails.struct.outputIOIndex,
+                    ),
+                    aliceBountyVaultId: this.inputBountyVaultId,
+                    bobBountyVaultId: this.outputBountyVaultId,
+                },
+                [],
+                [],
+            ],
+        });
+        return encodeFunctionData({
+            abi: ABI.Orderbook.V5.Primary.Orderbook,
+            functionName: "multicall",
+            args: [[clear2Calldata, withdrawInputCalldata, withdrawOutputCalldata]],
+        });
+    }
+
+    /**
+     * Builds the calldata based on the order type
+     * @param task - The ensure withdraw bounty task object
+     */
+    getCalldata(task: TaskType): `0x${string}` {
+        if (Pair.isV3(this.tradeArgs.orderDetails)) {
+            return this.getCalldataForV3Order(task);
+        } else {
+            return this.getCalldataForV4Order(task);
+        }
+    }
 }

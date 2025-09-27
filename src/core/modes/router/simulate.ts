@@ -1,28 +1,26 @@
-import { dryrun } from "../dryrun";
 import { RainSolver } from "../..";
-import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
-import { ChainId, Router } from "sushi";
-import { estimateProfit } from "./utils";
-import { Attributes } from "@opentelemetry/api";
+import { errorSnapshot } from "../../../error";
+import { ONE18, scaleFrom18 } from "../../../math";
 import { RainSolverSigner } from "../../../signer";
-import { extendObjectWithHeader } from "../../../logger";
-import { ONE18, scaleTo18, scaleFrom18 } from "../../../math";
-import { RPoolFilter, visualizeRoute } from "../../../router";
+import { Pair, TakeOrdersConfigType } from "../../../order";
 import { Result, ABI, RawTransaction } from "../../../common";
-import { getBountyEnsureRainlang, parseRainlang } from "../../../task";
-import { TakeOrdersConfigType, SimulationResult, TradeType, FailedSimulation } from "../../types";
-import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
+import { encodeFunctionData, formatUnits, parseUnits } from "viem";
+import { TradeType, FailedSimulation, TaskType } from "../../types";
+import { SimulationHaltReason, TradeSimulatorBase } from "../simulator";
+import { RainSolverRouterErrorType, RouterType } from "../../../router";
+import {
+    EnsureBountyTaskType,
+    EnsureBountyTaskErrorType,
+    getEnsureBountyTaskBytecode,
+} from "../../../task";
 
-/** Specifies the reason that route processor simulation failed */
-export enum RouteProcessorSimulationHaltReason {
-    NoOpportunity = 1,
-    NoRoute = 2,
-    OrderRatioGreaterThanMarketPrice = 3,
-}
-
-/** Arguments for simulating route processor trade */
-export type SimulateRouteProcessorTradeArgs = {
+/** Arguments for simulating router trade */
+export type SimulateRouterTradeArgs = {
+    /** The type of trade */
+    type: TradeType.Router;
+    /** The RainSolver instance used for simulation */
+    solver: RainSolver;
     /** The bundled order details including tokens, decimals, and take orders */
     orderDetails: Pair;
     /** The RainSolverSigner instance used for signing transactions */
@@ -41,319 +39,227 @@ export type SimulateRouteProcessorTradeArgs = {
     isPartial: boolean;
 };
 
+/** Arguments for preparing router trade type parameters required for simulation and building tx object */
+export type RouterTradePreparedParams = {
+    type: TradeType.Router | TradeType.Balancer | TradeType.RouteProcessor;
+    rawtx: RawTransaction;
+    price: bigint;
+    minimumExpected: bigint;
+    takeOrdersConfigStruct: TakeOrdersConfigType;
+};
+
 /**
- * Attempts to find a profitable opportunity (opp) for a given order by simulating a trade against route processor.
- * @param this - The RainSolver instance context
- * @param args - The arguments for simulating the trade
+ * Simulates trades against router protocols (such as Sushi and Balancer) and prepares transaction objects
+ * that can be submitted on-chain for execution. This class extends {@link TradeSimulatorBase} and provides
+ * methods to:
+ *
+ * - Prepare trade parameters by querying the router for optimal trade routes and quotes.
+ * - Validate trade conditions, such as price and route availability.
+ * - Construct the calldata and transaction object required for on-chain execution.
+ * - Estimate potential profit from a simulated trade.
+ * - Integrate with RainSolver's state and signer for contextual simulation.
+ *
+ * The simulator supports both V4 and V5 orderbook (order v3 and v4) types.
+ * This class is intended for internal use within the RainSolver framework to facilitate robust and safe
+ * trade simulations and transaction construction for router-based trade solving.
  */
-export async function trySimulateTrade(
-    this: RainSolver,
-    args: SimulateRouteProcessorTradeArgs,
-): Promise<SimulationResult> {
-    const {
-        orderDetails,
-        signer,
-        ethPrice,
-        toToken,
-        fromToken,
-        maximumInputFixed,
-        blockNumber,
-        isPartial,
-    } = args;
-    const gasPrice = this.state.gasPrice;
-    const spanAttributes: Attributes = {};
+export class RouterTradeSimulator extends TradeSimulatorBase {
+    declare tradeArgs: SimulateRouterTradeArgs;
 
-    const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
-    spanAttributes["amountIn"] = formatUnits(maximumInputFixed, 18);
-
-    // get route details from sushi dataFetcher
-    const pcMap = this.state.dataFetcher.getCurrentPoolCodeMap(fromToken, toToken);
-    const route = Router.findBestRoute(
-        pcMap,
-        this.state.chainConfig.id as ChainId,
-        fromToken,
-        maximumInput,
-        toToken,
-        Number(gasPrice),
-        undefined,
-        RPoolFilter,
-        undefined,
-        this.appOptions.route,
-    );
-
-    // exit early if no route found
-    if (route.status == "NoWay") {
-        spanAttributes["route"] = "no-way";
-        const result = {
-            type: TradeType.RouteProcessor,
-            spanAttributes,
-            reason: RouteProcessorSimulationHaltReason.NoRoute,
-        };
-        return Result.err(result);
+    static withArgs(tradeArgs: SimulateRouterTradeArgs): RouterTradeSimulator {
+        return new RouterTradeSimulator(tradeArgs);
     }
 
-    spanAttributes["amountOut"] = formatUnits(route.amountOutBI, toToken.decimals);
-    const rateFixed = scaleTo18(route.amountOutBI, orderDetails.buyTokenDecimals);
-    const price = (rateFixed * ONE18) / maximumInputFixed;
-    spanAttributes["marketPrice"] = formatUnits(price, 18);
-
-    const routeVisual: string[] = [];
-    try {
-        visualizeRoute(fromToken, toToken, route.legs).forEach((v) => {
-            routeVisual.push(v);
-        });
-    } catch {
-        /**/
-    }
-    spanAttributes["route"] = routeVisual;
-
-    // exit early if market price is lower than order quote ratio
-    if (price < orderDetails.takeOrder.quote!.ratio) {
-        spanAttributes["error"] = "Order's ratio greater than market price";
-        const result = {
-            type: TradeType.RouteProcessor,
-            spanAttributes,
-            reason: RouteProcessorSimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-        };
-        return Result.err(result);
-    }
-
-    spanAttributes["oppBlockNumber"] = Number(blockNumber);
-    const rpParams = Router.routeProcessor4Params(
-        pcMap,
-        route,
-        fromToken,
-        toToken,
-        this.appOptions.arbAddress as `0x${string}`,
-        this.state.chainConfig.routeProcessors["4"],
-    );
-
-    const orders = [orderDetails.takeOrder.struct];
-    const takeOrdersConfigStruct: TakeOrdersConfigType = {
-        minimumInput: 1n,
-        maximumInput: isPartial ? maximumInput : maxUint256,
-        maximumIORatio: this.appOptions.maxRatio ? maxUint256 : price,
-        orders,
-        data: encodeAbiParameters([{ type: "bytes" }], [rpParams.routeCode]),
-    };
-    const task = {
-        evaluable: {
-            interpreter: this.state.dispair.interpreter as `0x${string}`,
-            store: this.state.dispair.store as `0x${string}`,
-            bytecode: (this.appOptions.gasCoveragePercentage === "0"
-                ? "0x"
-                : await parseRainlang(
-                      await getBountyEnsureRainlang(
-                          parseUnits(ethPrice, 18),
-                          0n,
-                          0n,
-                          signer.account.address,
-                      ),
-                      this.state.client,
-                      this.state.dispair,
-                  )) as `0x${string}`,
-        },
-        signedContext: [],
-    };
-    const rawtx: RawTransaction = {
-        data: encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
-            args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
-        }),
-        to: this.appOptions.arbAddress as `0x${string}`,
-        gasPrice,
-    };
-
-    // initial dryrun with 0 minimum sender output to get initial
-    // pass and tx gas cost to calc minimum sender output
-    const initDryrunResult = await dryrun(
-        signer,
-        rawtx,
-        gasPrice,
-        this.appOptions.gasLimitMultiplier,
-    );
-    if (initDryrunResult.isErr()) {
-        spanAttributes["stage"] = 1;
-        Object.assign(initDryrunResult.error.spanAttributes, spanAttributes);
-        initDryrunResult.error.reason = RouteProcessorSimulationHaltReason.NoOpportunity;
-        (initDryrunResult.error as FailedSimulation).type = TradeType.RouteProcessor;
-        return Result.err(initDryrunResult.error as FailedSimulation);
-    }
-
-    let { estimation, estimatedGasCost } = initDryrunResult.value;
-    delete rawtx.gas; // delete gas to let signer estimate gas again with updated tx data
-    // include dryrun initial gas estimation in logs
-    Object.assign(spanAttributes, initDryrunResult.value.spanAttributes);
-    extendObjectWithHeader(
-        spanAttributes,
-        {
-            gasLimit: estimation.gas.toString(),
-            totalCost: estimation.totalGasCost.toString(),
-            gasPrice: estimation.gasPrice.toString(),
-            ...(this.state.chainConfig.isSpecialL2
-                ? {
-                      l1Cost: estimation.l1Cost.toString(),
-                      l1GasPrice: estimation.l1GasPrice.toString(),
-                  }
-                : {}),
-        },
-        "gasEst.initial",
-    );
-
-    // repeat the same process with headroom if gas
-    // coverage is not 0, 0 gas coverage means 0 minimum
-    // sender output which is already called above
-    if (this.appOptions.gasCoveragePercentage !== "0") {
-        const headroom = BigInt((Number(this.appOptions.gasCoveragePercentage) * 1.01).toFixed());
-        spanAttributes["gasEst.initial.minBountyExpected"] = (
-            (estimatedGasCost * headroom) /
-            100n
-        ).toString();
-        task.evaluable.bytecode = (await parseRainlang(
-            await getBountyEnsureRainlang(
-                parseUnits(ethPrice, 18),
-                0n,
-                (estimatedGasCost * headroom) / 100n,
-                signer.account.address,
-            ),
-            this.state.client,
-            this.state.dispair,
-        )) as `0x${string}`;
-        rawtx.data = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
-            args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
-        });
-
-        const finalDryrunResult = await dryrun(
-            signer,
-            rawtx,
-            gasPrice,
-            this.appOptions.gasLimitMultiplier,
-        );
-        if (finalDryrunResult.isErr()) {
-            spanAttributes["stage"] = 2;
-            Object.assign(finalDryrunResult.error.spanAttributes, spanAttributes);
-            finalDryrunResult.error.reason = RouteProcessorSimulationHaltReason.NoOpportunity;
-            (finalDryrunResult.error as FailedSimulation).type = TradeType.RouteProcessor;
-            return Result.err(finalDryrunResult.error as FailedSimulation);
-        }
-
-        ({ estimation, estimatedGasCost } = finalDryrunResult.value);
-        // include dryrun final gas estimation in otel logs
-        Object.assign(spanAttributes, finalDryrunResult.value.spanAttributes);
-        extendObjectWithHeader(
-            spanAttributes,
-            {
-                gasLimit: estimation.gas.toString(),
-                totalCost: estimation.totalGasCost.toString(),
-                gasPrice: estimation.gasPrice.toString(),
-                ...(this.state.chainConfig.isSpecialL2
-                    ? {
-                          l1Cost: estimation.l1Cost.toString(),
-                          l1GasPrice: estimation.l1GasPrice.toString(),
-                      }
-                    : {}),
-            },
-            "gasEst.final",
-        );
-
-        task.evaluable.bytecode = (await parseRainlang(
-            await getBountyEnsureRainlang(
-                parseUnits(ethPrice, 18),
-                0n,
-                (estimatedGasCost * BigInt(this.appOptions.gasCoveragePercentage)) / 100n,
-                signer.account.address,
-            ),
-            this.state.client,
-            this.state.dispair,
-        )) as `0x${string}`;
-        rawtx.data = encodeFunctionData({
-            abi: ABI.Orderbook.Primary.Arb,
-            functionName: "arb3",
-            args: [orderDetails.orderbook as `0x${string}`, takeOrdersConfigStruct, task],
-        });
-        spanAttributes["gasEst.final.minBountyExpected"] = (
-            (estimatedGasCost * BigInt(this.appOptions.gasCoveragePercentage)) /
-            100n
-        ).toString();
-    }
-
-    // if reached here, it means there was a success and found opp
-    spanAttributes["foundOpp"] = true;
-    const result = {
-        type: TradeType.RouteProcessor,
-        spanAttributes,
-        rawtx,
-        estimatedGasCost,
-        oppBlockNumber: Number(blockNumber),
-        estimatedProfit: estimateProfit(
+    async prepareTradeParams(): Promise<Result<RouterTradePreparedParams, FailedSimulation>> {
+        const {
             orderDetails,
-            parseUnits(ethPrice, 18),
-            price,
-            maximumInputFixed,
-        )!,
-    };
-    return Result.ok(result);
-}
-
-/**
- * Calculates the largest possible partial trade size for rp clear, returns undefined if
- * it cannot be determined due to the fact that order's ratio being higher than market
- * price
- * @param this - The RainSolver instance
- * @param orderDetails - The order details
- * @param toToken - The token to trade to
- * @param fromToken - The token to trade from
- * @param maximumInputFixed - The maximum input amount (in 18 decimals)
- */
-export function findLargestTradeSize(
-    this: RainSolver,
-    orderDetails: Pair,
-    toToken: Token,
-    fromToken: Token,
-    maximumInputFixed: bigint,
-): bigint | undefined {
-    const result: bigint[] = [];
-    const gasPrice = Number(this.state.gasPrice);
-    const ratio = orderDetails.takeOrder.quote!.ratio;
-    const pcMap = this.state.dataFetcher.getCurrentPoolCodeMap(fromToken, toToken);
-    const initAmount = scaleFrom18(maximumInputFixed, fromToken.decimals) / 2n;
-    let maximumInput = initAmount;
-    for (let i = 1n; i < 26n; i++) {
-        const maxInput18 = scaleTo18(maximumInput, fromToken.decimals);
-        const route = Router.findBestRoute(
-            pcMap,
-            this.state.chainConfig.id as ChainId,
-            fromToken,
-            maximumInput,
+            signer,
             toToken,
-            gasPrice,
-            undefined,
-            RPoolFilter,
-            undefined,
-            this.appOptions.route,
-        );
+            fromToken,
+            maximumInputFixed,
+            blockNumber,
+            isPartial,
+        } = this.tradeArgs;
+        const gasPrice = this.tradeArgs.solver.state.gasPrice;
 
-        if (route.status == "NoWay") {
-            maximumInput = maximumInput - initAmount / 2n ** i;
-        } else {
-            const amountOut = scaleTo18(route.amountOutBI, toToken.decimals);
-            const price = (amountOut * ONE18) / maxInput18;
+        const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
+        this.spanAttributes["amountIn"] = formatUnits(maximumInputFixed, 18);
+        this.spanAttributes["oppBlockNumber"] = Number(blockNumber);
 
-            if (price < ratio) {
-                maximumInput = maximumInput - initAmount / 2n ** i;
+        const tradeParamsResult = await this.tradeArgs.solver.state.router.getTradeParams({
+            state: this.tradeArgs.solver.state,
+            orderDetails,
+            fromToken,
+            toToken,
+            maximumInput,
+            signer,
+            blockNumber,
+            isPartial,
+        });
+        if (tradeParamsResult.isErr()) {
+            const result = {
+                type: TradeType.Router,
+                spanAttributes: this.spanAttributes,
+                reason: SimulationHaltReason.NoOpportunity,
+            };
+            if (tradeParamsResult.error.typ === RainSolverRouterErrorType.NoRouteFound) {
+                this.spanAttributes["route"] = "no way for sushi and balancer";
+                result.reason = SimulationHaltReason.NoRoute;
             } else {
-                result.unshift(maxInput18);
-                maximumInput = maximumInput + initAmount / 2n ** i;
+                this.spanAttributes["error"] = tradeParamsResult.error.message;
             }
+            this.spanAttributes["duration"] = performance.now() - this.startTime;
+            return Result.err(result);
         }
+        const {
+            type: routeType,
+            quote,
+            routeVisual,
+            takeOrdersConfigStruct,
+        } = tradeParamsResult.value;
+
+        // determine trade type based on router type
+        let type = TradeType.Router;
+        if (routeType === RouterType.Sushi) {
+            type = TradeType.RouteProcessor;
+        } else if (routeType === RouterType.Balancer) {
+            type = TradeType.Balancer;
+        } else {
+            // unreachable path
+            type = TradeType.Router;
+        }
+
+        this.spanAttributes["amountOut"] = formatUnits(quote.amountOut, toToken.decimals);
+        this.spanAttributes["marketPrice"] = formatUnits(quote.price, 18);
+        this.spanAttributes["route"] = routeVisual;
+
+        // exit early if market price is lower than order quote ratio
+        if (quote.price < orderDetails.takeOrder.quote!.ratio) {
+            this.spanAttributes["error"] = "Order's ratio greater than market price";
+            const result = {
+                type,
+                spanAttributes: this.spanAttributes,
+                reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
+            };
+            this.spanAttributes["duration"] = performance.now() - this.startTime;
+            return Result.err(result);
+        }
+
+        // exit early if required trade addresses are not configured
+        const addresses = this.tradeArgs.solver.state.contracts.getAddressesForTrade(
+            orderDetails,
+            type,
+        );
+        if (!addresses) {
+            this.spanAttributes["error"] =
+                `Cannot trade as ${routeType} arb addresses are not configured for order ${orderDetails.takeOrder.struct.order.type} trade`;
+            this.spanAttributes["duration"] = performance.now() - this.startTime;
+            return Result.err({
+                type,
+                spanAttributes: this.spanAttributes,
+                reason: SimulationHaltReason.UndefinedTradeDestinationAddress,
+            });
+        }
+
+        const rawtx: RawTransaction = {
+            to: addresses.destination,
+            gasPrice,
+        };
+        return Result.ok({
+            type,
+            rawtx,
+            takeOrdersConfigStruct,
+            minimumExpected: 0n,
+            price: quote.price,
+        });
     }
 
-    if (result.length) {
-        return result[0];
-    } else {
-        return undefined;
+    async setTransactionData(
+        params: RouterTradePreparedParams,
+    ): Promise<Result<void, FailedSimulation>> {
+        // we can be sure the addresses exist here since we checked in prepareTradeParams
+        const addresses = this.tradeArgs.solver.state.contracts.getAddressesForTrade(
+            this.tradeArgs.orderDetails,
+            params.type,
+        )!;
+
+        // try to get task bytecode for ensure bounty task
+        const taskBytecodeResult = await getEnsureBountyTaskBytecode(
+            {
+                type: EnsureBountyTaskType.External,
+                inputToEthPrice: parseUnits(this.tradeArgs.ethPrice, 18),
+                outputToEthPrice: 0n,
+                minimumExpected: params.minimumExpected,
+                sender: this.tradeArgs.signer.account.address,
+            },
+            this.tradeArgs.solver.state.client,
+            addresses.dispair,
+        );
+        if (taskBytecodeResult.isErr()) {
+            const errMsg = await errorSnapshot("", taskBytecodeResult.error);
+            this.spanAttributes["isNodeError"] =
+                taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
+            this.spanAttributes["error"] = errMsg;
+            const result = {
+                type: params.type,
+                spanAttributes: this.spanAttributes,
+                reason: SimulationHaltReason.FailedToGetTaskBytecode,
+            };
+            this.spanAttributes["duration"] = performance.now() - this.startTime;
+            return Result.err(result);
+        }
+        const task = {
+            evaluable: {
+                interpreter: addresses.dispair.interpreter,
+                store: addresses.dispair.store,
+                bytecode:
+                    this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0"
+                        ? "0x"
+                        : taskBytecodeResult.value,
+            },
+            signedContext: [],
+        };
+
+        params.rawtx.data = this.getCalldata(params.takeOrdersConfigStruct, task);
+        return Result.ok(void 0);
+    }
+
+    estimateProfit(marketPrice: bigint): bigint {
+        const marketAmountOut = (this.tradeArgs.maximumInputFixed * marketPrice) / ONE18;
+        const orderInput =
+            (this.tradeArgs.maximumInputFixed *
+                this.tradeArgs.orderDetails.takeOrder.quote!.ratio) /
+            ONE18;
+        const estimatedProfit = marketAmountOut - orderInput;
+        return (estimatedProfit * parseUnits(this.tradeArgs.ethPrice, 18)) / ONE18;
+    }
+
+    /**
+     * Builds the calldata based on the order type
+     * @param takeOrdersConfigStruct - The take orders config struct
+     * @param task - The ensure bounty task object
+     */
+    getCalldata(takeOrdersConfigStruct: TakeOrdersConfigType, task: TaskType): `0x${string}` {
+        if (Pair.isV3(this.tradeArgs.orderDetails)) {
+            return encodeFunctionData({
+                abi: ABI.Orderbook.V4.Primary.Arb,
+                functionName: "arb3",
+                args: [
+                    this.tradeArgs.orderDetails.orderbook as `0x${string}`,
+                    takeOrdersConfigStruct,
+                    task,
+                ],
+            });
+        } else {
+            return encodeFunctionData({
+                abi: ABI.Orderbook.V5.Primary.Arb,
+                functionName: "arb4",
+                args: [
+                    this.tradeArgs.orderDetails.orderbook as `0x${string}`,
+                    takeOrdersConfigStruct,
+                    task,
+                ],
+            });
+        }
     }
 }

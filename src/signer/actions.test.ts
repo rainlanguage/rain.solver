@@ -71,7 +71,7 @@ describe("Test sendTx", () => {
         vi.clearAllMocks();
     });
 
-    it("should successfully send a transaction", async () => {
+    it("should successfully send a transaction on first attempt", async () => {
         const txHash = await sendTx(mockSigner, mockTx);
 
         expect(mockSigner.waitUntilFree).toHaveBeenCalled();
@@ -82,6 +82,47 @@ describe("Test sendTx", () => {
         expect(mockSigner.sendTransaction).toHaveBeenCalledWith({
             ...mockTx,
             nonce: 5,
+        });
+        expect(txHash).toBe("0xhash");
+        expect(mockSigner.busy).toBe(false);
+    });
+
+    it("should successfully send a transaction on second attempt", async () => {
+        (mockSigner.sendTransaction as Mock)
+            .mockRejectedValueOnce(new Error("First attempt failed"))
+            .mockResolvedValueOnce("0xhash");
+        const txHash = await sendTx(mockSigner, mockTx, 10);
+
+        expect(mockSigner.waitUntilFree).toHaveBeenCalled();
+        expect(mockSigner.getTransactionCount).toHaveBeenCalledWith({
+            address: "0xsender",
+            blockTag: "latest",
+        });
+        expect(mockSigner.sendTransaction).toHaveBeenCalledTimes(2);
+        expect(mockSigner.sendTransaction).toHaveBeenCalledWith({
+            ...mockTx,
+            nonce: 5,
+        });
+        expect(txHash).toBe("0xhash");
+        expect(mockSigner.busy).toBe(false);
+    });
+
+    it("should successfully send a transaction on second attempt when first nonce fails", async () => {
+        (mockSigner.getTransactionCount as Mock)
+            .mockRejectedValueOnce(new Error("First attempt failed"))
+            .mockResolvedValueOnce(6);
+        const txHash = await sendTx(mockSigner, mockTx, 10);
+
+        expect(mockSigner.waitUntilFree).toHaveBeenCalled();
+        expect(mockSigner.getTransactionCount).toHaveBeenCalledTimes(2);
+        expect(mockSigner.getTransactionCount).toHaveBeenCalledWith({
+            address: "0xsender",
+            blockTag: "latest",
+        });
+        expect(mockSigner.sendTransaction).toHaveBeenCalledTimes(1);
+        expect(mockSigner.sendTransaction).toHaveBeenCalledWith({
+            ...mockTx,
+            nonce: 6,
         });
         expect(txHash).toBe("0xhash");
         expect(mockSigner.busy).toBe(false);
@@ -118,7 +159,7 @@ describe("Test sendTx", () => {
         mockSigner.sendTransaction = vi.fn().mockRejectedValue(error);
 
         expect(mockSigner.busy).toBe(false);
-        await expect(sendTx(mockSigner, mockTx)).rejects.toThrow(error);
+        await expect(sendTx(mockSigner, mockTx, 10)).rejects.toThrow(error);
         expect(mockSigner.busy).toBe(false);
     });
 
@@ -135,7 +176,7 @@ describe("Test sendTx", () => {
         const error = new Error("Failed to get nonce");
         mockSigner.getTransactionCount = vi.fn().mockRejectedValue(error);
 
-        await expect(sendTx(mockSigner, mockTx)).rejects.toThrow(error);
+        await expect(sendTx(mockSigner, mockTx, 10)).rejects.toThrow(error);
         expect(mockSigner.busy).toBe(false);
         expect(mockSigner.sendTransaction).not.toHaveBeenCalled();
     });
@@ -303,7 +344,7 @@ describe("Test waitUntilFree", () => {
         expect(sleepSpy).toHaveBeenCalledWith(30);
     });
 
-    it("should call sleep ywice and resolve after 60 ms", async () => {
+    it("should call sleep twice and resolve after 60 ms", async () => {
         setTimeout(() => (mockSigner.busy = false), 40); // set busy to false after 40 ms
         await waitUntilFree(mockSigner);
 

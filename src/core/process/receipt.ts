@@ -55,7 +55,12 @@ export async function processReceipt({
     if (receipt.status === "success") {
         baseResult.spanAttributes["didClear"] = true;
 
-        const clearActualAmount = getActualClearAmount(rawtx.to, orderbook, receipt);
+        const clearActualAmount = getActualClearAmount(
+            rawtx.to,
+            orderbook,
+            receipt,
+            fromToken.decimals,
+        );
         const inputTokenIncome = getIncome(signer.account.address, receipt, toToken.address);
         const outputTokenIncome = getIncome(signer.account.address, receipt, fromToken.address);
         const income = getTotalIncome(
@@ -94,9 +99,11 @@ export async function processReceipt({
             clearedAmount: clearActualAmount?.toString(),
             gasCost: gasCost,
             income,
+            txUrl,
             inputTokenIncome: baseResult.spanAttributes["details.inputTokenIncome"] as any,
             outputTokenIncome: baseResult.spanAttributes["details.outputTokenIncome"] as any,
             netProfit,
+            endTime: performance.now(),
         };
 
         return Result.ok({
@@ -141,6 +148,7 @@ export async function processReceipt({
             txUrl,
             error: simulation,
             reason: ProcessOrderHaltReason.TxReverted,
+            endTime: performance.now(),
         };
         return Result.err(failure);
     }

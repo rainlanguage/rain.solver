@@ -49,11 +49,18 @@ describe("Test processOrder", () => {
             client: {
                 getBlockNumber: vi.fn().mockResolvedValue(123),
             },
-            dataFetcher: {
-                updatePools: vi.fn().mockResolvedValue(undefined),
-                fetchPoolsForToken: vi.fn().mockResolvedValue(undefined),
+            router: {
+                sushi: {
+                    update: vi.fn().mockResolvedValue(undefined),
+                    dataFetcher: {
+                        updatePools: vi.fn().mockResolvedValue(undefined),
+                        fetchPoolsForToken: vi.fn().mockResolvedValue(undefined),
+                    },
+                },
             },
-            getMarketPrice: vi.fn().mockResolvedValue({ price: "100", amountOut: "100" }),
+            getMarketPrice: vi
+                .fn()
+                .mockResolvedValue(Result.ok({ price: "100", amountOut: "100" })),
             gasPrice: 100n,
         } as any;
         mockArgs = {
@@ -99,6 +106,7 @@ describe("Test processOrder", () => {
         expect(result.value.sellToken).toBe("0xSELL");
         expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.value.endTime).toBeTypeOf("number");
 
         // ensure pair maps are updated on quote 0
         expect(mockOrderManager.removeFromPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
@@ -123,6 +131,7 @@ describe("Test processOrder", () => {
         expect(result.error.status).toBe(ProcessOrderStatus.NoOpportunity);
         expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.error.endTime).toBeTypeOf("number");
 
         // ensure pair maps are updated on quote failure
         expect(mockOrderManager.removeFromPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
@@ -130,7 +139,7 @@ describe("Test processOrder", () => {
 
     it("should return FailedToUpdatePools if updatePools throws (not fetchPoolsForToken)", async () => {
         const error = new Error("update pools failed");
-        (mockState.dataFetcher.updatePools as Mock).mockRejectedValue(error);
+        (mockState.router.sushi!.update as Mock).mockRejectedValue(error);
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
             mockRainSolver,
@@ -150,6 +159,7 @@ describe("Test processOrder", () => {
         );
         expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.error.endTime).toBeTypeOf("number");
 
         // ensure pair maps are updated success quote
         expect(mockOrderManager.addToPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
@@ -157,7 +167,7 @@ describe("Test processOrder", () => {
 
     it("should return FailedToGetPools if fetchPoolsForToken throws", async () => {
         const error = new Error("fetch pools failed");
-        (mockState.dataFetcher.fetchPoolsForToken as Mock).mockRejectedValue(error);
+        (mockState.router.sushi!.dataFetcher.fetchPoolsForToken as Mock).mockRejectedValue(error);
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
             mockRainSolver,
@@ -177,13 +187,14 @@ describe("Test processOrder", () => {
         );
         expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.error.endTime).toBeTypeOf("number");
     });
 
     it('should set outputToEthPrice to "" if getMarketPrice returns undefined for output and gasCoveragePercentage is not "0"', async () => {
         (mockState.getMarketPrice as Mock)
-            .mockResolvedValueOnce({ price: "100", amountOut: "100" })
-            .mockResolvedValueOnce({ price: "100", amountOut: "100" })
-            .mockResolvedValueOnce(undefined);
+            .mockResolvedValueOnce(Result.ok({ price: "100", amountOut: "100" }))
+            .mockResolvedValueOnce(Result.ok({ price: "100", amountOut: "100" }))
+            .mockResolvedValueOnce(Result.err("no-way"));
         (findBestTrade as Mock).mockResolvedValue(Result.err({ spanAttributes: {} }));
         mockRainSolver.appOptions.gasCoveragePercentage = "100";
 
@@ -206,13 +217,14 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
         expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.outputToEthPrice"]).toBe("no-way");
+        expect(result.value.endTime).toBeTypeOf("number");
     });
 
     it('should set outputToEthPrice to "0" if getMarketPrice returns undefined for output and gasCoveragePercentage is "0"', async () => {
         (mockState.getMarketPrice as Mock)
-            .mockResolvedValueOnce({ price: "100", amountOut: "100" })
-            .mockResolvedValueOnce({ price: "100", amountOut: "100" })
-            .mockResolvedValueOnce(undefined);
+            .mockResolvedValueOnce(Result.ok({ price: "100", amountOut: "100" }))
+            .mockResolvedValueOnce(Result.ok({ price: "100", amountOut: "100" }))
+            .mockResolvedValueOnce(Result.err("no-way"));
         (findBestTrade as Mock).mockResolvedValue(Result.err({ spanAttributes: {} }));
         mockRainSolver.appOptions.gasCoveragePercentage = "0";
 
@@ -235,10 +247,11 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
         expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.outputToEthPrice"]).toBe("0");
+        expect(result.value.endTime).toBeTypeOf("number");
     });
 
     it('should return FailedToGetEthPrice if getMarketPrice returns undefined and gasCoveragePercentage is not "0"', async () => {
-        (mockState.getMarketPrice as Mock).mockResolvedValue(undefined);
+        (mockState.getMarketPrice as Mock).mockResolvedValue(Result.err("no-way"));
         mockRainSolver.appOptions.gasCoveragePercentage = "100";
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
@@ -258,10 +271,11 @@ describe("Test processOrder", () => {
         );
         expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.error.endTime).toBeTypeOf("number");
     });
 
     it('should set input/outputToEthPrice to "0" if getMarketPrice returns undefined and gasCoveragePercentage is "0"', async () => {
-        (mockState.getMarketPrice as Mock).mockResolvedValue(undefined);
+        (mockState.getMarketPrice as Mock).mockResolvedValue(Result.err("no-way"));
         (findBestTrade as Mock).mockResolvedValue(Result.err({ spanAttributes: {} }));
         mockRainSolver.appOptions.gasCoveragePercentage = "0";
 
@@ -283,6 +297,7 @@ describe("Test processOrder", () => {
         );
         expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.value.endTime).toBeTypeOf("number");
     });
 
     it("should return ok result if findBestTrade throws with noneNodeError", async () => {
@@ -313,6 +328,7 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.gasPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.noneNodeError"]).toBe(true);
         expect(result.value.spanAttributes["details.test"]).toBe("something");
+        expect(result.value.endTime).toBeTypeOf("number");
     });
 
     it("should return ok result if findBestTrade throws without noneNodeError", async () => {
@@ -343,6 +359,7 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.gasPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.noneNodeError"]).toBe(false);
         expect(result.value.spanAttributes["details.test"]).toBe("something");
+        expect(result.value.endTime).toBeTypeOf("number");
     });
 
     it("should proceed to processTransaction if all steps succeed (happy path)", async () => {
@@ -357,7 +374,7 @@ describe("Test processOrder", () => {
         );
         // mock processTransaction to return a function
         (processTransaction as Mock).mockReturnValue(async () =>
-            Result.ok({ status: ProcessOrderStatus.FoundOpportunity }),
+            Result.ok({ status: ProcessOrderStatus.FoundOpportunity, endTime: 123 }),
         );
 
         const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
@@ -368,5 +385,6 @@ describe("Test processOrder", () => {
 
         assert(result.isOk());
         expect(result.value.status).toBe(ProcessOrderStatus.FoundOpportunity);
+        expect(result.value.endTime).toBeTypeOf("number");
     });
 });
