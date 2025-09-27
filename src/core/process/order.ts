@@ -58,7 +58,7 @@ export async function processOrder(
     spanAttributes["details.orders"] = orderDetails.takeOrder.id;
     spanAttributes["details.pair"] = tokenPair;
 
-    spanAttributes["event.quoteOrder"] = Date.now();
+    spanAttributes["event.quoteOrder"] = performance.now();
     try {
         await this.orderManager.quoteOrder(orderDetails);
         if (orderDetails.takeOrder.quote?.maxOutput === 0n) {
@@ -95,13 +95,13 @@ export async function processOrder(
     });
 
     // get current block number
-    spanAttributes["event.getBlockNumber"] = Date.now();
+    spanAttributes["event.getBlockNumber"] = performance.now();
     const dataFetcherBlockNumber = await this.state.client.getBlockNumber().catch(() => {
         return undefined;
     });
 
     // update pools by events watching until current block
-    spanAttributes["event.updatePoolsData"] = Date.now();
+    spanAttributes["event.updatePoolsData"] = performance.now();
     try {
         await this.state.router.sushi?.update(dataFetcherBlockNumber);
     } catch (e) {
@@ -118,7 +118,7 @@ export async function processOrder(
     }
 
     // get pool details
-    spanAttributes["event.getPoolsData"] = Date.now();
+    spanAttributes["event.getPoolsData"] = performance.now();
     try {
         const options: RainDataFetcherOptions = {
             fetchPoolsTimeout: 90000,
@@ -142,7 +142,7 @@ export async function processOrder(
     }
 
     // record market price in span attributes
-    spanAttributes["event.getPairMarketPrice"] = Date.now();
+    spanAttributes["event.getPairMarketPrice"] = performance.now();
     const marketPriceResult = await this.state.getMarketPrice(
         fromToken,
         toToken,
@@ -156,7 +156,7 @@ export async function processOrder(
     }
 
     // get in/out tokens to eth price
-    spanAttributes["event.getEthMarketPrice"] = Date.now();
+    spanAttributes["event.getEthMarketPrice"] = performance.now();
     let inputToEthPrice = "";
     let outputToEthPrice = "";
     const inputToEthPriceResult = await this.state.getMarketPrice(
@@ -203,7 +203,7 @@ export async function processOrder(
         spanAttributes["details.gasPriceL1"] = this.state.l1GasPrice.toString();
     }
 
-    spanAttributes["event.findBestTrade"] = Date.now();
+    spanAttributes["event.findBestTrade"] = performance.now();
     const trade = await this.findBestTrade({
         orderDetails,
         signer,
@@ -261,7 +261,7 @@ export async function processOrder(
     }
 
     // process the found transaction opportunity
-    spanAttributes["event.processTransaction"] = Date.now();
+    spanAttributes["event.processTransaction"] = performance.now();
     return processTransaction({
         rawtx,
         signer,

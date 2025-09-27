@@ -1,20 +1,15 @@
 import { ONE18 } from "../../math";
 import { Order } from "../../order";
-import { Dispair, Result } from "../../common";
 import { RouteLeg } from "sushi/tines";
 import { Token } from "sushi/currency";
 import { SharedState } from "../../state";
+import { Dispair, Result } from "../../common";
 import { maxUint256, PublicClient } from "viem";
 import { RouterType, RouteStatus } from "../types";
 import { LiquidityProviders, RainDataFetcher, Router } from "sushi";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import {
-    SushiRouter,
-    SushiQuoteParams,
-    SushiRouterError,
-    SushiRouterErrorType,
-    ExcludedLiquidityProviders,
-} from ".";
+import { SushiRouter, SushiQuoteParams, ExcludedLiquidityProviders } from ".";
+import { SushiRouterError, SushiRouterErrorType } from "../error";
 
 // mock the sushi dependencies
 vi.mock("sushi", async (importOriginal) => {

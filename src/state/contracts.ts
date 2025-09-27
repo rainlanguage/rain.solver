@@ -117,43 +117,57 @@ export function versionAddressGetter<
             destination: "0x",
         };
     }
-    if (tradeType === TradeType.Router) {
-        if (contracts.sushiArb) {
+    switch (tradeType) {
+        case TradeType.Router: {
+            if (contracts.sushiArb) {
+                return {
+                    dispair: contracts.dispair,
+                    destination: contracts.sushiArb,
+                };
+            }
+            if (contracts.balancerArb) {
+                return {
+                    dispair: contracts.dispair,
+                    destination: contracts.balancerArb,
+                };
+            }
+            return undefined;
+        }
+        case TradeType.RouteProcessor: {
+            if (contracts.sushiArb) {
+                return {
+                    dispair: contracts.dispair,
+                    destination: contracts.sushiArb,
+                };
+            }
+            return undefined;
+        }
+        case TradeType.Balancer: {
+            if (contracts.balancerArb) {
+                return {
+                    dispair: contracts.dispair,
+                    destination: contracts.balancerArb,
+                };
+            }
+            return undefined;
+        }
+        case TradeType.InterOrderbook: {
+            if (contracts.genericArb) {
+                return {
+                    dispair: contracts.dispair,
+                    destination: contracts.genericArb,
+                };
+            }
+            return undefined;
+        }
+        case TradeType.IntraOrderbook: {
             return {
                 dispair: contracts.dispair,
-                destination: contracts.sushiArb,
+                destination: order.orderbook as `0x${string}`,
             };
         }
-        if (contracts.balancerArb) {
-            return {
-                dispair: contracts.dispair,
-                destination: contracts.balancerArb,
-            };
+        default: {
+            return undefined;
         }
     }
-    if (tradeType === TradeType.RouteProcessor && contracts.sushiArb) {
-        return {
-            dispair: contracts.dispair,
-            destination: contracts.sushiArb,
-        };
-    }
-    if (tradeType === TradeType.Balancer && contracts.balancerArb) {
-        return {
-            dispair: contracts.dispair,
-            destination: contracts.balancerArb,
-        };
-    }
-    if (tradeType === TradeType.InterOrderbook && contracts.genericArb) {
-        return {
-            dispair: contracts.dispair,
-            destination: contracts.genericArb,
-        };
-    }
-    if (tradeType === TradeType.IntraOrderbook) {
-        return {
-            dispair: contracts.dispair,
-            destination: order.orderbook as `0x${string}`,
-        };
-    }
-    return undefined;
 }

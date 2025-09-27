@@ -8,7 +8,7 @@ import { Result, ABI, RawTransaction } from "../../../common";
 import { encodeFunctionData, formatUnits, parseUnits } from "viem";
 import { TradeType, FailedSimulation, TaskType } from "../../types";
 import { SimulationHaltReason, TradeSimulatorBase } from "../simulator";
-import { RainSolverRouterErrorType, RouterType } from "../../../router/types";
+import { RainSolverRouterErrorType, RouterType } from "../../../router";
 import {
     EnsureBountyTaskType,
     EnsureBountyTaskErrorType,
@@ -48,6 +48,21 @@ export type RouterTradePreparedParams = {
     takeOrdersConfigStruct: TakeOrdersConfigType;
 };
 
+/**
+ * Simulates trades against router protocols (such as Sushi and Balancer) and prepares transaction objects
+ * that can be submitted on-chain for execution. This class extends {@link TradeSimulatorBase} and provides
+ * methods to:
+ *
+ * - Prepare trade parameters by querying the router for optimal trade routes and quotes.
+ * - Validate trade conditions, such as price and route availability.
+ * - Construct the calldata and transaction object required for on-chain execution.
+ * - Estimate potential profit from a simulated trade.
+ * - Integrate with RainSolver's state and signer for contextual simulation.
+ *
+ * The simulator supports both V4 and V5 orderbook (order v3 and v4) types.
+ * This class is intended for internal use within the RainSolver framework to facilitate robust and safe
+ * trade simulations and transaction construction for router-based trade solving.
+ */
 export class RouterTradeSimulator extends TradeSimulatorBase {
     declare tradeArgs: SimulateRouterTradeArgs;
 

@@ -52,6 +52,28 @@ export type InterOrderbookTradePreparedParams = {
     price?: bigint;
 };
 
+/**
+ * Simulates a trade between two different orderbooks and prepares the necessary transaction
+ * parameters and calldata for on-chain execution.
+ *
+ * The `InterOrderbookTradeSimulator` class extends {@link TradeSimulatorBase} and is responsible for:
+ * - Simulating trades between two orderbooks (inter-orderbook trades).
+ * - Preparing and encoding the transaction data required to execute the trade on-chain.
+ * - Handling V4/V5 orderbook versions (order v3/v4).
+ * - Estimating the profit from the simulated trade based on input/output prices and order quotes.
+ * - Managing simulation state, error handling, and span attributes for tracing and observability.
+ *
+ * Key responsibilities:
+ * - Validates and prepares trade parameters, including order details, counterparty details, and price data.
+ * - Builds the calldata for the appropriate arbitrage contract method (`arb3` for V3, `arb4` for V4/V5).
+ * - Encodes the counterparty's take orders configuration for use in the transaction.
+ * - Estimates the expected profit from the trade.
+ * - Handles errors and simulation halt reasons, returning detailed error information when simulation cannot proceed.
+ *
+ * @remarks
+ * Use this class to simulate and prepare trades between two orders of different orderbooks,
+ * including all necessary transaction data for execution on on-chain.
+ */
 export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
     declare tradeArgs: SimulateInterOrderbookTradeArgs;
 

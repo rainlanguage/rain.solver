@@ -13,7 +13,7 @@ import { RainSolverRouter } from "../router/router";
 import { SubgraphConfig } from "../subgraph/config";
 import { RainSolverBaseError } from "../error/types";
 import { OrderManagerConfig } from "../order/config";
-import { RainSolverRouterError } from "../router/types";
+import { RainSolverRouterError } from "../router/error";
 import { ChainConfig, ChainConfigError, getChainConfig } from "./chain";
 import { RpcState, rainSolverTransport, RainSolverTransportConfig } from "../rpc";
 import { createPublicClient, parseUnits, PublicClient, ReadContractErrorType } from "viem";
