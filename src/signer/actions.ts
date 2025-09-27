@@ -294,7 +294,7 @@ export async function tryGetReceipt(
                     await sleep(pollingInterval);
                     return await signer.state.client.getTransactionReceipt({ hash });
                 } catch {
-                    // Ignore errors and continue polling until timeout or success
+                    // ignore errors and continue polling until timeout or success
                     continue;
                 }
             }
