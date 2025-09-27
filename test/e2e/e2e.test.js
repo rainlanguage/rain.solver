@@ -18,9 +18,14 @@ const { publicActions, walletActions, createPublicClient } = require("viem");
 const { ABI, Result, toFloat, normalizeFloat } = require("../../src/common");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
 const { SEMRESATTRS_SERVICE_NAME } = require("@opentelemetry/semantic-conventions");
-const { sendTx, waitUntilFree, estimateGasCost } = require("../../src/signer/actions");
 const { BasicTracerProvider, BatchSpanProcessor } = require("@opentelemetry/sdk-trace-base");
 const { OrderManager } = require("../../src/order");
+const {
+    sendTx,
+    waitUntilFree,
+    estimateGasCost,
+    tryGetReceipt,
+} = require("../../src/signer/actions");
 const {
     arbDeploy,
     encodeMeta,
@@ -190,6 +195,9 @@ for (let i = 0; i < testData.length; i++) {
                         return await estimateGasCost(bot, tx);
                     };
                     bot.asWriteSigner = () => bot;
+                    bot.waitForReceipt = async (tx) => {
+                        return await tryGetReceipt(bot, tx.hash, 3000, 50);
+                    };
                     bot.state = state;
                     bot.impersonateAccount({
                         address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
@@ -466,6 +474,9 @@ for (let i = 0; i < testData.length; i++) {
                         return await estimateGasCost(bot, tx);
                     };
                     bot.asWriteSigner = () => bot;
+                    bot.waitForReceipt = async (tx) => {
+                        return await tryGetReceipt(bot, tx.hash, 3000, 50);
+                    };
                     bot.state = state;
                     bot.impersonateAccount({
                         address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
@@ -835,6 +846,9 @@ for (let i = 0; i < testData.length; i++) {
                         return await estimateGasCost(bot, tx);
                     };
                     bot.asWriteSigner = () => bot;
+                    bot.waitForReceipt = async (tx) => {
+                        return await tryGetReceipt(bot, tx.hash, 3000, 50);
+                    };
                     bot.state = state;
                     bot.impersonateAccount({
                         address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
@@ -1230,6 +1244,9 @@ for (let i = 0; i < testData.length; i++) {
                         return await estimateGasCost(bot, tx);
                     };
                     bot.asWriteSigner = () => bot;
+                    bot.waitForReceipt = async (tx) => {
+                        return await tryGetReceipt(bot, tx.hash, 3000, 50);
+                    };
                     bot.state = state;
                     bot.impersonateAccount({
                         address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
@@ -1630,6 +1647,9 @@ for (let i = 0; i < testData.length; i++) {
                         return await estimateGasCost(bot, tx);
                     };
                     bot.asWriteSigner = () => bot;
+                    bot.waitForReceipt = async (tx) => {
+                        return await tryGetReceipt(bot, tx.hash, 3000, 50);
+                    };
                     bot.state = state;
                     bot.impersonateAccount({
                         address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
@@ -1914,6 +1934,9 @@ for (let i = 0; i < testData.length; i++) {
                         return await estimateGasCost(bot, tx);
                     };
                     bot.asWriteSigner = () => bot;
+                    bot.waitForReceipt = async (tx) => {
+                        return await tryGetReceipt(bot, tx.hash, 3000, 50);
+                    };
                     bot.state = state;
                     bot.impersonateAccount({
                         address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
@@ -2212,6 +2235,9 @@ for (let i = 0; i < testData.length; i++) {
                         return await estimateGasCost(bot, tx);
                     };
                     bot.asWriteSigner = () => bot;
+                    bot.waitForReceipt = async (tx) => {
+                        return await tryGetReceipt(bot, tx.hash, 3000, 50);
+                    };
                     bot.state = state;
                     bot.impersonateAccount({
                         address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
@@ -2595,6 +2621,9 @@ for (let i = 0; i < testData.length; i++) {
                         return await estimateGasCost(bot, tx);
                     };
                     bot.asWriteSigner = () => bot;
+                    bot.waitForReceipt = async (tx) => {
+                        return await tryGetReceipt(bot, tx.hash, 3000, 50);
+                    };
                     bot.state = state;
                     bot.impersonateAccount({
                         address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
@@ -2984,6 +3013,9 @@ for (let i = 0; i < testData.length; i++) {
                         return await estimateGasCost(bot, tx);
                     };
                     bot.asWriteSigner = () => bot;
+                    bot.waitForReceipt = async (tx) => {
+                        return await tryGetReceipt(bot, tx.hash, 3000, 50);
+                    };
                     bot.state = state;
                     bot.impersonateAccount({
                         address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",
@@ -3413,6 +3445,9 @@ for (let i = 0; i < testData.length; i++) {
                         return await estimateGasCost(bot, tx);
                     };
                     bot.asWriteSigner = () => bot;
+                    bot.waitForReceipt = async (tx) => {
+                        return await tryGetReceipt(bot, tx.hash, 3000, 50);
+                    };
                     bot.state = state;
                     bot.impersonateAccount({
                         address: botAddress ?? "0x22025257BeF969A81eDaC0b343ce82d777931327",

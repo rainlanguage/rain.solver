@@ -91,7 +91,7 @@ describe("Test fundVault", () => {
             readContract: vi.fn(),
             writeContract: vi.fn(),
             sendTx: vi.fn(),
-            waitForTransactionReceipt: vi.fn(),
+            waitForReceipt: vi.fn(),
         } as any;
 
         // setup vault details
@@ -113,7 +113,7 @@ describe("Test fundVault", () => {
             .mockResolvedValueOnce(parseUnits("2000", 18)); // sufficient allowance
 
         (mockSigner.writeContract as Mock).mockResolvedValue("0xdeposit");
-        (mockSigner.waitForTransactionReceipt as Mock).mockResolvedValue({ status: "success" });
+        (mockSigner.waitForReceipt as Mock).mockResolvedValue({ status: "success" });
 
         const result = await fundVault(vaultDetails, mockSigner);
 
@@ -147,7 +147,7 @@ describe("Test fundVault", () => {
 
         (mockSigner.sendTx as Mock).mockResolvedValue("0xswap");
         (mockSigner.writeContract as Mock).mockResolvedValue("0xdeposit");
-        (mockSigner.waitForTransactionReceipt as Mock)
+        (mockSigner.waitForReceipt as Mock)
             .mockResolvedValueOnce({ status: "success" }) // swap receipt
             .mockResolvedValueOnce({ status: "success" }); // deposit receipt
 
@@ -189,7 +189,7 @@ describe("Test fundVault", () => {
             .mockResolvedValueOnce(parseUnits("2000", 18)); // allowance
 
         (mockSigner.writeContract as Mock).mockResolvedValue("0xdeposit");
-        (mockSigner.waitForTransactionReceipt as Mock).mockResolvedValue({ status: "success" });
+        (mockSigner.waitForReceipt as Mock).mockResolvedValue({ status: "success" });
 
         const result = await fundVault(vaultDetails, mockSigner);
 
@@ -214,7 +214,7 @@ describe("Test fundVault", () => {
             .mockResolvedValueOnce(parseUnits("2000", 18)); // allowance
 
         (mockSigner.writeContract as Mock).mockResolvedValue("0xdeposit");
-        (mockSigner.waitForTransactionReceipt as Mock).mockResolvedValue({ status: "success" });
+        (mockSigner.waitForReceipt as Mock).mockResolvedValue({ status: "success" });
 
         const result = await fundVault(vaultDetails, mockSigner);
 
@@ -233,7 +233,7 @@ describe("Test fundVault", () => {
             .mockResolvedValueOnce(parseUnits("2000", 18)); // allowance
 
         (mockSigner.writeContract as Mock).mockResolvedValue("0xdeposit");
-        (mockSigner.waitForTransactionReceipt as Mock).mockResolvedValue({ status: "success" });
+        (mockSigner.waitForReceipt as Mock).mockResolvedValue({ status: "success" });
 
         const result = await fundVault(vaultDetails, mockSigner);
 
@@ -270,7 +270,7 @@ describe("Test fundVault", () => {
 
         (mockSigner.sendTx as Mock).mockResolvedValue("0xswap");
         (mockSigner.writeContract as Mock).mockResolvedValue("0xdeposit");
-        (mockSigner.waitForTransactionReceipt as Mock)
+        (mockSigner.waitForReceipt as Mock)
             .mockResolvedValueOnce({ status: "success" }) // swap
             .mockResolvedValueOnce({ status: "success" }); // deposit
 
@@ -290,7 +290,7 @@ describe("Test fundVault", () => {
             .mockResolvedValueOnce(parseUnits("10", 18)); // insufficient token balance
 
         (mockSigner.sendTx as Mock).mockResolvedValue("0xswap");
-        (mockSigner.waitForTransactionReceipt as Mock).mockResolvedValue({ status: "reverted" });
+        (mockSigner.waitForReceipt as Mock).mockResolvedValue({ status: "reverted" });
 
         await expect(fundVault(vaultDetails, mockSigner)).rejects.toThrow(
             "Failed to swap gas to target token to acquire the balance needed for depositing into the vault",
@@ -309,7 +309,7 @@ describe("Test fundVault", () => {
             .mockResolvedValueOnce("0xapprove") // approve tx
             .mockResolvedValueOnce("0xdeposit"); // deposit tx
 
-        (mockSigner.waitForTransactionReceipt as Mock)
+        (mockSigner.waitForReceipt as Mock)
             .mockResolvedValueOnce({ status: "success" }) // approve
             .mockResolvedValueOnce({ status: "success" }); // deposit
 
@@ -330,7 +330,7 @@ describe("Test fundVault", () => {
             .mockResolvedValueOnce(0n); // zero allowance
 
         (mockSigner.writeContract as Mock).mockResolvedValue("0xapprove");
-        (mockSigner.waitForTransactionReceipt as Mock).mockResolvedValue({ status: "reverted" });
+        (mockSigner.waitForReceipt as Mock).mockResolvedValue({ status: "reverted" });
 
         await expect(fundVault(vaultDetails, mockSigner)).rejects.toThrow(
             "Failed to approve token spend cap for depositing",
@@ -346,7 +346,7 @@ describe("Test fundVault", () => {
             .mockResolvedValueOnce(parseUnits("2000", 18)); // sufficient allowance
 
         (mockSigner.writeContract as Mock).mockResolvedValue("0xdeposit");
-        (mockSigner.waitForTransactionReceipt as Mock).mockResolvedValue({ status: "reverted" });
+        (mockSigner.waitForReceipt as Mock).mockResolvedValue({ status: "reverted" });
 
         await expect(fundVault(vaultDetails, mockSigner)).rejects.toMatchObject({
             txHash: "0xdeposit",

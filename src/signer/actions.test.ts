@@ -4,10 +4,12 @@ import { SharedState } from "../state";
 import { RainSolverSigner } from "./index";
 import { publicActionsL2 } from "viem/op-stack";
 import { privateKeyToAccount } from "viem/accounts";
+import { WaitForTransactionReceiptTimeoutError } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 import {
     sendTx,
     getTxGas,
+    tryGetReceipt,
     waitUntilFree,
     getSelfBalance,
     estimateGasCost,
@@ -37,6 +39,7 @@ describe("Test RainSolverSignerActions", () => {
         expect(typeof actions.getSelfBalance).toBe("function");
         expect(typeof actions.estimateGasCost).toBe("function");
         expect(typeof actions.asWriteSigner).toBe("function");
+        expect(typeof actions.waitForReceipt).toBe("function");
     });
 });
 
@@ -413,5 +416,76 @@ describe("Test getWriteSignerFrom", () => {
         expect(spySigner).toHaveBeenCalledWith(account, mockState, true);
 
         spySigner.mockRestore();
+    });
+});
+
+describe("Test tryGetReceipt", () => {
+    let mockSigner: RainSolverSigner;
+    let sleepSpy: any;
+    let promiseTimeoutSpy: any;
+
+    beforeEach(() => {
+        mockSigner = {
+            state: {
+                client: {
+                    getTransactionReceipt: vi.fn(),
+                },
+            },
+        } as unknown as RainSolverSigner;
+
+        sleepSpy = vi.spyOn(common, "sleep");
+        promiseTimeoutSpy = vi.spyOn(common, "promiseTimeout");
+        vi.clearAllMocks();
+    });
+
+    it("should correctly try to get transaction receipt", async () => {
+        (mockSigner.state.client.getTransactionReceipt as Mock)
+            .mockImplementationOnce(() => {
+                throw new Error("not found");
+            }) // 1st call error
+            .mockImplementationOnce(() => {
+                throw new Error("not found");
+            }) // 2nd call error
+            .mockImplementationOnce(() => {
+                throw new Error("not found");
+            }) // 3rd call error
+            .mockResolvedValueOnce({ status: "success" }); // 4th call success
+        const result = await tryGetReceipt(mockSigner, "0xhash", 1_000, 150);
+
+        expect(result).toEqual({ status: "success" });
+        expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalledTimes(4);
+        expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalledWith({
+            hash: "0xhash",
+        });
+        expect(sleepSpy).toHaveBeenCalledTimes(4);
+        expect(sleepSpy).toHaveBeenCalledWith(150);
+        expect(promiseTimeoutSpy).toHaveBeenCalledTimes(1);
+        expect(promiseTimeoutSpy).toHaveBeenCalledWith(
+            expect.any(Promise),
+            1000,
+            expect.any(Object),
+        );
+    });
+
+    it("should hit timeout", async () => {
+        (mockSigner.state.client.getTransactionReceipt as Mock).mockImplementationOnce(() => {
+            throw new Error("not found");
+        });
+        await tryGetReceipt(mockSigner, "0xhash", 200, 150).catch((err) => {
+            expect(err).toBeInstanceOf(WaitForTransactionReceiptTimeoutError);
+        });
+
+        expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalledTimes(1);
+        expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalledWith({
+            hash: "0xhash",
+        });
+        expect(sleepSpy).toHaveBeenCalledTimes(2);
+        expect(sleepSpy).toHaveBeenCalledWith(150);
+        expect(promiseTimeoutSpy).toHaveBeenCalledTimes(1);
+        expect(promiseTimeoutSpy).toHaveBeenCalledWith(
+            expect.any(Promise),
+            200,
+            new WaitForTransactionReceiptTimeoutError({ hash: "0xhash" }),
+        );
     });
 });

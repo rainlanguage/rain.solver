@@ -121,11 +121,7 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
                 data: rpParams.data as `0x${string}`,
                 value: route.amountInBI,
             });
-            const receipt = await signer.waitForTransactionReceipt({
-                hash,
-                confirmations: 4,
-                timeout: 100_000,
-            });
+            const receipt = await signer.waitForReceipt({ hash });
             if (receipt.status === "reverted") {
                 throw new Error(
                     "Failed to swap gas to target token to acquire the balance needed for depositing into the vault, reason: transaction reverted onchain",
@@ -147,11 +143,7 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
                 functionName: "approve",
                 args: [details.orderbook as `0x${string}`, maxUint256],
             });
-            const receipt = await signer.waitForTransactionReceipt({
-                hash,
-                confirmations: 4,
-                timeout: 100_000,
-            });
+            const receipt = await signer.waitForReceipt({ hash });
             if (receipt.status === "reverted") {
                 throw new Error(
                     "Failed to approve token spend cap for depositing, reason: transaction reverted onchain",
@@ -166,11 +158,7 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
             functionName: "deposit2",
             args: [vaultToken.address, BigInt(details.vaultId), topupAmount, []],
         });
-        const receipt = await signer.waitForTransactionReceipt({
-            hash,
-            confirmations: 4,
-            timeout: 100_000,
-        });
+        const receipt = await signer.waitForReceipt({ hash });
         if (receipt.status === "success") {
             return { txHash: hash };
         } else {

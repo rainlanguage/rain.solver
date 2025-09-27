@@ -59,7 +59,7 @@ describe("Test sweep functions", () => {
             writeContract: vi.fn(),
             getSelfBalance: vi.fn(),
             estimateGasCost: vi.fn(),
-            waitForTransactionReceipt: vi.fn(),
+            waitForReceipt: vi.fn(),
             sendTx: vi.fn(),
         } as any;
 
@@ -71,7 +71,7 @@ describe("Test sweep functions", () => {
             writeContract: vi.fn(),
             getSelfBalance: vi.fn(),
             estimateGasCost: vi.fn(),
-            waitForTransactionReceipt: vi.fn(),
+            waitForReceipt: vi.fn(),
             sendTx: vi.fn(),
         } as any;
     });
@@ -91,11 +91,11 @@ describe("Test sweep functions", () => {
             (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(50n);
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 100n });
             (mockToSigner.sendTx as Mock).mockResolvedValue("0xhash");
-            (mockToSigner.waitForTransactionReceipt as Mock).mockResolvedValue({
+            (mockToSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "success",
             });
             (mockFromSigner.writeContract as Mock).mockResolvedValue("0xtransferhash");
-            (mockFromSigner.waitForTransactionReceipt as Mock).mockResolvedValue({
+            (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "success",
             });
 
@@ -113,7 +113,7 @@ describe("Test sweep functions", () => {
             (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(50n);
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 100n });
             (mockToSigner.sendTx as Mock).mockResolvedValue("0xhash");
-            (mockToSigner.waitForTransactionReceipt as Mock).mockResolvedValue({
+            (mockToSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "reverted",
             });
 
@@ -132,7 +132,7 @@ describe("Test sweep functions", () => {
             (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(1000n);
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 50n });
             (mockFromSigner.writeContract as Mock).mockResolvedValue("0xhash");
-            (mockFromSigner.waitForTransactionReceipt as Mock).mockResolvedValue({
+            (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "success",
             });
 
@@ -152,7 +152,7 @@ describe("Test sweep functions", () => {
             (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(1000n);
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 50n });
             (mockFromSigner.writeContract as Mock).mockResolvedValue("0xhash");
-            (mockFromSigner.waitForTransactionReceipt as Mock).mockResolvedValue({
+            (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "reverted",
             });
 
@@ -191,7 +191,7 @@ describe("Test sweep functions", () => {
             (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(1000n);
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 100n });
             (mockFromSigner.sendTx as Mock).mockResolvedValue("0xhash");
-            (mockFromSigner.waitForTransactionReceipt as Mock).mockResolvedValue({
+            (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "success",
             });
 
@@ -212,7 +212,7 @@ describe("Test sweep functions", () => {
             (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(1000n);
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 100n });
             (mockFromSigner.sendTx as Mock).mockResolvedValue("0xhash");
-            (mockFromSigner.waitForTransactionReceipt as Mock).mockResolvedValue({
+            (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "reverted",
             });
 
@@ -286,7 +286,7 @@ describe("Test sweep functions", () => {
 
             // mock approval transaction
             (mockFromSigner.writeContract as Mock).mockResolvedValue("0xapprove");
-            (mockFromSigner.waitForTransactionReceipt as Mock).mockResolvedValue({
+            (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "success",
             });
 
@@ -383,7 +383,7 @@ describe("Test sweep functions", () => {
 
             // mock successful swap
             (mockFromSigner.sendTx as Mock).mockResolvedValue("0xswap");
-            (mockFromSigner.waitForTransactionReceipt as Mock).mockResolvedValue({
+            (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "success",
             });
 
@@ -423,7 +423,7 @@ describe("Test sweep functions", () => {
 
             // mock failed swap
             (mockFromSigner.sendTx as Mock).mockResolvedValue("0xfailed");
-            (mockFromSigner.waitForTransactionReceipt as Mock).mockResolvedValue({
+            (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "reverted",
             });
 
@@ -463,7 +463,7 @@ describe("Test sweep functions", () => {
 
             // mock successful swap
             (mockFromSigner.sendTx as Mock).mockResolvedValue("0xswap");
-            (mockFromSigner.waitForTransactionReceipt as Mock).mockResolvedValue({
+            (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "success",
             });
 

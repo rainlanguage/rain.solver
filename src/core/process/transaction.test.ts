@@ -53,7 +53,6 @@ describe("Test processTransaction", () => {
             },
             state: {
                 client: {
-                    waitForTransactionReceipt: vi.fn(),
                     getTransactionReceipt: vi.fn(),
                 },
                 chainConfig: {
@@ -66,6 +65,7 @@ describe("Test processTransaction", () => {
                 },
             },
             asWriteSigner: vi.fn().mockReturnValue(mockWriteSigner),
+            waitForReceipt: vi.fn(),
         } as any;
 
         // mock raw transaction
@@ -114,9 +114,7 @@ describe("Test processTransaction", () => {
                 gasUsed: 21000n,
                 effectiveGasPrice: 20000000000n,
             };
-            (mockSigner.state.client.waitForTransactionReceipt as Mock).mockResolvedValueOnce(
-                mockReceipt,
-            );
+            (mockSigner.waitForReceipt as Mock).mockResolvedValueOnce(mockReceipt);
             const mockHandleReceiptResult = Result.ok<ProcessOrderSuccess, ProcessOrderFailure>({
                 ...mockArgs.baseResult,
                 clearedAmount: "100",
@@ -200,9 +198,7 @@ describe("Test processTransaction", () => {
             const mockTxHash = "0xFailedReceiptHash";
             const receiptError = new Error("Receipt retrieval failed");
             mockWriteSigner.sendTx.mockResolvedValueOnce(mockTxHash);
-            (mockSigner.state.client.waitForTransactionReceipt as Mock).mockRejectedValueOnce(
-                receiptError,
-            );
+            (mockSigner.waitForReceipt as Mock).mockRejectedValueOnce(receiptError);
             (mockSigner.state.client.getTransactionReceipt as Mock).mockRejectedValue(receiptError);
             (containsNodeError as Mock).mockResolvedValue(true);
             const settlerFn = await processTransaction(mockArgs);
@@ -230,9 +226,7 @@ describe("Test processTransaction", () => {
             };
             const handleReceiptError = new Error("Handle receipt failed");
             mockWriteSigner.sendTx.mockResolvedValueOnce(mockTxHash);
-            (mockSigner.state.client.waitForTransactionReceipt as Mock).mockResolvedValueOnce(
-                mockReceipt,
-            );
+            (mockSigner.waitForReceipt as Mock).mockResolvedValueOnce(mockReceipt);
             (processReceipt as Mock).mockRejectedValueOnce(handleReceiptError);
             (containsNodeError as Mock).mockResolvedValue(false);
             const settlerFn = await processTransaction(mockArgs);

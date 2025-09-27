@@ -191,11 +191,7 @@ export class WalletManager {
                     to: wallet as `0x${string}`,
                     value: amount,
                 });
-                const receipt = await this.mainSigner.waitForTransactionReceipt({
-                    hash,
-                    confirmations: 4,
-                    timeout: 100_000,
-                });
+                const receipt = await this.mainSigner.waitForReceipt({ hash });
                 if (receipt.status === "success") {
                     report.setStatus({
                         code: SpanStatusCode.OK,

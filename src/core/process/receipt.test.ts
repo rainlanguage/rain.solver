@@ -7,7 +7,7 @@ import { OpStackTransactionReceipt } from "viem/chains";
 import { ProcessOrderHaltReason, ProcessOrderStatus } from "../types";
 import { getActualClearAmount, getIncome, getTotalIncome } from "./log";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import { getL1Fee, tryGetReceipt, processReceipt, ProcessReceiptArgs } from "./receipt";
+import { getL1Fee, processReceipt, ProcessReceiptArgs } from "./receipt";
 
 vi.mock("../../error", () => ({
     handleRevert: vi.fn(),
@@ -275,120 +275,6 @@ describe("Test getL1Fee", () => {
 
             expect(result).toBe(expectedFee);
             expect(result).toBe(31500000000000n);
-        });
-    });
-});
-
-describe("Test tryGetReceipt", () => {
-    let mockSigner: RainSolverSigner;
-    let mockClient: any;
-    const mockTxHash =
-        "0x1234567890123456789012345678901234567890123456789012345678901234" as `0x${string}`;
-
-    beforeEach(() => {
-        vi.clearAllMocks();
-
-        // mock client with receipt methods
-        mockClient = {
-            waitForTransactionReceipt: vi.fn(),
-            getTransactionReceipt: vi.fn(),
-        };
-
-        // mock signer
-        mockSigner = {
-            state: {
-                client: mockClient,
-            },
-        } as RainSolverSigner;
-    });
-
-    describe("successful waitForTransactionReceipt", () => {
-        it("should return receipt when waitForTransactionReceipt succeeds", async () => {
-            const mockReceipt: TransactionReceipt = {
-                transactionHash: mockTxHash,
-                blockNumber: 12345n,
-                gasUsed: 21000n,
-                effectiveGasPrice: 20000000000n,
-                status: "success",
-            } as TransactionReceipt;
-            mockClient.waitForTransactionReceipt.mockResolvedValueOnce(mockReceipt);
-            const result = await tryGetReceipt(mockSigner, mockTxHash, Date.now());
-
-            expect(result).toBe(mockReceipt);
-            expect(mockClient.waitForTransactionReceipt).toHaveBeenCalledWith({
-                hash: mockTxHash,
-                confirmations: 1,
-                timeout: 120_000,
-            });
-            expect(mockClient.waitForTransactionReceipt).toHaveBeenCalledTimes(1);
-            expect(mockClient.getTransactionReceipt).not.toHaveBeenCalled();
-        });
-
-        it("should call waitForTransactionReceipt with correct parameters", async () => {
-            const mockReceipt: TransactionReceipt = {
-                transactionHash: mockTxHash,
-                status: "success",
-            } as TransactionReceipt;
-            mockClient.waitForTransactionReceipt.mockResolvedValueOnce(mockReceipt);
-            await tryGetReceipt(mockSigner, mockTxHash, Date.now());
-
-            expect(mockClient.waitForTransactionReceipt).toHaveBeenCalledWith({
-                hash: mockTxHash,
-                confirmations: 1,
-                timeout: 120_000,
-            });
-        });
-    });
-
-    describe("waitForTransactionReceipt failure fallback", () => {
-        it("should fallback to getTransactionReceipt when waitForTransactionReceipt fails", async () => {
-            const mockReceipt: TransactionReceipt = {
-                transactionHash: mockTxHash,
-                blockNumber: 12345n,
-                status: "success",
-            } as TransactionReceipt;
-            mockClient.waitForTransactionReceipt.mockRejectedValueOnce(new Error("Timeout"));
-            mockClient.getTransactionReceipt.mockResolvedValueOnce(mockReceipt);
-            const result = await tryGetReceipt(mockSigner, mockTxHash, Date.now());
-
-            expect(result).toBe(mockReceipt);
-            expect(mockClient.waitForTransactionReceipt).toHaveBeenCalledTimes(1);
-            expect(sleep as Mock).toHaveBeenCalledTimes(1);
-            expect(mockClient.getTransactionReceipt).toHaveBeenCalledWith({
-                hash: mockTxHash,
-            });
-            expect(mockClient.getTransactionReceipt).toHaveBeenCalledTimes(1);
-        });
-
-        it("should call getTransactionReceipt with correct parameters", async () => {
-            const mockReceipt: TransactionReceipt = {
-                transactionHash: mockTxHash,
-                status: "success",
-            } as TransactionReceipt;
-            mockClient.waitForTransactionReceipt.mockRejectedValueOnce(new Error("Network error"));
-            mockClient.getTransactionReceipt.mockResolvedValueOnce(mockReceipt);
-            await tryGetReceipt(mockSigner, mockTxHash, Date.now());
-
-            expect(mockClient.getTransactionReceipt).toHaveBeenCalledWith({
-                hash: mockTxHash,
-            });
-        });
-    });
-
-    describe("error propagation", () => {
-        it("should propagate error when getTransactionReceipt also fails", async () => {
-            const waitError = new Error("Wait timeout");
-            const getError = new Error("Receipt not found");
-
-            mockClient.waitForTransactionReceipt.mockRejectedValueOnce(waitError);
-            mockClient.getTransactionReceipt.mockRejectedValueOnce(getError);
-
-            await expect(tryGetReceipt(mockSigner, mockTxHash, Date.now())).rejects.toThrow(
-                "Receipt not found",
-            );
-
-            expect(mockClient.waitForTransactionReceipt).toHaveBeenCalledTimes(1);
-            expect(mockClient.getTransactionReceipt).toHaveBeenCalledTimes(1);
         });
     });
 });
