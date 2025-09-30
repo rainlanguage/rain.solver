@@ -33,11 +33,6 @@ jobs:
         run:  nix develop -c npm install
 
       - uses: rainlanguage/github-chore/.github/actions/npm-blacklist@main
-        with:
-          working-directory: './src/../'
-          additional-blacklist-file: './blklist.txt'
-          additional-blacklist-pkgs: |
-            vitest@3.1.4
 
       - name: Lint
         run:  nix develop -c npm run lint
