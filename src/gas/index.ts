@@ -4,12 +4,19 @@ import { ChainConfig } from "../state/chain";
 
 /** Configuration for the gas manager */
 export type GasManagerConfig = {
-    chainConfig: ChainConfig;
+    /** Public client for interacting with the blockchain */
     client: PublicClient;
+    /** Chain configuration for the operating chain */
+    chainConfig: ChainConfig;
+    /** Base gas price multiplier, the multiplier can't go below this value */
     baseGasPriceMultiplier: number;
+    /** Maximum gas price multiplier, the multiplier can't go above this value */
     maxGasPriceMultiplier?: number;
+    /** The points to increase the gas price multiplier at each step */
     gasIncreasePointsPerStep?: number;
+    /** The time to stay in increased the gas price multiplier before reseting to base value */
     gasIncreaseStepTime?: number;
+    /** The time threshold (in ms) for transaction time before considering it as a trigger for gas price multiplierincrease */
     txTimeThreshold?: number;
 };
 
