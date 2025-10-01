@@ -72,6 +72,16 @@ describe("Test GasManager", () => {
             expect(gasManager.deadline).toBeDefined();
             expect(gasManager.gasPriceMultiplier).toBe(110); // increased by 3 points
         });
+
+        it("should not increase the multiplier over the max value", () => {
+            gasManager.gasPriceMultiplier = 149; // set close to max
+            gasManager.record({
+                didMine: true,
+                length: 40_000,
+            });
+            expect(gasManager.deadline).toBeDefined();
+            expect(gasManager.gasPriceMultiplier).toBe(150); // increased only to max value
+        });
     });
 
     describe("Test watchGasPrice method", () => {
