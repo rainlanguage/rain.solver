@@ -53,7 +53,7 @@ export async function errorSnapshot(
             const { raw, decoded } = await parseRevertError(err);
             if (decoded) {
                 message.push("Error Name: " + decoded.name);
-                if (decoded.args.length) {
+                if (decoded.args?.length) {
                     message.push(
                         "Error Args: " + JSON.stringify(decoded.args, withBigintSerializer),
                     );
