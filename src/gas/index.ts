@@ -121,7 +121,7 @@ export class GasManager {
      *   reset the gas price multiplier to its base value.
      * @param txMineRecord - The transaction mining record
      */
-    recordTxMineRecord(txMineRecord: TxMineRecord) {
+    onTransactionMine(txMineRecord: TxMineRecord) {
         if (txMineRecord.length >= this.txTimeThreshold) {
             this.deadline = Date.now() + this.gasIncreaseStepTime;
             this.gasPriceMultiplier = Math.min(

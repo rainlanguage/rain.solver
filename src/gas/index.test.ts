@@ -45,7 +45,7 @@ describe("Test GasManager", () => {
 
     describe("Test record method", () => {
         it("should record new tx mining record when its under threshold without reset", () => {
-            gasManager.recordTxMineRecord({
+            gasManager.onTransactionMine({
                 didMine: true,
                 length: 20_000,
             });
@@ -56,7 +56,7 @@ describe("Test GasManager", () => {
         it("should record new tx mining record when its under threshold and reset", () => {
             gasManager.deadline = Date.now() - 1000; // set deadline in the past to trigger reset
             gasManager.gasPriceMultiplier = 120; // set a higher multiplier to see if it resets
-            gasManager.recordTxMineRecord({
+            gasManager.onTransactionMine({
                 didMine: true,
                 length: 20_000,
             });
@@ -65,7 +65,7 @@ describe("Test GasManager", () => {
         });
 
         it("should record new tx mining record when its over threshold", () => {
-            gasManager.recordTxMineRecord({
+            gasManager.onTransactionMine({
                 didMine: true,
                 length: 40_000,
             });
@@ -75,7 +75,7 @@ describe("Test GasManager", () => {
 
         it("should not increase the multiplier over the max value", () => {
             gasManager.gasPriceMultiplier = 149; // set close to max
-            gasManager.recordTxMineRecord({
+            gasManager.onTransactionMine({
                 didMine: true,
                 length: 40_000,
             });
