@@ -1,7 +1,6 @@
 import { ChainId } from "sushi/chain";
 import { AppOptions } from "../config";
 import { Token } from "sushi/currency";
-// import { getGasPrice } from "./gasPrice";
 import { BalancerRouter } from "../router";
 import { LiquidityProviders } from "sushi";
 import { SolverContracts } from "./contracts";
