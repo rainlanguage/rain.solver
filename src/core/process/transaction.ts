@@ -1,9 +1,9 @@
 import { BaseError } from "viem";
 import { Result } from "../../common";
 import { Token } from "sushi/currency";
+import { processReceipt } from "./receipt";
 import { RainSolverSigner } from "../../signer";
 import { containsNodeError } from "../../error";
-import { processReceipt, tryGetReceipt } from "./receipt";
 import { withBigintSerializer, RawTransaction } from "../../common";
 import {
     ProcessOrderSuccess,
@@ -77,7 +77,7 @@ export async function processTransaction({
     }
 
     // start getting tx receipt in background and return the settler fn
-    const receiptPromise = tryGetReceipt(signer, txhash!, txSendTime);
+    const receiptPromise = signer.waitForReceipt({ hash: txhash! });
 
     return async () => {
         try {

@@ -155,30 +155,6 @@ export async function processReceipt({
 }
 
 /**
- * Tries to get the transaction receipt for a given transaction hash
- * @param signer - The RainSolverSigner instance
- * @param hash - The transaction hash
- * @param txSendTime - The time the transaction was sent
- */
-export async function tryGetReceipt(
-    signer: RainSolverSigner,
-    hash: `0x${string}`,
-    txSendTime: number,
-): Promise<TransactionReceipt> {
-    try {
-        return await signer.state.client.waitForTransactionReceipt({
-            hash,
-            confirmations: 1,
-            timeout: 120_000,
-        });
-    } catch {
-        // in case waiting for tx receipt was unsuccessful, try getting the receipt directly
-        await sleep(Math.max(90_000 + txSendTime - Date.now(), 0));
-        return await signer.state.client.getTransactionReceipt({ hash });
-    }
-}
-
-/**
  * Returns the L1 gas cost of a transaction
  * @param receipt - The transaction receipt
  * @returns The L1 fee as a bigint, or 0n if not applicable

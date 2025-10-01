@@ -20,7 +20,7 @@ vi.mock("../signer", () => ({
             getSelfBalance: vi.fn(),
             getBalance: vi.fn().mockResolvedValue(0n),
             sendTx: vi.fn(),
-            waitForTransactionReceipt: vi.fn(),
+            waitForReceipt: vi.fn(),
         })),
     },
 }));
@@ -174,7 +174,7 @@ describe("Test WalletManager", () => {
                 parseUnits("1", 18),
             );
             (walletManager.mainSigner.sendTx as Mock).mockResolvedValue("0x123");
-            (walletManager.mainSigner.waitForTransactionReceipt as Mock).mockResolvedValue({
+            (walletManager.mainSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "success",
             });
 
@@ -194,7 +194,7 @@ describe("Test WalletManager", () => {
                 parseUnits("1", 18),
             );
             (walletManager.mainSigner.sendTx as Mock).mockResolvedValue("0x123");
-            (walletManager.mainSigner.waitForTransactionReceipt as Mock).mockResolvedValue({
+            (walletManager.mainSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "reverted",
             });
 
@@ -228,8 +228,8 @@ describe("Test WalletManager", () => {
             const sendTxSpy = vi
                 .spyOn(walletManager.mainSigner, "sendTx")
                 .mockResolvedValue("0x123");
-            const waitForTransactionReceiptSpy = vi
-                .spyOn(walletManager.mainSigner, "waitForTransactionReceipt")
+            const waitForReceiptSpy = vi
+                .spyOn(walletManager.mainSigner, "waitForReceipt")
                 .mockResolvedValue({
                     status: "success",
                 } as any);
@@ -243,11 +243,11 @@ describe("Test WalletManager", () => {
 
             expect(getSelfBalanceSpy).toHaveBeenCalledTimes(1);
             expect(sendTxSpy).toHaveBeenCalledTimes(1);
-            expect(waitForTransactionReceiptSpy).toHaveBeenCalledTimes(1);
+            expect(waitForReceiptSpy).toHaveBeenCalledTimes(1);
 
             getSelfBalanceSpy.mockRestore();
             sendTxSpy.mockRestore();
-            waitForTransactionReceiptSpy.mockRestore();
+            waitForReceiptSpy.mockRestore();
         });
     });
 
