@@ -1,20 +1,24 @@
+import { GasManager } from "../gas";
 import { SushiRouter } from "../router";
 import { Token } from "sushi/currency";
-import { getGasPrice } from "./gasPrice";
 import { getChainConfig } from "./chain";
 import { createPublicClient } from "viem";
 import { LiquidityProviders } from "sushi";
 import { SolverContracts } from "./contracts";
 import { RainSolverRouter } from "../router/router";
-import { Result, sleep, TokenDetails } from "../common";
+import { Result, TokenDetails } from "../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { SharedState, SharedStateConfig, SharedStateErrorType } from ".";
 
-vi.mock("./gasPrice", () => ({
-    getGasPrice: vi.fn().mockResolvedValue({
-        gasPrice: { value: 1000n },
-        l1GasPrice: { value: 0n },
-    }),
+vi.mock("../gas", () => ({
+    GasManager: {
+        init: vi.fn().mockReturnValue({
+            gasPrice: 0n,
+            l1GasPrice: 0n,
+            gasPriceMultiplier: 123,
+            record: vi.fn(),
+        }),
+    },
 }));
 
 vi.mock("viem", async (importOriginal) => ({
@@ -103,7 +107,6 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
         assert(configResult.isOk());
         const config = configResult.value;
         expect(config.walletConfig).toEqual({ key: "0xkey", minBalance: 100_000_000n, type: 1 });
-        expect(config.gasPriceMultiplier).toBe(123);
         expect(config.liquidityProviders).toEqual([LiquidityProviders.UniswapV2]);
         expect(config.client).toBeDefined();
         expect(config.chainConfig.id).toBe(1);
@@ -112,13 +115,24 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             store: "0xstore",
             deployer: "0xdispair",
         });
-        expect(config.initGasPrice).toBe(1000n);
-        expect(config.initL1GasPrice).toBe(0n);
         expect(config.transactionGas).toBe("120%");
         expect(config.rainSolverTransportConfig).toMatchObject({ timeout: 1000 });
         expect(config.router).toBeDefined();
         expect(config.router.balancer).toBeDefined();
         expect(config.router.sushi).toBeDefined();
+        expect(GasManager.init as Mock).toHaveBeenCalledWith({
+            chainConfig: {
+                id: 1,
+                isSpecialL2: false,
+                nativeWrappedToken: "0xwrapped",
+                routeProcessors: {
+                    "4": "0xrouteProcessor",
+                },
+                stableTokens: [],
+            },
+            client: mockClient,
+            baseGasPriceMultiplier: 123,
+        });
         expect(spy).toHaveBeenCalledWith({
             chainId: 1,
             client: mockClient,
@@ -243,6 +257,14 @@ describe("Test SharedState", () => {
                 getMarketPrice: vi.fn(),
             },
             appOptions: { route: "multi" },
+            gasManager: {
+                gasPrice: 1000n,
+                l1GasPrice: 0n,
+                gasPriceMultiplier: 123,
+                isWatchingGasPrice: true,
+                watchGasPrice: vi.fn(),
+                unwatchGasPrice: vi.fn(),
+            },
         };
         sharedState = new SharedState(config);
     });
@@ -258,29 +280,18 @@ describe("Test SharedState", () => {
             expect(sharedState.l1GasPrice).toBe(0n);
             expect(sharedState.rpc).toBe(config.rpcState);
             expect(sharedState.writeRpc).toBe(config.writeRpcState);
-        });
-
-        it("should start watching gas price", () => {
             expect(sharedState.isWatchingGasPrice).toBe(true);
-            sharedState.unwatchGasPrice();
-            expect(sharedState.isWatchingGasPrice).toBe(false);
         });
 
-        it("should update gas prices on interval if getGasPrices resolve", async () => {
-            // patch getGasPrice to return new values
-            (getGasPrice as any).mockResolvedValue({
-                gasPrice: { value: 5555n },
-                l1GasPrice: { value: 8888n },
-            });
-            // watchGasPrice with a short interval for test
-            sharedState.unwatchGasPrice();
+        it("should watch gas price", async () => {
             sharedState.watchGasPrice(10);
-            await sleep(100); // wait for new gas prices to be fetched
+            expect(sharedState.gasManager.watchGasPrice).toHaveBeenCalledTimes(1);
+            expect(sharedState.gasManager.watchGasPrice).toHaveBeenCalledWith(10);
+        });
 
-            expect(sharedState.gasPrice).toBe(5555n);
-            expect(sharedState.l1GasPrice).toBe(8888n);
-
+        it("should unwatch gas price", () => {
             sharedState.unwatchGasPrice();
+            expect(sharedState.gasManager.unwatchGasPrice).toHaveBeenCalledTimes(1);
         });
 
         it("should watch tokens", () => {

@@ -286,20 +286,30 @@ export async function tryGetReceipt(
     timeout = 60_000,
     pollingInterval = 3_000,
 ): Promise<TransactionReceipt> {
-    // ping "getTransactionReceipt" every "pollingInterval" until "success" or "timeout"
-    return await promiseTimeout(
-        (async () => {
-            for (;;) {
-                try {
-                    await sleep(pollingInterval);
-                    return await signer.state.client.getTransactionReceipt({ hash });
-                } catch {
-                    // ignore errors and continue polling until timeout or success
-                    continue;
+    const start = Date.now();
+    try {
+        // ping "getTransactionReceipt" every "pollingInterval" until "success" or "timeout"
+        const result = await promiseTimeout(
+            (async () => {
+                for (;;) {
+                    try {
+                        await sleep(pollingInterval);
+                        return await signer.state.client.getTransactionReceipt({ hash });
+                    } catch {
+                        // ignore errors and continue polling until timeout or success
+                        continue;
+                    }
                 }
-            }
-        })(),
-        timeout,
-        new WaitForTransactionReceiptTimeoutError({ hash }),
-    );
+            })(),
+            timeout,
+            new WaitForTransactionReceiptTimeoutError({ hash }),
+        );
+        // capture tx mine record
+        signer.state.gasManager.record({ didMine: true, length: Date.now() - start });
+        return result;
+    } catch (error) {
+        // capture tx mine record
+        signer.state.gasManager.record({ didMine: false, length: Date.now() - start });
+        throw error;
+    }
 }
