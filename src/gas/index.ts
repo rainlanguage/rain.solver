@@ -112,7 +112,7 @@ export class GasManager {
     }
 
     /**
-     * Updates the gas price multiplier by transaction mining event accordingly.
+     * Updates the gas price multiplier by the given transaction mining event accordingly.
      * That is done through the following logic:
      * - If the transaction took longer than the threshold to mine, increase the gas price
      *   multiplier by a set number of points, up to a maximum value, and set a deadline for
