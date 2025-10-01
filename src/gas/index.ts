@@ -112,7 +112,13 @@ export class GasManager {
     }
 
     /**
-     * Records a transaction mining event and updates the gas price multiplier accordingly
+     * Records a transaction mining event and updates the gas price multiplier accordingly.
+     * That is done through the following logic:
+     * - If the transaction took longer than the threshold to mine, increase the gas price
+     *   multiplier by a set number of points, up to a maximum value, and set a deadline for
+     *   when the multiplier can be reset.
+     * - If the transaction mined successfully and the current time is past the deadline,
+     *   reset the gas price multiplier to its base value.
      * @param txMineRecord - The transaction mining record
      */
     recordTxMineRecord(txMineRecord: TxMineRecord) {
