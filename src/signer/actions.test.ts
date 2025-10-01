@@ -431,7 +431,7 @@ describe("Test tryGetReceipt", () => {
                     getTransactionReceipt: vi.fn(),
                 },
                 gasManager: {
-                    record: vi.fn(),
+                    recordTxMineRecord: vi.fn(),
                 },
             },
         } as unknown as RainSolverSigner;
@@ -468,8 +468,8 @@ describe("Test tryGetReceipt", () => {
             1000,
             expect.any(Object),
         );
-        expect(mockSigner.state.gasManager.record).toHaveBeenCalledTimes(1);
-        expect(mockSigner.state.gasManager.record).toHaveBeenCalledWith({
+        expect(mockSigner.state.gasManager.recordTxMineRecord).toHaveBeenCalledTimes(1);
+        expect(mockSigner.state.gasManager.recordTxMineRecord).toHaveBeenCalledWith({
             didMine: true,
             length: expect.any(Number),
         });
@@ -495,8 +495,8 @@ describe("Test tryGetReceipt", () => {
             200,
             new WaitForTransactionReceiptTimeoutError({ hash: "0xhash" }),
         );
-        expect(mockSigner.state.gasManager.record).toHaveBeenCalledTimes(1);
-        expect(mockSigner.state.gasManager.record).toHaveBeenCalledWith({
+        expect(mockSigner.state.gasManager.recordTxMineRecord).toHaveBeenCalledTimes(1);
+        expect(mockSigner.state.gasManager.recordTxMineRecord).toHaveBeenCalledWith({
             didMine: false,
             length: expect.any(Number),
         });

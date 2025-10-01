@@ -305,11 +305,11 @@ export async function tryGetReceipt(
             new WaitForTransactionReceiptTimeoutError({ hash }),
         );
         // capture tx mine record
-        signer.state.gasManager.record({ didMine: true, length: Date.now() - start });
+        signer.state.gasManager.recordTxMineRecord({ didMine: true, length: Date.now() - start });
         return result;
     } catch (error) {
         // capture tx mine record
-        signer.state.gasManager.record({ didMine: false, length: Date.now() - start });
+        signer.state.gasManager.recordTxMineRecord({ didMine: false, length: Date.now() - start });
         throw error;
     }
 }

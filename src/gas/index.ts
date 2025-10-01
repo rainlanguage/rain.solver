@@ -113,10 +113,10 @@ export class GasManager {
 
     /**
      * Records a transaction mining event and updates the gas price multiplier accordingly
-     * @param mineState - The transaction mining record
+     * @param txMineRecord - The transaction mining record
      */
-    record(mineState: TxMineRecord) {
-        if (mineState.length >= this.txTimeThreshold) {
+    recordTxMineRecord(txMineRecord: TxMineRecord) {
+        if (txMineRecord.length >= this.txTimeThreshold) {
             this.deadline = Date.now() + this.gasIncreaseStepTime;
             this.gasPriceMultiplier = Math.min(
                 this.maxGasPriceMultiplier,
