@@ -5,7 +5,7 @@ import { TradeType } from "../../core/types";
 import { MultiRoute, RouteLeg } from "sushi/tines";
 import { BlackListSet, RPoolFilter } from "./blacklist";
 import { TakeOrdersConfigType } from "../../order/types";
-import { SushiRouterError, SushiRouterErrorType } from "../error";
+import { SushiRouterError, SushiRouterErrorType } from "./error";
 import { calculatePrice18, scaleFrom18, scaleTo18 } from "../../math";
 import { ChainId, LiquidityProviders, PoolCode, RainDataFetcher, Router } from "sushi";
 import { Chain, Account, Transport, formatUnits, PublicClient, encodeAbiParameters } from "viem";
