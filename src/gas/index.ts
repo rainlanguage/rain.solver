@@ -84,16 +84,16 @@ export class GasManager {
         this.client = config.client;
         this.chainConfig = config.chainConfig;
         this.baseGasPriceMultiplier = config.baseGasPriceMultiplier;
-        if (config.txTimeThreshold) {
+        if (config.txTimeThreshold !== undefined) {
             this.txTimeThreshold = config.txTimeThreshold;
         }
-        if (config.gasIncreasePointsPerStep) {
+        if (config.gasIncreasePointsPerStep !== undefined) {
             this.gasIncreasePointsPerStep = config.gasIncreasePointsPerStep;
         }
-        if (config.gasIncreaseStepTime) {
+        if (config.gasIncreaseStepTime !== undefined) {
             this.gasIncreaseStepTime = config.gasIncreaseStepTime;
         }
-        if (config.maxGasPriceMultiplier) {
+        if (config.maxGasPriceMultiplier !== undefined) {
             this.maxGasPriceMultiplier = config.maxGasPriceMultiplier;
         } else {
             this.maxGasPriceMultiplier = this.baseGasPriceMultiplier + 50;
