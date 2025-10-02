@@ -17,6 +17,7 @@ config();
 
 // re-export commands
 export * from "./commands";
+export { main } from "./main";
 
 /** Represents the duration of a day in milliseconds */
 export const DAY = 24 * 60 * 60 * 1000;

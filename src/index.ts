@@ -1,7 +1,6 @@
 export * from "./common";
 export * from "./router";
 export * as sushi from "sushi";
-export { main } from "./cli/main";
 export { RainSolver } from "./core";
 export { OrderManager } from "./order";
 export { RainSolverBaseError } from "./error";
@@ -21,6 +20,7 @@ export {
     RainSolverTransport,
 } from "./rpc";
 export {
+    main,
     sweepFunds,
     SweepOptions,
     RainSolverCli,
