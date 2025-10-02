@@ -162,7 +162,7 @@ export async function sweepFunds(opts: SweepOptions) {
         walletConfig: WalletConfig.tryFromAppOptions(options),
         subgraphConfig: SubgraphConfig.tryFromAppOptions(options),
         orderManagerConfig: OrderManagerConfig.tryFromAppOptions(options),
-        gasManager: GasManager.init({
+        gasManager: await GasManager.init({
             client,
             chainConfig,
             baseGasPriceMultiplier: options.gasPriceMultiplier,
