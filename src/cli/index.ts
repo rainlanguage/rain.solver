@@ -1,9 +1,9 @@
-import { cmd } from "./cmd";
 import { config } from "dotenv";
 import { formatUnits } from "viem";
 import { AppOptions } from "../config";
 import { RainSolver } from "../core";
 import { OrderManager } from "../order";
+import { OptionValues } from "commander";
 import { ChainId, ChainKey } from "sushi";
 import { WalletManager, WalletType } from "../wallet";
 import { sleep, withBigintSerializer } from "../common";
@@ -14,6 +14,9 @@ import { PreAssembledSpan, RainSolverLogger } from "../logger";
 import { Context, context, Span, SpanStatusCode, trace } from "@opentelemetry/api";
 
 config();
+
+// re-export commands
+export * from "./commands";
 
 /** Represents the duration of a day in milliseconds */
 export const DAY = 24 * 60 * 60 * 1000;
@@ -88,7 +91,7 @@ export class RainSolverCli {
      * to use.
      * @param argv - The array of command-line arguments passed to the CLI.
      */
-    static async init(argv: any[]) {
+    static async init(cmdOptions: OptionValues) {
         // init logger
         const logger = new RainSolverLogger();
 
@@ -98,7 +101,6 @@ export class RainSolverCli {
             const report = new PreAssembledSpan("startup");
             try {
                 // parse cli args and config yaml
-                const cmdOptions = await cmd(argv);
                 const appOptionsResult = AppOptions.tryFromYamlPath(cmdOptions.config);
                 if (appOptionsResult.isErr()) {
                     throw appOptionsResult.error;
