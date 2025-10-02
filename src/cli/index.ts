@@ -118,7 +118,7 @@ export class RainSolverCli {
                 report.end();
                 logger.exportPreAssembledSpan(report);
 
-                return { cmdOptions, appOptions, state };
+                return { appOptions, state };
             } catch (err: any) {
                 const snapshot = await errorSnapshot("", err);
                 report.setAttr("severity", ErrorSeverity.HIGH);
