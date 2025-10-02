@@ -374,11 +374,15 @@ export class OrderManager {
         function* iterIO() {
             for (let i = 0; i < orderStruct.validOutputs.length; i++) {
                 for (let j = 0; j < orderStruct.validInputs.length; j++) {
+                    const output = orderStruct.validOutputs[i];
+                    const input = orderStruct.validInputs[j];
+                    // skip same token pairs
+                    if (input.token.toLowerCase() === output.token.toLowerCase()) continue;
                     yield {
+                        input,
+                        output,
                         outputIOIndex: i,
                         inputIOIndex: j,
-                        output: orderStruct.validOutputs[i],
-                        input: orderStruct.validInputs[j],
                     };
                 }
             }
@@ -413,11 +417,7 @@ export class OrderManager {
                     ),
                 );
             }
-            const pair = pairResult.value;
-
-            if (input.token.toLowerCase() !== output.token.toLowerCase()) {
-                pairs.push(pair);
-            }
+            pairs.push(pairResult.value);
         }
 
         return Result.ok(pairs);

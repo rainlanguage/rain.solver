@@ -84,25 +84,17 @@ export async function downscaleProtection(
         const balanceRatioPercent =
             otherOwnersBalances === 0n ? 100n : (avgBalance * 100n) / otherOwnersBalances;
 
-        // divide into 4 segments
-        let ownerEvalDivideFactor = 1;
-        if (balanceRatioPercent >= 75n) {
-            ownerEvalDivideFactor = 1;
-        } else if (balanceRatioPercent >= 50n && balanceRatioPercent < 75n) {
-            ownerEvalDivideFactor = 2;
-        } else if (balanceRatioPercent >= 25n && balanceRatioPercent < 50n) {
-            ownerEvalDivideFactor = 3;
-        } else if (balanceRatioPercent > 0n && balanceRatioPercent < 25n) {
-            ownerEvalDivideFactor = 4;
-        }
+        // divide into 4 segments as owner limit divide factor
+        // 0-25% = 4, 25-50% = 3, 50-75% = 2, 75-100% = 1, >100% = 1
+        const ownerLimitDivideFactor = Math.abs(Math.min(Number(balanceRatioPercent / 25n), 3) - 4);
 
         // gather owner divide factor for all of the owner's orders' tokens
         // to calculate an avg from them all later on
         const cuts = ownersCuts.get(owner.toLowerCase());
         if (cuts) {
-            cuts.push(ownerEvalDivideFactor);
+            cuts.push(ownerLimitDivideFactor);
         } else {
-            ownersCuts.set(owner.toLowerCase(), [ownerEvalDivideFactor]);
+            ownersCuts.set(owner.toLowerCase(), [ownerLimitDivideFactor]);
         }
     }
 }
