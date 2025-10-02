@@ -1,6 +1,7 @@
 import { calculatePrice18 } from "../../math";
 import { ABI, Result, TokenDetails } from "../../common";
 import { TakeOrdersConfigType } from "../../order/types";
+import { BalancerRouterError, BalancerRouterErrorType } from "./error";
 import { Chain, Account, Transport, formatUnits, PublicClient, encodeAbiParameters } from "viem";
 import {
     Path,
@@ -18,7 +19,6 @@ import {
     RainSolverRouterBase,
     RainSolverRouterQuoteParams,
 } from "../types";
-import { BalancerRouterError, BalancerRouterErrorType } from "../error";
 
 // Balancer API URL for fetching routes
 export const BALANCER_API_URL = "https://api-v3.balancer.fi/" as const;
