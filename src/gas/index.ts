@@ -14,9 +14,9 @@ export type GasManagerConfig = {
     maxGasPriceMultiplier?: number;
     /** The points to increase the gas price multiplier at each step */
     gasIncreasePointsPerStep?: number;
-    /** The time to stay in increased the gas price multiplier before reseting to base value */
+    /** The time to stay in increased gas price multiplier before resetting to base value */
     gasIncreaseStepTime?: number;
-    /** The time threshold (in ms) for transaction time before considering it as a trigger for gas price multiplierincrease */
+    /** The time threshold (in ms) for transaction mine time before considering it as a trigger for gas price multiplier increase */
     txTimeThreshold?: number;
 };
 
@@ -51,7 +51,6 @@ export type TxMineRecord = {
  *   txTimeThreshold: 30_000,
  * };
  * const gasManager = await GasManager.init(config);
- * gasManager.watchGasPrice();
  * ```
  */
 export class GasManager {
@@ -79,22 +78,22 @@ export class GasManager {
     /** Deadline for gas price increase to reset */
     deadline: number | undefined;
 
-    private gasPriceWatcher: NodeJS.Timeout | undefined;
+    private gasPriceWatcher: ReturnType<typeof setInterval> | undefined;
 
     constructor(config: GasManagerConfig) {
         this.client = config.client;
         this.chainConfig = config.chainConfig;
         this.baseGasPriceMultiplier = config.baseGasPriceMultiplier;
-        if (config.txTimeThreshold) {
+        if (config.txTimeThreshold !== undefined) {
             this.txTimeThreshold = config.txTimeThreshold;
         }
-        if (config.gasIncreasePointsPerStep) {
+        if (config.gasIncreasePointsPerStep !== undefined) {
             this.gasIncreasePointsPerStep = config.gasIncreasePointsPerStep;
         }
-        if (config.gasIncreaseStepTime) {
+        if (config.gasIncreaseStepTime !== undefined) {
             this.gasIncreaseStepTime = config.gasIncreaseStepTime;
         }
-        if (config.maxGasPriceMultiplier) {
+        if (config.maxGasPriceMultiplier !== undefined) {
             this.maxGasPriceMultiplier = config.maxGasPriceMultiplier;
         } else {
             this.maxGasPriceMultiplier = this.baseGasPriceMultiplier + 50;
@@ -106,16 +105,31 @@ export class GasManager {
      * Initializes a new instance of the GasManager and start watching gas price
      * @param config - Configuration for the gas manager
      */
-    static init(config: GasManagerConfig) {
+    static async init(config: GasManagerConfig) {
         const manager = new GasManager(config);
+
+        // get init gas price
+        const { gasPrice, l1GasPrice } = await getGasPrice(
+            manager.client,
+            manager.chainConfig,
+            manager.gasPriceMultiplier,
+        );
+        if (gasPrice.isOk()) {
+            manager.gasPrice = gasPrice.value;
+        }
+        if (l1GasPrice.isOk()) {
+            manager.l1GasPrice = l1GasPrice.value;
+        }
+
+        // start watcher
         manager.watchGasPrice();
+
         return manager;
     }
 
     /** Whether the gas price watcher is active */
     get isWatchingGasPrice(): boolean {
-        if (this.gasPriceWatcher) return true;
-        else return false;
+        return this.gasPriceWatcher !== undefined;
     }
 
     /**

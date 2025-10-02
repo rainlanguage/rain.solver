@@ -171,7 +171,7 @@ export namespace SharedStateConfig {
             orderManagerConfig: OrderManagerConfig.tryFromAppOptions(options),
             liquidityProviders,
             contracts,
-            gasManager: GasManager.init({
+            gasManager: await GasManager.init({
                 client,
                 chainConfig,
                 baseGasPriceMultiplier: options.gasPriceMultiplier,
