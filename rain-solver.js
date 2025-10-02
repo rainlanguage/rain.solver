@@ -8,7 +8,7 @@ main(process.argv)
         process.exit(0);
     })
     .catch((v) => {
-        console.log(v, "\n");
+        console.error(v, "\n");
         console.log("\x1b[31m%s\x1b[0m", "An error occured during execution!\n");
         process.exit(1);
     });

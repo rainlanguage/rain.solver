@@ -319,7 +319,7 @@ export async function main(options: DowntimeOptions) {
             ].join("\n");
 
             if (options.output === "console" || options.output === "both") {
-                console.log(msg);
+                console.log(msg, "\n");
             }
             if (options.output === "telegram" || options.output === "both") {
                 await sendToTelegram(msg, options.telegramChatId!, options.telegramApiToken!);
