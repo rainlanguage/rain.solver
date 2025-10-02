@@ -89,7 +89,7 @@ export class RainSolverCli {
      * and error reporting at each step. Finally, it creates and returns a fully
      * configured RainSolverCli instance with all dependencies injected and ready
      * to use.
-     * @param argv - The array of command-line arguments passed to the CLI.
+     * @param cmdOptions - Parsed command-line arguments
      */
     static async init(cmdOptions: OptionValues) {
         // init logger
