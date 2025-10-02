@@ -82,8 +82,7 @@ export const SweepCmd = new Command("sweep")
     )
     .action(async (options: SweepOptions) => {
         await sweepFunds(options);
-        console.log("\n");
-        console.log("\x1b[32m%s\x1b[0m", "Sweep process finished successfully!");
+        console.log("\x1b[32m%s\x1b[0m", "Sweep process finished successfully!\n");
     });
 
 /**

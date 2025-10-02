@@ -77,8 +77,7 @@ export const DowntimeCmd = new Command("downtime")
     )
     .action(async (options) => {
         await main(options);
-        console.log("\n");
-        console.log("\x1b[32m%s\x1b[0m", "Downtime report process completed successfully!");
+        console.log("\x1b[32m%s\x1b[0m", "Downtime report process completed successfully!\n");
     });
 
 export type DowntimeOptionsExtended = DowntimeOptions & {
@@ -306,6 +305,7 @@ export async function main(options: DowntimeOptions) {
             );
 
             if (options.output === "console" || options.output === "both") {
+                console.log("-----------------------------------------------------");
                 console.log(report.replaceAll("<b>", "").replaceAll("</b>", ""));
                 console.log("-----------------------------------------------------\n");
             }
