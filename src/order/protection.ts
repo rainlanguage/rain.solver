@@ -84,8 +84,9 @@ export async function downscaleProtection(
         const balanceRatioPercent =
             otherOwnersBalances === 0n ? 100n : (avgBalance * 100n) / otherOwnersBalances;
 
-        // divide into 4 segments
-        const ownerLimitDivideFactor = Math.abs(Number(balanceRatioPercent / 25n - 4n));
+        // divide into 4 segments as owner limit divide factor
+        // 0-25% = 4, 25-50% = 3, 50-75% = 2, 75-100% = 1, >100% = 1
+        const ownerLimitDivideFactor = Math.abs(Math.min(Number(balanceRatioPercent / 25n), 3) - 4);
 
         // gather owner divide factor for all of the owner's orders' tokens
         // to calculate an avg from them all later on
