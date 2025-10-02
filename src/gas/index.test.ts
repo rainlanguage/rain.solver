@@ -26,8 +26,12 @@ describe("Test GasManager", () => {
     });
 
     describe("Test init static method", () => {
-        it("should init with expected values and call watchGasPrice", () => {
-            const manager = GasManager.init(config);
+        it("should init with expected values and call watchGasPrice", async () => {
+            (getGasPrice as any).mockResolvedValueOnce({
+                gasPrice: Result.ok(123n),
+                l1GasPrice: Result.ok(456n),
+            });
+            const manager = await GasManager.init(config);
             expect(manager.baseGasPriceMultiplier).toBe(107);
             expect(manager.maxGasPriceMultiplier).toBe(150);
             expect(manager.gasIncreasePointsPerStep).toBe(3);
@@ -36,10 +40,16 @@ describe("Test GasManager", () => {
             expect(manager.gasPriceMultiplier).toBe(107);
             expect(manager.isWatchingGasPrice).toBe(true);
             expect(manager.deadline).toBeUndefined();
-            expect(manager.gasPrice).toBe(0n);
-            expect(manager.l1GasPrice).toBe(0n);
+            expect(manager.gasPrice).toBe(123n);
+            expect(manager.l1GasPrice).toBe(456n);
             expect(manager.client).toBe(config.client);
             expect(manager.chainConfig).toBe(config.chainConfig);
+            expect(getGasPrice).toHaveBeenCalledTimes(1);
+            expect(getGasPrice).toHaveBeenCalledWith(
+                config.client,
+                config.chainConfig,
+                config.baseGasPriceMultiplier,
+            );
         });
     });
 
