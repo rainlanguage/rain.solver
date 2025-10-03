@@ -208,19 +208,16 @@ describe("Test queryEvents", () => {
 describe("Test captureDowntime", () => {
     const baseOptions = {
         duration: 7,
-        threshold: 60 * 60 * 1000, // 1 hour in ms
         subgraphs: { url1: "chain1" },
         console: true,
-        endTimestamp: 1000000000, // 1 billion ms
-        startTimestamp: 900000000, // 900 million ms (100 million ms duration)
         subgraphList: ["url1"],
     };
 
     it("should return zero downtime when there are trades in all cycles", () => {
         const opts = {
             ...baseOptions,
-            endTimestamp: 1000000, // 1000 s
-            startTimestamp: 900000, // 900 s
+            endTimestamp: 1000000, // at 1000 s
+            startTimestamp: 900000, // at 900 s
             threshold: 50 * 1000, // 50 seconds
         };
         const events: SgTransaction[] = [
@@ -246,58 +243,79 @@ describe("Test captureDowntime", () => {
 
     it("should calculate downtime correctly when there are no trades", () => {
         const events: SgTransaction[] = [];
+        const opts = {
+            ...baseOptions,
+            endTimestamp: 1000000, // at 1000 s
+            startTimestamp: 900000, // at 900 s
+            threshold: 50 * 1000, // 50 seconds
+        };
 
-        const result = captureDowntime(events, baseOptions);
+        const result = captureDowntime(events, opts);
 
-        // Should count all cycles as downtime (100 million ms / 3.6 million ms per hour = ~27.77 cycles)
-        const expectedCycles = Math.floor(
-            (baseOptions.endTimestamp - baseOptions.startTimestamp) / baseOptions.threshold,
-        );
-
-        expect(result.downtimeOccurrences).toBe(expectedCycles);
-        expect(result.totalDowntime).toBeGreaterThan(0);
+        // Should count all cycles as downtime (900s-950s, 950s-1000s)
+        expect(result.downtimeOccurrences).toBe(2);
+        expect(result.totalDowntime).toBe(50000);
     });
 
     it("should calculate downtime for gaps between trades", () => {
+        const opts = {
+            ...baseOptions,
+            endTimestamp: 1000000, // at 1000 s
+            startTimestamp: 850000, // at 850 s
+            threshold: 50 * 1000, // 50 seconds
+        };
         const events: SgTransaction[] = [
             {
-                timestamp: "900000", // Start of first cycle
+                timestamp: "850", // Start of first cycle
                 events: [{ __typename: "Clear", trades: [{ id: "trade1" }] }],
             },
             {
-                timestamp: "970000", // Much later - creates gap
+                timestamp: "970", // Much later - creates gap
                 events: [{ __typename: "TakeOrder", trades: [{ id: "trade2" }] }],
             },
         ] as any;
 
-        const result = captureDowntime(events, baseOptions);
+        const result = captureDowntime(events, opts);
 
-        expect(result.totalDowntime).toBeGreaterThan(0);
-        expect(result.downtimeOccurrences).toBeGreaterThan(0);
+        expect(result.totalDowntime).toBe(20000);
+        expect(result.downtimeOccurrences).toBe(1);
     });
 
     it("should only process Clear and TakeOrder events", () => {
+        const opts = {
+            ...baseOptions,
+            endTimestamp: 1000000, // at 1000 s
+            startTimestamp: 850000, // at 850 s
+            threshold: 50 * 1000, // 50 seconds
+        };
         const events: SgTransaction[] = [
             {
-                timestamp: "900000",
+                timestamp: "870",
                 events: [{ __typename: "Clear", trades: [{ id: "trade1" }] }],
             },
             {
-                timestamp: "950000",
+                timestamp: "950",
                 events: [{ __typename: "Withdraw" }],
             },
         ] as any;
 
-        const result = captureDowntime(events, baseOptions);
+        const result = captureDowntime(events, opts);
 
         // Should only count the Clear event, not the other event type
-        expect(result.downtimeOccurrences).toBeGreaterThan(0);
+        expect(result.downtimeOccurrences).toBe(2);
+        expect(result.totalDowntime).toBe(50000);
     });
 
     it("should handle multiple trades in single event correctly", () => {
+        const opts = {
+            ...baseOptions,
+            endTimestamp: 1000000, // at 1000 s
+            startTimestamp: 900000, // at 900 s
+            threshold: 50 * 1000, // 50 seconds
+        };
         const events: SgTransaction[] = [
             {
-                timestamp: "900000",
+                timestamp: "900",
                 events: [
                     {
                         __typename: "Clear",
@@ -307,10 +325,10 @@ describe("Test captureDowntime", () => {
             },
         ] as any;
 
-        const result = captureDowntime(events, baseOptions);
+        const result = captureDowntime(events, opts);
 
         // Multiple trades in same cycle should still count as activity
-        expect(result.totalDowntime).toBeGreaterThan(0); // Still downtime in other cycles
-        expect(result.downtimeOccurrences).toBeGreaterThan(0);
+        expect(result.totalDowntime).toBe(0);
+        expect(result.downtimeOccurrences).toBe(1);
     });
 });
