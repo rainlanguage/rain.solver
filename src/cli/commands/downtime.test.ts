@@ -89,7 +89,7 @@ describe("Test downtime cli options", () => {
     });
 });
 
-describe("queryEvents", () => {
+describe("Test queryEvents", () => {
     const mockOptions = {
         duration: 7,
         threshold: 60 * 60 * 1000,
