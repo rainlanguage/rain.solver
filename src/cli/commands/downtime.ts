@@ -11,7 +11,8 @@ export type DowntimeOptions = {
     duration: number; // in days
     threshold: number; // in milliseconds
     subgraphs: Record<string, string>;
-    output: "telegram" | "console" | "both";
+    console: boolean;
+    telegram?: boolean;
     telegramChatId?: string;
     telegramApiToken?: string;
 };
@@ -60,18 +61,14 @@ export const DowntimeCmd = new Command("downtime")
     .addOption(
         new Option("--telegram-chat-id <id>", "Telegram chat ID to send the report to")
             .env("TG_CHAT_ID")
-            .implies({ output: "both" }),
+            .implies({ telegram: true }),
     )
     .addOption(
         new Option("--telegram-api-token <key>", "Telegram API token")
             .env("TG_TOKEN")
-            .implies({ output: "both" }),
+            .implies({ telegram: true }),
     )
-    .addOption(
-        new Option("--no-console", "Disable logging the report in console").implies({
-            output: "telegram",
-        }),
-    )
+    .addOption(new Option("--no-console", "Disable logging the report in console"))
     .description(
         "Calculates and reports downtime based on trades recorded in the given subgraphs over the specified duration and threshold",
     )
@@ -86,11 +83,11 @@ export type DowntimeOptionsExtended = DowntimeOptions & {
     subgraphList: string[];
 };
 
-type ErrResponse = { error: any; url: string; chain: string };
-type OkResponse = { events: SgTransaction[]; url: string; chain: string };
+export type ErrResponse = { error: any; url: string; chain: string };
+export type OkResponse = { events: SgTransaction[]; url: string; chain: string };
 
 // query orderbook tx events from subgraph
-async function queryEvents(options: DowntimeOptionsExtended) {
+export async function queryEvents(options: DowntimeOptionsExtended) {
     // convert to seconds timestamp for subgraph query
     const startTimeSec = Math.floor(options.startTimestamp / 1000);
     const endTimeSec = Math.floor(options.endTimestamp / 1000);
@@ -134,7 +131,7 @@ async function queryEvents(options: DowntimeOptionsExtended) {
 }
 
 // process trade events to capture downtime
-function captureDowntime(subgraphEvents: SgTransaction[], options: DowntimeOptionsExtended) {
+export function captureDowntime(subgraphEvents: SgTransaction[], options: DowntimeOptionsExtended) {
     let totalDowntime = 0;
     let downtimeOccurrences = 0;
 
@@ -195,7 +192,7 @@ function captureDowntime(subgraphEvents: SgTransaction[], options: DowntimeOptio
 }
 
 // build report msg
-function buildReport(
+export function buildReport(
     url: string,
     chain: string,
     totalDowntime: number,
@@ -249,7 +246,7 @@ function buildReport(
 }
 
 // send report to Telegram
-async function sendToTelegram(text: string, id: string, token: string) {
+export async function sendToTelegram(text: string, id: string, token: string) {
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
     await axios.post(url, {
         text,
@@ -258,7 +255,7 @@ async function sendToTelegram(text: string, id: string, token: string) {
     });
 }
 
-function parseInteger(value: any, argName?: string): number {
+export function parseInteger(value: any, argName?: string): number {
     const parsed = parseInt(value);
     assert(
         !isNaN(parsed),
@@ -280,7 +277,7 @@ export async function main(options: DowntimeOptions) {
         subgraphList,
     };
 
-    if (options.output === "telegram" || options.output === "both") {
+    if (options.telegram) {
         assert(options.telegramChatId, "Telegram chat ID is required for Telegram output");
         assert(options.telegramApiToken, "Telegram API token is required for Telegram output");
     }
@@ -304,12 +301,12 @@ export async function main(options: DowntimeOptions) {
                 extendedOptions,
             );
 
-            if (options.output === "console" || options.output === "both") {
+            if (options.console) {
                 console.log("-----------------------------------------------------");
                 console.log(report.replaceAll("<b>", "").replaceAll("</b>", ""));
                 console.log("-----------------------------------------------------\n");
             }
-            if (options.output === "telegram" || options.output === "both") {
+            if (options.telegram) {
                 await sendToTelegram(report, options.telegramChatId!, options.telegramApiToken!);
             }
         } else {
@@ -318,10 +315,10 @@ export async function main(options: DowntimeOptions) {
                 `${result.error.error}`,
             ].join("\n");
 
-            if (options.output === "console" || options.output === "both") {
+            if (options.console) {
                 console.log(msg, "\n");
             }
-            if (options.output === "telegram" || options.output === "both") {
+            if (options.telegram) {
                 await sendToTelegram(msg, options.telegramChatId!, options.telegramApiToken!);
             }
         }
