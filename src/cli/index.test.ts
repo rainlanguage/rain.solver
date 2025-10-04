@@ -1,4 +1,3 @@
-import { cmd } from "./cmd";
 import { AppOptions } from "../config";
 import { RainSolver } from "../core";
 import { OrderManager } from "../order";
@@ -12,10 +11,6 @@ import { SpanStatusCode, trace, context } from "@opentelemetry/api";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 
 // mocks
-vi.mock("./cmd", () => ({
-    cmd: vi.fn(),
-}));
-
 vi.mock("../order", () => ({
     OrderManager: {
         init: vi.fn(),
@@ -253,7 +248,6 @@ describe("Test RainSolverCli", () => {
                 reports: [{ name: "wallet-init" }],
             };
 
-            (cmd as Mock).mockResolvedValue(mockCmdOptions);
             (AppOptions.tryFromYamlPath as Mock).mockReturnValue(Result.ok(mockAppOptions));
             (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(
                 Result.ok(mockStateConfig),
@@ -269,9 +263,8 @@ describe("Test RainSolverCli", () => {
             (RainSolver as Mock).mockImplementation(() => mockRainSolver);
             (RainSolverLogger as Mock).mockImplementation(() => mockLogger);
 
-            const result = await RainSolverCli.init(["--config", "config.yaml"]);
+            const result = await RainSolverCli.init(mockCmdOptions);
 
-            expect(cmd).toHaveBeenCalledWith(["--config", "config.yaml"]);
             expect(AppOptions.tryFromYamlPath).toHaveBeenCalledWith("config.yaml");
             expect(SharedStateConfig.tryFromAppOptions).toHaveBeenCalledWith(mockAppOptions);
             expect(SharedState).toHaveBeenCalledWith(mockStateConfig);
@@ -297,18 +290,39 @@ describe("Test RainSolverCli", () => {
             expect(result).toBeInstanceOf(RainSolverCli);
         });
 
-        it("should handle startup errors", async () => {
+        it("should handle startup errors when yaml config fails", async () => {
+            const mockCmdOptions = { config: "config.yaml" };
             const startupError = new Error("Startup failed");
-            (cmd as Mock).mockRejectedValue(startupError);
             const mockLogger = {
                 exportPreAssembledSpan: vi.fn(),
                 shutdown: vi.fn(),
             };
+            (AppOptions.tryFromYamlPath as Mock).mockReturnValue(Result.err(startupError));
             (RainSolverLogger as Mock).mockImplementation(() => mockLogger);
 
-            await expect(RainSolverCli.init(["--config", "config.yaml"])).rejects.toThrow(
-                "Startup failed",
+            await expect(RainSolverCli.init(mockCmdOptions)).rejects.toThrow("Startup failed");
+
+            expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    name: "startup",
+                    status: { code: SpanStatusCode.ERROR, message: expect.any(String) },
+                }),
             );
+        });
+
+        it("should handle startup errors when shared state config init fails", async () => {
+            const mockCmdOptions = { config: "config.yaml" };
+            const startupError = new Error("Startup failed");
+            const mockLogger = {
+                exportPreAssembledSpan: vi.fn(),
+                shutdown: vi.fn(),
+            };
+            (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(
+                Result.err(startupError),
+            );
+            (RainSolverLogger as Mock).mockImplementation(() => mockLogger);
+
+            await expect(RainSolverCli.init(mockCmdOptions)).rejects.toThrow("Startup failed");
 
             expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -323,7 +337,6 @@ describe("Test RainSolverCli", () => {
             const mockStateConfig = { test: "config" };
             const mockSgManagerConfig = { test: "sg_config" };
 
-            (cmd as Mock).mockResolvedValue(mockCmdOptions);
             (AppOptions.tryFromYamlPath as Mock).mockReturnValue(Result.ok(mockAppOptions));
             (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(
                 Result.ok(mockStateConfig),
@@ -340,7 +353,7 @@ describe("Test RainSolverCli", () => {
             };
             (RainSolverLogger as Mock).mockImplementation(() => mockLogger);
 
-            await expect(RainSolverCli.init(["--config", "config.yaml"])).rejects.toThrow(
+            await expect(RainSolverCli.init(mockCmdOptions)).rejects.toThrow(
                 "All subgraphs have indexing error",
             );
 
@@ -352,7 +365,6 @@ describe("Test RainSolverCli", () => {
             const mockStateConfig = { test: "config" };
             const mockSgManagerConfig = { test: "sg_config" };
 
-            (cmd as Mock).mockResolvedValue(mockCmdOptions);
             (AppOptions.tryFromYamlPath as Mock).mockReturnValue(Result.ok(mockAppOptions));
             (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(
                 Result.ok(mockStateConfig),
@@ -370,7 +382,7 @@ describe("Test RainSolverCli", () => {
             };
             (RainSolverLogger as Mock).mockImplementation(() => mockLogger);
 
-            await expect(RainSolverCli.init(["--config", "config.yaml"])).rejects.toThrow(
+            await expect(RainSolverCli.init(mockCmdOptions)).rejects.toThrow(
                 "Failed to get order details from subgraphs",
             );
 

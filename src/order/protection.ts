@@ -42,7 +42,7 @@ export async function downscaleProtection(
     }
 
     const balanceCache = new Map<string, bigint>();
-    for await (const {
+    for (const {
         orderbook,
         ownersProfileMap,
         ownersCuts,

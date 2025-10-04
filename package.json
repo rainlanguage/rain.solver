@@ -39,8 +39,9 @@
         "build": "tsc",
         "vitest:logger": "vitest run ./src/logger/index.test.ts --disableConsoleIntercept",
         "vitest": "npm run check && npm run vitest:logger && vitest run --exclude ./src/logger/index.test.ts",
-        "sweep": "ts-node ./scripts/sweep.ts",
-        "check": "tsc -p ./tsconfig.check.json"
+        "check": "tsc -p ./tsconfig.check.json",
+        "sweep": "ts-node ./src/cli/main.ts sweep",
+        "downtime": "ts-node ./src/cli/main.ts downtime"
     },
     "dependencies": {
         "@balancer/sdk": "^4.5.2",

@@ -1,11 +1,10 @@
 export * from "./common";
 export * from "./router";
 export * as sushi from "sushi";
-export { main } from "./cli/main";
 export { RainSolver } from "./core";
-export { RainSolverCli } from "./cli";
 export { OrderManager } from "./order";
 export { RainSolverBaseError } from "./error";
+export { GasManager, GasManagerConfig } from "./gas";
 export { WalletManager, WalletConfig } from "./wallet";
 export { SharedState, SharedStateConfig } from "./state";
 export { SubgraphConfig, SubgraphManager } from "./subgraph";
@@ -20,3 +19,13 @@ export {
     rainSolverTransport,
     RainSolverTransport,
 } from "./rpc";
+export {
+    main,
+    sweepFunds,
+    SweepOptions,
+    RainSolverCli,
+    RainSolverCmd,
+    downtimeReport,
+    DowntimeOptions,
+    DowntimeOptionsExtended,
+} from "./cli";
