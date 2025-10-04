@@ -202,6 +202,7 @@ export async function processOrder(
     if (this.state.l1GasPrice) {
         spanAttributes["details.gasPriceL1"] = this.state.l1GasPrice.toString();
     }
+    spanAttributes["gasPriceMultiplier"] = this.state.gasPriceMultiplier;
 
     spanAttributes["event.findBestTrade"] = performance.now();
     const trade = await this.findBestTrade({

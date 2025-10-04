@@ -58,6 +58,7 @@ const { RouterType } = require("../../src/router/types");
 const { USDC } = require("sushi/currency");
 const { maxFloat } = require("../../src/common");
 const { SolverContracts } = require("../../src/state/contracts");
+const { GasManager } = require("../../src/gas");
 
 // run tests on each network in the provided data
 for (let i = 0; i < testData.length; i++) {
@@ -143,6 +144,11 @@ for (let i = 0; i < testData.length; i++) {
                 v4: {},
                 v5: {},
             },
+            gasManager: new GasManager({
+                chainConfig: config,
+                client,
+                baseGasPriceMultiplier: 107,
+            }),
         });
         const sushiRouterPromise = SushiRouter.create(
             chainId,
