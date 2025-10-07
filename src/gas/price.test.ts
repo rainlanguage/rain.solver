@@ -1,7 +1,7 @@
 import { ChainId } from "sushi";
 import type { PublicClient } from "viem";
-import { describe, it, expect, vi } from "vitest";
-import { getGasPrice, BSC_DEFAULT_GAS_PRICE } from "./gasPrice";
+import { describe, it, expect, vi, assert } from "vitest";
+import { getGasPrice, BSC_DEFAULT_GAS_PRICE } from "./price";
 
 describe("getGasPrice", () => {
     const baseChainConfig = {
@@ -15,8 +15,10 @@ describe("getGasPrice", () => {
         } as unknown as PublicClient;
 
         const result = await getGasPrice(mockClient, baseChainConfig, 200);
-        expect(result.gasPrice).toEqual({ value: 2000n });
-        expect(result.l1GasPrice).toEqual({ value: 0n });
+        assert(result.gasPrice.isOk());
+        expect(result.gasPrice.value).toBe(2000n);
+        assert(result.l1GasPrice.isOk());
+        expect(result.l1GasPrice.value).toBe(0n);
     });
 
     it("should return BSC default gas price if below minimum", async () => {
@@ -29,7 +31,8 @@ describe("getGasPrice", () => {
         } as unknown as PublicClient;
 
         const result = await getGasPrice(mockClient, bscChainConfig, 100);
-        expect(result.gasPrice).toEqual({ value: BSC_DEFAULT_GAS_PRICE });
+        assert(result.gasPrice.isOk());
+        expect(result.gasPrice.value).toBe(BSC_DEFAULT_GAS_PRICE);
     });
 
     it("should return l1GasPrice for special L2 chains", async () => {
@@ -48,8 +51,10 @@ describe("getGasPrice", () => {
         } as unknown as PublicClient;
 
         const result = await getGasPrice(mockClient, l2ChainConfig, 100);
-        expect(result.gasPrice).toEqual({ value: 5000n });
-        expect(result.l1GasPrice).toEqual({ value: l1BaseFee });
+        assert(result.gasPrice.isOk());
+        assert(result.l1GasPrice.isOk());
+        expect(result.gasPrice.value).toBe(5000n);
+        expect(result.l1GasPrice.value).toBe(l1BaseFee);
     });
 
     it("should return error for gas price but value for l1GasPrice", async () => {
@@ -68,8 +73,9 @@ describe("getGasPrice", () => {
         } as unknown as PublicClient;
 
         const result = await getGasPrice(mockClient, l2ChainConfig, 100);
-        expect(result.gasPrice).toHaveProperty("error");
-        expect(result.l1GasPrice).toEqual({ value: l1BaseFee });
+        assert(result.gasPrice.isErr());
+        assert(result.l1GasPrice.isOk());
+        expect(result.l1GasPrice.value).toBe(l1BaseFee);
     });
 
     it("should return value for gas price but error for l1GasPrice", async () => {
@@ -87,8 +93,9 @@ describe("getGasPrice", () => {
         } as unknown as PublicClient;
 
         const result = await getGasPrice(mockClient, l2ChainConfig, 100);
-        expect(result.gasPrice).toEqual({ value: 5000n });
-        expect(result.l1GasPrice).toHaveProperty("error");
+        assert(result.gasPrice.isOk());
+        assert(result.l1GasPrice.isErr());
+        expect(result.gasPrice.value).toBe(5000n);
     });
 
     it("should throw if both gas price and l1GasPrice fail", async () => {
@@ -105,9 +112,8 @@ describe("getGasPrice", () => {
             extend: vi.fn().mockReturnValue(mockL1Client),
         } as unknown as PublicClient;
 
-        await expect(getGasPrice(mockClient, l2ChainConfig, 100)).rejects.toMatchObject({
-            gasPrice: { error: expect.any(Error) },
-            l1GasPrice: { error: expect.any(Error) },
-        });
+        const result = await getGasPrice(mockClient, l2ChainConfig, 100);
+        assert(result.gasPrice.isErr());
+        assert(result.l1GasPrice.isErr());
     });
 });
