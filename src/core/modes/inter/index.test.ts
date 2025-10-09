@@ -55,7 +55,13 @@ describe("Test findBestInterOrderbookTrade", () => {
             orderManager: {
                 getCounterpartyOrders: vi.fn(),
             },
-            appOptions: {},
+            appOptions: {
+                orderbookTradeTypes: {
+                    router: new Set(),
+                    interOrderbook: new Set(),
+                    intraOrderbook: new Set(),
+                },
+            },
         } as any;
 
         orderDetails = {

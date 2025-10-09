@@ -6,11 +6,12 @@ import { Token } from "sushi/currency";
 import { RainSolverSigner } from "../../signer";
 import { Attributes } from "@opentelemetry/api";
 import { findBestRouterTrade } from "./router";
+import { OrderbookTradeTypes } from "../../config";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
 import { Result, extendObjectWithHeader } from "../../common";
 import { containsNodeError, errorSnapshot } from "../../error";
-import { FindBestTradeFailure, FindBestTradeResult } from "../types";
+import { FindBestTradeFailure, FindBestTradeResult, SimulationResult } from "../types";
 
 /** Arguments for finding the best trade */
 export type FindBestTradeArgs = {
@@ -66,8 +67,15 @@ export async function findBestTrade(
     }
     const blockNumber = blockNumberResult.value;
 
+    // get enabled trade fns for the specific orderbook
+    const {
+        findBestRouterTrade: findBestRouterTradeFn,
+        findBestIntraOrderbookTrade: findBestIntraOrderbookTradeFn,
+        findBestInterOrderbookTrade: findBestInterOrderbookTradeFn,
+    } = getEnabledTrades(this.appOptions.orderbookTradeTypes, orderDetails.orderbook);
+
     const promises = [
-        findBestRouterTrade.call(
+        findBestRouterTradeFn?.call(
             this,
             orderDetails,
             signer,
@@ -76,29 +84,26 @@ export async function findBestTrade(
             fromToken,
             blockNumber,
         ),
-        // include intra and inter orderbook trades types only if rpOnly is false
-        ...(!this.appOptions.rpOnly
-            ? [
-                  findBestIntraOrderbookTrade.call(
-                      this,
-                      orderDetails,
-                      signer,
-                      inputToEthPrice,
-                      outputToEthPrice,
-                      blockNumber,
-                  ),
-                  findBestInterOrderbookTrade.call(
-                      this,
-                      orderDetails,
-                      signer,
-                      inputToEthPrice,
-                      outputToEthPrice,
-                      blockNumber,
-                  ),
-              ]
-            : []),
+        findBestIntraOrderbookTradeFn?.call(
+            this,
+            orderDetails,
+            signer,
+            inputToEthPrice,
+            outputToEthPrice,
+            blockNumber,
+        ),
+        findBestInterOrderbookTradeFn?.call(
+            this,
+            orderDetails,
+            signer,
+            inputToEthPrice,
+            outputToEthPrice,
+            blockNumber,
+        ),
     ];
-    const results = await Promise.all(promises);
+    const results = (await Promise.all(promises)).filter(
+        (v) => v !== undefined,
+    ) as SimulationResult[];
 
     // if at least one result is ok, we can proceed to pick the best one
     if (results.some((v) => v.isOk())) {
@@ -138,5 +143,53 @@ export async function findBestTrade(
             spanAttributes,
             noneNodeError,
         });
+    }
+}
+
+/**
+ * Get enabled trade fns for a specific orderbook
+ * @param orderbookTradeTypes - The trade types configuration from app options
+ * @param orderbookAddress - The orderbook address to get enabled trade fns for
+ * @returns An object containing the enabled trade functions
+ */
+export function getEnabledTrades(
+    orderbookTradeTypes: OrderbookTradeTypes,
+    orderbookAddress: string,
+): {
+    findBestRouterTrade?: typeof findBestRouterTrade;
+    findBestIntraOrderbookTrade?: typeof findBestIntraOrderbookTrade;
+    findBestInterOrderbookTrade?: typeof findBestInterOrderbookTrade;
+} {
+    let allEnabled = true;
+    const address = orderbookAddress.toLowerCase();
+    const result: {
+        findBestRouterTrade?: typeof findBestRouterTrade;
+        findBestIntraOrderbookTrade?: typeof findBestIntraOrderbookTrade;
+        findBestInterOrderbookTrade?: typeof findBestInterOrderbookTrade;
+    } = {
+        findBestRouterTrade: undefined,
+        findBestIntraOrderbookTrade: undefined,
+        findBestInterOrderbookTrade: undefined,
+    };
+    if (orderbookTradeTypes.router.has(address)) {
+        result.findBestRouterTrade = findBestRouterTrade;
+        allEnabled = false;
+    }
+    if (orderbookTradeTypes.intraOrderbook.has(address)) {
+        result.findBestIntraOrderbookTrade = findBestIntraOrderbookTrade;
+        allEnabled = false;
+    }
+    if (orderbookTradeTypes.interOrderbook.has(address)) {
+        result.findBestInterOrderbookTrade = findBestInterOrderbookTrade;
+        allEnabled = false;
+    }
+    if (allEnabled) {
+        return {
+            findBestRouterTrade,
+            findBestIntraOrderbookTrade,
+            findBestInterOrderbookTrade,
+        };
+    } else {
+        return result;
     }
 }

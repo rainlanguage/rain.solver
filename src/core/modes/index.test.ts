@@ -1,9 +1,10 @@
 import { RainSolver } from "..";
 import { Result } from "../../common";
-import { findBestTrade } from "./index";
 import { findBestRouterTrade } from "./router";
+import { OrderbookTradeTypes } from "../../config";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
+import { findBestTrade, getEnabledTrades } from "./index";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
 vi.mock("./router", () => ({
@@ -31,8 +32,12 @@ describe("Test findBestTrade", () => {
 
         mockRainSolver = {
             appOptions: {
-                rpOnly: false,
                 balancerArbAddress: "0xBalancerArb",
+                orderbookTradeTypes: {
+                    router: new Set(),
+                    intraOrderbook: new Set(),
+                    interOrderbook: new Set(),
+                } as any,
             },
             state: {
                 client: {
@@ -43,6 +48,7 @@ describe("Test findBestTrade", () => {
 
         args = {
             orderDetails: {
+                orderbook: "0xorderbook",
                 takeOrders: [{ quote: { maxOutput: 1000n } }],
             },
             signer: { account: { address: "0xsigner" } },
@@ -152,7 +158,7 @@ describe("Test findBestTrade", () => {
     });
 
     it("should only call route processor when rpOnly is true", async () => {
-        mockRainSolver.appOptions.rpOnly = true;
+        mockRainSolver.appOptions.orderbookTradeTypes.router.add("0xorderbook");
 
         const rpResult = Result.ok({
             type: "routeProcessor",
@@ -184,8 +190,12 @@ describe("Test findBestTrade", () => {
     it("should only call balancer router when balancerRouter is available", async () => {
         const mocksolver = {
             appOptions: {
-                rpOnly: false,
                 balancerArbAddress: "0xBalancerArb",
+                orderbookTradeTypes: {
+                    router: new Set(),
+                    intraOrderbook: new Set(),
+                    interOrderbook: new Set(),
+                } as any,
             },
             state: {
                 client: {
@@ -248,8 +258,6 @@ describe("Test findBestTrade", () => {
     });
 
     it("should call all modes when rpOnly is false", async () => {
-        mockRainSolver.appOptions.rpOnly = false;
-
         const rpResult = Result.ok({
             type: "routeProcessor",
             spanAttributes: { foundOpp: true },
@@ -487,5 +495,109 @@ describe("Test findBestTrade", () => {
         assert(result.isErr());
         expect(result.error.noneNodeError).toContain("some error");
         expect(result.error.spanAttributes.error).toContain("some error");
+    });
+});
+
+describe("Test getEnabledTrades", () => {
+    const mockOrderbookAddress = "0xOrderbook";
+    const mockOrderbookAddressLowercase = mockOrderbookAddress.toLowerCase();
+    const anotherAddress = "0xOtherOrderbook".toLowerCase();
+
+    it("should return all trade functions when allEnabled is true (no specific orderbook in any set)", () => {
+        const orderbookTradeTypes: OrderbookTradeTypes = {
+            router: new Set([anotherAddress]),
+            intraOrderbook: new Set([anotherAddress]),
+            interOrderbook: new Set([anotherAddress]),
+        };
+
+        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+
+        expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
+        expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);
+        expect(result.findBestInterOrderbookTrade).toBe(findBestInterOrderbookTrade);
+    });
+
+    it("should return all trade functions when all sets are empty", () => {
+        const orderbookTradeTypes: OrderbookTradeTypes = {
+            router: new Set(),
+            intraOrderbook: new Set(),
+            interOrderbook: new Set(),
+        };
+
+        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+
+        expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
+        expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);
+        expect(result.findBestInterOrderbookTrade).toBe(findBestInterOrderbookTrade);
+    });
+
+    it("should return only router trade when orderbook is in router set", () => {
+        const orderbookTradeTypes: OrderbookTradeTypes = {
+            router: new Set([mockOrderbookAddressLowercase]),
+            intraOrderbook: new Set(),
+            interOrderbook: new Set(),
+        };
+
+        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+
+        expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
+        expect(result.findBestIntraOrderbookTrade).toBeUndefined();
+        expect(result.findBestInterOrderbookTrade).toBeUndefined();
+    });
+
+    it("should return only intra-orderbook trade when orderbook is in intraOrderbook set", () => {
+        const orderbookTradeTypes: OrderbookTradeTypes = {
+            router: new Set(),
+            intraOrderbook: new Set([mockOrderbookAddressLowercase]),
+            interOrderbook: new Set(),
+        };
+
+        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+
+        expect(result.findBestRouterTrade).toBeUndefined();
+        expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);
+        expect(result.findBestInterOrderbookTrade).toBeUndefined();
+    });
+
+    it("should return only inter-orderbook trade when orderbook is in interOrderbook set", () => {
+        const orderbookTradeTypes: OrderbookTradeTypes = {
+            router: new Set(),
+            intraOrderbook: new Set(),
+            interOrderbook: new Set([mockOrderbookAddressLowercase]),
+        };
+
+        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+
+        expect(result.findBestRouterTrade).toBeUndefined();
+        expect(result.findBestIntraOrderbookTrade).toBeUndefined();
+        expect(result.findBestInterOrderbookTrade).toBe(findBestInterOrderbookTrade);
+    });
+
+    it("should return multiple trade functions when orderbook is in multiple sets", () => {
+        const orderbookTradeTypes: OrderbookTradeTypes = {
+            router: new Set([mockOrderbookAddressLowercase]),
+            intraOrderbook: new Set([mockOrderbookAddressLowercase]),
+            interOrderbook: new Set(),
+        };
+
+        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+
+        expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
+        expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);
+        expect(result.findBestInterOrderbookTrade).toBeUndefined();
+    });
+
+    it("should return all trade functions when orderbook is in all sets", () => {
+        const orderbookTradeTypes: OrderbookTradeTypes = {
+            router: new Set([mockOrderbookAddressLowercase]),
+            intraOrderbook: new Set([mockOrderbookAddressLowercase]),
+            interOrderbook: new Set([mockOrderbookAddressLowercase]),
+        };
+
+        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+
+        expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
+        expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);
+        expect(result.findBestInterOrderbookTrade).toBe(findBestInterOrderbookTrade);
     });
 });

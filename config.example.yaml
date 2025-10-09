@@ -153,3 +153,19 @@ sgFilter:
   excludeOrderbooks:
     - "0x1234...5678"
     - "0xabcd...1234"
+
+# Optional specification of trade types to enable for specific orderbooks
+# if provided through an env var, the orderbooks for each trade type should be separated by a comma
+orderbookTradeTypes:
+  # Enable router trades for the given orderbooks
+  router:
+    - "0xabcd..."
+    - "0x1234..."
+  # Enable inter-orderbook trades for the given orderbooks
+  interOrderbook:
+    - "0xabcd..."
+    - "0x1234..."
+  # Enable intra-orderbook trades for the given orderbooks
+  intraOrderbook:
+    - "0xabcd..."
+    - "0x1234..."

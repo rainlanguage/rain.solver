@@ -720,6 +720,26 @@ describe("Test yaml Validator methods", async function () {
             `invalid rpc weight: "abcd", expected a number greater than equal to 0`,
         );
     });
+
+    it("test Validator resolveAddressSet", async function () {
+        // happy
+        let input: any = [`0x${"1".repeat(40)}`, `0x${"2".repeat(40)}`];
+        let result: any = Validator.resolveAddressSet(input, "unexpected error");
+        assert.deepEqual(result, new Set([`0x${"1".repeat(40)}`, `0x${"2".repeat(40)}`]));
+
+        // happy from env
+        process.env.INPUT = `0x${"1".repeat(40)},0x${"2".repeat(40)}`;
+        input = "$INPUT";
+        result = Validator.resolveAddressSet(input, "unexpected error");
+        assert.deepEqual(result, new Set([`0x${"1".repeat(40)}`, `0x${"2".repeat(40)}`]));
+
+        // unhappy
+        input = [];
+        assert.throws(
+            () => Validator.resolveAddressSet(input, "unexpected error"),
+            "unexpected error",
+        );
+    });
 });
 
 describe("Test yaml Validator helpers", async function () {

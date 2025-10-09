@@ -75,7 +75,7 @@ export namespace Validator {
                 urls.value.every((v: any) => typeof v === "string"),
             validationError(exception),
         );
-        return urls.value as any;
+        return Array.from(new Set(urls.value)) as any;
     }
 
     /** Resolves config's list of liquidity providers */
@@ -127,6 +127,25 @@ export namespace Validator {
             validationError(`expected valid ${addressName} contract address`),
         );
         return address.toLowerCase() as any;
+    }
+
+    /** Resolves the given input to an address set */
+    export function resolveAddressSet(input: any, exception: string): Set<`0x${string}`> {
+        const urls = readValue(input);
+        if (urls.isEnv) {
+            urls.value = tryIntoArray(urls.value);
+        }
+        if (urls.value === undefined) return new Set();
+        assert(
+            urls.value &&
+                Array.isArray(urls.value) &&
+                urls.value.length > 0 &&
+                urls.value.every(
+                    (v: any) => typeof v === "string" && isAddress(v, { strict: false }),
+                ),
+            validationError(exception),
+        );
+        return new Set(urls.value.map((v) => v.toLowerCase() as `0x${string}`));
     }
 
     /** Resolves config's numeric value */
