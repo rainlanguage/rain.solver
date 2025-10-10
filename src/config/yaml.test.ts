@@ -55,6 +55,19 @@ sgFilter:
     - "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   includeOwners:
     - "0x9999999999999999999999999999999999999999"
+orderbookTradeTypes:
+  router:
+    - "0x1111111111111111111111111111111111111111"
+    - "0x2222222222222222222222222222222222222222"
+    - "0x1111111111111111111111111111111111111111"
+  interOrderbook:
+    - "0x3333333333333333333333333333333333333333"
+    - "0x4444444444444444444444444444444444444444"
+    - "0x3333333333333333333333333333333333333333"
+  intraOrderbook:
+    - "0x5555555555555555555555555555555555555555"
+    - "0x6666666666666666666666666666666666666666"
+    - "0x6666666666666666666666666666666666666666"
   `;
 
         const path = "./first.test.yaml";
@@ -123,9 +136,9 @@ sgFilter:
                 excludeOrderbooks: undefined,
             },
             orderbookTradeTypes: {
-                router: new Set<string>(),
-                interOrderbook: new Set<string>(),
-                intraOrderbook: new Set<string>(),
+                router: new Set([`0x${"1".repeat(40)}`, `0x${"2".repeat(40)}`]),
+                interOrderbook: new Set([`0x${"3".repeat(40)}`, `0x${"4".repeat(40)}`]),
+                intraOrderbook: new Set([`0x${"5".repeat(40)}`, `0x${"6".repeat(40)}`]),
             },
         };
 
