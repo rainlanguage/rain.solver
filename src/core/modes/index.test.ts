@@ -4,7 +4,7 @@ import { findBestRouterTrade } from "./router";
 import { OrderbookTradeTypes } from "../../config";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
-import { findBestTrade, getEnabledTrades } from "./index";
+import { findBestTrade, getEnabledTradeTypeFunctions } from "./index";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
 vi.mock("./router", () => ({
@@ -510,7 +510,7 @@ describe("Test getEnabledTrades", () => {
             interOrderbook: new Set([anotherAddress]),
         };
 
-        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+        const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
 
         expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
         expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);
@@ -524,7 +524,7 @@ describe("Test getEnabledTrades", () => {
             interOrderbook: new Set(),
         };
 
-        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+        const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
 
         expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
         expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);
@@ -538,7 +538,7 @@ describe("Test getEnabledTrades", () => {
             interOrderbook: new Set(),
         };
 
-        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+        const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
 
         expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
         expect(result.findBestIntraOrderbookTrade).toBeUndefined();
@@ -552,7 +552,7 @@ describe("Test getEnabledTrades", () => {
             interOrderbook: new Set(),
         };
 
-        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+        const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
 
         expect(result.findBestRouterTrade).toBeUndefined();
         expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);
@@ -566,7 +566,7 @@ describe("Test getEnabledTrades", () => {
             interOrderbook: new Set([mockOrderbookAddressLowercase]),
         };
 
-        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+        const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
 
         expect(result.findBestRouterTrade).toBeUndefined();
         expect(result.findBestIntraOrderbookTrade).toBeUndefined();
@@ -580,7 +580,7 @@ describe("Test getEnabledTrades", () => {
             interOrderbook: new Set(),
         };
 
-        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+        const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
 
         expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
         expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);
@@ -594,7 +594,7 @@ describe("Test getEnabledTrades", () => {
             interOrderbook: new Set([mockOrderbookAddressLowercase]),
         };
 
-        const result = getEnabledTrades(orderbookTradeTypes, mockOrderbookAddress);
+        const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
 
         expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
         expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);

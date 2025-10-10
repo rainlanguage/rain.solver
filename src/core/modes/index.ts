@@ -67,12 +67,12 @@ export async function findBestTrade(
     }
     const blockNumber = blockNumberResult.value;
 
-    // get enabled trade fns for the specific orderbook
+    // get enabled trade fns for the order's orderbook
     const {
         findBestRouterTrade: findBestRouterTradeFn,
         findBestIntraOrderbookTrade: findBestIntraOrderbookTradeFn,
         findBestInterOrderbookTrade: findBestInterOrderbookTradeFn,
-    } = getEnabledTrades(this.appOptions.orderbookTradeTypes, orderDetails.orderbook);
+    } = getEnabledTradeTypeFunctions(this.appOptions.orderbookTradeTypes, orderDetails.orderbook);
 
     const promises = [
         findBestRouterTradeFn?.call(
@@ -146,31 +146,31 @@ export async function findBestTrade(
     }
 }
 
+type TradeTypeFunctions = {
+    findBestRouterTrade?: typeof findBestRouterTrade;
+    findBestIntraOrderbookTrade?: typeof findBestIntraOrderbookTrade;
+    findBestInterOrderbookTrade?: typeof findBestInterOrderbookTrade;
+};
+
 /**
- * Get enabled trade fns for a specific orderbook
+ * Get enabled trade fns for a specific orderbook, if the given orderbook is not
+ * configured in the orderbook trade types, all trade fns will be enabled as sane default
  * @param orderbookTradeTypes - The trade types configuration from app options
  * @param orderbookAddress - The orderbook address to get enabled trade fns for
  * @returns An object containing the enabled trade functions
  */
-export function getEnabledTrades(
+export function getEnabledTradeTypeFunctions(
     orderbookTradeTypes: OrderbookTradeTypes,
     orderbookAddress: string,
-): {
-    findBestRouterTrade?: typeof findBestRouterTrade;
-    findBestIntraOrderbookTrade?: typeof findBestIntraOrderbookTrade;
-    findBestInterOrderbookTrade?: typeof findBestInterOrderbookTrade;
-} {
+): TradeTypeFunctions {
     let allEnabled = true;
     const address = orderbookAddress.toLowerCase();
-    const result: {
-        findBestRouterTrade?: typeof findBestRouterTrade;
-        findBestIntraOrderbookTrade?: typeof findBestIntraOrderbookTrade;
-        findBestInterOrderbookTrade?: typeof findBestInterOrderbookTrade;
-    } = {
+    const result: TradeTypeFunctions = {
         findBestRouterTrade: undefined,
         findBestIntraOrderbookTrade: undefined,
         findBestInterOrderbookTrade: undefined,
     };
+
     if (orderbookTradeTypes.router.has(address)) {
         result.findBestRouterTrade = findBestRouterTrade;
         allEnabled = false;

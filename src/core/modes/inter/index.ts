@@ -50,7 +50,7 @@ export async function findBestInterOrderbookTrade(
 
     // run simulations for top 3 counterparty orders of each orderbook
     const promises = counterpartyOrders.flatMap((orderbookCounterparties) => {
-        // ignore if inter-orderbook trade is not enabled for the counterparty orderbook
+        // ignore if inter-orderbook trade is not enabled for the counterparty order's orderbook
         if (
             !isInterObTradeEnabledForCounterparty.call(this, orderbookCounterparties[0]?.orderbook)
         ) {
@@ -123,6 +123,9 @@ export async function findBestInterOrderbookTrade(
     }
 }
 
+// Determines if inter-orderbook trade is enabled for the given counterparty orderbook
+// as in inter-orderbook trade, both order and counterparty order should have enabled
+// inter-orderbook trade type
 export function isInterObTradeEnabledForCounterparty(
     this: RainSolver,
     counterpartyOrderbook?: string,
