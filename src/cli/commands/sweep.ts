@@ -108,7 +108,6 @@ export async function sweepFunds(opts: SweepOptions) {
 
         // unused fields but need to be defined
         maxRatio: false,
-        rpOnly: false,
         sleep: 0,
         gasCoveragePercentage: "",
         timeout: 15,
@@ -118,6 +117,7 @@ export async function sweepFunds(opts: SweepOptions) {
         quoteGas: 0n,
         topupAmount: "0",
         contracts: {},
+        orderbookTradeTypes: {} as any,
     };
 
     // prepare state config fields

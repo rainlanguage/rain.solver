@@ -356,6 +356,11 @@ for (let i = 0; i < testData.length; i++) {
                         store: store.address,
                         deployer: deployer.address,
                     };
+                    config.orderbookTradeTypes = {
+                        router: new Set(),
+                        interOrderbook: new Set(),
+                        intraOrderbook: new Set(),
+                    };
 
                     const orderManager = new OrderManager(state);
                     for (const order of orders) {
@@ -696,6 +701,11 @@ for (let i = 0; i < testData.length; i++) {
                         interpreter: interpreter.address,
                         store: store.address,
                         deployer: deployer.address,
+                    };
+                    config.orderbookTradeTypes = {
+                        router: new Set(),
+                        interOrderbook: new Set(),
+                        intraOrderbook: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -1096,6 +1106,11 @@ for (let i = 0; i < testData.length; i++) {
                         store: store.address,
                         deployer: deployer.address,
                     };
+                    config.orderbookTradeTypes = {
+                        router: new Set(),
+                        interOrderbook: new Set(),
+                        intraOrderbook: new Set(),
+                    };
 
                     const orderManager = new OrderManager(state);
                     for (const order of orders) {
@@ -1476,6 +1491,11 @@ for (let i = 0; i < testData.length; i++) {
                         store: store.address,
                         deployer: deployer.address,
                     };
+                    config.orderbookTradeTypes = {
+                        router: new Set(),
+                        interOrderbook: new Set(),
+                        intraOrderbook: new Set(),
+                    };
 
                     const orderManager = new OrderManager(state);
                     for (const order of orders) {
@@ -1815,6 +1835,11 @@ for (let i = 0; i < testData.length; i++) {
                         store: store.address,
                         deployer: deployer.address,
                     };
+                    config.orderbookTradeTypes = {
+                        router: new Set(),
+                        interOrderbook: new Set(),
+                        intraOrderbook: new Set(),
+                    };
 
                     const orderManager = new OrderManager(state);
                     for (const order of orders) {
@@ -2106,6 +2131,11 @@ for (let i = 0; i < testData.length; i++) {
                         interpreter: interpreter.address,
                         store: store.address,
                         deployer: deployer.address,
+                    };
+                    config.orderbookTradeTypes = {
+                        router: new Set(),
+                        interOrderbook: new Set(),
+                        intraOrderbook: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -2477,6 +2507,11 @@ for (let i = 0; i < testData.length; i++) {
                         interpreter: interpreter.address,
                         store: store.address,
                         deployer: deployer.address,
+                    };
+                    config.orderbookTradeTypes = {
+                        router: new Set(),
+                        interOrderbook: new Set(),
+                        intraOrderbook: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -2869,6 +2904,11 @@ for (let i = 0; i < testData.length; i++) {
                         interpreter: interpreter.address,
                         store: store.address,
                         deployer: deployer.address,
+                    };
+                    config.orderbookTradeTypes = {
+                        router: new Set(),
+                        interOrderbook: new Set(),
+                        intraOrderbook: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -3264,6 +3304,11 @@ for (let i = 0; i < testData.length; i++) {
                         store: store.address,
                         deployer: deployer.address,
                     };
+                    config.orderbookTradeTypes = {
+                        router: new Set(),
+                        interOrderbook: new Set(),
+                        intraOrderbook: new Set(),
+                    };
 
                     const orderManager = new OrderManager(state);
                     for (const order of orders) {
@@ -3625,6 +3670,11 @@ for (let i = 0; i < testData.length; i++) {
                         interpreter: interpreter.address,
                         store: store.address,
                         deployer: deployer.address,
+                    };
+                    config.orderbookTradeTypes = {
+                        router: new Set(),
+                        interOrderbook: new Set(),
+                        intraOrderbook: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);

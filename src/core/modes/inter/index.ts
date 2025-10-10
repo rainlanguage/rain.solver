@@ -50,6 +50,13 @@ export async function findBestInterOrderbookTrade(
 
     // run simulations for top 3 counterparty orders of each orderbook
     const promises = counterpartyOrders.flatMap((orderbookCounterparties) => {
+        // ignore if inter-orderbook trade is not enabled for the counterparty order's orderbook
+        if (
+            !isInterObTradeEnabledForCounterparty.call(this, orderbookCounterparties[0]?.orderbook)
+        ) {
+            return [];
+        }
+
         const cps = orderbookCounterparties.slice(0, 3);
 
         counterparties.push(...cps);
@@ -114,4 +121,26 @@ export async function findBestInterOrderbookTrade(
             noneNodeError: allNoneNodeErrors[0],
         });
     }
+}
+
+// Determines if inter-orderbook trade is enabled for the given counterparty orderbook
+// as in inter-orderbook trade, both order and counterparty order should have enabled
+// inter-orderbook trade type
+export function isInterObTradeEnabledForCounterparty(
+    this: RainSolver,
+    counterpartyOrderbook?: string,
+): boolean {
+    if (!counterpartyOrderbook) return false;
+    const address = counterpartyOrderbook.toLowerCase();
+    if (this.appOptions.orderbookTradeTypes.interOrderbook.has(address)) {
+        return true;
+    }
+    if (
+        !this.appOptions.orderbookTradeTypes.router.has(address) &&
+        !this.appOptions.orderbookTradeTypes.interOrderbook.has(address) &&
+        !this.appOptions.orderbookTradeTypes.intraOrderbook.has(address)
+    ) {
+        return true;
+    }
+    return false;
 }
