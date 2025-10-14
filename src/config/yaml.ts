@@ -16,6 +16,17 @@ export type SelfFundVault = {
     topupAmount: string;
 };
 
+/**
+ * Specifies the enabled trade types for each orderbook address.
+ * If an orderbook address is not present in any of the sets, it
+ * means that all trade types are enabled for that orderbook.
+ */
+export type OrderbookTradeTypes = {
+    router: Set<string>;
+    interOrderbook: Set<string>;
+    intraOrderbook: Set<string>;
+};
+
 /** Represents a type for app options contracts addresses */
 export type AppOptionsContracts = {
     v4?: {
@@ -50,8 +61,6 @@ export type AppOptions = {
     subgraph: string[];
     /** Option to maximize maxIORatio, default is true */
     maxRatio: boolean;
-    /** Only clear orders through RP4, excludes intra and inter orderbook clears, default is true */
-    rpOnly: boolean;
     /** list of liquidity providers names, default includes all liquidity providers */
     liquidityProviders?: string[];
     /** Seconds to wait between each arb round, default is 10 */
@@ -82,6 +91,8 @@ export type AppOptions = {
     sgFilter?: SgFilter;
     /** List of contract addresses required for solving */
     contracts: AppOptionsContracts;
+    /** Specifies enabled trade types for each orderbook address */
+    orderbookTradeTypes: OrderbookTradeTypes;
 };
 
 /** Provides methods to instantiate and validate AppOptions */
@@ -148,11 +159,6 @@ export namespace AppOptions {
                 ownerProfile: Validator.resolveOwnerProfile(input.ownerProfile),
                 selfFundVaults: Validator.resolveSelfFundVaults(input.selfFundVaults),
                 sgFilter: Validator.resolveSgFilters(input.sgFilter),
-                rpOnly: Validator.resolveBool(
-                    input.rpOnly,
-                    "expected a boolean value for rpOnly",
-                    true,
-                ),
                 maxRatio: Validator.resolveBool(
                     input.maxRatio,
                     "expected a boolean value for maxRatio",
@@ -239,6 +245,20 @@ export namespace AppOptions {
                     (timeout) =>
                         assert(timeout > 0, "invalid timeout, must be an integer greater than 0"),
                 ),
+                orderbookTradeTypes: {
+                    router: Validator.resolveAddressSet(
+                        input.orderbookTradeTypes?.router,
+                        "invalid orderbookTradeTypes.router, expected an array of orderbook addresses",
+                    ),
+                    interOrderbook: Validator.resolveAddressSet(
+                        input.orderbookTradeTypes?.interOrderbook,
+                        "invalid orderbookTradeTypes.interOrderbook, expected an array of orderbook addresses",
+                    ),
+                    intraOrderbook: Validator.resolveAddressSet(
+                        input.orderbookTradeTypes?.intraOrderbook,
+                        "invalid orderbookTradeTypes.intraOrderbook, expected an array of orderbook addresses",
+                    ),
+                },
             } as AppOptions);
         } catch (error: any) {
             if (error instanceof AppOptionsError) {

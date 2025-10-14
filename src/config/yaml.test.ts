@@ -37,7 +37,6 @@ gasPriceMultiplier: 150
 gasLimitMultiplier: 90
 timeout: 20000
 maxRatio: true
-rpOnly: false
 ownerProfile: $OWNER_PROFILE
 selfFundVaults:
   - token: "0x6666666666666666666666666666666666666666"
@@ -56,6 +55,19 @@ sgFilter:
     - "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   includeOwners:
     - "0x9999999999999999999999999999999999999999"
+orderbookTradeTypes:
+  router:
+    - "0x1111111111111111111111111111111111111111"
+    - "0x2222222222222222222222222222222222222222"
+    - "0x1111111111111111111111111111111111111111"
+  interOrderbook:
+    - "0x3333333333333333333333333333333333333333"
+    - "0x4444444444444444444444444444444444444444"
+    - "0x3333333333333333333333333333333333333333"
+  intraOrderbook:
+    - "0x5555555555555555555555555555555555555555"
+    - "0x6666666666666666666666666666666666666666"
+    - "0x6666666666666666666666666666666666666666"
   `;
 
         const path = "./first.test.yaml";
@@ -92,7 +104,6 @@ sgFilter:
             gasLimitMultiplier: 90,
             timeout: 20000,
             maxRatio: true,
-            rpOnly: false,
             ownerProfile: {
                 "0x4444444444444444444444444444444444444444": 100,
                 "0x5555555555555555555555555555555555555555": Number.MAX_SAFE_INTEGER,
@@ -123,6 +134,11 @@ sgFilter:
                 excludeOwners: undefined,
                 includeOrderbooks: undefined,
                 excludeOrderbooks: undefined,
+            },
+            orderbookTradeTypes: {
+                router: new Set([`0x${"1".repeat(40)}`, `0x${"2".repeat(40)}`]),
+                interOrderbook: new Set([`0x${"3".repeat(40)}`, `0x${"4".repeat(40)}`]),
+                intraOrderbook: new Set([`0x${"5".repeat(40)}`, `0x${"6".repeat(40)}`]),
             },
         };
 
@@ -162,7 +178,6 @@ sgFilter:
             gasLimitMultiplier: "90",
             timeout: "20000",
             maxRatio: true,
-            rpOnly: false,
             ownerProfile: [
                 { "0x4444444444444444444444444444444444444444": "100" },
                 { "0x5555555555555555555555555555555555555555": "max" },
@@ -189,6 +204,19 @@ sgFilter:
                     "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                 ],
                 includeOwners: ["0x9999999999999999999999999999999999999999"],
+            },
+            orderbookTradeTypes: {
+                router: [`0x${"1".repeat(40)}`, `0x${"2".repeat(40)}`, `0x${"1".repeat(40)}`], // duplicate to test set
+                interOrderbook: [
+                    `0x${"3".repeat(40)}`,
+                    `0x${"4".repeat(40)}`,
+                    `0x${"3".repeat(40)}`, // duplicate to test set
+                ],
+                intraOrderbook: [
+                    `0x${"5".repeat(40)}`,
+                    `0x${"6".repeat(40)}`,
+                    `0x${"6".repeat(40)}`, // duplicate to test set
+                ],
             },
         };
         const res = AppOptions.tryFrom(input);
@@ -235,7 +263,6 @@ sgFilter:
         assert.deepEqual(result.gasLimitMultiplier, 90);
         assert.deepEqual(result.timeout, 20000);
         assert.equal(result.maxRatio, true);
-        assert.equal(result.rpOnly, false);
 
         // ownerProfile
         const expectedOwnerProfile = {
@@ -277,5 +304,12 @@ sgFilter:
         };
         assert.deepEqual(result.sgFilter!.includeOrders, expectedSgFilter.includeOrders);
         assert.deepEqual(result.sgFilter!.includeOwners, expectedSgFilter.includeOwners);
+
+        // orderbookTradeTypes
+        assert.deepEqual(result.orderbookTradeTypes, {
+            router: new Set<string>([`0x${"1".repeat(40)}`, `0x${"2".repeat(40)}`]),
+            interOrderbook: new Set<string>([`0x${"3".repeat(40)}`, `0x${"4".repeat(40)}`]),
+            intraOrderbook: new Set<string>([`0x${"5".repeat(40)}`, `0x${"6".repeat(40)}`]),
+        });
     });
 });
