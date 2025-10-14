@@ -34,12 +34,14 @@ export type AppOptionsContracts = {
         dispair?: `0x${string}`;
         genericArb?: `0x${string}`;
         balancerArb?: `0x${string}`;
+        stabullArb?: `0x${string}`;
     };
     v5?: {
         sushiArb?: `0x${string}`;
         dispair?: `0x${string}`;
         genericArb?: `0x${string}`;
         balancerArb?: `0x${string}`;
+        stabullArb?: `0x${string}`;
     };
 };
 

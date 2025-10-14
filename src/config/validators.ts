@@ -486,6 +486,11 @@ export namespace Validator {
             "balancerArbAddress v4",
             true,
         );
+        const stabullArbAddressV4 = resolveAddress(
+            input?.contracts?.v4?.stabullArbAddress,
+            "stabullArbAddress v4",
+            true,
+        );
         const dispairV5 = resolveAddress(input?.contracts?.v5?.dispair, "dispair v5", true);
         const sushiArbAddressV5 = resolveAddress(
             input?.contracts?.v5?.sushiArbAddress,
@@ -502,6 +507,11 @@ export namespace Validator {
             "balancerArbAddress v5",
             true,
         );
+        const stabullArbAddressV5 = resolveAddress(
+            input?.contracts?.v5?.stabullArbAddress,
+            "stabullArbAddress v5",
+            true,
+        );
         const contracts: AppOptionsContracts = {};
         if (dispairV4 || sushiArbAddressV4 || genericArbAddressV4 || balancerArbAddressV4) {
             contracts.v4 = {
@@ -509,6 +519,7 @@ export namespace Validator {
                 dispair: dispairV4 as `0x${string}` | undefined,
                 genericArb: genericArbAddressV4 as `0x${string}` | undefined,
                 balancerArb: balancerArbAddressV4 as `0x${string}` | undefined,
+                stabullArb: stabullArbAddressV4 as `0x${string}` | undefined,
             };
         }
         if (dispairV5 || sushiArbAddressV5 || genericArbAddressV5 || balancerArbAddressV5) {
@@ -517,6 +528,7 @@ export namespace Validator {
                 dispair: dispairV5 as `0x${string}` | undefined,
                 genericArb: genericArbAddressV5 as `0x${string}` | undefined,
                 balancerArb: balancerArbAddressV5 as `0x${string}` | undefined,
+                stabullArb: stabullArbAddressV5 as `0x${string}` | undefined,
             };
         }
         return contracts;

@@ -25,12 +25,14 @@ describe("SolverContracts.fromAppOptions", () => {
                     sushiArb: "0xv4sushiArb" as `0x${string}`,
                     genericArb: "0xv4genericArb" as `0x${string}`,
                     balancerArb: "0xv4balancerArb" as `0x${string}`,
+                    stabullArb: "0xv4stabullArb" as `0x${string}`,
                 },
                 v5: {
                     dispair: "0xv5dispair" as `0x${string}`,
                     sushiArb: "0xv5sushiArb" as `0x${string}`,
                     genericArb: "0xv5genericArb" as `0x${string}`,
                     balancerArb: "0xv5balancerArb" as `0x${string}`,
+                    stabullArb: "0xv5stabullArb" as `0x${string}`,
                 },
             },
         } as AppOptions;
@@ -51,6 +53,7 @@ describe("SolverContracts.fromAppOptions", () => {
                 sushiArb: "0xv4sushiArb",
                 genericArb: "0xv4genericArb",
                 balancerArb: "0xv4balancerArb",
+                stabullArb: "0xv4stabullArb",
                 dispair: {
                     deployer: "0xv4dispair",
                     interpreter: "0xv4interpreter",
@@ -61,6 +64,7 @@ describe("SolverContracts.fromAppOptions", () => {
                 sushiArb: "0xv5sushiArb",
                 genericArb: "0xv5genericArb",
                 balancerArb: "0xv5balancerArb",
+                stabullArb: "0xv5stabullArb",
                 dispair: {
                     deployer: "0xv5dispair",
                     interpreter: "0xv5interpreter",
@@ -110,6 +114,7 @@ describe("SolverContracts.fromAppOptions", () => {
                 sushiArb: "0xv5sushiArb",
                 genericArb: "0xv5genericArb",
                 balancerArb: "0xv5balancerArb",
+                stabullArb: "0xv5stabullArb",
                 dispair: {
                     deployer: "0xv5dispair",
                     interpreter: "0xv5interpreter",
@@ -137,6 +142,7 @@ describe("SolverContracts.fromAppOptions", () => {
                 sushiArb: "0xv4sushiArb",
                 genericArb: "0xv4genericArb",
                 balancerArb: "0xv4balancerArb",
+                stabullArb: "0xv4stabullArb",
                 dispair: {
                     deployer: "0xv4dispair",
                     interpreter: "0xv4interpreter",
@@ -195,6 +201,7 @@ describe("SolverContracts.fromAppOptions", () => {
                 sushiArb: "0xv4sushiArb",
                 genericArb: "0xv4genericArb",
                 balancerArb: "0xv4balancerArb",
+                stabullArb: "0xv4stabullArb",
                 dispair: {
                     deployer: "0xv4dispair",
                     interpreter: "0xv4interpreter",
@@ -319,6 +326,7 @@ describe("resolveVersionContracts", () => {
             sushiArb: "0xsushiArbAddress" as `0x${string}`,
             genericArb: "0xgenericArbAddress" as `0x${string}`,
             balancerArb: "0xbalancerArbAddress" as `0x${string}`,
+            stabullArb: "0xstabullArbAddress" as `0x${string}`,
         };
 
         // Mock successful contract calls
@@ -337,6 +345,7 @@ describe("resolveVersionContracts", () => {
             sushiArb: "0xsushiArbAddress",
             genericArb: "0xgenericArbAddress",
             balancerArb: "0xbalancerArbAddress",
+            stabullArb: "0xstabullArbAddress",
         });
 
         expect(mockClient.readContract).toHaveBeenCalledTimes(2);
@@ -484,6 +493,7 @@ describe("versionAddressGetter", () => {
             sushiArb: "0xsushiArbAddress" as `0x${string}`,
             genericArb: "0xgenericArbAddress" as `0x${string}`,
             balancerArb: "0xbalancerArbAddress" as `0x${string}`,
+            stabullArb: "0xstabullArbAddress" as `0x${string}`,
         };
 
         // Create mock order
@@ -581,6 +591,26 @@ describe("versionAddressGetter", () => {
             mockOrder,
             TradeType.Balancer,
         );
+
+        expect(result).toBeUndefined();
+    });
+
+    it("should return stabullArb for Stabull tradeType when available", () => {
+        const result = versionAddressGetter(mockContracts, mockOrder, TradeType.Stabull);
+
+        expect(result).toEqual({
+            dispair: mockContracts.dispair,
+            destination: "0xstabullArbAddress",
+        });
+    });
+
+    it("should return undefined for Stabull tradeType when stabullArb is not available", () => {
+        const contractsWithoutStabull = {
+            ...mockContracts,
+            stabullArb: undefined,
+        };
+
+        const result = versionAddressGetter(contractsWithoutStabull, mockOrder, TradeType.Stabull);
 
         expect(result).toBeUndefined();
     });
