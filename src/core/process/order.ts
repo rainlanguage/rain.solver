@@ -55,8 +55,9 @@ export async function processOrder(
         status: ProcessOrderStatus.NoOpportunity, // set default status to no opp
         spanAttributes,
     };
-    spanAttributes["details.orders"] = orderDetails.takeOrder.id;
+    spanAttributes["details.order"] = orderDetails.takeOrder.id;
     spanAttributes["details.pair"] = tokenPair;
+    spanAttributes["details.orderbook"] = orderDetails.orderbook;
 
     spanAttributes["event.quoteOrder"] = performance.now();
     try {
