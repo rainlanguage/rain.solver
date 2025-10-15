@@ -1,10 +1,12 @@
 import { SharedState } from "../state";
 import { Token } from "sushi/currency";
 import { RainSolverSigner } from "../signer";
+import { RainSolverRouterError } from "./error";
 import { WasmEncodedError } from "@rainlanguage/float";
-import { SushiRouter, SushiRouterQuote, SushiTradeParams } from "./sushi";
 import { maxFloat, minFloat, Result, toFloat } from "../common";
+import { StabullRouterQuote, StabullTradeParams } from "./stabull";
 import { BalancerRouterQuote, BalancerTradeParams } from "./balancer";
+import { SushiRouter, SushiRouterQuote, SushiTradeParams } from "./sushi";
 import { Account, Chain, maxUint256, PublicClient, Transport } from "viem";
 import {
     Pair,
@@ -14,8 +16,6 @@ import {
     TakeOrdersConfigTypeV3,
     TakeOrdersConfigTypeV4,
 } from "../order";
-import { RainSolverRouterError } from "./error";
-import { StabullRouterQuote, StabullTradeParams } from "./stabull";
 
 /** Represents the different router types */
 export enum RouterType {
@@ -136,7 +136,7 @@ export abstract class RainSolverRouterBase {
      * @param toToken - The token to trade to
      * @param fromToken - The token to trade from
      * @param maximumInputFixed - The maximum input amount (in 18 decimals)
-     * @param gasPrice - The current gas price (in bigint)
+     * @param gasPriceBI - The current gas price (in bigint)
      * @param routeType - The route type, single or multi
      */
     findLargestTradeSize(
@@ -144,7 +144,7 @@ export abstract class RainSolverRouterBase {
         toToken: Token,
         fromToken: Token,
         maximumInputFixed: bigint,
-        gasPrice: bigint,
+        gasPriceBI: bigint,
         routeType: "single" | "multi",
     ): bigint | undefined {
         // default implementation returns undefined, override in subclass if supported
@@ -152,7 +152,7 @@ export abstract class RainSolverRouterBase {
         toToken;
         fromToken;
         maximumInputFixed;
-        gasPrice;
+        gasPriceBI;
         routeType;
         return undefined;
     }

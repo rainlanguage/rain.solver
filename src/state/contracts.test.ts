@@ -615,6 +615,19 @@ describe("versionAddressGetter", () => {
         expect(result).toBeUndefined();
     });
 
+    it("should return stabullArb for Router tradeType when sushiArb and balancerArb are not available", () => {
+        const contractsOnlyStabull = {
+            ...mockContracts,
+            sushiArb: undefined,
+            balancerArb: undefined,
+        };
+        const result = versionAddressGetter(contractsOnlyStabull, mockOrder, TradeType.Router);
+        expect(result).toEqual({
+            dispair: mockContracts.dispair,
+            destination: "0xstabullArbAddress",
+        });
+    });
+
     it("should return genericArb for InterOrderbook tradeType when available", () => {
         const result = versionAddressGetter(mockContracts, mockOrder, TradeType.InterOrderbook);
 

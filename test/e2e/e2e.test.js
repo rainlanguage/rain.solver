@@ -3867,7 +3867,7 @@ for (let i = 0; i < testData.length; i++) {
                         StabullConstants.Routers[chainId],
                     );
 
-                    state.appOptions.balancerArbAddress = stabullArb.address;
+                    state.appOptions.stabullArbAddress = stabullArb.address;
                     state.contracts = await SolverContracts.fromAppOptions(viemClient, {
                         contracts: {
                             v5: {
@@ -3991,7 +3991,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.lps = liquidityProviders;
                     config.rpVersion = rpVersion;
                     config.arbAddress = arb.address;
-                    config.balancerArbAddress = stabullArb.address;
+                    config.stabullArbAddress = stabullArb.address;
                     config.orderbookAddress = orderbook.address;
                     config.testBlockNumber = BigInt(blockNumber);
                     config.testBlockNumberInc = BigInt(blockNumber); // increments during test updating to new block height

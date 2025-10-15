@@ -513,7 +513,13 @@ export namespace Validator {
             true,
         );
         const contracts: AppOptionsContracts = {};
-        if (dispairV4 || sushiArbAddressV4 || genericArbAddressV4 || balancerArbAddressV4) {
+        if (
+            dispairV4 ||
+            sushiArbAddressV4 ||
+            genericArbAddressV4 ||
+            balancerArbAddressV4 ||
+            stabullArbAddressV4
+        ) {
             contracts.v4 = {
                 sushiArb: sushiArbAddressV4 as `0x${string}` | undefined,
                 dispair: dispairV4 as `0x${string}` | undefined,
@@ -522,7 +528,13 @@ export namespace Validator {
                 stabullArb: stabullArbAddressV4 as `0x${string}` | undefined,
             };
         }
-        if (dispairV5 || sushiArbAddressV5 || genericArbAddressV5 || balancerArbAddressV5) {
+        if (
+            dispairV5 ||
+            sushiArbAddressV5 ||
+            genericArbAddressV5 ||
+            balancerArbAddressV5 ||
+            stabullArbAddressV5
+        ) {
             contracts.v5 = {
                 sushiArb: sushiArbAddressV5 as `0x${string}` | undefined,
                 dispair: dispairV5 as `0x${string}` | undefined,

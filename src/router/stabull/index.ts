@@ -118,16 +118,16 @@ export class StabullRouter extends RainSolverRouterBase {
             if (!toUsdcQuote?.isOk()) {
                 return Result.err(quoteResult.error);
             }
-            const FromUsdcPrice = await params.sushiRouter?.getMarketPrice({
+            const fromUsdcPrice = await params.sushiRouter?.getMarketPrice({
                 ...params,
                 fromToken: USDC[this.chainId as keyof typeof USDC],
             });
-            if (!FromUsdcPrice?.isOk()) {
+            if (!fromUsdcPrice?.isOk()) {
                 return Result.err(quoteResult.error);
             }
 
             const price =
-                (toUsdcQuote.value.price * parseUnits(FromUsdcPrice.value.price, 18)) / ONE18;
+                (toUsdcQuote.value.price * parseUnits(fromUsdcPrice.value.price, 18)) / ONE18;
             return Result.ok({ price: formatUnits(price, 18) });
         }
         return Result.ok({ price: formatUnits(quoteResult.value.price, 18) });

@@ -1,3 +1,4 @@
+import { GasManager } from "../gas";
 import { ChainId } from "sushi/chain";
 import { AppOptions } from "../config";
 import { Token } from "sushi/currency";
@@ -16,7 +17,6 @@ import { RainSolverRouterError } from "../router/error";
 import { ChainConfig, ChainConfigError, getChainConfig } from "./chain";
 import { RpcState, rainSolverTransport, RainSolverTransportConfig } from "../rpc";
 import { createPublicClient, parseUnits, PublicClient, ReadContractErrorType } from "viem";
-import { GasManager } from "../gas";
 
 /** Enumerates the possible error types that can occur within the chain config */
 export enum SharedStateErrorType {
@@ -135,8 +135,7 @@ export namespace SharedStateConfig {
         const routerResult = await RainSolverRouter.create({
             chainId,
             client,
-            stabullRouter:
-                options.contracts.v4?.stabullArb || options.contracts.v5?.stabullArb ? true : false,
+            stabullRouter: !!(options.contracts.v4?.stabullArb || options.contracts.v5?.stabullArb),
             sushiRouterConfig: {
                 liquidityProviders,
                 sushiRouteProcessor4Address: chainConfig.routeProcessors["4"] as `0x${string}`,

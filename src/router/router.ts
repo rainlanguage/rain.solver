@@ -259,7 +259,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
         toToken: Token,
         fromToken: Token,
         maximumInputFixed: bigint,
-        gasPrice: bigint,
+        gasPriceBI: bigint,
         routeType: "single" | "multi" = "single",
     ): bigint | undefined {
         return this.sushi?.findLargestTradeSize(
@@ -267,7 +267,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
             toToken,
             fromToken,
             maximumInputFixed,
-            gasPrice,
+            gasPriceBI,
             routeType,
         );
     }

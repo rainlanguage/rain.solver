@@ -260,7 +260,8 @@ describe("test StabullRouter", () => {
         it("should call findBestRouter correctly and return error result", async () => {
             const err = new StabullRouterError("some error", StabullRouterErrorType.FetchFailed);
             const spy = vi.spyOn(router, "findBestRoute");
-            spy.mockResolvedValueOnce(Result.err(err));
+            spy.mockResolvedValueOnce(Result.err(err)) // initial call
+                .mockResolvedValueOnce(Result.err(err)); // toUSDC fallback call
 
             const result = await router.getMarketPrice({
                 fromToken: mockTokenIn,
