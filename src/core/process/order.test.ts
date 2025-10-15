@@ -104,8 +104,9 @@ describe("Test processOrder", () => {
         expect(result.value.tokenPair).toBe("BUY/SELL");
         expect(result.value.buyToken).toBe("0xBUY");
         expect(result.value.sellToken).toBe("0xSELL");
-        expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
+        expect(result.value.spanAttributes["details.order"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.value.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
         expect(result.value.endTime).toBeTypeOf("number");
 
         // ensure pair maps are updated on quote 0
@@ -129,8 +130,9 @@ describe("Test processOrder", () => {
         expect(result.error.buyToken).toBe("0xBUY");
         expect(result.error.sellToken).toBe("0xSELL");
         expect(result.error.status).toBe(ProcessOrderStatus.NoOpportunity);
-        expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
+        expect(result.error.spanAttributes["details.order"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.error.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
         expect(result.error.endTime).toBeTypeOf("number");
 
         // ensure pair maps are updated on quote failure
@@ -157,8 +159,9 @@ describe("Test processOrder", () => {
         expect(result.error.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
+        expect(result.error.spanAttributes["details.order"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.error.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
         expect(result.error.endTime).toBeTypeOf("number");
 
         // ensure pair maps are updated success quote
@@ -185,8 +188,9 @@ describe("Test processOrder", () => {
         expect(result.error.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
+        expect(result.error.spanAttributes["details.order"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.error.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
         expect(result.error.endTime).toBeTypeOf("number");
     });
 
@@ -213,8 +217,9 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
+        expect(result.value.spanAttributes["details.order"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.value.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
         expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.outputToEthPrice"]).toBe("no-way");
         expect(result.value.endTime).toBeTypeOf("number");
@@ -243,8 +248,9 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
+        expect(result.value.spanAttributes["details.order"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.value.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
         expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.outputToEthPrice"]).toBe("0");
         expect(result.value.endTime).toBeTypeOf("number");
@@ -269,8 +275,9 @@ describe("Test processOrder", () => {
         expect(result.error.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.error.spanAttributes["details.orders"]).toEqual("0xid");
+        expect(result.error.spanAttributes["details.order"]).toEqual("0xid");
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.error.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
         expect(result.error.endTime).toBeTypeOf("number");
     });
 
@@ -295,8 +302,9 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
+        expect(result.value.spanAttributes["details.order"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.value.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
         expect(result.value.endTime).toBeTypeOf("number");
     });
 
@@ -319,8 +327,9 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
+        expect(result.value.spanAttributes["details.order"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.value.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
         expect(result.value.spanAttributes["details.marketQuote.str"]).toBe("100");
         expect(result.value.spanAttributes["details.marketQuote.num"]).toBe(100);
         expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
@@ -350,8 +359,9 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.quote"]).toBe(
             JSON.stringify({ maxOutput: "1", ratio: "2" }),
         );
-        expect(result.value.spanAttributes["details.orders"]).toEqual("0xid");
+        expect(result.value.spanAttributes["details.order"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
+        expect(result.value.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
         expect(result.value.spanAttributes["details.marketQuote.str"]).toBe("100");
         expect(result.value.spanAttributes["details.marketQuote.num"]).toBe(100);
         expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
