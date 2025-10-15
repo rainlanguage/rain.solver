@@ -15,7 +15,10 @@ import {
     SushiRouterErrorType,
     BalancerRouterErrorType,
     RainSolverRouterErrorType,
+    StabullRouterErrorType,
+    StabullRouterError,
 } from "./error";
+import { StabullRouter } from "./stabull";
 
 describe("RainSolverRouter", () => {
     const chainId = 1;
@@ -37,6 +40,7 @@ describe("RainSolverRouter", () => {
     let router: RainSolverRouter;
     let mockSushiRouter: SushiRouter;
     let mockBalancerRouter: BalancerRouter;
+    let mockStabullRouter: StabullRouter;
     let mockClient: PublicClient;
 
     beforeEach(() => {
@@ -44,16 +48,24 @@ describe("RainSolverRouter", () => {
         mockClient = createMockPublicClient();
         mockSushiRouter = createMockSushiRouter();
         mockBalancerRouter = createMockBalancerRouter();
-        router = new RainSolverRouter(chainId, mockClient, mockSushiRouter, mockBalancerRouter);
+        mockStabullRouter = createMockStabullRouter();
+        router = new RainSolverRouter(
+            chainId,
+            mockClient,
+            mockSushiRouter,
+            mockBalancerRouter,
+            mockStabullRouter,
+        );
     });
 
     describe("test create static method", () => {
-        it("should create router with both sushi and balancer when both succeed", async () => {
+        it("should create router with sushi, balancer and stabull when both succeed", async () => {
             const mockConfig: RainSolverRouterConfig = {
                 chainId,
                 client: mockClient,
                 sushiRouterConfig: { sushiRouteProcessor4Address: "0xsushi" as `0x${string}` },
                 balancerRouterConfig: { balancerRouterAddress: "0xbalancer" as `0x${string}` },
+                stabullRouter: true,
             };
 
             const sushiCreateSpy = vi.spyOn(SushiRouter, "create");
@@ -61,6 +73,9 @@ describe("RainSolverRouter", () => {
 
             const balancerCreateSpy = vi.spyOn(BalancerRouter, "create");
             balancerCreateSpy.mockResolvedValue(Result.ok(mockBalancerRouter));
+
+            const stabullCreateSpy = vi.spyOn(StabullRouter, "create");
+            stabullCreateSpy.mockResolvedValue(Result.ok(mockStabullRouter));
 
             const result = await RainSolverRouter.create(mockConfig);
 
@@ -78,9 +93,11 @@ describe("RainSolverRouter", () => {
                 mockClient,
                 "0xbalancer" as `0x${string}`,
             );
+            expect(stabullCreateSpy).toHaveBeenCalledWith(chainId, mockClient);
 
             sushiCreateSpy.mockRestore();
             balancerCreateSpy.mockRestore();
+            stabullCreateSpy.mockRestore();
         });
 
         it("should create router with only balancer when sushi fails", async () => {
@@ -168,9 +185,10 @@ describe("RainSolverRouter", () => {
             gasPrice,
         };
 
-        it("should call both sushi and balancer getMarketPrice and return highest price", async () => {
+        it("should call both sushi, balancer and stabull getMarketPrice and return highest price", async () => {
             const sushiResult = Result.ok({ price: "2500.5" }) as any;
             const balancerResult = Result.ok({ price: "3000.0" }) as any;
+            const stabullResult = Result.ok({ price: "1500.0" }) as any;
 
             const sushiSpy = vi.spyOn(mockSushiRouter, "getMarketPrice");
             sushiSpy.mockResolvedValue(sushiResult);
@@ -178,15 +196,20 @@ describe("RainSolverRouter", () => {
             const balancerSpy = vi.spyOn(mockBalancerRouter, "getMarketPrice");
             balancerSpy.mockResolvedValue(balancerResult);
 
+            const stabullSpy = vi.spyOn(mockStabullRouter, "getMarketPrice");
+            stabullSpy.mockResolvedValue(stabullResult);
+
             const result = await router.getMarketPrice(mockParams);
 
             assert(result.isOk());
             expect(result.value.price).toBe("3000.0");
             expect(sushiSpy).toHaveBeenCalledWith(mockParams);
             expect(balancerSpy).toHaveBeenCalledWith(mockParams);
+            expect(stabullSpy).toHaveBeenCalledWith({ ...mockParams, sushiRouter: router.sushi });
 
             sushiSpy.mockRestore();
             balancerSpy.mockRestore();
+            stabullSpy.mockRestore();
         });
 
         it("should return sushi result when balancer fails", async () => {
@@ -237,12 +260,15 @@ describe("RainSolverRouter", () => {
             balancerSpy.mockRestore();
         });
 
-        it("should return error when both fail", async () => {
+        it("should return error when all fail", async () => {
             const sushiResult = Result.err(
                 new SushiRouterError("sushi error", SushiRouterErrorType.NoRouteFound),
             ) as any;
             const balancerResult = Result.err(
                 new BalancerRouterError("balancer error", BalancerRouterErrorType.NoRouteFound),
+            ) as any;
+            const stabullResult = Result.err(
+                new StabullRouterError("stabull error", StabullRouterErrorType.NoRouteFound),
             ) as any;
 
             const sushiSpy = vi.spyOn(mockSushiRouter, "getMarketPrice");
@@ -251,6 +277,9 @@ describe("RainSolverRouter", () => {
             const balancerSpy = vi.spyOn(mockBalancerRouter, "getMarketPrice");
             balancerSpy.mockResolvedValue(balancerResult);
 
+            const stabullSpy = vi.spyOn(mockStabullRouter, "getMarketPrice");
+            stabullSpy.mockResolvedValue(stabullResult);
+
             const result = await router.getMarketPrice(mockParams);
 
             assert(result.isErr());
@@ -258,9 +287,11 @@ describe("RainSolverRouter", () => {
             expect(result.error.typ).toBe(RainSolverRouterErrorType.NoRouteFound);
             expect(sushiSpy).toHaveBeenCalledWith(mockParams);
             expect(balancerSpy).toHaveBeenCalledWith(mockParams);
+            expect(stabullSpy).toHaveBeenCalledWith({ ...mockParams, sushiRouter: router.sushi });
 
             sushiSpy.mockRestore();
             balancerSpy.mockRestore();
+            stabullSpy.mockRestore();
         });
 
         it("should sort results by price correctly", async () => {
@@ -335,7 +366,7 @@ describe("RainSolverRouter", () => {
             gasPrice,
         };
 
-        it("should call both sushi and balancer tryQuote and return highest amountOut", async () => {
+        it("should call sushi, balancer and stabull tryQuote and return highest amountOut", async () => {
             const sushiResult = Result.ok({
                 type: RouterType.Sushi,
                 status: RouteStatus.Success,
@@ -348,12 +379,21 @@ describe("RainSolverRouter", () => {
                 price: 3000n * ONE18,
                 amountOut: 3000000000n,
             }) as any;
+            const stabullResult = Result.ok({
+                type: RouterType.Stabull as const,
+                status: RouteStatus.Success,
+                price: 3000n * ONE18,
+                amountOut: 1500000000n,
+            }) as any;
 
             const sushiSpy = vi.spyOn(mockSushiRouter, "tryQuote");
             sushiSpy.mockResolvedValue(sushiResult);
 
             const balancerSpy = vi.spyOn(mockBalancerRouter, "tryQuote");
             balancerSpy.mockResolvedValue(balancerResult);
+
+            const stabullSpy = vi.spyOn(mockStabullRouter, "tryQuote");
+            stabullSpy.mockResolvedValue(stabullResult);
 
             const result = await router.tryQuote(mockParams);
 
@@ -362,9 +402,11 @@ describe("RainSolverRouter", () => {
             expect(result.value.type).toBe(RouterType.Balancer);
             expect(sushiSpy).toHaveBeenCalledWith(mockParams);
             expect(balancerSpy).toHaveBeenCalledWith(mockParams);
+            expect(stabullSpy).toHaveBeenCalledWith(mockParams);
 
             sushiSpy.mockRestore();
             balancerSpy.mockRestore();
+            stabullSpy.mockRestore();
         });
 
         it("should return sushi result when balancer fails", async () => {
@@ -491,7 +533,7 @@ describe("RainSolverRouter", () => {
             gasPrice,
         };
 
-        it("should call both sushi and balancer findBestRoute and return highest amountOut", async () => {
+        it("should call sushi, balancer and stabull findBestRoute and return highest amountOut", async () => {
             const sushiResult = Result.ok({
                 type: RouterType.Sushi,
                 status: RouteStatus.Success,
@@ -504,12 +546,21 @@ describe("RainSolverRouter", () => {
                 price: 3000n * ONE18,
                 amountOut: 3000000000n,
             }) as any;
+            const stabullResult = Result.ok({
+                type: RouterType.Stabull as const,
+                status: RouteStatus.Success,
+                price: 3000n * ONE18,
+                amountOut: 1500000000n,
+            }) as any;
 
             const sushiSpy = vi.spyOn(mockSushiRouter, "findBestRoute");
             sushiSpy.mockResolvedValue(sushiResult);
 
             const balancerSpy = vi.spyOn(mockBalancerRouter, "findBestRoute");
             balancerSpy.mockResolvedValue(balancerResult);
+
+            const stabullSpy = vi.spyOn(mockStabullRouter, "findBestRoute");
+            stabullSpy.mockResolvedValue(stabullResult);
 
             const result = await router.findBestRoute(mockParams);
 
@@ -518,17 +569,22 @@ describe("RainSolverRouter", () => {
             expect(result.value.amountOut).toBe(3000000000n);
             expect(sushiSpy).toHaveBeenCalledWith(mockParams);
             expect(balancerSpy).toHaveBeenCalledWith(mockParams);
+            expect(stabullSpy).toHaveBeenCalledWith(mockParams);
 
             sushiSpy.mockRestore();
             balancerSpy.mockRestore();
+            stabullSpy.mockRestore();
         });
 
-        it("should return error when both fail", async () => {
+        it("should return error when all fail", async () => {
             const sushiResult = Result.err(
                 new SushiRouterError("sushi error", SushiRouterErrorType.NoRouteFound),
             ) as any;
             const balancerResult = Result.err(
                 new BalancerRouterError("balancer error", BalancerRouterErrorType.NoRouteFound),
+            ) as any;
+            const stabullResult = Result.err(
+                new StabullRouterError("stabull error", StabullRouterErrorType.NoRouteFound),
             ) as any;
 
             const sushiSpy = vi.spyOn(mockSushiRouter, "findBestRoute");
@@ -537,6 +593,9 @@ describe("RainSolverRouter", () => {
             const balancerSpy = vi.spyOn(mockBalancerRouter, "findBestRoute");
             balancerSpy.mockResolvedValue(balancerResult);
 
+            const stabullSpy = vi.spyOn(mockStabullRouter, "findBestRoute");
+            stabullSpy.mockResolvedValue(stabullResult);
+
             const result = await router.findBestRoute(mockParams);
 
             assert(result.isErr());
@@ -544,9 +603,11 @@ describe("RainSolverRouter", () => {
             expect(result.error.typ).toBe(RainSolverRouterErrorType.NoRouteFound);
             expect(sushiSpy).toHaveBeenCalledWith(mockParams);
             expect(balancerSpy).toHaveBeenCalledWith(mockParams);
+            expect(stabullSpy).toHaveBeenCalledWith(mockParams);
 
             sushiSpy.mockRestore();
             balancerSpy.mockRestore();
+            stabullSpy.mockRestore();
         });
 
         it("should sort results by amountOut descending", async () => {
@@ -659,7 +720,7 @@ describe("RainSolverRouter", () => {
             isPartial: false,
         } as any;
 
-        it("should call both sushi and balancer getTradeParams and return highest amountOut", async () => {
+        it("should call sushi, balancer and stabull getTradeParams and return highest amountOut", async () => {
             const sushiResult = Result.ok({
                 type: RouterType.Sushi,
                 quote: {
@@ -682,12 +743,26 @@ describe("RainSolverRouter", () => {
                 routeVisual: [],
                 takeOrdersConfigStruct: {} as any,
             }) as any;
+            const stabullResult = Result.ok({
+                type: RouterType.Stabull,
+                quote: {
+                    type: RouterType.Stabull as const,
+                    status: RouteStatus.Success,
+                    price: 3000n * ONE18,
+                    amountOut: 1500000000n,
+                },
+                routeVisual: [],
+                takeOrdersConfigStruct: {} as any,
+            }) as any;
 
             const sushiSpy = vi.spyOn(mockSushiRouter, "getTradeParams");
             sushiSpy.mockResolvedValue(sushiResult);
 
             const balancerSpy = vi.spyOn(mockBalancerRouter, "getTradeParams");
             balancerSpy.mockResolvedValue(balancerResult);
+
+            const stabullSpy = vi.spyOn(mockStabullRouter, "getTradeParams");
+            stabullSpy.mockResolvedValue(stabullResult);
 
             const result = await router.getTradeParams(mockArgs);
 
@@ -696,17 +771,22 @@ describe("RainSolverRouter", () => {
             expect(result.value.quote.amountOut).toBe(3000000000n);
             expect(sushiSpy).toHaveBeenCalledWith(mockArgs);
             expect(balancerSpy).toHaveBeenCalledWith(mockArgs);
+            expect(stabullSpy).toHaveBeenCalledWith(mockArgs);
 
             sushiSpy.mockRestore();
             balancerSpy.mockRestore();
+            stabullSpy.mockRestore();
         });
 
-        it("should return error when both fail", async () => {
+        it("should return error when all fail", async () => {
             const sushiResult = Result.err(
                 new SushiRouterError("sushi error", SushiRouterErrorType.FetchFailed),
             ) as any;
             const balancerResult = Result.err(
                 new BalancerRouterError("balancer error", BalancerRouterErrorType.FetchFailed),
+            ) as any;
+            const stabullResult = Result.err(
+                new StabullRouterError("stabull error", StabullRouterErrorType.FetchFailed),
             ) as any;
 
             const sushiSpy = vi.spyOn(mockSushiRouter, "getTradeParams");
@@ -715,6 +795,9 @@ describe("RainSolverRouter", () => {
             const balancerSpy = vi.spyOn(mockBalancerRouter, "getTradeParams");
             balancerSpy.mockResolvedValue(balancerResult);
 
+            const stabullSpy = vi.spyOn(mockStabullRouter, "getTradeParams");
+            stabullSpy.mockResolvedValue(stabullResult);
+
             const result = await router.getTradeParams(mockArgs);
 
             assert(result.isErr());
@@ -722,9 +805,11 @@ describe("RainSolverRouter", () => {
             expect(result.error.typ).toBe(RainSolverRouterErrorType.FetchFailed);
             expect(sushiSpy).toHaveBeenCalledWith(mockArgs);
             expect(balancerSpy).toHaveBeenCalledWith(mockArgs);
+            expect(stabullSpy).toHaveBeenCalledWith(mockArgs);
 
             sushiSpy.mockRestore();
             balancerSpy.mockRestore();
+            stabullSpy.mockRestore();
         });
 
         it("should return error when both fail", async () => {
@@ -932,4 +1017,14 @@ function createMockBalancerRouter(): BalancerRouter {
 
 function createMockPublicClient(): PublicClient {
     return {} as any;
+}
+
+function createMockStabullRouter(): StabullRouter {
+    return {
+        getMarketPrice: vi.fn(),
+        tryQuote: vi.fn(),
+        findBestRoute: vi.fn(),
+        getTradeParams: vi.fn(),
+        getLiquidityProvidersList: vi.fn(),
+    } as any;
 }

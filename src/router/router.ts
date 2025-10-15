@@ -20,6 +20,8 @@ import {
     BalancerRouterErrorType,
     RainSolverRouterErrorType,
 } from "./error";
+import { StabullRouter } from "./stabull";
+import { StabullRouterError, StabullRouterErrorType } from "./stabull/error";
 
 export type RainSolverRouterConfig = {
     /** The chain id of the operating chain */
@@ -38,6 +40,8 @@ export type RainSolverRouterConfig = {
         /** The address of the Balancer BatchRouter contract */
         balancerRouterAddress: `0x${string}`;
     };
+    /** Optional configuration for enabling the Stabull router */
+    stabullRouter?: boolean;
 };
 
 /**
@@ -46,19 +50,21 @@ export type RainSolverRouterConfig = {
  * as managing runtime cache for routes.
  */
 export class RainSolverRouter extends RainSolverRouterBase {
-    /** The protocol version of the RainSolverRouter */
     readonly sushi: SushiRouter | undefined;
     readonly balancer: BalancerRouter | undefined;
+    readonly stabull: StabullRouter | undefined;
 
     constructor(
         chainId: number,
         client: PublicClient<Transport, Chain | undefined, Account | undefined>,
         sushiRouter?: SushiRouter,
         balancerRouter?: BalancerRouter,
+        stabullRouter?: StabullRouter,
     ) {
         super(chainId, client);
         this.sushi = sushiRouter;
         this.balancer = balancerRouter;
+        this.stabull = stabullRouter;
     }
 
     /**
@@ -69,7 +75,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
     static async create(
         config: RainSolverRouterConfig,
     ): Promise<Result<RainSolverRouter, RainSolverRouterError>> {
-        const { chainId, client, balancerRouterConfig, sushiRouterConfig } = config;
+        const { chainId, client, balancerRouterConfig, sushiRouterConfig, stabullRouter } = config;
         const sushiResult: Result<SushiRouter, SushiRouterError> = sushiRouterConfig
             ? await SushiRouter.create(
                   chainId,
@@ -95,34 +101,34 @@ export class RainSolverRouter extends RainSolverRouterBase {
                       BalancerRouterErrorType.UnsupportedChain,
                   ),
               );
-        if (sushiResult.isErr() && balancerResult.isErr()) {
+        const stabullResult: Result<StabullRouter, StabullRouterError> = stabullRouter
+            ? await StabullRouter.create(chainId, client)
+            : Result.err(
+                  new StabullRouterError(
+                      "Stabull router not enabled",
+                      StabullRouterErrorType.InitializationError,
+                  ),
+              );
+        if (sushiResult.isErr() && balancerResult.isErr() && stabullResult.isErr()) {
             return Result.err(
                 new RainSolverRouterError(
                     "Failed initializing RainSolverRouter",
                     RainSolverRouterErrorType.InitializationError,
                     sushiResult.error,
                     balancerResult.error,
-                ),
-            );
-        } else if (sushiResult.isErr() && balancerResult.isOk()) {
-            return Result.ok(
-                new RainSolverRouter(chainId, client, undefined, balancerResult.value),
-            );
-        } else if (balancerResult.isErr() && sushiResult.isOk()) {
-            return Result.ok(new RainSolverRouter(chainId, client, sushiResult.value, undefined));
-        } else if (sushiResult.isOk() && balancerResult.isOk()) {
-            return Result.ok(
-                new RainSolverRouter(chainId, client, sushiResult.value, balancerResult.value),
-            );
-        } else {
-            // unreachable path
-            return Result.err(
-                new RainSolverRouterError(
-                    "unreachable path",
-                    RainSolverRouterErrorType.InitializationError,
+                    stabullResult.error,
                 ),
             );
         }
+        return Result.ok(
+            new RainSolverRouter(
+                chainId,
+                client,
+                sushiResult.isOk() ? sushiResult.value : undefined,
+                balancerResult.isOk() ? balancerResult.value : undefined,
+                stabullResult.isOk() ? stabullResult.value : undefined,
+            ),
+        );
     }
 
     /**
@@ -136,6 +142,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
         const promises = [
             this.sushi?.getMarketPrice(params),
             this.balancer?.getMarketPrice(params),
+            this.stabull?.getMarketPrice({ ...params, sushiRouter: this.sushi }),
         ];
         const results = await Promise.all(promises);
         results.sort((a, b) => {
@@ -165,7 +172,11 @@ export class RainSolverRouter extends RainSolverRouterBase {
     async tryQuote(
         params: RainSolverRouterQuoteParams,
     ): Promise<Result<RainSolverRouterQuote, RainSolverRouterError>> {
-        const promises = [this.sushi?.tryQuote(params), this.balancer?.tryQuote(params)];
+        const promises = [
+            this.sushi?.tryQuote(params),
+            this.balancer?.tryQuote(params),
+            this.stabull?.tryQuote(params),
+        ];
         const results = await Promise.all(promises);
         results.sort((a, b) => {
             if (!a?.isOk() && !b?.isOk()) return 0;
@@ -192,7 +203,11 @@ export class RainSolverRouter extends RainSolverRouterBase {
     async findBestRoute(
         params: RainSolverRouterQuoteParams,
     ): Promise<Result<RainSolverRouterQuote, RainSolverRouterError>> {
-        const promises = [this.sushi?.findBestRoute(params), this.balancer?.findBestRoute(params)];
+        const promises = [
+            this.sushi?.findBestRoute(params),
+            this.balancer?.findBestRoute(params),
+            this.stabull?.findBestRoute(params),
+        ];
         const results = await Promise.all(promises);
         results.sort((a, b) => {
             if (!a?.isOk() && !b?.isOk()) return 0;
@@ -215,7 +230,11 @@ export class RainSolverRouter extends RainSolverRouterBase {
     async getTradeParams(
         args: GetTradeParamsArgs,
     ): Promise<Result<TradeParamsType, RainSolverRouterError>> {
-        const promises = [this.sushi?.getTradeParams(args), this.balancer?.getTradeParams(args)];
+        const promises = [
+            this.sushi?.getTradeParams(args),
+            this.balancer?.getTradeParams(args),
+            this.stabull?.getTradeParams(args),
+        ];
         const results = await Promise.all(promises);
         results.sort((a, b) => {
             if (!a?.isOk() && !b?.isOk()) return 0;
@@ -240,7 +259,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
         toToken: Token,
         fromToken: Token,
         maximumInputFixed: bigint,
-        gasPriceBI: bigint,
+        gasPrice: bigint,
         routeType: "single" | "multi" = "single",
     ): bigint | undefined {
         return this.sushi?.findLargestTradeSize(
@@ -248,7 +267,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
             toToken,
             fromToken,
             maximumInputFixed,
-            gasPriceBI,
+            gasPrice,
             routeType,
         );
     }
@@ -257,20 +276,29 @@ export class RainSolverRouter extends RainSolverRouterBase {
         return [
             ...(this.balancer?.getLiquidityProvidersList() ?? []),
             ...(this.sushi?.getLiquidityProvidersList() ?? []),
+            ...(this.stabull?.getLiquidityProvidersList() ?? []),
         ];
     }
 }
 
 function getError(
     msg: string,
-    results: (Result<any, SushiRouterError | BalancerRouterError> | undefined)[],
+    results: (
+        | Result<any, SushiRouterError | BalancerRouterError | StabullRouterError>
+        | undefined
+    )[],
 ): RainSolverRouterError {
     let type = RainSolverRouterErrorType.FetchFailed;
     if (
-        (results[0] as Err<SushiRouterError> | undefined)?.error?.type ===
-            SushiRouterErrorType.NoRouteFound &&
-        (results[1] as Err<BalancerRouterError> | undefined)?.error?.type ===
-            BalancerRouterErrorType.NoRouteFound
+        (!results[0] ||
+            (results[0] as Err<SushiRouterError> | undefined)?.error?.type ===
+                SushiRouterErrorType.NoRouteFound) &&
+        (!results[1] ||
+            (results[1] as Err<BalancerRouterError> | undefined)?.error?.type ===
+                BalancerRouterErrorType.NoRouteFound) &&
+        (!results[2] ||
+            (results[2] as Err<StabullRouterError> | undefined)?.error?.type ===
+                StabullRouterErrorType.NoRouteFound)
     ) {
         type = RainSolverRouterErrorType.NoRouteFound;
     }
@@ -279,5 +307,6 @@ function getError(
         type,
         (results[0] as Err<SushiRouterError> | undefined)?.error,
         (results[1] as Err<BalancerRouterError> | undefined)?.error,
+        (results[2] as Err<StabullRouterError> | undefined)?.error,
     );
 }

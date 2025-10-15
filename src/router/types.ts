@@ -2,7 +2,7 @@ import { SharedState } from "../state";
 import { Token } from "sushi/currency";
 import { RainSolverSigner } from "../signer";
 import { WasmEncodedError } from "@rainlanguage/float";
-import { SushiRouterQuote, SushiTradeParams } from "./sushi";
+import { SushiRouter, SushiRouterQuote, SushiTradeParams } from "./sushi";
 import { maxFloat, minFloat, Result, toFloat } from "../common";
 import { BalancerRouterQuote, BalancerTradeParams } from "./balancer";
 import { Account, Chain, maxUint256, PublicClient, Transport } from "viem";
@@ -15,6 +15,7 @@ import {
     TakeOrdersConfigTypeV4,
 } from "../order";
 import { RainSolverRouterError } from "./error";
+import { StabullRouterQuote, StabullTradeParams } from "./stabull";
 
 /** Represents the different router types */
 export enum RouterType {
@@ -22,6 +23,8 @@ export enum RouterType {
     Sushi = "sushi",
     /** The Balancer router (BatchRouter) */
     Balancer = "balancer",
+    /** The Stabull router */
+    Stabull = "stabull",
 }
 
 /** Represents the status of a route */
@@ -41,6 +44,7 @@ export type RainSolverRouterQuoteParams = {
     blockNumber?: bigint;
     senderAddress?: `0x${string}`;
     sushiRouteType?: "single" | "multi";
+    sushiRouter?: SushiRouter;
 };
 
 /** Arguments for simulating a trade against routers */
@@ -64,10 +68,10 @@ export type GetTradeParamsArgs = {
 };
 
 /** Represents the trade params for a RainSolverRouter route */
-export type TradeParamsType = SushiTradeParams | BalancerTradeParams;
+export type TradeParamsType = SushiTradeParams | BalancerTradeParams | StabullTradeParams;
 
 /** Represents the quote details for a RainSolverRouter route */
-export type RainSolverRouterQuote = SushiRouterQuote | BalancerRouterQuote;
+export type RainSolverRouterQuote = SushiRouterQuote | BalancerRouterQuote | StabullRouterQuote;
 
 /**
  * Base class for all RainSolverRouter implementations.
@@ -132,7 +136,7 @@ export abstract class RainSolverRouterBase {
      * @param toToken - The token to trade to
      * @param fromToken - The token to trade from
      * @param maximumInputFixed - The maximum input amount (in 18 decimals)
-     * @param gasPriceBI - The current gas price (in bigint)
+     * @param gasPrice - The current gas price (in bigint)
      * @param routeType - The route type, single or multi
      */
     findLargestTradeSize(
@@ -140,7 +144,7 @@ export abstract class RainSolverRouterBase {
         toToken: Token,
         fromToken: Token,
         maximumInputFixed: bigint,
-        gasPriceBI: bigint,
+        gasPrice: bigint,
         routeType: "single" | "multi",
     ): bigint | undefined {
         // default implementation returns undefined, override in subclass if supported
@@ -148,7 +152,7 @@ export abstract class RainSolverRouterBase {
         toToken;
         fromToken;
         maximumInputFixed;
-        gasPriceBI;
+        gasPrice;
         routeType;
         return undefined;
     }

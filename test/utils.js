@@ -17,6 +17,7 @@ const RainterpreterExpressionDeployerArtifact = require("./abis/RainterpreterExp
 const GenericPoolOrderBookV5ArbOrderTakerArtifact = require("./abis/GenericPoolOrderBookV5ArbOrderTaker.json");
 const RouteProcessorOrderBookV5ArbOrderTakerArtifact = require("./abis/RouteProcessorOrderBookV5ArbOrderTaker.json");
 const BalancerRouterOrderBookV5ArbOrderTakerArtifact = require("./abis/BalancerRouterOrderBookV5ArbOrderTaker.json");
+const StabullRouterOrderBookV5ArbOrderTakerArtifact = require("./abis/StabullRouterOrderBookV5ArbOrderTaker.json");
 
 /**
  * Deploys a simple contracts that takes no arguments for deployment
@@ -115,6 +116,17 @@ exports.genericArbrbDeployV5 = async (orderbookAddress) => {
             signedContext: [],
         },
         implementationData: "0x",
+    });
+};
+
+exports.stabullArbDeployV5 = async (orderbookAddress, routerAddress) => {
+    return await this.basicDeploy(StabullRouterOrderBookV5ArbOrderTakerArtifact, {
+        orderBook: orderbookAddress ?? `0x${"0".repeat(40)}`,
+        task: {
+            evaluable: ABI.Orderbook.V5.DefaultArbEvaluable,
+            signedContext: [],
+        },
+        implementationData: ethers.utils.defaultAbiCoder.encode(["address"], [routerAddress]),
     });
 };
 

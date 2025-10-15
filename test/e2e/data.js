@@ -153,6 +153,31 @@ module.exports = [
         ["1", "100"],
     ],
     [
+        // unique test for aerodrome slipstream
+        ChainId.BASE,
+        process?.env?.TEST_BASE_RPC,
+        36806200,
+        [
+            USDC[ChainId.BASE],
+            new Token({
+                chainId: ChainId.BASE,
+                address: "0xfb8718a69aed7726afb3f04d2bd4bfde1bdcb294",
+                decimals: 6,
+                symbol: "TRYB",
+            }),
+        ],
+        [
+            "0x336307F2d8390035Ba926a61a86b45CA9dC91E57",
+            "0x8f58955bB4dfF80f956B4683d29b62C984D4657F",
+        ],
+        [LiquidityProviders.AerodromeSlipstream],
+        ["1", "100"],
+        undefined,
+        undefined,
+        undefined,
+        true,
+    ],
+    [
         ChainId.BSC,
         process?.env?.TEST_BSC_RPC,
         40393189,
