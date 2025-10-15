@@ -4,9 +4,9 @@ import { RainSolverSigner } from "../signer";
 import { RainSolverRouterError } from "./error";
 import { WasmEncodedError } from "@rainlanguage/float";
 import { maxFloat, minFloat, Result, toFloat } from "../common";
-import { StabullRouterQuote, StabullTradeParams } from "./stabull";
-import { BalancerRouterQuote, BalancerTradeParams } from "./balancer";
-import { SushiRouter, SushiRouterQuote, SushiTradeParams } from "./sushi";
+import type { StabullRouterQuote, StabullTradeParams } from "./stabull";
+import type { BalancerRouterQuote, BalancerTradeParams } from "./balancer";
+import type { SushiRouter, SushiRouterQuote, SushiTradeParams } from "./sushi";
 import { Account, Chain, maxUint256, PublicClient, Transport } from "viem";
 import {
     Pair,
