@@ -2,7 +2,7 @@ import { TokenDetails } from "../common";
 import { ChainId, Router } from "sushi";
 import { RainSolverSigner } from "../signer";
 import { Native, Token } from "sushi/currency";
-import { RPoolFilter } from "../router/sushi/blacklist";
+import { poolFilter } from "../router/sushi/blacklist";
 import { encodeFunctionData, erc20Abi, maxUint256 } from "viem";
 
 /**
@@ -165,7 +165,7 @@ export async function convertToGas(
         true,
         undefined,
         from.state.liquidityProviders,
-        RPoolFilter,
+        poolFilter,
         from.state.appOptions.route,
     );
     const rpParams = Router.routeProcessor4Params(

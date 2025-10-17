@@ -3,7 +3,7 @@ import { Result } from "../../common";
 import { Token } from "sushi/currency";
 import { TradeType } from "../../core/types";
 import { MultiRoute, RouteLeg } from "sushi/tines";
-import { BlackListSet, RPoolFilter } from "./blacklist";
+import { BlackListSet, poolFilter } from "./blacklist";
 import { TakeOrdersConfigType } from "../../order/types";
 import { SushiRouterError, SushiRouterErrorType } from "./error";
 import { calculatePrice18, scaleFrom18, scaleTo18 } from "../../math";
@@ -211,7 +211,7 @@ export class SushiRouter extends RainSolverRouterBase {
                 toToken,
                 Number(gasPrice),
                 undefined,
-                RPoolFilter,
+                poolFilter,
                 undefined,
                 sushiRouteType,
             );
@@ -495,7 +495,7 @@ export class SushiRouter extends RainSolverRouterBase {
                 toToken,
                 gasPrice,
                 undefined,
-                RPoolFilter,
+                poolFilter,
                 undefined,
                 routeType,
             );

@@ -1,6 +1,6 @@
 import { RPool } from "sushi/tines";
 
-/** List of blacklisted pools */
+/** Blacklisted pools */
 export const BlackList = [
     "0x2c2797Fe74A1b40E3B85b82c02C0AC327D9dF22D",
     "0xFB957DE375cc10450D7a34aB85b1F15Ef58680b4",
@@ -16,6 +16,6 @@ export const BlackList = [
 export const BlackListSet = new Set([...BlackList, ...BlackList.map((addr) => addr.toLowerCase())]);
 
 /** A function that filters out blacklisted pools used by sushi router */
-export function RPoolFilter(pool: RPool) {
+export function poolFilter(pool: RPool) {
     return !BlackListSet.has(pool.address.toLowerCase());
 }
