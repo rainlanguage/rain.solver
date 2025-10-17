@@ -136,6 +136,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
         expect(spy).toHaveBeenCalledWith({
             chainId: 1,
             client: mockClient,
+            stabullRouter: false,
             sushiRouterConfig: {
                 liquidityProviders: [LiquidityProviders.UniswapV2],
                 sushiRouteProcessor4Address: "0xrouteProcessor",
@@ -167,6 +168,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
         expect(spy).toHaveBeenCalledWith({
             chainId: 1,
             client: mockClient,
+            stabullRouter: false,
             sushiRouterConfig: {
                 liquidityProviders: [LiquidityProviders.UniswapV2],
                 sushiRouteProcessor4Address: "0xrouteProcessor",
@@ -187,11 +189,12 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
         expect(spy).toHaveBeenCalledWith({
             chainId: 1,
             client: mockClient,
+            stabullRouter: false,
             sushiRouterConfig: {
                 liquidityProviders: [LiquidityProviders.UniswapV2],
                 sushiRouteProcessor4Address: "0xrouteProcessor",
             },
-            undefined,
+            balancerRouterConfig: undefined,
         });
 
         spy.mockRestore();
@@ -207,11 +210,12 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
         expect(spy).toHaveBeenCalledWith({
             chainId: 99999,
             client: mockClient,
+            stabullRouter: false,
             sushiRouterConfig: {
                 liquidityProviders: [LiquidityProviders.UniswapV2],
                 sushiRouteProcessor4Address: "0xrouteProcessor",
             },
-            undefined,
+            balancerRouterConfig: undefined,
         });
 
         spy.mockRestore();

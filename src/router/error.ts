@@ -1,9 +1,11 @@
 import { RainSolverBaseError } from "../error";
 import { SushiRouterError } from "./sushi/error";
 import { BalancerRouterError } from "./balancer/error";
+import { StabullRouterError } from "./stabull/error";
 
-// re-export all error types from sushi and balancer
+// re-export all error types from sushi, balancer and stabull
 export * from "./sushi/error";
+export * from "./stabull/error";
 export * from "./balancer/error";
 
 /** Enumerates the possible error types that can occur within the RainSolverRouter functionalities */
@@ -28,11 +30,14 @@ export class RainSolverRouterError extends RainSolverBaseError {
     typ?: RainSolverRouterErrorType;
     sushiError?: SushiRouterError;
     balancerError?: BalancerRouterError;
+    stabullError?: StabullRouterError;
+
     constructor(
         message: string,
         type: RainSolverRouterErrorType,
         sushiError?: SushiRouterError,
         balancerError?: BalancerRouterError,
+        stabullError?: StabullRouterError,
     ) {
         const msgs = [message];
         if (sushiError) {
@@ -41,10 +46,14 @@ export class RainSolverRouterError extends RainSolverBaseError {
         if (balancerError) {
             msgs.push(`BalancerRouterError: ${balancerError.message}`);
         }
+        if (stabullError) {
+            msgs.push(`StabullRouterError: ${stabullError.message}`);
+        }
         super(msgs.join("\n"));
         this.typ = type;
         this.sushiError = sushiError;
         this.balancerError = balancerError;
+        this.stabullError = stabullError;
         this.name = "RainSolverRouterError";
     }
 }

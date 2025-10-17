@@ -41,7 +41,7 @@ export type SimulateRouterTradeArgs = {
 
 /** Arguments for preparing router trade type parameters required for simulation and building tx object */
 export type RouterTradePreparedParams = {
-    type: TradeType.Router | TradeType.Balancer | TradeType.RouteProcessor;
+    type: TradeType.Router | TradeType.Balancer | TradeType.RouteProcessor | TradeType.Stabull;
     rawtx: RawTransaction;
     price: bigint;
     minimumExpected: bigint;
@@ -118,15 +118,21 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
             takeOrdersConfigStruct,
         } = tradeParamsResult.value;
 
-        // determine trade type based on router type
+        // determine trade type based on route type
         let type = TradeType.Router;
-        if (routeType === RouterType.Sushi) {
-            type = TradeType.RouteProcessor;
-        } else if (routeType === RouterType.Balancer) {
-            type = TradeType.Balancer;
-        } else {
-            // unreachable path
-            type = TradeType.Router;
+        switch (routeType) {
+            case RouterType.Sushi: {
+                type = TradeType.RouteProcessor;
+                break;
+            }
+            case RouterType.Balancer: {
+                type = TradeType.Balancer;
+                break;
+            }
+            case RouterType.Stabull: {
+                type = TradeType.Stabull;
+                break;
+            }
         }
 
         this.spanAttributes["amountOut"] = formatUnits(quote.amountOut, toToken.decimals);

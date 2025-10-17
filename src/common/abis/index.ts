@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
+import { StabullAbi } from "./stabull";
 import { RouteProcessorAbi } from "./rp";
 import { DeployerAbi } from "./deployer";
 import { OrderbookAbi } from "./orderbook";
@@ -8,6 +9,7 @@ import { ArbitrumNodeInterfaceAbi } from "./arbitrum";
 
 /** Keeps all necesdsary ABIs for rain solver app */
 export namespace ABI {
+    export import Stabull = StabullAbi;
     export import Deployer = DeployerAbi;
     export import Orderbook = OrderbookAbi;
     export import Multicall3 = Multicall3Abi;
