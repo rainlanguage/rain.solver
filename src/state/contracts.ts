@@ -15,12 +15,14 @@ export type SolverContracts = {
         sushiArb?: `0x${string}`;
         genericArb?: `0x${string}`;
         balancerArb?: `0x${string}`;
+        stabullArb?: `0x${string}`;
         dispair: Dispair;
     };
     v5?: {
         sushiArb?: `0x${string}`;
         genericArb?: `0x${string}`;
         balancerArb?: `0x${string}`;
+        stabullArb?: `0x${string}`;
         dispair: Dispair;
     };
 
@@ -101,6 +103,9 @@ export async function resolveVersionContracts(
     if (addresses.balancerArb) {
         result.balancerArb = addresses.balancerArb;
     }
+    if (addresses.stabullArb) {
+        result.stabullArb = addresses.stabullArb;
+    }
     return result;
 }
 
@@ -131,6 +136,12 @@ export function versionAddressGetter<
                     destination: contracts.balancerArb,
                 };
             }
+            if (contracts.stabullArb) {
+                return {
+                    dispair: contracts.dispair,
+                    destination: contracts.stabullArb,
+                };
+            }
             return undefined;
         }
         case TradeType.RouteProcessor: {
@@ -147,6 +158,15 @@ export function versionAddressGetter<
                 return {
                     dispair: contracts.dispair,
                     destination: contracts.balancerArb,
+                };
+            }
+            return undefined;
+        }
+        case TradeType.Stabull: {
+            if (contracts.stabullArb) {
+                return {
+                    dispair: contracts.dispair,
+                    destination: contracts.stabullArb,
                 };
             }
             return undefined;

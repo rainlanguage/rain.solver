@@ -1,10 +1,12 @@
 import { SharedState } from "../state";
 import { Token } from "sushi/currency";
 import { RainSolverSigner } from "../signer";
+import { RainSolverRouterError } from "./error";
 import { WasmEncodedError } from "@rainlanguage/float";
-import { SushiRouterQuote, SushiTradeParams } from "./sushi";
 import { maxFloat, minFloat, Result, toFloat } from "../common";
-import { BalancerRouterQuote, BalancerTradeParams } from "./balancer";
+import type { StabullRouterQuote, StabullTradeParams } from "./stabull";
+import type { BalancerRouterQuote, BalancerTradeParams } from "./balancer";
+import type { SushiRouter, SushiRouterQuote, SushiTradeParams } from "./sushi";
 import { Account, Chain, maxUint256, PublicClient, Transport } from "viem";
 import {
     Pair,
@@ -14,7 +16,6 @@ import {
     TakeOrdersConfigTypeV3,
     TakeOrdersConfigTypeV4,
 } from "../order";
-import { RainSolverRouterError } from "./error";
 
 /** Represents the different router types */
 export enum RouterType {
@@ -22,6 +23,8 @@ export enum RouterType {
     Sushi = "sushi",
     /** The Balancer router (BatchRouter) */
     Balancer = "balancer",
+    /** The Stabull router */
+    Stabull = "stabull",
 }
 
 /** Represents the status of a route */
@@ -41,6 +44,7 @@ export type RainSolverRouterQuoteParams = {
     blockNumber?: bigint;
     senderAddress?: `0x${string}`;
     sushiRouteType?: "single" | "multi";
+    sushiRouter?: SushiRouter;
 };
 
 /** Arguments for simulating a trade against routers */
@@ -64,10 +68,10 @@ export type GetTradeParamsArgs = {
 };
 
 /** Represents the trade params for a RainSolverRouter route */
-export type TradeParamsType = SushiTradeParams | BalancerTradeParams;
+export type TradeParamsType = SushiTradeParams | BalancerTradeParams | StabullTradeParams;
 
 /** Represents the quote details for a RainSolverRouter route */
-export type RainSolverRouterQuote = SushiRouterQuote | BalancerRouterQuote;
+export type RainSolverRouterQuote = SushiRouterQuote | BalancerRouterQuote | StabullRouterQuote;
 
 /**
  * Base class for all RainSolverRouter implementations.

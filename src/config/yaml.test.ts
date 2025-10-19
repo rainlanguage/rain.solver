@@ -23,6 +23,7 @@ contracts:
     sushiArbAddress: "0x1111111111111111111111111111111111111111"
     balancerArbAddress: "0x3333333333333333333333333333333333333333"
     dispair: "0x2222222222222222222222222222222222222222"
+    stabullArbAddress: "0x4444444444444444444444444444444444444444"
 liquidityProviders: 
  - lp1
  - lp2
@@ -90,6 +91,7 @@ orderbookTradeTypes:
                     balancerArb: "0x3333333333333333333333333333333333333333",
                     dispair: "0x2222222222222222222222222222222222222222",
                     genericArb: undefined,
+                    stabullArb: "0x4444444444444444444444444444444444444444",
                 },
             },
             liquidityProviders: ["lp1", "lp2"],

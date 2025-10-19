@@ -46,6 +46,8 @@ contracts:
     genericArbAddress: "0x1234...5678"
     # Balancer arb v4 contract address
     balancerArbAddress: "0x1234...5678"
+    # Stabull arb v4 contract address
+    stabullArbAddress: "0x1234...5678"
     # Dispair v4 contract address
     dispair: "0x1234...5678"
   v5:
@@ -55,6 +57,8 @@ contracts:
     genericArbAddress: "0x1234...5678"
     # Balancer arb v5 contract address
     balancerArbAddress: "0x1234...5678"
+    # Stabull arb v5 contract address
+    stabullArbAddress: "0x1234...5678"
     # Dispair v5 contract address
     dispair: "0x1234...5678"
 
