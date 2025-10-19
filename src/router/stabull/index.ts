@@ -257,7 +257,7 @@ export class StabullRouter extends RainSolverRouterBase {
      * @returns True if the trade is possible for the given token pair, false otherwise
      */
     static canTrade(fromToken: `0x${string}`, toToken: `0x${string}`, chainId: number): boolean {
-        if (
+        return (
             StabullConstants.isChainSupported(chainId) &&
             StabullConstants.TokenList[chainId as keyof typeof StabullConstants.TokenList].has(
                 fromToken.toLowerCase(),
@@ -265,9 +265,6 @@ export class StabullRouter extends RainSolverRouterBase {
             StabullConstants.TokenList[chainId as keyof typeof StabullConstants.TokenList].has(
                 toToken.toLowerCase(),
             )
-        ) {
-            return true;
-        }
-        return false;
+        );
     }
 }
