@@ -259,12 +259,8 @@ export class StabullRouter extends RainSolverRouterBase {
     static canTrade(fromToken: `0x${string}`, toToken: `0x${string}`, chainId: number): boolean {
         return (
             StabullConstants.isChainSupported(chainId) &&
-            StabullConstants.TokenList[chainId as keyof typeof StabullConstants.TokenList].has(
-                fromToken.toLowerCase(),
-            ) &&
-            StabullConstants.TokenList[chainId as keyof typeof StabullConstants.TokenList].has(
-                toToken.toLowerCase(),
-            )
+            StabullConstants.TokenList[chainId].has(fromToken.toLowerCase()) &&
+            StabullConstants.TokenList[chainId].has(toToken.toLowerCase())
         );
     }
 }
