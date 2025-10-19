@@ -49,8 +49,12 @@ export type StabullTradeParams = {
 };
 
 /**
- * The Stabull Router class provides methods to interact with the stabull router library, mainly `RainDataFetcher`,
- * including fetching and syncing pool data, getting best route and market price.
+ * The Stabull Router class provides methods to interact with the stabull protocol.
+ * Stabull DEX supports very limited set of tokens and it can only support a trade
+ * when both IO tokens are supported (this is done through `canTrade` static method).
+ * For finding the best route and quoting, we just need to call its `Router` contract
+ * functions on the supported chains.
+ * List of supported chains, tokens and pools can be found in {@link StabullConstants}
  */
 export class StabullRouter extends RainSolverRouterBase {
     /** The address of the router contract */
@@ -70,7 +74,7 @@ export class StabullRouter extends RainSolverRouterBase {
     }
 
     /**
-     * Tries to initialize the Stabull Router instance from the given params
+     * Tries to initialize the Stabull Router for the given chain id and viem client
      * @param chainId - The chain id of the operating chain
      * @param client - A viem client instance
      * @returns A Result containing the Stabull Router instance or an error
