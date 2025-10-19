@@ -10,7 +10,7 @@ export namespace StabullConstants {
         return SupportedChains.includes(chainId as any);
     }
 
-    /** Stabull protocol router addresses per chain */
+    /** Stabull protocol Router contract address per chain */
     export const Routers = {
         [ChainId.ETHEREUM]: "0x871af97122d08890193e8d6465015f6d9e2889b2",
         [ChainId.POLYGON]: "0x0c1f53e7b5a770f4c0d4bef139f752eeb08de88d",
