@@ -47,10 +47,8 @@ export async function processTransaction({
     let txhash: `0x${string}`, txUrl: string;
     let txSendTime = 0;
     try {
-        txhash = await signer.asWriteSigner().sendTx({
-            ...rawtx,
-            type: "legacy",
-        });
+        rawtx.type = "legacy";
+        txhash = await signer.asWriteSigner().sendTx(rawtx as any);
         txUrl = signer.state.chainConfig.blockExplorers?.default.url + "/tx/" + txhash;
         txSendTime = Date.now();
         // eslint-disable-next-line no-console

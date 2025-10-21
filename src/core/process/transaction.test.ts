@@ -177,7 +177,7 @@ describe("Test processTransaction", () => {
             // verify raw transaction was logged
             expect(mockArgs.baseResult.spanAttributes["details.rawTx"]).toBeDefined();
             expect(mockArgs.baseResult.spanAttributes["txNoneNodeError"]).toBe(true);
-            expect(withBigintSerializer).toHaveBeenCalledTimes(7);
+            expect(withBigintSerializer).toHaveBeenCalledTimes(8);
         });
 
         it("should correctly identify node errors in transaction failures", async () => {
