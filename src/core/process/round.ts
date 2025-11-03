@@ -39,7 +39,7 @@ export async function initializeRound(
     for (const orderDetails of iterOrders(orders, shuffle)) {
         // update pools data on each batch start
         if (maxConcurrencyCounter === this.appOptions.maxConcurrency) {
-            await this.state.router.sushi?.update(blockNumber).catch(() => {});
+            await this.state.router.sushi?.update(blockNumber).catch(() => undefined);
         }
 
         await prepareRouter.call(this, orderDetails, blockNumber);
@@ -95,13 +95,13 @@ export async function prepareRouter(this: RainSolver, orderDetails: Pair, blockN
         address: orderDetails.buyToken,
         symbol: orderDetails.buyTokenSymbol,
     });
-    await this.state.getMarketPrice(fromToken, toToken, blockNumber, false).catch(() => {});
+    await this.state.getMarketPrice(fromToken, toToken, blockNumber, false).catch(() => undefined);
     await this.state
         .getMarketPrice(toToken, this.state.chainConfig.nativeWrappedToken, blockNumber, false)
-        .catch(() => {});
+        .catch(() => undefined);
     await this.state
         .getMarketPrice(fromToken, this.state.chainConfig.nativeWrappedToken, blockNumber, false)
-        .catch(() => {});
+        .catch(() => undefined);
 }
 
 /**

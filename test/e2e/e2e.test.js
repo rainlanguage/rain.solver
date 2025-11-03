@@ -144,7 +144,7 @@ for (let i = 0; i < testData.length; i++) {
             },
             router: {},
             appOptions: {
-                maxConcurrency: 10,
+                maxConcurrency: 1,
             },
             contracts: {
                 v4: {},
