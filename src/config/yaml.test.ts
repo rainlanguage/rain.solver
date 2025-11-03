@@ -38,6 +38,7 @@ gasPriceMultiplier: 150
 gasLimitMultiplier: 90
 timeout: 20000
 maxRatio: true
+maxConcurrency: 15
 ownerProfile: $OWNER_PROFILE
 selfFundVaults:
   - token: "0x6666666666666666666666666666666666666666"
@@ -142,6 +143,7 @@ orderbookTradeTypes:
                 interOrderbook: new Set([`0x${"3".repeat(40)}`, `0x${"4".repeat(40)}`]),
                 intraOrderbook: new Set([`0x${"5".repeat(40)}`, `0x${"6".repeat(40)}`]),
             },
+            maxConcurrency: 15,
         };
 
         // AppOptions returned from fromYaml() should match expected
@@ -180,6 +182,7 @@ orderbookTradeTypes:
             gasLimitMultiplier: "90",
             timeout: "20000",
             maxRatio: true,
+            maxConcurrency: undefined,
             ownerProfile: [
                 { "0x4444444444444444444444444444444444444444": "100" },
                 { "0x5555555555555555555555555555555555555555": "max" },
@@ -265,6 +268,7 @@ orderbookTradeTypes:
         assert.deepEqual(result.gasLimitMultiplier, 90);
         assert.deepEqual(result.timeout, 20000);
         assert.equal(result.maxRatio, true);
+        assert.equal(result.maxConcurrency, 1);
 
         // ownerProfile
         const expectedOwnerProfile = {

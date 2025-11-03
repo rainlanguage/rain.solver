@@ -1,5 +1,6 @@
 import { RainSolver } from "..";
 import { Pair } from "../../order";
+import { Token } from "sushi/currency";
 import { iterRandom, Result } from "../../common";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { PreAssembledSpan, SpanWithContext } from "../../logger";
@@ -32,133 +33,218 @@ export async function initializeRound(
     const settlements: Settlement[] = [];
     const checkpointReports: PreAssembledSpan[] = [];
 
+    let concurrencyProcessBatch = [];
+    let maxConcurrencyCounter = this.appOptions.maxConcurrency;
+    let blockNumber = await this.state.client.getBlockNumber().catch(() => undefined);
     for (const orderDetails of iterOrders(orders, shuffle)) {
-        const pair = `${orderDetails.buyTokenSymbol}/${orderDetails.sellTokenSymbol}`;
-        const startTime = performance.now();
-        const report = new PreAssembledSpan(`checkpoint_${pair}`, startTime);
-        const owner = orderDetails.takeOrder.struct.order.owner.toLowerCase();
-        report.extendAttrs({
-            "details.pair": pair,
-            "details.orderHash": orderDetails.takeOrder.id,
-            "details.orderbook": orderDetails.orderbook,
-            "details.owner": orderDetails.takeOrder.struct.order.owner,
-        });
-
-        // get updated balance for the orderDetails from owner vaults map
-        orderDetails.sellTokenVaultBalance =
-            this.orderManager.ownerTokenVaultMap
-                .get(orderDetails.orderbook)
-                ?.get(owner)
-                ?.get(orderDetails.sellToken)
-                ?.get(
-                    BigInt(
-                        orderDetails.takeOrder.struct.order.validOutputs[
-                            orderDetails.takeOrder.struct.outputIOIndex
-                        ].vaultId,
-                    ),
-                )?.balance ?? orderDetails.sellTokenVaultBalance;
-        orderDetails.buyTokenVaultBalance =
-            this.orderManager.ownerTokenVaultMap
-                .get(orderDetails.orderbook)
-                ?.get(owner)
-                ?.get(orderDetails.buyToken)
-                ?.get(
-                    BigInt(
-                        orderDetails.takeOrder.struct.order.validInputs[
-                            orderDetails.takeOrder.struct.inputIOIndex
-                        ].vaultId,
-                    ),
-                )?.balance ?? orderDetails.buyTokenVaultBalance;
-
-        // skip if the output vault is empty
-        if (orderDetails.sellTokenVaultBalance <= 0n) {
-            const endTime = performance.now();
-            settlements.push({
-                pair,
-                startTime,
-                orderHash: orderDetails.takeOrder.id,
-                owner: orderDetails.takeOrder.struct.order.owner,
-                settle: async () => {
-                    return Result.ok({
-                        endTime,
-                        tokenPair: pair,
-                        buyToken: orderDetails.buyToken,
-                        sellToken: orderDetails.sellToken,
-                        status: ProcessOrderStatus.ZeroOutput,
-                        spanAttributes: {
-                            "details.pair": pair,
-                            "details.orders": orderDetails.takeOrder.id,
-                        },
-                    });
-                },
-            });
-            report.end();
-            checkpointReports.push(report);
-
-            // export the report to logger if logger is available
-            this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
-            continue;
+        // update pools data on each batch start
+        if (maxConcurrencyCounter === this.appOptions.maxConcurrency) {
+            await this.state.router.sushi?.update(blockNumber).catch(() => {});
         }
 
-        // skip if the required addresses for trading are not configured
-        if (!this.state.contracts.getAddressesForTrade(orderDetails)) {
-            const endTime = performance.now();
-            settlements.push({
-                pair,
-                startTime,
-                orderHash: orderDetails.takeOrder.id,
-                owner: orderDetails.takeOrder.struct.order.owner,
-                settle: async () => {
-                    return Result.ok({
-                        endTime,
-                        tokenPair: pair,
-                        buyToken: orderDetails.buyToken,
-                        sellToken: orderDetails.sellToken,
-                        status: ProcessOrderStatus.UndefinedTradeAddresses,
-                        message: `Cannot trade as dispair addresses are not configured for order ${orderDetails.takeOrder.struct.order.type} trade`,
-                        spanAttributes: {
-                            "details.pair": pair,
-                            "details.orders": orderDetails.takeOrder.id,
-                        },
-                    });
-                },
+        await prepareRouter.call(this, orderDetails, blockNumber);
+
+        concurrencyProcessBatch.push(
+            processOrderInit.call(this, orderDetails, blockNumber, roundSpanCtx),
+        );
+        maxConcurrencyCounter--;
+
+        // resolve promises if we hit the concurrency limit and reset them for next batch
+        if (maxConcurrencyCounter === 0) {
+            const batchResults = await Promise.all(concurrencyProcessBatch);
+            batchResults.forEach(({ settlement, checkpointReport }) => {
+                settlements.push(settlement);
+                checkpointReports.push(checkpointReport);
             });
-            report.end();
-            checkpointReports.push(report);
 
-            // export the report to logger if logger is available
-            this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
-            continue;
+            // reset counter and batch vector
+            concurrencyProcessBatch = [];
+            maxConcurrencyCounter = this.appOptions.maxConcurrency;
+            blockNumber = await this.state.client.getBlockNumber().catch(() => undefined);
         }
-
-        // await for first available random free signer
-        const signer = await this.walletManager.getRandomSigner(true);
-        report.setAttr("details.sender", signer.account.address);
-
-        // call process pair and save the settlement fn
-        // to later settle without needing to pause if
-        // there are more signers available
-        const settle = await this.processOrder({
-            orderDetails,
-            signer,
-        });
-        settlements.push({
-            settle,
-            pair,
-            startTime,
-            orderHash: orderDetails.takeOrder.id,
-            owner: orderDetails.takeOrder.struct.order.owner,
-        });
-        report.end();
-        checkpointReports.push(report);
-
-        // export the report to logger if logger is available
-        this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
     }
+
+    // resolve any remainings if iter ends before hitting the limit
+    const remainings = await Promise.all(concurrencyProcessBatch);
+    remainings.forEach(({ settlement, checkpointReport }) => {
+        settlements.push(settlement);
+        checkpointReports.push(checkpointReport);
+    });
 
     return {
         settlements,
         checkpointReports,
+    };
+}
+
+/**
+ * Prefetches the routers' pool data required for processing the given order details
+ * @param orderDetails - The order details
+ * @param blockNumber - The block number to fetch data at
+ */
+export async function prepareRouter(this: RainSolver, orderDetails: Pair, blockNumber?: bigint) {
+    const fromToken = new Token({
+        chainId: this.state.chainConfig.id,
+        decimals: orderDetails.sellTokenDecimals,
+        address: orderDetails.sellToken,
+        symbol: orderDetails.sellTokenSymbol,
+    });
+    const toToken = new Token({
+        chainId: this.state.chainConfig.id,
+        decimals: orderDetails.buyTokenDecimals,
+        address: orderDetails.buyToken,
+        symbol: orderDetails.buyTokenSymbol,
+    });
+    await this.state.getMarketPrice(fromToken, toToken, blockNumber, false).catch(() => {});
+    await this.state
+        .getMarketPrice(toToken, this.state.chainConfig.nativeWrappedToken, blockNumber, false)
+        .catch(() => {});
+    await this.state
+        .getMarketPrice(fromToken, this.state.chainConfig.nativeWrappedToken, blockNumber, false)
+        .catch(() => {});
+}
+
+/**
+ * Prepares and collects the span data and initiates the processing operation for the given order
+ * @param orderDetails - The order details
+ * @param blockNumber - The current block number
+ * @param roundSpanCtx - The parent round open telemetry spand and context
+ * @returns An object containing the settlement and checkpoint report
+ */
+export async function processOrderInit(
+    this: RainSolver,
+    orderDetails: Pair,
+    blockNumber?: bigint,
+    roundSpanCtx?: SpanWithContext,
+): Promise<{ settlement: Settlement; checkpointReport: PreAssembledSpan }> {
+    const pair = `${orderDetails.buyTokenSymbol}/${orderDetails.sellTokenSymbol}`;
+    const startTime = performance.now();
+    const report = new PreAssembledSpan(`checkpoint_${pair}`, startTime);
+    const owner = orderDetails.takeOrder.struct.order.owner.toLowerCase();
+    report.extendAttrs({
+        "details.pair": pair,
+        "details.orderHash": orderDetails.takeOrder.id,
+        "details.orderbook": orderDetails.orderbook,
+        "details.owner": orderDetails.takeOrder.struct.order.owner,
+    });
+
+    // get updated balance for the orderDetails from owner vaults map
+    orderDetails.sellTokenVaultBalance =
+        this.orderManager.ownerTokenVaultMap
+            .get(orderDetails.orderbook)
+            ?.get(owner)
+            ?.get(orderDetails.sellToken)
+            ?.get(
+                BigInt(
+                    orderDetails.takeOrder.struct.order.validOutputs[
+                        orderDetails.takeOrder.struct.outputIOIndex
+                    ].vaultId,
+                ),
+            )?.balance ?? orderDetails.sellTokenVaultBalance;
+    orderDetails.buyTokenVaultBalance =
+        this.orderManager.ownerTokenVaultMap
+            .get(orderDetails.orderbook)
+            ?.get(owner)
+            ?.get(orderDetails.buyToken)
+            ?.get(
+                BigInt(
+                    orderDetails.takeOrder.struct.order.validInputs[
+                        orderDetails.takeOrder.struct.inputIOIndex
+                    ].vaultId,
+                ),
+            )?.balance ?? orderDetails.buyTokenVaultBalance;
+
+    // skip if the output vault is empty
+    if (orderDetails.sellTokenVaultBalance <= 0n) {
+        const endTime = performance.now();
+        const settlement: Settlement = {
+            pair,
+            startTime,
+            orderHash: orderDetails.takeOrder.id,
+            owner: orderDetails.takeOrder.struct.order.owner,
+            settle: async () => {
+                return Result.ok({
+                    endTime,
+                    tokenPair: pair,
+                    buyToken: orderDetails.buyToken,
+                    sellToken: orderDetails.sellToken,
+                    status: ProcessOrderStatus.ZeroOutput,
+                    spanAttributes: {
+                        "details.pair": pair,
+                        "details.orders": orderDetails.takeOrder.id,
+                    },
+                });
+            },
+        };
+        report.end();
+
+        // export the report to logger if logger is available
+        this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
+        return {
+            settlement,
+            checkpointReport: report,
+        };
+    }
+
+    // skip if the required addresses for trading are not configured
+    if (!this.state.contracts.getAddressesForTrade(orderDetails)) {
+        const endTime = performance.now();
+        const settlement: Settlement = {
+            pair,
+            startTime,
+            orderHash: orderDetails.takeOrder.id,
+            owner: orderDetails.takeOrder.struct.order.owner,
+            settle: async () => {
+                return Result.ok({
+                    endTime,
+                    tokenPair: pair,
+                    buyToken: orderDetails.buyToken,
+                    sellToken: orderDetails.sellToken,
+                    status: ProcessOrderStatus.UndefinedTradeAddresses,
+                    message: `Cannot trade as dispair addresses are not configured for order ${orderDetails.takeOrder.struct.order.type} trade`,
+                    spanAttributes: {
+                        "details.pair": pair,
+                        "details.orders": orderDetails.takeOrder.id,
+                    },
+                });
+            },
+        };
+        report.end();
+
+        // export the report to logger if logger is available
+        this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
+        return {
+            settlement,
+            checkpointReport: report,
+        };
+    }
+
+    // await for first available random free signer
+    const signer = await this.walletManager.getRandomSigner(true);
+    report.setAttr("details.sender", signer.account.address);
+
+    // call process pair and save the settlement fn
+    // to later settle without needing to pause if
+    // there are more signers available
+    const settle = await this.processOrder({
+        orderDetails,
+        signer,
+        blockNumber,
+    });
+    const settlement: Settlement = {
+        settle,
+        pair,
+        startTime,
+        orderHash: orderDetails.takeOrder.id,
+        owner: orderDetails.takeOrder.struct.order.owner,
+    };
+    report.end();
+
+    // export the report to logger if logger is available
+    this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
+    return {
+        settlement,
+        checkpointReport: report,
     };
 }
 

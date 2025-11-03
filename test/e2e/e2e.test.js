@@ -143,7 +143,9 @@ for (let i = 0; i < testData.length; i++) {
                 quoteGas: 1_000_000n,
             },
             router: {},
-            appOptions: {},
+            appOptions: {
+                maxConcurrency: 10,
+            },
             contracts: {
                 v4: {},
                 v5: {},

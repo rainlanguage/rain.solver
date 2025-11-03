@@ -95,6 +95,8 @@ export type AppOptions = {
     contracts: AppOptionsContracts;
     /** Specifies enabled trade types for each orderbook address */
     orderbookTradeTypes: OrderbookTradeTypes;
+    /** The number of orders that will be processed concurrently, default is 1, i.e. no concurrency */
+    maxConcurrency: number;
 };
 
 /** Provides methods to instantiate and validate AppOptions */
@@ -246,6 +248,18 @@ export namespace AppOptions {
                     undefined,
                     (timeout) =>
                         assert(timeout > 0, "invalid timeout, must be an integer greater than 0"),
+                ),
+                maxConcurrency: Validator.resolveNumericValue(
+                    input.maxConcurrency,
+                    INT_PATTERN,
+                    "failed to resolve max concurrency value, must be an integer greater than 0",
+                    "1",
+                    false,
+                    (resolvedValue) =>
+                        assert(
+                            !isNaN(resolvedValue) && resolvedValue > 0,
+                            "invalid max concurrency, must be an integer greater than 0",
+                        ),
                 ),
                 orderbookTradeTypes: {
                     router: Validator.resolveAddressSet(

@@ -48,6 +48,16 @@ export type StabullTradeParams = {
     takeOrdersConfigStruct: TakeOrdersConfigType;
 };
 
+/** Represents a cached Stabull price */
+export type StabullCachedPrice = {
+    /** The status of the route */
+    status: RouteStatus;
+    /** The price in 18 fixed point decimals */
+    price: bigint;
+    /** The timestamp until which the route is valid */
+    validUntil: number;
+};
+
 /**
  * The Stabull Router class provides methods to interact with the stabull protocol.
  * Stabull DEX supports very limited set of tokens and it can only support a trade
@@ -61,6 +71,10 @@ export class StabullRouter extends RainSolverRouterBase {
     readonly routerAddress: `0x${string}`;
     /** The address of the quote currency, usually USDC as per Stabull docs */
     readonly quoteCurrencyAddress: `0x${string}`;
+    /** The duration for which a price is considered valid in cache */
+    readonly cacheTime = 300_000 as const;
+    /** The cache for storing previously fetched prices that are valid until specified timestamp */
+    readonly cache: Map<string, StabullCachedPrice> = new Map();
 
     constructor(
         chainId: number,
@@ -112,6 +126,24 @@ export class StabullRouter extends RainSolverRouterBase {
         if (params.fromToken.address.toLowerCase() === params.toToken.address.toLowerCase()) {
             return Result.ok({ price: "1" });
         }
+        const key = `${params.fromToken.address.toLowerCase()}/${params.toToken.address.toLowerCase()}`;
+
+        // search in cache first and return early if ignoreCache is false
+        if (!params.ignoreCache) {
+            const cachedPrice = this.cache.get(key);
+            if (cachedPrice && cachedPrice.validUntil > Date.now()) {
+                if (cachedPrice.status === RouteStatus.Success) {
+                    return Result.ok({ price: formatUnits(cachedPrice.price, 18) });
+                } else {
+                    return Result.err(
+                        new StabullRouterError(
+                            "Did not find any route for this token pair",
+                            StabullRouterErrorType.NoRouteFound,
+                        ),
+                    );
+                }
+            }
+        }
 
         const quoteResult = await this.findBestRoute(params);
         if (quoteResult.isErr()) {
@@ -120,6 +152,11 @@ export class StabullRouter extends RainSolverRouterBase {
                 toToken: USDC[this.chainId as keyof typeof USDC],
             });
             if (!toUsdcQuote?.isOk()) {
+                this.cache.set(key, {
+                    status: RouteStatus.NoWay,
+                    price: 0n,
+                    validUntil: Date.now() + this.cacheTime,
+                });
                 return Result.err(quoteResult.error);
             }
             const fromUsdcPrice = await params.sushiRouter?.getMarketPrice({
@@ -127,13 +164,28 @@ export class StabullRouter extends RainSolverRouterBase {
                 fromToken: USDC[this.chainId as keyof typeof USDC],
             });
             if (!fromUsdcPrice?.isOk()) {
+                this.cache.set(key, {
+                    status: RouteStatus.NoWay,
+                    price: 0n,
+                    validUntil: Date.now() + this.cacheTime,
+                });
                 return Result.err(quoteResult.error);
             }
 
             const price =
                 (toUsdcQuote.value.price * parseUnits(fromUsdcPrice.value.price, 18)) / ONE18;
+            this.cache.set(key, {
+                status: RouteStatus.Success,
+                price,
+                validUntil: Date.now() + this.cacheTime,
+            });
             return Result.ok({ price: formatUnits(price, 18) });
         }
+        this.cache.set(key, {
+            status: RouteStatus.Success,
+            price: quoteResult.value.price,
+            validUntil: Date.now() + this.cacheTime,
+        });
         return Result.ok({ price: formatUnits(quoteResult.value.price, 18) });
     }
 

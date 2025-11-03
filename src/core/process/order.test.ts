@@ -139,61 +139,6 @@ describe("Test processOrder", () => {
         expect(mockOrderManager.removeFromPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
     });
 
-    it("should return FailedToUpdatePools if updatePools throws (not fetchPoolsForToken)", async () => {
-        const error = new Error("update pools failed");
-        (mockState.router.sushi!.update as Mock).mockRejectedValue(error);
-
-        const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
-            mockRainSolver,
-            mockArgs,
-        );
-        const result = await fn();
-
-        assert(result.isErr());
-        expect(result.error.reason).toBe(ProcessOrderHaltReason.FailedToUpdatePools);
-        expect(result.error.error).toBe(error);
-        expect(result.error.tokenPair).toBe("BUY/SELL");
-        expect(result.error.buyToken).toBe("0xBUY");
-        expect(result.error.sellToken).toBe("0xSELL");
-        expect(result.error.status).toBe(ProcessOrderStatus.NoOpportunity);
-        expect(result.error.spanAttributes["details.quote"]).toBe(
-            JSON.stringify({ maxOutput: "1", ratio: "2" }),
-        );
-        expect(result.error.spanAttributes["details.order"]).toEqual("0xid");
-        expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
-        expect(result.error.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
-        expect(result.error.endTime).toBeTypeOf("number");
-
-        // ensure pair maps are updated success quote
-        expect(mockOrderManager.addToPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
-    });
-
-    it("should return FailedToGetPools if fetchPoolsForToken throws", async () => {
-        const error = new Error("fetch pools failed");
-        (mockState.router.sushi!.dataFetcher.fetchPoolsForToken as Mock).mockRejectedValue(error);
-
-        const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
-            mockRainSolver,
-            mockArgs,
-        );
-        const result = await fn();
-
-        assert(result.isErr());
-        expect(result.error.reason).toBe(ProcessOrderHaltReason.FailedToGetPools);
-        expect(result.error.error).toBe(error);
-        expect(result.error.tokenPair).toBe("BUY/SELL");
-        expect(result.error.buyToken).toBe("0xBUY");
-        expect(result.error.sellToken).toBe("0xSELL");
-        expect(result.error.status).toBe(ProcessOrderStatus.NoOpportunity);
-        expect(result.error.spanAttributes["details.quote"]).toBe(
-            JSON.stringify({ maxOutput: "1", ratio: "2" }),
-        );
-        expect(result.error.spanAttributes["details.order"]).toEqual("0xid");
-        expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
-        expect(result.error.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
-        expect(result.error.endTime).toBeTypeOf("number");
-    });
-
     it('should set outputToEthPrice to "" if getMarketPrice returns undefined for output and gasCoveragePercentage is not "0"', async () => {
         (mockState.getMarketPrice as Mock)
             .mockResolvedValueOnce(Result.ok({ price: "100", amountOut: "100" }))

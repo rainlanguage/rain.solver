@@ -307,9 +307,10 @@ export class SharedState {
      * @param fromToken - The token to sell
      * @param toToken - The token to buy
      * @param blockNumber - (optional) The block number to fetch the price at
+     * @param skipFetch - (optional) Skips a fresh onchain call to fetch pools
      * @returns The market price for the token pair or undefined if no route were found
      */
-    getMarketPrice(fromToken: Token, toToken: Token, blockNumber?: bigint) {
+    getMarketPrice(fromToken: Token, toToken: Token, blockNumber?: bigint, skipFetch?: boolean) {
         return this.router.getMarketPrice({
             fromToken,
             toToken,
@@ -317,7 +318,7 @@ export class SharedState {
             gasPrice: this.gasPrice,
             amountIn: parseUnits("1", fromToken.decimals),
             sushiRouteType: this.appOptions.route,
-            skipFetch: false,
+            skipFetch: !!skipFetch,
         });
     }
 }

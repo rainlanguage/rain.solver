@@ -118,6 +118,7 @@ export async function sweepFunds(opts: SweepOptions) {
         topupAmount: "0",
         contracts: {},
         orderbookTradeTypes: {} as any,
+        maxConcurrency: 0,
     };
 
     // prepare state config fields
