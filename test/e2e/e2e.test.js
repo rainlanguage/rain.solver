@@ -143,9 +143,7 @@ for (let i = 0; i < testData.length; i++) {
                 quoteGas: 1_000_000n,
             },
             router: {},
-            appOptions: {
-                maxConcurrency: 1,
-            },
+            appOptions: {},
             contracts: {
                 v4: {},
                 v5: {},
@@ -358,6 +356,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
+                    config.maxConcurrency = 10;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,
@@ -705,6 +704,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
+                    config.maxConcurrency = 1;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,
@@ -1110,6 +1110,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
+                    config.maxConcurrency = 1;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,
@@ -1496,6 +1497,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
+                    config.maxConcurrency = 1;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,
@@ -1841,6 +1843,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
+                    config.maxConcurrency = 10;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,
@@ -2139,6 +2142,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
+                    config.maxConcurrency = 10;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,
@@ -2516,6 +2520,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
+                    config.maxConcurrency = 1;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,
@@ -2914,6 +2919,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
+                    config.maxConcurrency = 1;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,
@@ -3314,6 +3320,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
+                    config.maxConcurrency = 1;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,
@@ -3682,6 +3689,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
+                    config.maxConcurrency = 10;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,
@@ -4003,6 +4011,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
+                    config.maxConcurrency = 1;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,
