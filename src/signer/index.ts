@@ -6,12 +6,13 @@ import {
     Client,
     Prettify,
     HDAccount,
+    createClient,
+    walletActions,
     PublicActions,
     publicActions,
     WalletActions,
     WalletRpcSchema,
     PrivateKeyAccount,
-    createWalletClient,
 } from "viem";
 
 export { RainSolverSignerActions } from "./actions";
@@ -73,15 +74,21 @@ export namespace RainSolverSigner {
         state: SharedState,
         writeSigner = false,
     ): RainSolverSigner<account> {
-        return createWalletClient({
+        return createClient({
             account,
             chain: state.chainConfig,
             transport: rainSolverTransport(
                 writeSigner ? (state.writeRpc ?? state.rpc) : state.rpc,
                 state.rainSolverTransportConfig,
             ),
+            batch: {
+                multicall: {
+                    batchSize: 36_000,
+                },
+            },
         })
             .extend(publicActions)
+            .extend(walletActions)
             .extend(
                 RainSolverSignerActions.fromSharedState(
                     state,

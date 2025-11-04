@@ -1,4 +1,4 @@
-import { createWalletClient } from "viem";
+import { createClient } from "viem";
 import { RainSolverSigner } from "./index";
 import { type SharedState } from "../state";
 import { rainSolverTransport } from "../rpc";
@@ -12,7 +12,7 @@ vi.mock("../rpc", () => ({
 
 vi.mock("viem", async (importOriginal) => ({
     ...(await importOriginal()),
-    createWalletClient: vi.fn().mockReturnValue({
+    createClient: vi.fn().mockReturnValue({
         extend: vi.fn().mockReturnThis(),
     }),
     publicActions: vi.fn(),
@@ -49,16 +49,21 @@ describe("Test RainSolverSigner creation", () => {
         );
 
         // verify wallet client creation
-        expect(createWalletClient).toHaveBeenCalledWith({
+        expect(createClient).toHaveBeenCalledWith({
             account: mockAccount,
             transport: "mockedTransport",
             chain: mockSharedState.chainConfig,
+            batch: {
+                multicall: {
+                    batchSize: 36_000,
+                },
+            },
         });
     });
 
     it("should extend the client with public actions and RainSolver actions", () => {
         const mockExtend = vi.fn().mockReturnThis();
-        (createWalletClient as any).mockReturnValue({
+        (createClient as any).mockReturnValue({
             extend: mockExtend,
         });
 
@@ -85,13 +90,13 @@ describe("Test RainSolverSigner creation", () => {
 
         // test with HD account
         RainSolverSigner.create(mockHDAccount, mockSharedState);
-        expect(createWalletClient).toHaveBeenCalledWith(
+        expect(createClient).toHaveBeenCalledWith(
             expect.objectContaining({ account: mockHDAccount }),
         );
 
         // test with private key account
         RainSolverSigner.create(mockPrivateKeyAccount, mockSharedState);
-        expect(createWalletClient).toHaveBeenCalledWith(
+        expect(createClient).toHaveBeenCalledWith(
             expect.objectContaining({ account: mockPrivateKeyAccount }),
         );
     });
@@ -108,9 +113,14 @@ describe("Test RainSolverSigner creation", () => {
 
         RainSolverSigner.create(mockAccount, customChainState);
 
-        expect(createWalletClient).toHaveBeenCalledWith(
+        expect(createClient).toHaveBeenCalledWith(
             expect.objectContaining({
                 chain: customChainState.chainConfig,
+                batch: {
+                    multicall: {
+                        batchSize: 36_000,
+                    },
+                },
             }),
         );
     });
