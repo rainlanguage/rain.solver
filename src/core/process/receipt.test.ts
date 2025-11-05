@@ -78,7 +78,7 @@ describe("Test processReceipt", () => {
                 decimals: 18,
                 symbol: "ETH",
             } as any as Token,
-            txSendTime: Date.now(),
+            txSendTime: performance.now(),
         };
     });
 
@@ -117,6 +117,7 @@ describe("Test processReceipt", () => {
             expect(result.value.spanAttributes["details.netProfit"]).toBeDefined();
             expect(result.value.spanAttributes["details.netProfit"]).toBeTypeOf("number");
             expect(result.value.spanAttributes["details.gasCostL1"]).toBeUndefined();
+            expect(result.value.spanAttributes["details.mineTime"]).toBeGreaterThan(0);
         });
 
         it("should calculate gas cost correctly including L1 fee", async () => {
@@ -148,6 +149,7 @@ describe("Test processReceipt", () => {
             expect(result.value.inputTokenIncome).toBeUndefined();
             expect(result.value.outputTokenIncome).toBeUndefined();
             expect(result.value.endTime).toBeTypeOf("number");
+            expect(result.value.spanAttributes["details.mineTime"]).toBeGreaterThan(0);
         });
     });
 
@@ -172,6 +174,7 @@ describe("Test processReceipt", () => {
             expect(result.error.error).toBe(mockSimulation);
             expect(result.error.txUrl).toBe(mockArgs.txUrl);
             expect(result.error.spanAttributes["txNoneNodeError"]).toBe(true);
+            expect(result.error.spanAttributes["details.mineTime"]).toBeGreaterThan(0);
             expect(result.error.endTime).toBeTypeOf("number");
         });
 
@@ -207,6 +210,7 @@ describe("Test processReceipt", () => {
 
             assert(result.isErr());
             expect(result.error.spanAttributes["txNoneNodeError"]).toBe(false);
+            expect(result.error.spanAttributes["details.mineTime"]).toBeGreaterThan(0);
             expect(result.error.endTime).toBeTypeOf("number");
         });
 
