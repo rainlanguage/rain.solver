@@ -88,10 +88,10 @@ export async function initializeRound(
  */
 export async function prepareRouter(this: RainSolver, orderDetails: Pair, blockNumber?: bigint) {
     const start = performance.now();
-    const key = `${orderDetails.sellToken.toLowerCase()}-${orderDetails.buyToken.toLowerCase}`;
-    const value = this.state.router.cache.get(key);
-    console.log(value);
-    if (typeof value === "number" && value > 3) return;
+    // const key = `${orderDetails.sellToken.toLowerCase()}-${orderDetails.buyToken.toLowerCase}`;
+    // const value = this.state.router.cache.get(key);
+    // console.log(value);
+    // if (typeof value === "number" && value > 3) return;
     const fromToken = new Token({
         chainId: this.state.chainConfig.id,
         decimals: orderDetails.sellTokenDecimals,
