@@ -48,7 +48,11 @@ export async function processReceipt({
 }: ProcessReceiptArgs): Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>> {
     const l1Fee = getL1Fee(receipt);
     const gasCost = receipt.effectiveGasPrice * receipt.gasUsed + l1Fee;
-    baseResult.spanAttributes["details.mineTime"] = performance.now() - txSendTime;
+
+    // record transaction time
+    const txMineDuration = performance.now() - txSendTime;
+    baseResult.spanAttributes["details.duration.transaction"] = txMineDuration;
+    baseResult.spanAttributes["event.transaction"] = [txSendTime, txMineDuration];
 
     // keep track of gas consumption of the account and bounty token
     baseResult.gasCost = gasCost;
