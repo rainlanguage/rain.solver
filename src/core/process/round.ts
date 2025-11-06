@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import { RainSolver } from "..";
 import { Pair } from "../../order";
 import { Token } from "sushi/currency";
@@ -38,8 +39,11 @@ export async function initializeRound(
     let blockNumber = await this.state.client.getBlockNumber().catch(() => undefined);
     for (const orderDetails of iterOrders(orders, shuffle)) {
         // update pools data on each batch start
+        console.log("\n", blockNumber);
         if (maxConcurrencyCounter === this.appOptions.maxConcurrency) {
+            const start = performance.now();
             await this.state.router.sushi?.update(blockNumber).catch(() => undefined);
+            console.log("update", performance.now() - start);
         }
 
         await prepareRouter.call(this, orderDetails, blockNumber);
@@ -83,6 +87,11 @@ export async function initializeRound(
  * @param blockNumber - The block number to fetch data at
  */
 export async function prepareRouter(this: RainSolver, orderDetails: Pair, blockNumber?: bigint) {
+    const start = performance.now();
+    const key = `${orderDetails.sellToken.toLowerCase()}-${orderDetails.buyToken.toLowerCase}`;
+    const value = this.state.router.cache.get(key);
+    console.log(value);
+    if (typeof value === "number" && value > 3) return;
     const fromToken = new Token({
         chainId: this.state.chainConfig.id,
         decimals: orderDetails.sellTokenDecimals,
@@ -96,12 +105,24 @@ export async function prepareRouter(this: RainSolver, orderDetails: Pair, blockN
         symbol: orderDetails.buyTokenSymbol,
     });
     await this.state.getMarketPrice(fromToken, toToken, blockNumber, false).catch(() => undefined);
+    const second = performance.now();
     await this.state
         .getMarketPrice(toToken, this.state.chainConfig.nativeWrappedToken, blockNumber, false)
         .catch(() => undefined);
+    const third = performance.now();
     await this.state
         .getMarketPrice(fromToken, this.state.chainConfig.nativeWrappedToken, blockNumber, false)
         .catch(() => undefined);
+    console.log(
+        orderDetails.buyTokenSymbol,
+        orderDetails.sellTokenSymbol,
+        "first",
+        second - start,
+        "second",
+        third - second,
+        "third",
+        performance.now() - third,
+    );
 }
 
 /**
