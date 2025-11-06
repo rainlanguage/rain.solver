@@ -12,6 +12,7 @@ import {
     ProcessOrderFailure,
     ProcessOrderHaltReason,
 } from "../types";
+import { BlackListSet } from "../../router";
 
 /** Represents a settlement for a processed order */
 export type Settlement = {
@@ -104,14 +105,27 @@ export async function prepareRouter(this: RainSolver, orderDetails: Pair, blockN
         address: orderDetails.buyToken,
         symbol: orderDetails.buyTokenSymbol,
     });
-    await this.state.getMarketPrice(fromToken, toToken, blockNumber, false).catch(() => undefined);
+    // await this.state.getMarketPrice(fromToken, toToken, blockNumber, false).catch(() => undefined);
+    await this.state.router.sushi?.dataFetcher
+        .fetchPoolsForToken(fromToken, toToken, BlackListSet, { blockNumber })
+        .catch(() => undefined);
     const second = performance.now();
-    await this.state
-        .getMarketPrice(toToken, this.state.chainConfig.nativeWrappedToken, blockNumber, false)
+    // await this.state
+    //     .getMarketPrice(toToken, this.state.chainConfig.nativeWrappedToken, blockNumber, false)
+    //     .catch(() => undefined);
+    await this.state.router.sushi?.dataFetcher
+        .fetchPoolsForToken(toToken, this.state.chainConfig.nativeWrappedToken, BlackListSet, {
+            blockNumber,
+        })
         .catch(() => undefined);
     const third = performance.now();
-    await this.state
-        .getMarketPrice(fromToken, this.state.chainConfig.nativeWrappedToken, blockNumber, false)
+    // await this.state
+    //     .getMarketPrice(fromToken, this.state.chainConfig.nativeWrappedToken, blockNumber, false)
+    //     .catch(() => undefined);
+    await this.state.router.sushi?.dataFetcher
+        .fetchPoolsForToken(fromToken, this.state.chainConfig.nativeWrappedToken, BlackListSet, {
+            blockNumber,
+        })
         .catch(() => undefined);
     console.log(
         orderDetails.buyTokenSymbol,
