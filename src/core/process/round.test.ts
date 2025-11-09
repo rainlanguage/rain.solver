@@ -77,6 +77,7 @@ describe("Test initializeRound", () => {
             },
             router: {
                 sushi: { update: vi.fn().mockResolvedValue(undefined) },
+                cache: new Map(),
             },
             getMarketPrice: vi.fn().mockResolvedValue(null),
         } as any;
@@ -101,6 +102,8 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken",
+                    buyToken: "0xbuyToken",
                     takeOrder: {
                         id: "0xOrder123",
                         struct: { order: { owner: "0xOwner123" } },
@@ -141,18 +144,24 @@ describe("Test initializeRound", () => {
                     orderbook: "0x5555555555555555555555555555555555555555",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken1",
+                    buyToken: "0xbuyToken1",
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
                 {
                     orderbook: "0x5555555555555555555555555555555555555555",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken2",
+                    buyToken: "0xbuyToken2",
                     takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
                 },
                 {
                     orderbook: "0x6666666666666666666666666666666666666666",
                     buyTokenSymbol: "BTC",
                     sellTokenSymbol: "USDT",
+                    sellToken: "0xsellToken3",
+                    buyToken: "0xbuyToken3",
                     takeOrder: { id: "0xOrder3", struct: { order: { owner: "0xOwner3" } } },
                 },
             ];
@@ -225,12 +234,16 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken1",
+                    buyToken: "0xbuyToken1",
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
                 {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken2",
+                    buyToken: "0xbuyToken2",
                     takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
                 },
             ];
@@ -277,6 +290,8 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "WETH",
                     sellTokenSymbol: "DAI",
+                    sellToken: "0xsellToken",
+                    buyToken: "0xbuyToken",
                     takeOrder: { id: "0xOrderABC", struct: { order: { owner: "0xOwnerXYZ" } } },
                 },
             ];
@@ -303,18 +318,24 @@ describe("Test initializeRound", () => {
                     orderbook: "0x1111111111111111111111111111111111111111",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken1",
+                    buyToken: "0xbuyToken1",
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
                 {
                     orderbook: "0x1111111111111111111111111111111111111111",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken2",
+                    buyToken: "0xbuyToken2",
                     takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
                 },
                 {
                     orderbook: "0x1111111111111111111111111111111111111111",
                     buyTokenSymbol: "BTC",
                     sellTokenSymbol: "USDT",
+                    sellToken: "0xsellToken3",
+                    buyToken: "0xbuyToken3",
                     takeOrder: { id: "0xOrder3", struct: { order: { owner: "0xOwner3" } } },
                 },
             ];
@@ -347,12 +368,16 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken1",
+                    buyToken: "0xbuyToken1",
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
                 {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken2",
+                    buyToken: "0xbuyToken2",
                     takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
                 },
             ];
@@ -375,6 +400,8 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken",
+                    buyToken: "0xbuyToken",
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
             ];
@@ -401,6 +428,8 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken",
+                    buyToken: "0xbuyToken",
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
             ];
@@ -437,6 +466,8 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken",
+                    buyToken: "0xbuyToken",
                     takeOrder: { id: "0xOrder123", struct: { order: { owner: "0xOwner123" } } },
                 },
             ];
@@ -1893,6 +1924,7 @@ describe("Test prepareRouter", () => {
             client: { name: "client" },
             chainConfig: { id: 1, nativeWrappedToken },
             getMarketPrice: vi.fn().mockResolvedValue(null),
+            router: { cache: new Map() },
         } as any;
         const mockSolver = { state: mockState } as any;
         const mockOrderDetails = {

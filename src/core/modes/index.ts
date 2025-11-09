@@ -1,6 +1,5 @@
 import assert from "assert";
 import { RainSolver } from "..";
-import { BaseError } from "viem";
 import { Pair } from "../../order";
 import { Token } from "sushi/currency";
 import { RainSolverSigner } from "../../signer";
@@ -10,8 +9,7 @@ import { OrderbookTradeTypes } from "../../config";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
 import { Result, extendObjectWithHeader } from "../../common";
-import { containsNodeError, errorSnapshot } from "../../error";
-import { FindBestTradeFailure, FindBestTradeResult, SimulationResult } from "../types";
+import { FindBestTradeResult, SimulationResult } from "../types";
 
 /** Arguments for finding the best trade */
 export type FindBestTradeArgs = {
@@ -27,6 +25,8 @@ export type FindBestTradeArgs = {
     toToken: Token;
     /** The token to be sold */
     fromToken: Token;
+    /** The block number */
+    blockNumber: bigint;
 };
 
 /**
@@ -44,28 +44,15 @@ export async function findBestTrade(
     this: RainSolver,
     args: FindBestTradeArgs,
 ): Promise<FindBestTradeResult> {
-    const { orderDetails, signer, inputToEthPrice, outputToEthPrice, toToken, fromToken } = args;
-
-    // get block number before simulating trades which also avoid multiple calls to getBlockNumber
-    const blockNumberResult: Result<bigint, FindBestTradeFailure> = await this.state.client
-        .getBlockNumber()
-        .then((v) => Result.ok(v) as Result<bigint, FindBestTradeFailure>)
-        .catch(async (err) => {
-            const errMsg = await errorSnapshot("Failed to get block number", err);
-            const isNodeError = await containsNodeError(err as BaseError);
-            const result: FindBestTradeFailure = {
-                spanAttributes: { error: errMsg } as Attributes,
-            };
-            if (!isNodeError) {
-                result.noneNodeError = errMsg;
-            }
-            return Result.err(result);
-        });
-
-    if (blockNumberResult.isErr()) {
-        return Result.err(blockNumberResult.error);
-    }
-    const blockNumber = blockNumberResult.value;
+    const {
+        signer,
+        toToken,
+        fromToken,
+        blockNumber,
+        orderDetails,
+        inputToEthPrice,
+        outputToEthPrice,
+    } = args;
 
     // get enabled trade fns for the order's orderbook
     const {

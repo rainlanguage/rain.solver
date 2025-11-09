@@ -162,6 +162,7 @@ describe("Test RainSolverCli", () => {
                 ["USDC", { address: "0xUSDC", symbol: "USDC", decimals: 6 }],
             ]),
             router: {
+                reset: vi.fn(),
                 sushi: {
                     reset: vi.fn(),
                     dataFetcher: {
@@ -593,6 +594,7 @@ describe("Test RainSolverCli", () => {
 
             expect((rainSolverCli as any).nextDatafetcherReset).toBeGreaterThan(pastTime);
             expect(rainSolverCli.state.router.sushi!.dataFetcher).toBe(originalDataFetcher);
+            expect(mockState.router.reset as Mock).not.toHaveBeenCalled();
         });
     });
 

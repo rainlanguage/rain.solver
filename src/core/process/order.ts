@@ -186,6 +186,7 @@ export async function processOrder(
         fromToken,
         inputToEthPrice,
         outputToEthPrice,
+        blockNumber: dataFetcherBlockNumber!,
     });
     const endTime = performance.now();
     if (trade.isErr()) {

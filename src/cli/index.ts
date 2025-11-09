@@ -280,8 +280,8 @@ export class RainSolverCli {
         if (this.nextDatafetcherReset <= now) {
             this.nextDatafetcherReset = now + this.appOptions.poolUpdateInterval * 60 * 1000;
             // reset only if the data fetcher is initialized successfully
-            await this.state.router.sushi?.reset();
-            this.state.router.reset();
+            const res = await this.state.router.sushi?.reset();
+            if (res) this.state.router.reset();
         }
     }
 
