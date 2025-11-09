@@ -169,6 +169,7 @@ describe("Test RainSolverCli", () => {
                         test: "data",
                     },
                 },
+                getLiquidityProvidersList: vi.fn().mockReturnValue(["lp1", "lp2"]),
             },
             liquidityProviders: ["uniswap"],
             client: {},
@@ -463,6 +464,7 @@ describe("Test RainSolverCli", () => {
                     key: "N/A",
                     mnemonic: "N/A",
                 }),
+                "meta.liquidityProviders": ["lp1", "lp2"],
             });
 
             expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith(

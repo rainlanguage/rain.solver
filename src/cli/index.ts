@@ -437,6 +437,7 @@ export class RainSolverCli {
                 },
                 withBigintSerializer,
             ),
+            "meta.liquidityProviders": this.state.router.getLiquidityProvidersList(),
         });
 
         // report worker wallet balances
