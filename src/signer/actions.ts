@@ -132,7 +132,9 @@ export async function sendTx(
     retryDelay = 3_000,
 ): Promise<`0x${string}`> {
     // make sure signer is free
-    await signer.waitUntilFree();
+    if (signer.busy) {
+        await signer.waitUntilFree();
+    }
 
     // start sending tranaction process
     signer.busy = true;

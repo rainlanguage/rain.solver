@@ -196,6 +196,7 @@ for (let i = 0; i < testData.length; i++) {
                           )
                               .extend(publicActions)
                               .extend(walletActions);
+                    bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
                     };
@@ -482,6 +483,7 @@ for (let i = 0; i < testData.length; i++) {
                           )
                               .extend(publicActions)
                               .extend(walletActions);
+                    bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
                     };
@@ -861,6 +863,7 @@ for (let i = 0; i < testData.length; i++) {
                           )
                               .extend(publicActions)
                               .extend(walletActions);
+                    bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
                     };
@@ -1266,6 +1269,7 @@ for (let i = 0; i < testData.length; i++) {
                           )
                               .extend(publicActions)
                               .extend(walletActions);
+                    bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
                     };
@@ -1676,6 +1680,7 @@ for (let i = 0; i < testData.length; i++) {
                           )
                               .extend(publicActions)
                               .extend(walletActions);
+                    bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
                     };
@@ -1843,7 +1848,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
-                    config.maxConcurrency = 1;
+                    config.maxConcurrency = 10;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,
@@ -1970,6 +1975,7 @@ for (let i = 0; i < testData.length; i++) {
                           )
                               .extend(publicActions)
                               .extend(walletActions);
+                    bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
                     };
@@ -2278,6 +2284,7 @@ for (let i = 0; i < testData.length; i++) {
                           )
                               .extend(publicActions)
                               .extend(walletActions);
+                    bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
                     };
@@ -2671,6 +2678,7 @@ for (let i = 0; i < testData.length; i++) {
                           )
                               .extend(publicActions)
                               .extend(walletActions);
+                    bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
                     };
@@ -3070,6 +3078,7 @@ for (let i = 0; i < testData.length; i++) {
                           )
                               .extend(publicActions)
                               .extend(walletActions);
+                    bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
                     };
@@ -3509,6 +3518,7 @@ for (let i = 0; i < testData.length; i++) {
                           )
                               .extend(publicActions)
                               .extend(walletActions);
+                    bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
                     };
@@ -3689,7 +3699,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
-                    config.maxConcurrency = 1;
+                    config.maxConcurrency = 10;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,
@@ -3831,6 +3841,7 @@ for (let i = 0; i < testData.length; i++) {
                           )
                               .extend(publicActions)
                               .extend(walletActions);
+                    bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
                     };
@@ -4011,7 +4022,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.mainAccount = bot;
                     config.gasPriceMultiplier = 107;
                     config.gasLimitMultiplier = 120;
-                    config.maxConcurrency = 1;
+                    config.maxConcurrency = 10;
                     config.dispair = {
                         interpreter: interpreter.address,
                         store: store.address,

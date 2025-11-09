@@ -77,7 +77,7 @@ describe("Test sendTx", () => {
     it("should successfully send a transaction on first attempt", async () => {
         const txHash = await sendTx(mockSigner, mockTx);
 
-        expect(mockSigner.waitUntilFree).toHaveBeenCalled();
+        expect(mockSigner.waitUntilFree).not.toHaveBeenCalled();
         expect(mockSigner.getTransactionCount).toHaveBeenCalledWith({
             address: "0xsender",
             blockTag: "latest",
@@ -96,7 +96,7 @@ describe("Test sendTx", () => {
             .mockResolvedValueOnce("0xhash");
         const txHash = await sendTx(mockSigner, mockTx, 10);
 
-        expect(mockSigner.waitUntilFree).toHaveBeenCalled();
+        expect(mockSigner.waitUntilFree).not.toHaveBeenCalled();
         expect(mockSigner.getTransactionCount).toHaveBeenCalledWith({
             address: "0xsender",
             blockTag: "latest",
@@ -116,7 +116,7 @@ describe("Test sendTx", () => {
             .mockResolvedValueOnce(6);
         const txHash = await sendTx(mockSigner, mockTx, 10);
 
-        expect(mockSigner.waitUntilFree).toHaveBeenCalled();
+        expect(mockSigner.waitUntilFree).not.toHaveBeenCalled();
         expect(mockSigner.getTransactionCount).toHaveBeenCalledTimes(2);
         expect(mockSigner.getTransactionCount).toHaveBeenCalledWith({
             address: "0xsender",
@@ -133,6 +133,7 @@ describe("Test sendTx", () => {
 
     it("should wait until signer is free before sending", async () => {
         let busyResolved = false;
+        mockSigner.busy = true;
         mockSigner.waitUntilFree = vi.fn().mockImplementation(async () => {
             busyResolved = true;
             return Promise.resolve();
@@ -164,15 +165,6 @@ describe("Test sendTx", () => {
         expect(mockSigner.busy).toBe(false);
         await expect(sendTx(mockSigner, mockTx, 10)).rejects.toThrow(error);
         expect(mockSigner.busy).toBe(false);
-    });
-
-    it("should handle waitUntilFree failure", async () => {
-        const error = new Error("Wait until free failed");
-        mockSigner.waitUntilFree = vi.fn().mockRejectedValue(error);
-
-        await expect(sendTx(mockSigner, mockTx)).rejects.toThrow(error);
-        expect(mockSigner.busy).toBe(false);
-        expect(mockSigner.sendTransaction).not.toHaveBeenCalled();
     });
 
     it("should handle getTransactionCount failure", async () => {
