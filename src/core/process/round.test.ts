@@ -834,7 +834,10 @@ describe("Test finalizeRound", () => {
             const mockSettle = vi.fn().mockResolvedValue(
                 Result.ok({
                     status: ProcessOrderStatus.FoundOpportunity,
-                    spanAttributes: { "event.something": 1234, "event.another": 5678 },
+                    spanAttributes: {
+                        "event.something": [1234, 456],
+                        "event.another": [5678, 123],
+                    },
                     endTime: 789,
                 }),
             );
@@ -850,8 +853,8 @@ describe("Test finalizeRound", () => {
             const addEventSpy = vi.spyOn(PreAssembledSpan.prototype, "addEvent");
             await finalizeRound.call(mockSolver, settlements);
 
-            expect(addEventSpy).toHaveBeenCalledWith("something", undefined, 1234);
-            expect(addEventSpy).toHaveBeenCalledWith("another", undefined, 5678);
+            expect(addEventSpy).toHaveBeenCalledWith("something", { duration: 456 }, 1234);
+            expect(addEventSpy).toHaveBeenCalledWith("another", { duration: 123 }, 5678);
 
             addEventSpy.mockRestore();
         });
@@ -1365,7 +1368,10 @@ describe("Test finalizeRound", () => {
             const mockSettle = vi.fn().mockResolvedValue(
                 Result.err({
                     reason: "unknown_reason",
-                    spanAttributes: { "event.something": 1234, "event.another": 5678 },
+                    spanAttributes: {
+                        "event.something": [1234, 456],
+                        "event.another": [5678, 123],
+                    },
                     status: "failed",
                     error: new Error("unexpected"),
                     endTime: 789,
@@ -1383,8 +1389,8 @@ describe("Test finalizeRound", () => {
             const addEventSpy = vi.spyOn(PreAssembledSpan.prototype, "addEvent");
             await finalizeRound.call(mockSolver, settlements);
 
-            expect(addEventSpy).toHaveBeenCalledWith("something", undefined, 1234);
-            expect(addEventSpy).toHaveBeenCalledWith("another", undefined, 5678);
+            expect(addEventSpy).toHaveBeenCalledWith("something", { duration: 456 }, 1234);
+            expect(addEventSpy).toHaveBeenCalledWith("another", { duration: 123 }, 5678);
 
             addEventSpy.mockRestore();
         });

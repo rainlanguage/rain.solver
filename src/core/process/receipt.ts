@@ -49,6 +49,11 @@ export async function processReceipt({
     const l1Fee = getL1Fee(receipt);
     const gasCost = receipt.effectiveGasPrice * receipt.gasUsed + l1Fee;
 
+    // record transaction time
+    const txMineDuration = performance.now() - txSendTime;
+    baseResult.spanAttributes["details.duration.transaction"] = txMineDuration;
+    baseResult.spanAttributes["event.transaction"] = [txSendTime, txMineDuration];
+
     // keep track of gas consumption of the account and bounty token
     baseResult.gasCost = gasCost;
 
@@ -127,7 +132,7 @@ export async function processReceipt({
                 // whole bot operation, so ideally all of it or at least
                 // partially will overlap with when bot is processing other
                 // orders
-                await sleep(Math.max(90_000 + txSendTime - Date.now(), 0));
+                await sleep(Math.max(90_000 + txSendTime - performance.now(), 0));
                 return await handleRevert(
                     signer,
                     receipt.transactionHash,

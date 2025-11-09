@@ -307,10 +307,11 @@ export async function finalizeRound(
             for (const attrKey in value.spanAttributes) {
                 // record event attrs
                 if (attrKey.startsWith("event.")) {
+                    const _event = value.spanAttributes[attrKey] as number[];
                     report.addEvent(
                         attrKey.replace("event.", ""),
-                        undefined,
-                        value.spanAttributes[attrKey] as number,
+                        { duration: _event[1] },
+                        _event[0] as number,
                     );
                     delete value.spanAttributes[attrKey];
                 }
@@ -352,10 +353,11 @@ export async function finalizeRound(
             for (const attrKey in err.spanAttributes) {
                 // record event attrs
                 if (attrKey.startsWith("event.")) {
+                    const _event = err.spanAttributes[attrKey] as number[];
                     report.addEvent(
                         attrKey.replace("event.", ""),
-                        undefined,
-                        err.spanAttributes[attrKey] as number,
+                        { duration: _event[1] },
+                        _event[0] as number,
                     );
                     delete err.spanAttributes[attrKey];
                 }

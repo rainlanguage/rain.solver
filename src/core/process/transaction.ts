@@ -50,7 +50,7 @@ export async function processTransaction({
         rawtx.type = "legacy";
         txhash = await signer.asWriteSigner().sendTx(rawtx as any);
         txUrl = signer.state.chainConfig.blockExplorers?.default.url + "/tx/" + txhash;
-        txSendTime = Date.now();
+        txSendTime = performance.now();
         // eslint-disable-next-line no-console
         console.log("\x1b[33m%s\x1b[0m", txUrl, "\n");
         baseResult.spanAttributes["details.txUrl"] = txUrl;
