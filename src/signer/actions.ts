@@ -161,15 +161,11 @@ export async function sendTx(
         return await signer.sendTransaction({ ...(tx as any), nonce });
     }
     try {
-        const result = await send();
-        signer.busy = false;
-        return result;
+        return await send();
     } catch (error) {
         await sleep(retryDelay); // wait for retryDelay time and retry once more
         try {
-            const result = await send();
-            signer.busy = false;
-            return result;
+            return await send();
         } catch {
             signer.busy = false;
             throw error;
@@ -306,10 +302,14 @@ export async function tryGetReceipt(
             timeout,
             new WaitForTransactionReceiptTimeoutError({ hash }),
         );
+        // free the signer after transaction state is concluded (to not cause nonce conflicts)
+        signer.busy = false;
         // capture tx mine record
         signer.state.gasManager.onTransactionMine({ didMine: true, length: Date.now() - start });
         return result;
     } catch (error) {
+        // free the signer after transaction state is concluded (to not cause nonce conflicts)
+        signer.busy = false;
         // capture tx mine record
         signer.state.gasManager.onTransactionMine({ didMine: false, length: Date.now() - start });
         throw error;

@@ -87,7 +87,7 @@ describe("Test sendTx", () => {
             nonce: 5,
         });
         expect(txHash).toBe("0xhash");
-        expect(mockSigner.busy).toBe(false);
+        expect(mockSigner.busy).toBe(true);
     });
 
     it("should successfully send a transaction on second attempt", async () => {
@@ -107,7 +107,7 @@ describe("Test sendTx", () => {
             nonce: 5,
         });
         expect(txHash).toBe("0xhash");
-        expect(mockSigner.busy).toBe(false);
+        expect(mockSigner.busy).toBe(true);
     });
 
     it("should successfully send a transaction on second attempt when first nonce fails", async () => {
@@ -128,7 +128,7 @@ describe("Test sendTx", () => {
             nonce: 6,
         });
         expect(txHash).toBe("0xhash");
-        expect(mockSigner.busy).toBe(false);
+        expect(mockSigner.busy).toBe(true);
     });
 
     it("should wait until signer is free before sending", async () => {
@@ -145,7 +145,7 @@ describe("Test sendTx", () => {
         expect(mockSigner.sendTransaction).toHaveBeenCalled();
     });
 
-    it("should set busy state during transaction and reset after success", async () => {
+    it("should set busy state during transaction", async () => {
         const states: boolean[] = [];
         mockSigner.sendTransaction = vi.fn().mockImplementation(async () => {
             states.push(mockSigner.busy);
@@ -154,7 +154,7 @@ describe("Test sendTx", () => {
 
         expect(mockSigner.busy).toBe(false);
         await sendTx(mockSigner, mockTx);
-        expect(mockSigner.busy).toBe(false);
+        expect(mockSigner.busy).toBe(true);
         expect(states).toContain(true); // Was busy during transaction
     });
 
@@ -418,6 +418,7 @@ describe("Test tryGetReceipt", () => {
 
     beforeEach(() => {
         mockSigner = {
+            busy: true,
             state: {
                 client: {
                     getTransactionReceipt: vi.fn(),
@@ -465,6 +466,7 @@ describe("Test tryGetReceipt", () => {
             didMine: true,
             length: expect.any(Number),
         });
+        expect(mockSigner.busy).toBe(false);
     });
 
     it("should hit timeout", async () => {
@@ -492,5 +494,6 @@ describe("Test tryGetReceipt", () => {
             didMine: false,
             length: expect.any(Number),
         });
+        expect(mockSigner.busy).toBe(false);
     });
 });
