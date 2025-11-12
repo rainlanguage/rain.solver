@@ -20,7 +20,7 @@ import {
 export type ProcessOrderArgs = {
     orderDetails: Pair;
     signer: RainSolverSigner;
-    blockNumber?: bigint;
+    blockNumber: bigint;
 };
 
 /**

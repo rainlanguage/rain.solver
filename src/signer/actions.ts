@@ -12,6 +12,12 @@ import {
     WaitForTransactionReceiptTimeoutError,
 } from "viem";
 
+/** Represents a sent transaction with hash and wait for receipt method */
+export type SentTransaction = {
+    hash: `0x${string}`;
+    wait: () => Promise<TransactionReceipt>;
+};
+
 /**
  * Custom actions that extend the viem client functionality, these actions add transaction
  * management, gas estimation, and state handling capabilities specifically for the RainSolver
@@ -51,7 +57,7 @@ export type RainSolverSignerActions<
      * Sends a transaction to the network and returns its hash
      * @param tx - The transaction parameters
      */
-    sendTx: (tx: SendTransactionParameters<Chain, account>) => Promise<`0x${string}`>;
+    sendTx: (tx: SendTransactionParameters<Chain, account>) => Promise<SentTransaction>;
 
     /**
      * Estimates the total gas cost for a transaction
@@ -130,7 +136,7 @@ export async function sendTx(
     signer: RainSolverSigner,
     tx: SendTransactionParameters<Chain, HDAccount | PrivateKeyAccount>,
     retryDelay = 3_000,
-): Promise<`0x${string}`> {
+): Promise<SentTransaction> {
     // make sure signer is free
     if (signer.busy) {
         await signer.waitUntilFree();
@@ -161,11 +167,15 @@ export async function sendTx(
         return await signer.sendTransaction({ ...(tx as any), nonce });
     }
     try {
-        return await send();
+        const hash = await send();
+        const wait = () => tryGetReceipt(signer, hash);
+        return { hash, wait };
     } catch (error) {
         await sleep(retryDelay); // wait for retryDelay time and retry once more
         try {
-            return await send();
+            const hash = await send();
+            const wait = () => tryGetReceipt(signer, hash);
+            return { hash, wait };
         } catch {
             signer.busy = false;
             throw error;

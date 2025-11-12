@@ -34,7 +34,7 @@ export async function initializeRound(
     const settlements: Settlement[] = [];
     const checkpointReports: PreAssembledSpan[] = [];
 
-    let blockNumber;
+    let blockNumber: bigint;
     let concurrencyProcessBatch = [];
     let maxConcurrencyCounter = this.appOptions.maxConcurrency;
     try {
@@ -58,7 +58,7 @@ export async function initializeRound(
         await prepareRouter.call(this, orderDetails, blockNumber);
 
         concurrencyProcessBatch.push(
-            processOrderInit.call(this, orderDetails, blockNumber, roundSpanCtx),
+            processOrderInit.call(this, orderDetails, blockNumber!, roundSpanCtx),
         );
         maxConcurrencyCounter--;
 
@@ -73,7 +73,8 @@ export async function initializeRound(
             // reset counter and batch vector
             concurrencyProcessBatch = [];
             maxConcurrencyCounter = this.appOptions.maxConcurrency;
-            blockNumber = await this.state.client.getBlockNumber().catch(() => undefined);
+            const temp = await this.state.client.getBlockNumber().catch(() => undefined);
+            if (typeof temp === "bigint") blockNumber = temp;
         }
     }
 
@@ -131,7 +132,7 @@ export async function prepareRouter(this: RainSolver, orderDetails: Pair, blockN
 export async function processOrderInit(
     this: RainSolver,
     orderDetails: Pair,
-    blockNumber?: bigint,
+    blockNumber: bigint,
     roundSpanCtx?: SpanWithContext,
 ): Promise<{ settlement: Settlement; checkpointReport: PreAssembledSpan }> {
     const pair = `${orderDetails.buyTokenSymbol}/${orderDetails.sellTokenSymbol}`;

@@ -40,7 +40,7 @@ export async function transferTokenFrom(
     const totalCost = (cost.totalGasCost * 110n) / 100n;
     if (totalCost > gasBalance) {
         // fund the wallet
-        const hash = await to.sendTx({ to: from.account.address, value: totalCost });
+        const { hash } = await to.sendTx({ to: from.account.address, value: totalCost });
         const receipt = await to.waitForReceipt({ hash });
         if (receipt.status !== "success") {
             throw {
@@ -84,7 +84,7 @@ export async function transferRemainingGasFrom(from: RainSolverSigner, to: `0x${
     const totalCost = (cost.totalGasCost * 102n) / 100n;
     if (balance > totalCost) {
         const amount = balance - totalCost;
-        const hash = await from.sendTx({ to, value: amount });
+        const { hash } = await from.sendTx({ to, value: amount });
         const receipt = await from.waitForReceipt({ hash });
         if (receipt.status === "success") {
             return { amount, txHash: hash };
@@ -198,7 +198,7 @@ export async function convertToGas(
         data: rpParams.data as `0x${string}`,
     });
     if (rpParams.amountOutMin >= cost.totalGasCost * swapCostMultiplier) {
-        const hash = await from.sendTx({
+        const { hash } = await from.sendTx({
             to: rp4Address,
             data: rpParams.data as `0x${string}`,
         });

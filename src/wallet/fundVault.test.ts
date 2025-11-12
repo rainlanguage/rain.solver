@@ -145,11 +145,12 @@ describe("Test fundVault", () => {
             amountOutMin: parseUnits("950", 18),
         } as any);
 
-        (mockSigner.sendTx as Mock).mockResolvedValue("0xswap");
+        (mockSigner.sendTx as Mock).mockResolvedValue({
+            hash: "0xswap",
+            wait: vi.fn().mockResolvedValue({ status: "success" }),
+        });
         (mockSigner.writeContract as Mock).mockResolvedValue("0xdeposit");
-        (mockSigner.waitForReceipt as Mock)
-            .mockResolvedValueOnce({ status: "success" }) // swap receipt
-            .mockResolvedValueOnce({ status: "success" }); // deposit receipt
+        (mockSigner.waitForReceipt as Mock).mockResolvedValueOnce({ status: "success" }); // deposit receipt
 
         const result = await fundVault(vaultDetails, mockSigner);
 
@@ -268,11 +269,12 @@ describe("Test fundVault", () => {
             amountOutMin: parseUnits("950", 18),
         } as any);
 
-        (mockSigner.sendTx as Mock).mockResolvedValue("0xswap");
+        (mockSigner.sendTx as Mock).mockResolvedValue({
+            hash: "0xswap",
+            wait: vi.fn().mockResolvedValue({ status: "success" }),
+        });
         (mockSigner.writeContract as Mock).mockResolvedValue("0xdeposit");
-        (mockSigner.waitForReceipt as Mock)
-            .mockResolvedValueOnce({ status: "success" }) // swap
-            .mockResolvedValueOnce({ status: "success" }); // deposit
+        (mockSigner.waitForReceipt as Mock).mockResolvedValueOnce({ status: "success" }); // deposit
 
         const result = await fundVault(vaultDetails, mockSigner);
 
@@ -289,7 +291,10 @@ describe("Test fundVault", () => {
             .mockResolvedValueOnce("TEST") // symbol
             .mockResolvedValueOnce(parseUnits("10", 18)); // insufficient token balance
 
-        (mockSigner.sendTx as Mock).mockResolvedValue("0xswap");
+        (mockSigner.sendTx as Mock).mockResolvedValue({
+            hash: "0xswap",
+            wait: vi.fn().mockResolvedValue({ status: "reverted" }),
+        });
         (mockSigner.waitForReceipt as Mock).mockResolvedValue({ status: "reverted" });
 
         await expect(fundVault(vaultDetails, mockSigner)).rejects.toThrow(

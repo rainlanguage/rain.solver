@@ -1757,7 +1757,11 @@ describe("Test processOrderInit", () => {
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
             (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
 
-            const result: processOrderInitType = await processOrderInit.call(mockSolver, mockOrder);
+            const result: processOrderInitType = await processOrderInit.call(
+                mockSolver,
+                mockOrder,
+                123n,
+            );
 
             const settlement = result.settlement;
             expect(settlement.pair).toBe("ETH/USDC");
@@ -1787,7 +1791,7 @@ describe("Test processOrderInit", () => {
             };
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
 
-            await processOrderInit.call(mockSolver, mockOrder);
+            await processOrderInit.call(mockSolver, mockOrder, 123n);
 
             expect(mockWalletManager.getRandomSigner).toHaveBeenCalledWith(true);
             expect(mockWalletManager.getRandomSigner).toHaveBeenCalledTimes(1);
@@ -1828,7 +1832,11 @@ describe("Test processOrderInit", () => {
                 account: { address: "0xSignerDEF" },
             });
 
-            const result: processOrderInitType = await processOrderInit.call(mockSolver, mockOrder);
+            const result: processOrderInitType = await processOrderInit.call(
+                mockSolver,
+                mockOrder,
+                123n,
+            );
 
             const report = result.checkpointReport;
             expect(report.name).toBe("checkpoint_WETH/DAI");
@@ -1848,7 +1856,11 @@ describe("Test processOrderInit", () => {
             };
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
 
-            const result: processOrderInitType = await processOrderInit.call(mockSolver, mockOrder);
+            const result: processOrderInitType = await processOrderInit.call(
+                mockSolver,
+                mockOrder,
+                123n,
+            );
 
             expect(result.checkpointReport.attributes["details.orderHash"]).toBe("0xOrder1");
             expect(result.settlement.orderHash).toBe("0xOrder1");
@@ -1863,7 +1875,11 @@ describe("Test processOrderInit", () => {
             };
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
 
-            const result: processOrderInitType = await processOrderInit.call(mockSolver, mockOrder);
+            const result: processOrderInitType = await processOrderInit.call(
+                mockSolver,
+                mockOrder,
+                123n,
+            );
 
             expect(result.checkpointReport.endTime).toBeTypeOf("number");
             expect(result.checkpointReport.endTime).toBeGreaterThan(0);
@@ -1881,7 +1897,7 @@ describe("Test processOrderInit", () => {
                 exportPreAssembledSpan: vi.fn(),
             } as any;
             const mockCtx = { fields: {} } as any;
-            await processOrderInit.call(mockSolver, mockOrder, undefined, {
+            await processOrderInit.call(mockSolver, mockOrder, 123n, {
                 span: {} as any,
                 context: mockCtx,
             });
@@ -1907,7 +1923,7 @@ describe("Test processOrderInit", () => {
                 RainSolverLogger.prototype,
                 "exportPreAssembledSpan",
             );
-            await processOrderInit.call(mockSolver, mockOrder);
+            await processOrderInit.call(mockSolver, mockOrder, 123n);
 
             expect(loggerExportReport).not.toHaveBeenCalled();
             loggerExportReport.mockRestore();

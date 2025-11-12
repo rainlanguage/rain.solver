@@ -75,7 +75,7 @@ describe("Test sendTx", () => {
     });
 
     it("should successfully send a transaction on first attempt", async () => {
-        const txHash = await sendTx(mockSigner, mockTx);
+        const { hash: txHash, wait } = await sendTx(mockSigner, mockTx);
 
         expect(mockSigner.waitUntilFree).not.toHaveBeenCalled();
         expect(mockSigner.getTransactionCount).toHaveBeenCalledWith({
@@ -88,13 +88,14 @@ describe("Test sendTx", () => {
         });
         expect(txHash).toBe("0xhash");
         expect(mockSigner.busy).toBe(true);
+        expect(wait).toBeTypeOf("function");
     });
 
     it("should successfully send a transaction on second attempt", async () => {
         (mockSigner.sendTransaction as Mock)
             .mockRejectedValueOnce(new Error("First attempt failed"))
             .mockResolvedValueOnce("0xhash");
-        const txHash = await sendTx(mockSigner, mockTx, 10);
+        const { hash: txHash, wait } = await sendTx(mockSigner, mockTx, 10);
 
         expect(mockSigner.waitUntilFree).not.toHaveBeenCalled();
         expect(mockSigner.getTransactionCount).toHaveBeenCalledWith({
@@ -108,13 +109,14 @@ describe("Test sendTx", () => {
         });
         expect(txHash).toBe("0xhash");
         expect(mockSigner.busy).toBe(true);
+        expect(wait).toBeTypeOf("function");
     });
 
     it("should successfully send a transaction on second attempt when first nonce fails", async () => {
         (mockSigner.getTransactionCount as Mock)
             .mockRejectedValueOnce(new Error("First attempt failed"))
             .mockResolvedValueOnce(6);
-        const txHash = await sendTx(mockSigner, mockTx, 10);
+        const { hash: txHash, wait } = await sendTx(mockSigner, mockTx, 10);
 
         expect(mockSigner.waitUntilFree).not.toHaveBeenCalled();
         expect(mockSigner.getTransactionCount).toHaveBeenCalledTimes(2);
@@ -129,6 +131,7 @@ describe("Test sendTx", () => {
         });
         expect(txHash).toBe("0xhash");
         expect(mockSigner.busy).toBe(true);
+        expect(wait).toBeTypeOf("function");
     });
 
     it("should wait until signer is free before sending", async () => {
