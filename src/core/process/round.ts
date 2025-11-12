@@ -39,7 +39,10 @@ export async function initializeRound(
     try {
         blockNumber = await this.state.client.getBlockNumber();
     } catch (error) {
-        const message = await errorSnapshot("failed to quote order: ", error);
+        const message = await errorSnapshot(
+            "failed to getblock number for batch process orders",
+            error,
+        );
         const report = new PreAssembledSpan(`order_batch_preprocess`);
         report.setStatus({ code: SpanStatusCode.ERROR, message });
         this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
