@@ -10,7 +10,25 @@ import { SpanStatusCode } from "@opentelemetry/api";
 import { PreAssembledSpan, RainSolverLogger } from "../../logger";
 import { ProcessOrderStatus, ProcessOrderHaltReason } from "../types";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import { finalizeRound, initializeRound, iterOrders, Settlement } from "./round";
+import {
+    iterOrders,
+    Settlement,
+    prepareRouter,
+    finalizeRound,
+    initializeRound,
+    processOrderInit,
+} from "./round";
+
+vi.mock("sushi/currency", async (importOriginal) => {
+    return {
+        ...(await importOriginal()),
+        Token: class {
+            constructor(args: any) {
+                return { ...args };
+            }
+        },
+    };
+});
 
 describe("Test initializeRound", () => {
     type initializeRoundType = Awaited<ReturnType<typeof initializeRound>>;
@@ -46,13 +64,22 @@ describe("Test initializeRound", () => {
 
         // mock state
         mockState = {
-            client: { name: "viem-client" },
+            chainConfig: { id: 1 },
+            client: {
+                name: "viem-client",
+                getBlockNumber: vi.fn().mockResolvedValue(123n),
+            },
             contracts: {
                 getAddressesForTrade: vi.fn().mockReturnValue({
                     dispair,
                     destination,
                 }),
             },
+            router: {
+                sushi: { update: vi.fn().mockResolvedValue(undefined) },
+                cache: new Map(),
+            },
+            getMarketPrice: vi.fn().mockResolvedValue(null),
         } as any;
 
         // mock app options
@@ -75,6 +102,8 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken",
+                    buyToken: "0xbuyToken",
                     takeOrder: {
                         id: "0xOrder123",
                         struct: { order: { owner: "0xOwner123" } },
@@ -115,18 +144,24 @@ describe("Test initializeRound", () => {
                     orderbook: "0x5555555555555555555555555555555555555555",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken1",
+                    buyToken: "0xbuyToken1",
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
                 {
                     orderbook: "0x5555555555555555555555555555555555555555",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken2",
+                    buyToken: "0xbuyToken2",
                     takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
                 },
                 {
                     orderbook: "0x6666666666666666666666666666666666666666",
                     buyTokenSymbol: "BTC",
                     sellTokenSymbol: "USDT",
+                    sellToken: "0xsellToken3",
+                    buyToken: "0xbuyToken3",
                     takeOrder: { id: "0xOrder3", struct: { order: { owner: "0xOwner3" } } },
                 },
             ];
@@ -199,12 +234,16 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken1",
+                    buyToken: "0xbuyToken1",
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
                 {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken2",
+                    buyToken: "0xbuyToken2",
                     takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
                 },
             ];
@@ -239,6 +278,7 @@ describe("Test initializeRound", () => {
             expect(mockSolver.processOrder).toHaveBeenCalledWith({
                 orderDetails,
                 signer: mockSigner,
+                blockNumber: 123n,
             });
         });
     });
@@ -250,6 +290,8 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "WETH",
                     sellTokenSymbol: "DAI",
+                    sellToken: "0xsellToken",
+                    buyToken: "0xbuyToken",
                     takeOrder: { id: "0xOrderABC", struct: { order: { owner: "0xOwnerXYZ" } } },
                 },
             ];
@@ -276,18 +318,24 @@ describe("Test initializeRound", () => {
                     orderbook: "0x1111111111111111111111111111111111111111",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken1",
+                    buyToken: "0xbuyToken1",
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
                 {
                     orderbook: "0x1111111111111111111111111111111111111111",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken2",
+                    buyToken: "0xbuyToken2",
                     takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
                 },
                 {
                     orderbook: "0x1111111111111111111111111111111111111111",
                     buyTokenSymbol: "BTC",
                     sellTokenSymbol: "USDT",
+                    sellToken: "0xsellToken3",
+                    buyToken: "0xbuyToken3",
                     takeOrder: { id: "0xOrder3", struct: { order: { owner: "0xOwner3" } } },
                 },
             ];
@@ -320,12 +368,16 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken1",
+                    buyToken: "0xbuyToken1",
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
                 {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken2",
+                    buyToken: "0xbuyToken2",
                     takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
                 },
             ];
@@ -348,6 +400,8 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken",
+                    buyToken: "0xbuyToken",
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
             ];
@@ -374,6 +428,8 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken",
+                    buyToken: "0xbuyToken",
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
             ];
@@ -410,6 +466,8 @@ describe("Test initializeRound", () => {
                     orderbook: "0x3333333333333333333333333333333333333333",
                     buyTokenSymbol: "ETH",
                     sellTokenSymbol: "USDC",
+                    sellToken: "0xsellToken",
+                    buyToken: "0xbuyToken",
                     takeOrder: { id: "0xOrder123", struct: { order: { owner: "0xOwner123" } } },
                 },
             ];
@@ -493,6 +551,7 @@ describe("Test initializeRound", () => {
         expect(mockSolver.processOrder).toHaveBeenCalledWith({
             orderDetails: mockOrders[1], // second order with non-zero balance
             signer: mockSigner,
+            blockNumber: 123n,
         });
 
         // verify getRandomSigner was called only once (for the non-zero balance order)
@@ -1617,5 +1676,318 @@ describe("Test iterOrders", () => {
         expect(mockMathRandom).toHaveBeenCalledTimes(3);
 
         mockMathRandom.mockRestore();
+    });
+});
+
+describe("Test processOrderInit", () => {
+    type processOrderInitType = Awaited<ReturnType<typeof processOrderInit>>;
+    let mockSolver: RainSolver;
+    let mockOrderManager: OrderManager;
+    let mockWalletManager: WalletManager;
+    let mockState: SharedState;
+    let mockAppOptions: AppOptions;
+    let dispair: Dispair;
+    let destination: `0x${string}`;
+    const mockSigner = { account: { address: "0xSigner123" } };
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+
+        dispair = {
+            deployer: "0xdeployer",
+            interpreter: "0xinterpreter",
+            store: "0xstore",
+        };
+        destination = "0xdestination";
+
+        // mock order manager
+        mockOrderManager = {
+            getNextRoundOrders: vi.fn(),
+            ownerTokenVaultMap: new Map(),
+        } as any;
+
+        // mock wallet manager
+        mockWalletManager = {
+            getRandomSigner: vi.fn(),
+        } as any;
+
+        // mock state
+        mockState = {
+            client: {
+                name: "viem-client",
+                getBlockNumber: vi.fn().mockResolvedValue(123n),
+            },
+            contracts: {
+                getAddressesForTrade: vi.fn().mockReturnValue({
+                    dispair,
+                    destination,
+                }),
+            },
+            router: {
+                sushi: { update: vi.fn().mockResolvedValue(undefined) },
+            },
+        } as any;
+
+        // mock app options
+        mockAppOptions = {} as any;
+
+        // mock RainSolver
+        mockSolver = {
+            orderManager: mockOrderManager,
+            walletManager: mockWalletManager,
+            state: mockState,
+            appOptions: mockAppOptions,
+            processOrder: vi.fn(),
+        } as any;
+    });
+
+    describe("successful execution", () => {
+        it("should return settlements with correct structure for single order", async () => {
+            const mockOrder: any = {
+                orderbook: "0x3333333333333333333333333333333333333333",
+                buyTokenSymbol: "ETH",
+                sellTokenSymbol: "USDC",
+                takeOrder: {
+                    id: "0xOrder123",
+                    struct: { order: { owner: "0xOwner123" } },
+                },
+            };
+
+            const mockSettleFn = vi.fn();
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
+
+            const result: processOrderInitType = await processOrderInit.call(
+                mockSolver,
+                mockOrder,
+                123n,
+            );
+
+            const settlement = result.settlement;
+            expect(settlement.pair).toBe("ETH/USDC");
+            expect(settlement.owner).toBe("0xOwner123");
+            expect(settlement.orderHash).toBe("0xOrder123");
+            expect(settlement.startTime).toBeTypeOf("number");
+            expect(settlement.settle).toBe(mockSettleFn);
+
+            // Verify checkpoint report
+            const checkpointReport = result.checkpointReport;
+            expect(checkpointReport.name).toBe("checkpoint_ETH/USDC");
+            expect(checkpointReport.attributes["details.pair"]).toBe("ETH/USDC");
+            expect(checkpointReport.attributes["details.orderHash"]).toBe("0xOrder123");
+            expect(checkpointReport.attributes["details.owner"]).toBe("0xOwner123");
+            expect(checkpointReport.attributes["details.sender"]).toBe("0xSigner123");
+            expect(checkpointReport.endTime).toBeTypeOf("number");
+        });
+    });
+
+    describe("method call verification", () => {
+        it("should call getRandomSigner for each order", async () => {
+            const mockOrder: any = {
+                orderbook: "0x3333333333333333333333333333333333333333",
+                buyTokenSymbol: "ETH",
+                sellTokenSymbol: "USDC",
+                takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
+            };
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+
+            await processOrderInit.call(mockSolver, mockOrder, 123n);
+
+            expect(mockWalletManager.getRandomSigner).toHaveBeenCalledWith(true);
+            expect(mockWalletManager.getRandomSigner).toHaveBeenCalledTimes(1);
+        });
+
+        it("should call processOrder with correct parameters structure", async () => {
+            const orderDetails: any = {
+                orderbook: "0x3333333333333333333333333333333333333333",
+                buyToken: "0xETH",
+                buyTokenSymbol: "ETH",
+                buyTokenDecimals: 18,
+                sellToken: "0xUSDC",
+                sellTokenSymbol: "USDC",
+                sellTokenDecimals: 6,
+                takeOrder: { id: "0xOrder123", struct: { order: { owner: "0xOwner123" } } },
+            };
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+
+            await processOrderInit.call(mockSolver, orderDetails, 123n);
+
+            expect(mockSolver.processOrder).toHaveBeenCalledWith({
+                orderDetails,
+                signer: mockSigner,
+                blockNumber: 123n,
+            });
+        });
+    });
+
+    describe("checkpoint reports verification", () => {
+        it("should create checkpoint reports with correct attributes", async () => {
+            const mockOrder: any = {
+                orderbook: "0x3333333333333333333333333333333333333333",
+                buyTokenSymbol: "WETH",
+                sellTokenSymbol: "DAI",
+                takeOrder: { id: "0xOrderABC", struct: { order: { owner: "0xOwnerXYZ" } } },
+            };
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
+                account: { address: "0xSignerDEF" },
+            });
+
+            const result: processOrderInitType = await processOrderInit.call(
+                mockSolver,
+                mockOrder,
+                123n,
+            );
+
+            const report = result.checkpointReport;
+            expect(report.name).toBe("checkpoint_WETH/DAI");
+            expect(report.attributes["details.pair"]).toBe("WETH/DAI");
+            expect(report.attributes["details.orderHash"]).toBe("0xOrderABC");
+            expect(report.attributes["details.orderbook"]).toBeTypeOf("string");
+            expect(report.attributes["details.sender"]).toBe("0xSignerDEF");
+            expect(report.attributes["details.owner"]).toBe("0xOwnerXYZ");
+        });
+
+        it("should create one checkpoint report per order", async () => {
+            const mockOrder: any = {
+                orderbook: "0x1111111111111111111111111111111111111111",
+                buyTokenSymbol: "ETH",
+                sellTokenSymbol: "USDC",
+                takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
+            };
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+
+            const result: processOrderInitType = await processOrderInit.call(
+                mockSolver,
+                mockOrder,
+                123n,
+            );
+
+            expect(result.checkpointReport.attributes["details.orderHash"]).toBe("0xOrder1");
+            expect(result.settlement.orderHash).toBe("0xOrder1");
+        });
+
+        it("should end all checkpoint reports", async () => {
+            const mockOrder: any = {
+                orderbook: "0x3333333333333333333333333333333333333333",
+                buyTokenSymbol: "ETH",
+                sellTokenSymbol: "USDC",
+                takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
+            };
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+
+            const result: processOrderInitType = await processOrderInit.call(
+                mockSolver,
+                mockOrder,
+                123n,
+            );
+
+            expect(result.checkpointReport.endTime).toBeTypeOf("number");
+            expect(result.checkpointReport.endTime).toBeGreaterThan(0);
+        });
+
+        it("should export checkpoint report if logger is available", async () => {
+            const mockOrder: any = {
+                orderbook: "0x3333333333333333333333333333333333333333",
+                buyTokenSymbol: "ETH",
+                sellTokenSymbol: "USDC",
+                takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
+            };
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockSolver as any).logger = {
+                exportPreAssembledSpan: vi.fn(),
+            } as any;
+            const mockCtx = { fields: {} } as any;
+            await processOrderInit.call(mockSolver, mockOrder, 123n, {
+                span: {} as any,
+                context: mockCtx,
+            });
+
+            expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledTimes(1);
+            expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledWith(
+                expect.anything(),
+                mockCtx,
+            );
+
+            (mockSolver as any).logger = undefined; // reset logger
+        });
+
+        it("should NOT export checkpoint report if logger is NOT available", async () => {
+            const mockOrder: any = {
+                orderbook: "0x3333333333333333333333333333333333333333",
+                buyTokenSymbol: "ETH",
+                sellTokenSymbol: "USDC",
+                takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
+            };
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            const loggerExportReport = vi.spyOn(
+                RainSolverLogger.prototype,
+                "exportPreAssembledSpan",
+            );
+            await processOrderInit.call(mockSolver, mockOrder, 123n);
+
+            expect(loggerExportReport).not.toHaveBeenCalled();
+            loggerExportReport.mockRestore();
+        });
+    });
+});
+
+describe("Test prepareRouter", () => {
+    it("should call with correct params", async () => {
+        const nativeWrappedToken = {
+            address: "0xnativewrappedToken",
+        };
+        const mockState = {
+            client: { name: "client" },
+            chainConfig: { id: 1, nativeWrappedToken },
+            getMarketPrice: vi.fn().mockResolvedValue(null),
+            router: { cache: new Map() },
+        } as any;
+        const mockSolver = { state: mockState } as any;
+        const mockOrderDetails = {
+            id: "0xid",
+            sellTokenDecimals: 18,
+            sellToken: "0xsellToken",
+            sellTokenSymbol: "sTKN",
+            buyTokenDecimals: 18,
+            buyToken: "0xbuytoken",
+            buyTokenSymbol: "bTKN",
+        } as any;
+        const fromToken = {
+            chainId: 1,
+            address: mockOrderDetails.sellToken,
+            decimals: mockOrderDetails.sellTokenDecimals,
+            symbol: mockOrderDetails.sellTokenSymbol,
+        };
+        const toToken = {
+            chainId: 1,
+            address: mockOrderDetails.buyToken,
+            decimals: mockOrderDetails.buyTokenDecimals,
+            symbol: mockOrderDetails.buyTokenSymbol,
+        };
+
+        await prepareRouter.call(mockSolver, mockOrderDetails, 123n);
+
+        expect(mockState.getMarketPrice as Mock).toHaveBeenCalledTimes(3);
+        expect(mockState.getMarketPrice as Mock).toHaveBeenNthCalledWith(
+            1,
+            fromToken,
+            toToken,
+            123n,
+            false,
+        );
+        expect(mockState.getMarketPrice as Mock).toHaveBeenNthCalledWith(
+            2,
+            toToken,
+            mockState.chainConfig.nativeWrappedToken,
+            123n,
+            false,
+        );
+        expect(mockState.getMarketPrice as Mock).toHaveBeenNthCalledWith(
+            3,
+            fromToken,
+            mockState.chainConfig.nativeWrappedToken,
+            123n,
+            false,
+        );
     });
 });

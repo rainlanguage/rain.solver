@@ -103,8 +103,8 @@ timeout: 15
 # Option to maximize maxIORatio, default true
 maxRatio: true
 
-# Only clear orders through RP4, excludes intra and inter orderbook clears, default true
-rpOnly: true
+# The number of orders that will be processed concurrently, default is 1, i.e. no concurrency
+maxConcurrency: 10
 
 # Option that specifies the owner limit
 # for specifying in env use key=value form and separate by comma owner1=limit,owner2=limit,...

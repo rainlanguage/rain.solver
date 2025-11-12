@@ -78,6 +78,7 @@ jobs:
           echo "RP_ONLY=${{ vars.PREVIEW_RP_ONLY }}" >> .env
           echo "TX_GAS=${{ vars.PREVIEW_TX_GAS }}" >> .env
           echo "DISPAIR=${{ vars.PREVIEW_DISPAIR }}" >> .env
+          echo "MAX_CONCURRENCY=${{ vars.MAX_CONCURRENCY }}" >> .env
 
       - name: Run Rain Solver Docker Image
         run: docker run --rm --env-file .env $TAG_BASE:$CHANNEL

@@ -173,7 +173,10 @@ describe("Test WalletManager", () => {
             (walletManager.mainSigner.getSelfBalance as Mock).mockResolvedValue(
                 parseUnits("1", 18),
             );
-            (walletManager.mainSigner.sendTx as Mock).mockResolvedValue("0x123");
+            (walletManager.mainSigner.sendTx as Mock).mockResolvedValue({
+                hash: "0x123",
+                wait: vi.fn().mockResolvedValue({ status: "success" }),
+            });
             (walletManager.mainSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "success",
             });
@@ -193,7 +196,10 @@ describe("Test WalletManager", () => {
             (walletManager.mainSigner.getSelfBalance as Mock).mockResolvedValue(
                 parseUnits("1", 18),
             );
-            (walletManager.mainSigner.sendTx as Mock).mockResolvedValue("0x123");
+            (walletManager.mainSigner.sendTx as Mock).mockResolvedValue({
+                hash: "0x123",
+                wait: vi.fn().mockResolvedValue({ status: "reverted" }),
+            });
             (walletManager.mainSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "reverted",
             });
@@ -222,17 +228,14 @@ describe("Test WalletManager", () => {
             const initialCount = walletManager.workers.signers.size;
             const initialIndex = walletManager.workers.lastUsedDerivationIndex;
 
+            const waitForReceiptSpy = vi.fn();
             const getSelfBalanceSpy = vi
                 .spyOn(walletManager.mainSigner, "getSelfBalance")
                 .mockResolvedValue(parseUnits("1", 18));
-            const sendTxSpy = vi
-                .spyOn(walletManager.mainSigner, "sendTx")
-                .mockResolvedValue("0x123");
-            const waitForReceiptSpy = vi
-                .spyOn(walletManager.mainSigner, "waitForReceipt")
-                .mockResolvedValue({
-                    status: "success",
-                } as any);
+            const sendTxSpy = vi.spyOn(walletManager.mainSigner, "sendTx").mockResolvedValue({
+                hash: "0x123",
+                wait: waitForReceiptSpy.mockResolvedValue({ status: "success" }),
+            });
 
             const report = await walletManager.addWallet();
 

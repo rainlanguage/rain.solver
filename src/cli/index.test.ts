@@ -162,12 +162,14 @@ describe("Test RainSolverCli", () => {
                 ["USDC", { address: "0xUSDC", symbol: "USDC", decimals: 6 }],
             ]),
             router: {
+                reset: vi.fn(),
                 sushi: {
                     reset: vi.fn(),
                     dataFetcher: {
                         test: "data",
                     },
                 },
+                getLiquidityProvidersList: vi.fn().mockReturnValue(["lp1", "lp2"]),
             },
             liquidityProviders: ["uniswap"],
             client: {},
@@ -462,6 +464,7 @@ describe("Test RainSolverCli", () => {
                     key: "N/A",
                     mnemonic: "N/A",
                 }),
+                "meta.liquidityProviders": ["lp1", "lp2"],
             });
 
             expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith(
@@ -593,6 +596,7 @@ describe("Test RainSolverCli", () => {
 
             expect((rainSolverCli as any).nextDatafetcherReset).toBeGreaterThan(pastTime);
             expect(rainSolverCli.state.router.sushi!.dataFetcher).toBe(originalDataFetcher);
+            expect(mockState.router.reset as Mock).not.toHaveBeenCalled();
         });
     });
 

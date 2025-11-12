@@ -53,6 +53,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
     readonly sushi: SushiRouter | undefined;
     readonly balancer: BalancerRouter | undefined;
     readonly stabull: StabullRouter | undefined;
+    readonly cache: Map<string, number> = new Map();
 
     constructor(
         chainId: number,
@@ -139,6 +140,13 @@ export class RainSolverRouter extends RainSolverRouterBase {
     async getMarketPrice(
         params: RainSolverRouterQuoteParams,
     ): Promise<Result<{ price: string }, RainSolverRouterError>> {
+        const key = `${params.fromToken.address.toLowerCase()}-${params.toToken.address.toLowerCase}`;
+        let value = this.cache.get(key);
+        if (typeof value === "number") {
+            if (value < 4) this.cache.set(key, ++value);
+        } else {
+            this.cache.set(key, 1);
+        }
         const promises = [
             this.sushi?.getMarketPrice(params),
             this.balancer?.getMarketPrice(params),
@@ -172,6 +180,13 @@ export class RainSolverRouter extends RainSolverRouterBase {
     async tryQuote(
         params: RainSolverRouterQuoteParams,
     ): Promise<Result<RainSolverRouterQuote, RainSolverRouterError>> {
+        const key = `${params.fromToken.address.toLowerCase()}-${params.toToken.address.toLowerCase}`;
+        let value = this.cache.get(key);
+        if (typeof value === "number") {
+            if (value < 4) this.cache.set(key, ++value);
+        } else {
+            this.cache.set(key, 1);
+        }
         const promises = [
             this.sushi?.tryQuote(params),
             this.balancer?.tryQuote(params),
@@ -203,6 +218,13 @@ export class RainSolverRouter extends RainSolverRouterBase {
     async findBestRoute(
         params: RainSolverRouterQuoteParams,
     ): Promise<Result<RainSolverRouterQuote, RainSolverRouterError>> {
+        const key = `${params.fromToken.address.toLowerCase()}-${params.toToken.address.toLowerCase}`;
+        let value = this.cache.get(key);
+        if (typeof value === "number") {
+            if (value < 4) this.cache.set(key, ++value);
+        } else {
+            this.cache.set(key, 1);
+        }
         const promises = [
             this.sushi?.findBestRoute(params),
             this.balancer?.findBestRoute(params),
@@ -230,6 +252,13 @@ export class RainSolverRouter extends RainSolverRouterBase {
     async getTradeParams(
         args: GetTradeParamsArgs,
     ): Promise<Result<TradeParamsType, RainSolverRouterError>> {
+        const key = `${args.fromToken.address.toLowerCase()}-${args.toToken.address.toLowerCase}`;
+        let value = this.cache.get(key);
+        if (typeof value === "number") {
+            if (value < 4) this.cache.set(key, ++value);
+        } else {
+            this.cache.set(key, 1);
+        }
         const promises = [
             this.sushi?.getTradeParams(args),
             this.balancer?.getTradeParams(args),
@@ -278,6 +307,13 @@ export class RainSolverRouter extends RainSolverRouterBase {
             ...(this.sushi?.getLiquidityProvidersList() ?? []),
             ...(this.stabull?.getLiquidityProvidersList() ?? []),
         ];
+    }
+
+    /** Resets the cache */
+    reset() {
+        this.cache.clear();
+        this.balancer?.cache.clear();
+        this.stabull?.cache.clear();
     }
 }
 

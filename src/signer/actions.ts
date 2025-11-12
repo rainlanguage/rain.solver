@@ -12,6 +12,12 @@ import {
     WaitForTransactionReceiptTimeoutError,
 } from "viem";
 
+/** Represents a sent transaction with hash and wait for receipt method */
+export type SentTransaction = {
+    hash: `0x${string}`;
+    wait: () => Promise<TransactionReceipt>;
+};
+
 /**
  * Custom actions that extend the viem client functionality, these actions add transaction
  * management, gas estimation, and state handling capabilities specifically for the RainSolver
@@ -51,7 +57,7 @@ export type RainSolverSignerActions<
      * Sends a transaction to the network and returns its hash
      * @param tx - The transaction parameters
      */
-    sendTx: (tx: SendTransactionParameters<Chain, account>) => Promise<`0x${string}`>;
+    sendTx: (tx: SendTransactionParameters<Chain, account>) => Promise<SentTransaction>;
 
     /**
      * Estimates the total gas cost for a transaction
@@ -130,9 +136,11 @@ export async function sendTx(
     signer: RainSolverSigner,
     tx: SendTransactionParameters<Chain, HDAccount | PrivateKeyAccount>,
     retryDelay = 3_000,
-): Promise<`0x${string}`> {
+): Promise<SentTransaction> {
     // make sure signer is free
-    await signer.waitUntilFree();
+    if (signer.busy) {
+        await signer.waitUntilFree();
+    }
 
     // start sending tranaction process
     signer.busy = true;
@@ -159,15 +167,15 @@ export async function sendTx(
         return await signer.sendTransaction({ ...(tx as any), nonce });
     }
     try {
-        const result = await send();
-        signer.busy = false;
-        return result;
+        const hash = await send();
+        const wait = () => tryGetReceipt(signer, hash);
+        return { hash, wait };
     } catch (error) {
         await sleep(retryDelay); // wait for retryDelay time and retry once more
         try {
-            const result = await send();
-            signer.busy = false;
-            return result;
+            const hash = await send();
+            const wait = () => tryGetReceipt(signer, hash);
+            return { hash, wait };
         } catch {
             signer.busy = false;
             throw error;
@@ -304,10 +312,14 @@ export async function tryGetReceipt(
             timeout,
             new WaitForTransactionReceiptTimeoutError({ hash }),
         );
+        // free the signer after transaction state is concluded (to not cause nonce conflicts)
+        signer.busy = false;
         // capture tx mine record
         signer.state.gasManager.onTransactionMine({ didMine: true, length: Date.now() - start });
         return result;
     } catch (error) {
+        // free the signer after transaction state is concluded (to not cause nonce conflicts)
+        signer.busy = false;
         // capture tx mine record
         signer.state.gasManager.onTransactionMine({ didMine: false, length: Date.now() - start });
         throw error;

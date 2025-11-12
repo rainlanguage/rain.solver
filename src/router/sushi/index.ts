@@ -256,15 +256,19 @@ export class SushiRouter extends RainSolverRouterBase {
         await this.dataFetcher.updatePools(blockNumber);
     }
 
-    /** Resets the data fetcher to a fresh instance */
-    async reset() {
+    /**
+     * Resets the data fetcher to a fresh instance and returns true if resets successfully or false otherwise
+     */
+    async reset(): Promise<boolean> {
         try {
             this.dataFetcher = await RainDataFetcher.init(
                 this.chainId as ChainId,
                 this.client as any,
                 this.liquidityProviders,
             );
+            return true;
         } catch {}
+        return false;
     }
 
     /** Gets the list of active liquidity providers */

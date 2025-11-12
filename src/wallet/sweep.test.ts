@@ -90,7 +90,10 @@ describe("Test sweep functions", () => {
             (mockFromSigner.readContract as Mock).mockResolvedValue(100n);
             (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(50n);
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 100n });
-            (mockToSigner.sendTx as Mock).mockResolvedValue("0xhash");
+            (mockToSigner.sendTx as Mock).mockResolvedValue({
+                hash: "0xhash",
+                wait: vi.fn().mockResolvedValue({ status: "success" }),
+            });
             (mockToSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "success",
             });
@@ -112,7 +115,10 @@ describe("Test sweep functions", () => {
             (mockFromSigner.readContract as Mock).mockResolvedValue(100n);
             (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(50n);
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 100n });
-            (mockToSigner.sendTx as Mock).mockResolvedValue("0xhash");
+            (mockToSigner.sendTx as Mock).mockResolvedValue({
+                hash: "0xhash",
+                wait: vi.fn().mockResolvedValue({ status: "reverted" }),
+            });
             (mockToSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "reverted",
             });
@@ -190,7 +196,10 @@ describe("Test sweep functions", () => {
         it("should successfully transfer remaining gas", async () => {
             (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(1000n);
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 100n });
-            (mockFromSigner.sendTx as Mock).mockResolvedValue("0xhash");
+            (mockFromSigner.sendTx as Mock).mockResolvedValue({
+                hash: "0xhash",
+                wait: vi.fn().mockResolvedValue({ status: "success" }),
+            });
             (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "success",
             });
@@ -211,7 +220,10 @@ describe("Test sweep functions", () => {
         it("should handle failed gas transfer transaction", async () => {
             (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(1000n);
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 100n });
-            (mockFromSigner.sendTx as Mock).mockResolvedValue("0xhash");
+            (mockFromSigner.sendTx as Mock).mockResolvedValue({
+                hash: "0xhash",
+                wait: vi.fn().mockResolvedValue({ status: "reverted" }),
+            });
             (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "reverted",
             });
@@ -303,7 +315,10 @@ describe("Test sweep functions", () => {
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 10n });
 
             // mock successful swap
-            (mockFromSigner.sendTx as Mock).mockResolvedValue("0xswap");
+            (mockFromSigner.sendTx as Mock).mockResolvedValue({
+                hash: "0xswap",
+                wait: vi.fn().mockResolvedValue({ status: "success" }),
+            });
 
             await convertToGas(mockFromSigner, mockToken);
 
@@ -382,7 +397,10 @@ describe("Test sweep functions", () => {
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 10n });
 
             // mock successful swap
-            (mockFromSigner.sendTx as Mock).mockResolvedValue("0xswap");
+            (mockFromSigner.sendTx as Mock).mockResolvedValue({
+                hash: "0xswap",
+                wait: vi.fn().mockResolvedValue({ status: "success" }),
+            });
             (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "success",
             });
@@ -422,7 +440,10 @@ describe("Test sweep functions", () => {
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 10n });
 
             // mock failed swap
-            (mockFromSigner.sendTx as Mock).mockResolvedValue("0xfailed");
+            (mockFromSigner.sendTx as Mock).mockResolvedValue({
+                hash: "0xfailed",
+                wait: vi.fn().mockResolvedValue({ status: "reverted" }),
+            });
             (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "reverted",
             });
@@ -462,7 +483,10 @@ describe("Test sweep functions", () => {
             (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 100n });
 
             // mock successful swap
-            (mockFromSigner.sendTx as Mock).mockResolvedValue("0xswap");
+            (mockFromSigner.sendTx as Mock).mockResolvedValue({
+                hash: "0xswap",
+                wait: vi.fn().mockResolvedValue({ status: "success" }),
+            });
             (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({
                 status: "success",
             });

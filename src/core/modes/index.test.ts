@@ -484,18 +484,6 @@ describe("Test findBestTrade", () => {
         expect(result.error.spanAttributes["interOrderbook.interError"]).toBe("no counterparty");
         expect(result.error.spanAttributes["interOrderbook.interPairs"]).toBe(2);
     });
-
-    it("should return error when fails to get block number", async () => {
-        (mockRainSolver.state.client.getBlockNumber as Mock).mockRejectedValueOnce(
-            new Error("some error"),
-        );
-
-        const result = await findBestTrade.call(mockRainSolver, args);
-
-        assert(result.isErr());
-        expect(result.error.noneNodeError).toContain("some error");
-        expect(result.error.spanAttributes.error).toContain("some error");
-    });
 });
 
 describe("Test getEnabledTrades", () => {

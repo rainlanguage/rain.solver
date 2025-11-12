@@ -116,12 +116,12 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
             );
 
             // perform the swap
-            const hash = await signer.sendTx({
+            const { wait } = await signer.sendTx({
                 to: rp4Address,
                 data: rpParams.data as `0x${string}`,
                 value: route.amountInBI,
             });
-            const receipt = await signer.waitForReceipt({ hash });
+            const receipt = await wait();
             if (receipt.status === "reverted") {
                 throw new Error(
                     "Failed to swap gas to target token to acquire the balance needed for depositing into the vault, reason: transaction reverted onchain",

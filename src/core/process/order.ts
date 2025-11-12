@@ -5,11 +5,9 @@ import { toNumber } from "../../math";
 import { Token } from "sushi/currency";
 import { errorSnapshot } from "../../error";
 import { formatUnits, parseUnits } from "viem";
-import { RainDataFetcherOptions } from "sushi";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../signer";
 import { processTransaction } from "./transaction";
-import { BlackListSet } from "../../router/sushi/blacklist";
 import {
     ProcessOrderStatus,
     ProcessOrderSuccess,
@@ -22,6 +20,7 @@ import {
 export type ProcessOrderArgs = {
     orderDetails: Pair;
     signer: RainSolverSigner;
+    blockNumber: bigint;
 };
 
 /**
@@ -33,7 +32,7 @@ export async function processOrder(
     this: RainSolver,
     args: ProcessOrderArgs,
 ): Promise<() => Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>>> {
-    const { orderDetails, signer } = args;
+    const { orderDetails, signer, blockNumber: dataFetcherBlockNumber } = args;
     const fromToken = new Token({
         chainId: this.state.chainConfig.id,
         decimals: orderDetails.sellTokenDecimals,
@@ -104,59 +103,13 @@ export async function processOrder(
         ratio: formatUnits(orderDetails.takeOrder.quote!.ratio, 18),
     });
 
-    // get current block number
-    spanAttributes["event.getBlockNumber"] = performance.now();
-    const dataFetcherBlockNumber = await this.state.client.getBlockNumber().catch(() => {
-        return undefined;
-    });
-
-    // update pools by events watching until current block
-    spanAttributes["event.updatePoolsData"] = performance.now();
-    try {
-        await this.state.router.sushi?.update(dataFetcherBlockNumber);
-    } catch (e) {
-        if (typeof e !== "string" || !e.includes("fetchPoolsForToken")) {
-            const endTime = performance.now();
-            return async () =>
-                Result.err({
-                    ...baseResult,
-                    error: e,
-                    endTime,
-                    reason: ProcessOrderHaltReason.FailedToUpdatePools,
-                });
-        }
-    }
-
-    // get pool details
-    spanAttributes["event.getPoolsData"] = performance.now();
-    try {
-        const options: RainDataFetcherOptions = {
-            fetchPoolsTimeout: 90000,
-            blockNumber: dataFetcherBlockNumber,
-        };
-        await this.state.router.sushi?.dataFetcher.fetchPoolsForToken(
-            fromToken,
-            toToken,
-            BlackListSet,
-            options,
-        );
-    } catch (e) {
-        const endTime = performance.now();
-        return async () =>
-            Result.err({
-                ...baseResult,
-                error: e,
-                endTime,
-                reason: ProcessOrderHaltReason.FailedToGetPools,
-            });
-    }
-
     // record market price in span attributes
     const getPairMarketPriceTime = performance.now();
     const marketPriceResult = await this.state.getMarketPrice(
         fromToken,
         toToken,
         dataFetcherBlockNumber,
+        true,
     );
     if (marketPriceResult.isOk()) {
         spanAttributes["details.marketQuote.str"] = marketPriceResult.value.price;
@@ -179,11 +132,13 @@ export async function processOrder(
         toToken,
         this.state.chainConfig.nativeWrappedToken,
         dataFetcherBlockNumber,
+        true,
     );
     const outputToEthPriceResult = await this.state.getMarketPrice(
         fromToken,
         this.state.chainConfig.nativeWrappedToken,
         dataFetcherBlockNumber,
+        true,
     );
     if (
         inputToEthPriceResult.isErr() &&
@@ -231,6 +186,7 @@ export async function processOrder(
         fromToken,
         inputToEthPrice,
         outputToEthPrice,
+        blockNumber: dataFetcherBlockNumber!,
     });
     const endTime = performance.now();
     if (trade.isErr()) {

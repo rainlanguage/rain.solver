@@ -44,12 +44,12 @@ export async function processTransaction({
     () => Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>>
 > {
     // submit the tx
-    let txhash: `0x${string}`, txUrl: string;
+    let hash: `0x${string}`, txUrl: string, wait: Awaited<ReturnType<typeof signer.sendTx>>["wait"];
     let txSendTime = 0;
     try {
         rawtx.type = "legacy";
-        txhash = await signer.asWriteSigner().sendTx(rawtx as any);
-        txUrl = signer.state.chainConfig.blockExplorers?.default.url + "/tx/" + txhash;
+        ({ hash, wait } = await signer.asWriteSigner().sendTx(rawtx as any));
+        txUrl = signer.state.chainConfig.blockExplorers?.default.url + "/tx/" + hash;
         txSendTime = performance.now();
         // eslint-disable-next-line no-console
         console.log("\x1b[33m%s\x1b[0m", txUrl, "\n");
@@ -75,7 +75,7 @@ export async function processTransaction({
     }
 
     // start getting tx receipt in background and return the settler fn
-    const receiptPromise = signer.waitForReceipt({ hash: txhash! });
+    const receiptPromise = wait();
 
     return async () => {
         try {
