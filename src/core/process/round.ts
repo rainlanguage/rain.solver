@@ -34,9 +34,21 @@ export async function initializeRound(
     const settlements: Settlement[] = [];
     const checkpointReports: PreAssembledSpan[] = [];
 
+    let blockNumber;
     let concurrencyProcessBatch = [];
     let maxConcurrencyCounter = this.appOptions.maxConcurrency;
-    let blockNumber = await this.state.client.getBlockNumber().catch(() => undefined);
+    try {
+        blockNumber = await this.state.client.getBlockNumber();
+    } catch (error) {
+        const message = await errorSnapshot("failed to quote order: ", error);
+        const report = new PreAssembledSpan(`order_batch_preprocess`);
+        report.setStatus({ code: SpanStatusCode.ERROR, message });
+        this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
+        return {
+            settlements,
+            checkpointReports,
+        };
+    }
     for (const orderDetails of iterOrders(orders, shuffle)) {
         // update pools data on each batch start
         if (maxConcurrencyCounter === this.appOptions.maxConcurrency) {
