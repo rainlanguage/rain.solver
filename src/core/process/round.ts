@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { RainSolver } from "..";
 import { Pair } from "../../order";
 import { Token } from "sushi/currency";
