@@ -40,7 +40,7 @@ export async function initializeRound(
         blockNumber = await this.state.client.getBlockNumber();
     } catch (error) {
         const message = await errorSnapshot(
-            "failed to getblock number for batch process orders",
+            "failed to get block number for orders batch process",
             error,
         );
         const report = new PreAssembledSpan(`order_batch_preprocess`);
