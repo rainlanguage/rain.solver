@@ -65,6 +65,7 @@ describe("Test processReceipt", () => {
                 buyToken: "0xUSDC",
                 sellToken: "0xETH",
                 spanAttributes: {},
+                spanEvents: {},
                 status: ProcessOrderStatus.FoundOpportunity,
             },
             txUrl: "https://etherscan.io/tx/0xTxHash123",

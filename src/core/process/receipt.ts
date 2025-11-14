@@ -8,9 +8,9 @@ import { Result, sleep, RawTransaction } from "../../common";
 import { getIncome, getTotalIncome, getActualClearAmount } from "./log";
 import {
     ProcessOrderFailure,
-    ProcessOrderSuccess,
     ProcessOrderHaltReason,
     ProcessOrderResultBase,
+    ProcessTransactionSuccess,
 } from "../types";
 
 /** Arguments for processing a transaction receipt */
@@ -45,7 +45,7 @@ export async function processReceipt({
     baseResult,
     inputToEthPrice,
     outputToEthPrice,
-}: ProcessReceiptArgs): Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>> {
+}: ProcessReceiptArgs): Promise<Result<ProcessTransactionSuccess, ProcessOrderFailure>> {
     const l1Fee = getL1Fee(receipt);
     const gasCost = receipt.effectiveGasPrice * receipt.gasUsed + l1Fee;
 
@@ -99,7 +99,7 @@ export async function processReceipt({
             );
         }
 
-        const success: ProcessOrderSuccess = {
+        const success: ProcessTransactionSuccess = {
             ...baseResult,
             clearedAmount: clearActualAmount?.toString(),
             gasCost: gasCost,

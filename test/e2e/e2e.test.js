@@ -388,10 +388,17 @@ for (let i = 0; i < testData.length; i++) {
                         },
                         // config,
                     );
-                    const { results: reports } = await rainSolver.processNextRound(
-                        undefined,
-                        false,
-                    );
+                    const { results } = await rainSolver.processNextRound(undefined, false);
+
+                    // wait for all tx settlements for testing the results
+                    const reports = [];
+                    for (const res of results) {
+                        if (res.isOk() && typeof res.value.txSettlement !== "undefined") {
+                            reports.push(await res.value.txSettlement);
+                        } else {
+                            reports.push(res);
+                        }
+                    }
 
                     // should have cleared correct number of orders
                     assert.ok(
@@ -751,10 +758,17 @@ for (let i = 0; i < testData.length; i++) {
                         },
                         // config,
                     );
-                    const { results: reports } = await rainSolver.processNextRound(
-                        undefined,
-                        false,
-                    );
+                    const { results } = await rainSolver.processNextRound(undefined, false);
+
+                    // wait for all tx settlements for testing the results
+                    const reports = [];
+                    for (const res of results) {
+                        if (res.isOk() && typeof res.value.txSettlement !== "undefined") {
+                            reports.push(await res.value.txSettlement);
+                        } else {
+                            reports.push(res);
+                        }
+                    }
 
                     // should have cleared correct number of orders
                     assert.ok(
@@ -1158,10 +1172,17 @@ for (let i = 0; i < testData.length; i++) {
                         },
                         // config,
                     );
-                    const { results: reports } = await rainSolver.processNextRound(
-                        undefined,
-                        false,
-                    );
+                    const { results } = await rainSolver.processNextRound(undefined, false);
+
+                    // wait for all tx settlements for testing the results
+                    const reports = [];
+                    for (const res of results) {
+                        if (res.isOk() && typeof res.value.txSettlement !== "undefined") {
+                            reports.push(await res.value.txSettlement);
+                        } else {
+                            reports.push(res);
+                        }
+                    }
 
                     // should have cleared correct number of orders
                     assert.ok(
@@ -1546,10 +1567,17 @@ for (let i = 0; i < testData.length; i++) {
                         },
                         // config,
                     );
-                    const { results: reports } = await rainSolver.processNextRound(
-                        undefined,
-                        false,
-                    );
+                    const { results } = await rainSolver.processNextRound(undefined, false);
+
+                    // wait for all tx settlements for testing the results
+                    const reports = [];
+                    for (const res of results) {
+                        if (res.isOk() && typeof res.value.txSettlement !== "undefined") {
+                            reports.push(await res.value.txSettlement);
+                        } else {
+                            reports.push(res);
+                        }
+                    }
 
                     // should have cleared correct number of orders
                     assert.ok(
@@ -1879,10 +1907,17 @@ for (let i = 0; i < testData.length; i++) {
                         },
                         // config,
                     );
-                    const { results: reports } = await rainSolver.processNextRound(
-                        undefined,
-                        false,
-                    );
+                    const { results } = await rainSolver.processNextRound(undefined, false);
+
+                    // wait for all tx settlements for testing the results
+                    const reports = [];
+                    for (const res of results) {
+                        if (res.isOk() && typeof res.value.txSettlement !== "undefined") {
+                            reports.push(await res.value.txSettlement);
+                        } else {
+                            reports.push(res);
+                        }
+                    }
 
                     // should have cleared correct number of orders
                     assert.ok(
@@ -2179,10 +2214,17 @@ for (let i = 0; i < testData.length; i++) {
                         },
                         // config,
                     );
-                    const { results: reports } = await rainSolver.processNextRound(
-                        undefined,
-                        false,
-                    );
+                    const { results } = await rainSolver.processNextRound(undefined, false);
+
+                    // wait for all tx settlements for testing the results
+                    const reports = [];
+                    for (const res of results) {
+                        if (res.isOk() && typeof res.value.txSettlement !== "undefined") {
+                            reports.push(await res.value.txSettlement);
+                        } else {
+                            reports.push(res);
+                        }
+                    }
 
                     // should have cleared correct number of orders
                     assert.ok(
@@ -2572,10 +2614,17 @@ for (let i = 0; i < testData.length; i++) {
                         },
                         // config,
                     );
-                    const { results: reports } = await rainSolver.processNextRound(
-                        undefined,
-                        false,
-                    );
+                    const { results } = await rainSolver.processNextRound(undefined, false);
+
+                    // wait for all tx settlements for testing the results
+                    const reports = [];
+                    for (const res of results) {
+                        if (res.isOk() && typeof res.value.txSettlement !== "undefined") {
+                            reports.push(await res.value.txSettlement);
+                        } else {
+                            reports.push(res);
+                        }
+                    }
 
                     // should have cleared correct number of orders
                     assert.ok(
@@ -2972,10 +3021,17 @@ for (let i = 0; i < testData.length; i++) {
                         },
                         // config,
                     );
-                    const { results: reports } = await rainSolver.processNextRound(
-                        undefined,
-                        false,
-                    );
+                    const { results } = await rainSolver.processNextRound(undefined, false);
+
+                    // wait for all tx settlements for testing the results
+                    const reports = [];
+                    for (const res of results) {
+                        if (res.isOk() && typeof res.value.txSettlement !== "undefined") {
+                            reports.push(await res.value.txSettlement);
+                        } else {
+                            reports.push(res);
+                        }
+                    }
 
                     // should have cleared correct number of orders
                     assert.ok(
@@ -3374,10 +3430,17 @@ for (let i = 0; i < testData.length; i++) {
                         },
                         // config,
                     );
-                    const { results: reports } = await rainSolver.processNextRound(
-                        undefined,
-                        false,
-                    );
+                    const { results } = await rainSolver.processNextRound(undefined, false);
+
+                    // wait for all tx settlements for testing the results
+                    const reports = [];
+                    for (const res of results) {
+                        if (res.isOk() && typeof res.value.txSettlement !== "undefined") {
+                            reports.push(await res.value.txSettlement);
+                        } else {
+                            reports.push(res);
+                        }
+                    }
 
                     // should have cleared correct number of orders
                     assert.ok(
@@ -3730,10 +3793,17 @@ for (let i = 0; i < testData.length; i++) {
                         },
                         // config,
                     );
-                    const { results: reports } = await rainSolver.processNextRound(
-                        undefined,
-                        false,
-                    );
+                    const { results } = await rainSolver.processNextRound(undefined, false);
+
+                    // wait for all tx settlements for testing the results
+                    const reports = [];
+                    for (const res of results) {
+                        if (res.isOk() && typeof res.value.txSettlement !== "undefined") {
+                            reports.push(await res.value.txSettlement);
+                        } else {
+                            reports.push(res);
+                        }
+                    }
 
                     // should have cleared correct number of orders
                     assert.ok(
@@ -4053,10 +4123,17 @@ for (let i = 0; i < testData.length; i++) {
                         },
                         // config,
                     );
-                    const { results: reports } = await rainSolver.processNextRound(
-                        undefined,
-                        false,
-                    );
+                    const { results } = await rainSolver.processNextRound(undefined, false);
+
+                    // wait for all tx settlements for testing the results
+                    const reports = [];
+                    for (const res of results) {
+                        if (res.isOk() && typeof res.value.txSettlement !== "undefined") {
+                            reports.push(await res.value.txSettlement);
+                        } else {
+                            reports.push(res);
+                        }
+                    }
 
                     // should have cleared correct number of orders
                     assert.ok(

@@ -33,6 +33,14 @@ export enum TradeType {
     Stabull = "stabull",
 }
 
+export type OrderSpanEvent = Record<
+    string,
+    {
+        startTime: number;
+        duration: number;
+    }
+>;
+
 /** Base type for process order results containing shared fields */
 export type ProcessOrderResultBase = {
     status: ProcessOrderStatus;
@@ -40,11 +48,20 @@ export type ProcessOrderResultBase = {
     buyToken: string;
     sellToken: string;
     spanAttributes: Attributes;
+    spanEvents: OrderSpanEvent;
     gasCost?: bigint;
 };
 
 /** Successful process order result */
 export type ProcessOrderSuccess = ProcessOrderResultBase & {
+    endTime: number;
+    message?: string;
+    txUrl?: string;
+    txSettlement?: Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>>;
+};
+
+/** Successful process transaction receipt */
+export type ProcessTransactionSuccess = ProcessOrderResultBase & {
     endTime: number;
     txUrl?: string;
     clearedAmount?: string;
