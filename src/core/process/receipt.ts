@@ -51,8 +51,8 @@ export async function processReceipt({
 
     // record transaction time
     const txMineDuration = performance.now() - txSendTime;
-    baseResult.spanAttributes["details.duration.transaction"] = txMineDuration;
-    baseResult.spanAttributes["event.transaction"] = [txSendTime, txMineDuration];
+    baseResult.spanAttributes["duration.transaction"] = txMineDuration;
+    baseResult.spanEvents["transaction"] = { startTime: txSendTime, duration: txMineDuration };
 
     // keep track of gas consumption of the account and bounty token
     baseResult.gasCost = gasCost;
