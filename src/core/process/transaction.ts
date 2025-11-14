@@ -32,6 +32,7 @@ export type ProcessTransactionArgs = {
     baseResult: ProcessOrderResultBase;
     toToken: Token;
     fromToken: Token;
+    startTime: number;
     roundSpanCtx?: SpanWithContext;
 };
 
@@ -55,6 +56,7 @@ export async function processTransaction(
         rawtx,
         signer,
         toToken,
+        startTime,
         fromToken,
         orderbook,
         baseResult,
@@ -88,6 +90,7 @@ export async function processTransaction(
             toToken,
             fromToken,
             txSendTime,
+            startTime,
             roundSpanCtx,
         });
 
@@ -138,10 +141,13 @@ export async function transactionSettlement(
         toToken,
         fromToken,
         txSendTime,
-        roundSpanCtx,
+        startTime,
     }: TransactionSettlementArgs,
 ): Promise<Result<ProcessTransactionSuccess, ProcessOrderFailure>> {
-    const report = new PreAssembledSpan(`tx_${baseResult.spanAttributes["details.pair"]}`);
+    const report = new PreAssembledSpan(
+        `tx_${baseResult.spanAttributes["details.pair"]}`,
+        startTime,
+    );
     try {
         const receipt = await signer.waitForReceipt({ hash: txhash });
         const result = await processReceipt({
@@ -200,7 +206,7 @@ export async function transactionSettlement(
 
         report.end();
         // export the report to logger if logger is available
-        this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
+        this.logger?.exportPreAssembledSpan(report);
 
         return result;
     } catch (err: any) {
@@ -234,7 +240,7 @@ export async function transactionSettlement(
 
         report.end();
         // export the report to logger if logger is available
-        this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
+        this.logger?.exportPreAssembledSpan(report);
 
         return Result.err({
             ...baseResult,

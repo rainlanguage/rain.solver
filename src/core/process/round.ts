@@ -252,6 +252,7 @@ export async function processOrderInit(
         orderDetails,
         signer,
         blockNumber,
+        startTime,
     });
     const settlement: Settlement = {
         settle,

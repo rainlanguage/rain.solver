@@ -98,6 +98,7 @@ describe("Test processTransaction", () => {
             orderbook: "0xOrderbookAddress",
             inputToEthPrice: "2000.0",
             outputToEthPrice: "1.0",
+            startTime: 123456,
             baseResult: {
                 tokenPair: "ETH/USDC",
                 buyToken: "0xUSDC",

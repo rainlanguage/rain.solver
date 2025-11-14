@@ -279,6 +279,7 @@ describe("Test initializeRound", () => {
                 orderDetails,
                 signer: mockSigner,
                 blockNumber: 123n,
+                startTime: expect.any(Number),
             });
         });
     });
@@ -552,6 +553,7 @@ describe("Test initializeRound", () => {
             orderDetails: mockOrders[1], // second order with non-zero balance
             signer: mockSigner,
             blockNumber: 123n,
+            startTime: expect.any(Number),
         });
 
         // verify getRandomSigner was called only once (for the non-zero balance order)
@@ -1847,6 +1849,7 @@ describe("Test processOrderInit", () => {
                 orderDetails,
                 signer: mockSigner,
                 blockNumber: 123n,
+                startTime: expect.any(Number),
             });
         });
     });

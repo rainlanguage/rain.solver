@@ -22,6 +22,7 @@ export type ProcessOrderArgs = {
     orderDetails: Pair;
     signer: RainSolverSigner;
     blockNumber: bigint;
+    startTime: number;
 };
 
 /**
@@ -33,7 +34,7 @@ export async function processOrder(
     this: RainSolver,
     args: ProcessOrderArgs,
 ): Promise<() => Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>>> {
-    const { orderDetails, signer, blockNumber: dataFetcherBlockNumber } = args;
+    const { orderDetails, signer, blockNumber: dataFetcherBlockNumber, startTime } = args;
     const fromToken = new Token({
         chainId: this.state.chainConfig.id,
         decimals: orderDetails.sellTokenDecimals,
@@ -259,6 +260,7 @@ export async function processOrder(
         signer,
         toToken,
         fromToken,
+        startTime,
         baseResult,
         inputToEthPrice,
         outputToEthPrice,
