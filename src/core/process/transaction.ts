@@ -75,7 +75,7 @@ export async function processTransaction(
         console.log("\x1b[33m%s\x1b[0m", txUrl, "\n");
         baseResult.spanAttributes["details.txUrl"] = txUrl;
 
-        // start getting tx receipt in background and return the settler fn
+        // start getting tx receipt in background
         const txSettlement = transactionSettlement.call(this, {
             txhash: hash,
             signer,
