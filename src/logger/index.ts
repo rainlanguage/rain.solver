@@ -1,6 +1,6 @@
 import { sleep } from "../common";
+import { OrderSpanEvents } from "../core/types";
 import { Resource } from "@opentelemetry/resources";
-import { OrderSpanEvents as OrderSpanEvents } from "../core/types";
 import { CompressionAlgorithm } from "@opentelemetry/otlp-exporter-base";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { SEMRESATTRS_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
