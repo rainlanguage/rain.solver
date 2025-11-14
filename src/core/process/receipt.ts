@@ -8,9 +8,9 @@ import { Result, sleep, RawTransaction } from "../../common";
 import { getIncome, getTotalIncome, getActualClearAmount } from "./log";
 import {
     ProcessOrderFailure,
-    ProcessOrderSuccess,
     ProcessOrderHaltReason,
     ProcessOrderResultBase,
+    ProcessTransactionSuccess,
 } from "../types";
 
 /** Arguments for processing a transaction receipt */
@@ -45,14 +45,14 @@ export async function processReceipt({
     baseResult,
     inputToEthPrice,
     outputToEthPrice,
-}: ProcessReceiptArgs): Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>> {
+}: ProcessReceiptArgs): Promise<Result<ProcessTransactionSuccess, ProcessOrderFailure>> {
     const l1Fee = getL1Fee(receipt);
     const gasCost = receipt.effectiveGasPrice * receipt.gasUsed + l1Fee;
 
     // record transaction time
     const txMineDuration = performance.now() - txSendTime;
-    baseResult.spanAttributes["details.duration.transaction"] = txMineDuration;
-    baseResult.spanAttributes["event.transaction"] = [txSendTime, txMineDuration];
+    baseResult.spanAttributes["events.duration.transaction"] = txMineDuration;
+    baseResult.spanEvents["transaction"] = { startTime: txSendTime, duration: txMineDuration };
 
     // keep track of gas consumption of the account and bounty token
     baseResult.gasCost = gasCost;
@@ -99,7 +99,7 @@ export async function processReceipt({
             );
         }
 
-        const success: ProcessOrderSuccess = {
+        const success: ProcessTransactionSuccess = {
             ...baseResult,
             clearedAmount: clearActualAmount?.toString(),
             gasCost: gasCost,
@@ -111,10 +111,7 @@ export async function processReceipt({
             endTime: performance.now(),
         };
 
-        return Result.ok({
-            ...baseResult,
-            ...success,
-        });
+        return Result.ok(success);
     } else {
         const simulation = await (async () => {
             const signerBalance = await signer.getSelfBalance();

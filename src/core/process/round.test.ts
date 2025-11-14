@@ -123,7 +123,7 @@ describe("Test initializeRound", () => {
 
             const settlement = result.settlements[0];
             expect(settlement.pair).toBe("ETH/USDC");
-            expect(settlement.owner).toBe("0xOwner123");
+            expect(settlement.owner).toBe("0xowner123");
             expect(settlement.orderHash).toBe("0xOrder123");
             expect(settlement.startTime).toBeTypeOf("number");
             expect(settlement.settle).toBe(mockSettleFn);
@@ -133,7 +133,7 @@ describe("Test initializeRound", () => {
             expect(checkpointReport.name).toBe("checkpoint_ETH/USDC");
             expect(checkpointReport.attributes["details.pair"]).toBe("ETH/USDC");
             expect(checkpointReport.attributes["details.orderHash"]).toBe("0xOrder123");
-            expect(checkpointReport.attributes["details.owner"]).toBe("0xOwner123");
+            expect(checkpointReport.attributes["details.owner"]).toBe("0xowner123");
             expect(checkpointReport.attributes["details.sender"]).toBe("0xSigner123");
             expect(checkpointReport.endTime).toBeTypeOf("number");
         });
@@ -279,6 +279,7 @@ describe("Test initializeRound", () => {
                 orderDetails,
                 signer: mockSigner,
                 blockNumber: 123n,
+                startTime: expect.any(Number),
             });
         });
     });
@@ -309,7 +310,7 @@ describe("Test initializeRound", () => {
             expect(report.attributes["details.orderHash"]).toBe("0xOrderABC");
             expect(report.attributes["details.orderbook"]).toBeTypeOf("string");
             expect(report.attributes["details.sender"]).toBe("0xSignerDEF");
-            expect(report.attributes["details.owner"]).toBe("0xOwnerXYZ");
+            expect(report.attributes["details.owner"]).toBe("0xownerxyz");
         });
 
         it("should create one checkpoint report per order", async () => {
@@ -522,7 +523,7 @@ describe("Test initializeRound", () => {
         // first settlement (zero balance) - should be skipped and have ZeroOutput status
         const zeroBalanceSettlement = result.settlements[0];
         expect(zeroBalanceSettlement.pair).toBe("ETH/USDC");
-        expect(zeroBalanceSettlement.owner).toBe("0xOwner1");
+        expect(zeroBalanceSettlement.owner).toBe("0xowner1");
         expect(zeroBalanceSettlement.orderHash).toBe("0xOrder1");
 
         // test the settle function for zero balance order
@@ -542,7 +543,7 @@ describe("Test initializeRound", () => {
         // second settlement (non-zero balance) - should be processed normally
         const normalSettlement = result.settlements[1];
         expect(normalSettlement.pair).toBe("BTC/USDT");
-        expect(normalSettlement.owner).toBe("0xOwner2");
+        expect(normalSettlement.owner).toBe("0xowner2");
         expect(normalSettlement.orderHash).toBe("0xOrder2");
         expect(normalSettlement.settle).toBe(mockSettleFn);
 
@@ -552,6 +553,7 @@ describe("Test initializeRound", () => {
             orderDetails: mockOrders[1], // second order with non-zero balance
             signer: mockSigner,
             blockNumber: 123n,
+            startTime: expect.any(Number),
         });
 
         // verify getRandomSigner was called only once (for the non-zero balance order)
@@ -563,7 +565,7 @@ describe("Test initializeRound", () => {
         expect(zeroBalanceReport.name).toBe("checkpoint_ETH/USDC");
         expect(zeroBalanceReport.attributes["details.pair"]).toBe("ETH/USDC");
         expect(zeroBalanceReport.attributes["details.orderHash"]).toBe("0xOrder1");
-        expect(zeroBalanceReport.attributes["details.owner"]).toBe("0xOwner1");
+        expect(zeroBalanceReport.attributes["details.owner"]).toBe("0xowner1");
         expect(zeroBalanceReport.attributes["details.orderbook"]).toBe(
             "0x3333333333333333333333333333333333333333",
         );
@@ -575,7 +577,7 @@ describe("Test initializeRound", () => {
         expect(normalReport.name).toBe("checkpoint_BTC/USDT");
         expect(normalReport.attributes["details.pair"]).toBe("BTC/USDT");
         expect(normalReport.attributes["details.orderHash"]).toBe("0xOrder2");
-        expect(normalReport.attributes["details.owner"]).toBe("0xOwner2");
+        expect(normalReport.attributes["details.owner"]).toBe("0xowner2");
         expect(normalReport.attributes["details.orderbook"]).toBe(
             "0x4444444444444444444444444444444444444444",
         );
@@ -617,7 +619,7 @@ describe("Test initializeRound", () => {
         // first settlement (zero balance) - should be skipped and have ZeroOutput status
         const zeroBalanceSettlement = result.settlements[0];
         expect(zeroBalanceSettlement.pair).toBe("ETH/USDC");
-        expect(zeroBalanceSettlement.owner).toBe("0xOwner1");
+        expect(zeroBalanceSettlement.owner).toBe("0xowner1");
         expect(zeroBalanceSettlement.orderHash).toBe("0xOrder1");
 
         // test the settle function for missing trade addresses
@@ -662,6 +664,7 @@ describe("Test finalizeRound", () => {
                     status: ProcessOrderStatus.ZeroOutput,
                     tokenPair: "ETH/USDC",
                     spanAttributes: { "test.attr": "value" },
+                    spanEvents: {},
                     endTime: 789,
                 }),
             );
@@ -689,6 +692,7 @@ describe("Test finalizeRound", () => {
                 gasCost: 1000000n,
                 spanAttributes: { "test.attr": "value" },
                 endTime: 789,
+                spanEvents: {},
             });
 
             // assert gas cost tracking
@@ -700,7 +704,6 @@ describe("Test finalizeRound", () => {
             expect(report.name).toBe("order_ETH/USDC");
             expect(report.startTime).toBe(123);
             expect(report.endTime).toBe(789);
-            expect(report.attributes["details.owner"]).toBe("0x123");
             expect(report.attributes["test.attr"]).toBe("value");
             expect(report.status?.code).toBe(SpanStatusCode.OK);
             expect(report.status?.message).toBe("zero max output");
@@ -712,6 +715,7 @@ describe("Test finalizeRound", () => {
                     status: ProcessOrderStatus.NoOpportunity,
                     spanAttributes: { liquidity: "low" },
                     message: "insufficient liquidity",
+                    spanEvents: {},
                     endTime: 789,
                 }),
             );
@@ -735,6 +739,7 @@ describe("Test finalizeRound", () => {
                 spanAttributes: { liquidity: "low" },
                 message: "insufficient liquidity",
                 endTime: 789,
+                spanEvents: {},
             });
             expect(result.reports[0].startTime).toBe(123);
             expect(result.reports[0].endTime).toBe(789);
@@ -748,6 +753,7 @@ describe("Test finalizeRound", () => {
                 Result.ok({
                     status: ProcessOrderStatus.NoOpportunity,
                     spanAttributes: {},
+                    spanEvents: {},
                     endTime: 789,
                 }),
             );
@@ -776,6 +782,7 @@ describe("Test finalizeRound", () => {
                     status: ProcessOrderStatus.FoundOpportunity,
                     profit: "0.05",
                     spanAttributes: { "profit.eth": "0.05" },
+                    spanEvents: {},
                     endTime: 789,
                 }),
             );
@@ -799,6 +806,7 @@ describe("Test finalizeRound", () => {
                 profit: "0.05",
                 spanAttributes: { "profit.eth": "0.05" },
                 endTime: 789,
+                spanEvents: {},
             });
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
             expect(result.reports[0].status?.message).toBe("found opportunity");
@@ -812,6 +820,7 @@ describe("Test finalizeRound", () => {
                 Result.ok({
                     status: "UNKNOWN_STATUS" as any,
                     spanAttributes: { custom: "attr" },
+                    spanEvents: {},
                     endTime: 789,
                 }),
             );
@@ -840,6 +849,7 @@ describe("Test finalizeRound", () => {
                 Result.ok({
                     status: ProcessOrderStatus.FoundOpportunity,
                     spanAttributes: {},
+                    spanEvents: {},
                     endTime: 789,
                     // No gasCost provided
                 }),
@@ -865,9 +875,10 @@ describe("Test finalizeRound", () => {
             const mockSettle = vi.fn().mockResolvedValue(
                 Result.ok({
                     status: ProcessOrderStatus.FoundOpportunity,
-                    spanAttributes: {
-                        "event.something": [1234, 456],
-                        "event.another": [5678, 123],
+                    spanAttributes: {},
+                    spanEvents: {
+                        something: { startTime: 1234, duration: 456 },
+                        another: { startTime: 5678, duration: 123 },
                     },
                     endTime: 789,
                 }),
@@ -896,6 +907,7 @@ describe("Test finalizeRound", () => {
                     status: ProcessOrderStatus.UndefinedTradeAddresses,
                     tokenPair: "ETH/USDC",
                     spanAttributes: { "test.attr": "value" },
+                    spanEvents: {},
                     endTime: 789,
                     message: "undefined addresses",
                 }),
@@ -924,6 +936,7 @@ describe("Test finalizeRound", () => {
                 spanAttributes: { "test.attr": "value" },
                 endTime: 789,
                 message: "undefined addresses",
+                spanEvents: {},
             });
 
             // assert span creation and attributes
@@ -931,7 +944,6 @@ describe("Test finalizeRound", () => {
             expect(report.name).toBe("order_ETH/USDC");
             expect(report.startTime).toBe(123);
             expect(report.endTime).toBe(789);
-            expect(report.attributes["details.owner"]).toBe("0x123");
             expect(report.attributes["test.attr"]).toBe("value");
             expect(report.status?.code).toBe(SpanStatusCode.OK);
             expect(report.status?.message).toBe("undefined addresses");
@@ -944,6 +956,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.FailedToQuote,
                     spanAttributes: { provider: "chainlink" },
+                    spanEvents: {},
                     status: "failed",
                     endTime: 789,
                 }),
@@ -968,6 +981,7 @@ describe("Test finalizeRound", () => {
                 reason: ProcessOrderHaltReason.FailedToQuote,
                 spanAttributes: { provider: "chainlink" },
                 endTime: 789,
+                spanEvents: {},
             });
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
             expect(result.reports[0].status?.message).toBe("failed to quote order: 0xabc");
@@ -981,6 +995,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.FailedToQuote,
                     spanAttributes: { "retry.count": "3" },
+                    spanEvents: {},
                     status: "failed",
                     error,
                     endTime: 789,
@@ -1016,6 +1031,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.FailedToGetPools,
                     spanAttributes: { "pool.count": "0" },
+                    spanEvents: {},
                     status: "failed",
                     error,
                     endTime: 789,
@@ -1054,6 +1070,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.FailedToGetEthPrice,
                     spanAttributes: {},
+                    spanEvents: {},
                     status: "failed",
                     error,
                     endTime: 789,
@@ -1086,6 +1103,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.FailedToUpdatePools,
                     spanAttributes: { "test.attr": "value" },
+                    spanEvents: {},
                     status: "failed",
                     error: new Error("update failed"),
                     endTime: 789,
@@ -1121,6 +1139,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.TxFailed,
                     spanAttributes: { "tx.hash": "0x123" },
+                    spanEvents: {},
                     status: "failed",
                     error: timeoutError,
                     endTime: 789,
@@ -1153,6 +1172,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.TxFailed,
                     spanAttributes: {},
+                    spanEvents: {},
                     status: "failed",
                     error,
                     endTime: 789,
@@ -1182,6 +1202,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.TxFailed,
                     spanAttributes: { "test.attr": "value" },
+                    spanEvents: {},
                     status: "failed",
                     endTime: 789,
                 }),
@@ -1211,6 +1232,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.TxReverted,
                     spanAttributes: { "block.number": "12345" },
+                    spanEvents: {},
                     status: "reverted",
                     error: { snapshot: "Transaction reverted: INSUFFICIENT_LIQUIDITY" },
                     endTime: 789,
@@ -1243,6 +1265,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.TxReverted,
                     spanAttributes: { "test.attr": "value" },
+                    spanEvents: {},
                     status: "failed",
                     error: { err: new Error("INSUFFICIENT_LIQUIDITY") }, // This is typically a known error
                     endTime: 789,
@@ -1273,6 +1296,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.TxReverted,
                     spanAttributes: { txNoneNodeError: true },
+                    spanEvents: {},
                     status: "reverted",
                     error: { err: new Error("unknown revert") },
                     endTime: 789,
@@ -1305,6 +1329,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.TxMineFailed,
                     spanAttributes: { "test.attr": "value" },
+                    spanEvents: {},
                     status: "failed",
                     error: timeoutError,
                     endTime: 789,
@@ -1336,6 +1361,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.TxMineFailed,
                     spanAttributes: { "test.attr": "value" },
+                    spanEvents: {},
                     status: "failed",
                     error: new Error("rpc error"),
                     endTime: 789,
@@ -1365,6 +1391,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: "unknown_reason",
                     spanAttributes: { "test.attr": "value" },
+                    spanEvents: {},
                     status: "failed",
                     error: new Error("unexpected"),
                     endTime: 789,
@@ -1399,9 +1426,10 @@ describe("Test finalizeRound", () => {
             const mockSettle = vi.fn().mockResolvedValue(
                 Result.err({
                     reason: "unknown_reason",
-                    spanAttributes: {
-                        "event.something": [1234, 456],
-                        "event.another": [5678, 123],
+                    spanAttributes: {},
+                    spanEvents: {
+                        something: { startTime: 1234, duration: 456 },
+                        another: { startTime: 5678, duration: 123 },
                     },
                     status: "failed",
                     error: new Error("unexpected"),
@@ -1435,6 +1463,7 @@ describe("Test finalizeRound", () => {
                     status: ProcessOrderStatus.FoundOpportunity,
                     txUrl: "url1",
                     spanAttributes: { success: true },
+                    spanEvents: {},
                     endTime: 789,
                 }),
             );
@@ -1443,6 +1472,7 @@ describe("Test finalizeRound", () => {
                 Result.err({
                     reason: ProcessOrderHaltReason.TxFailed,
                     spanAttributes: { failed: true },
+                    spanEvents: {},
                     status: "failed",
                     txUrl: "url2",
                     error: new Error("tx failed"),
@@ -1507,6 +1537,7 @@ describe("Test finalizeRound", () => {
                 Result.ok({
                     status: ProcessOrderStatus.FoundOpportunity,
                     spanAttributes: {},
+                    spanEvents: {},
                     endTime: 789,
                 }),
             );
@@ -1524,7 +1555,6 @@ describe("Test finalizeRound", () => {
             const result: finalizeRoundType = await finalizeRound.call(mockSolver, settlements);
 
             expect(result.reports[0].name).toBe("order_ETH/USDC");
-            expect(result.reports[0].attributes["details.owner"]).toBe("0x123");
             expect(result.reports[0].endTime).toBeTypeOf("number");
             expect(result.reports[0].status?.code).toBe(SpanStatusCode.OK);
             expect(result.reports[0].startTime).toBe(123);
@@ -1537,6 +1567,7 @@ describe("Test finalizeRound", () => {
                 Result.ok({
                     status: ProcessOrderStatus.FoundOpportunity,
                     spanAttributes,
+                    spanEvents: {},
                     endTime: 789,
                 }),
             );
@@ -1564,7 +1595,8 @@ describe("Test finalizeRound", () => {
             const mockSettle = vi.fn().mockResolvedValue(
                 Result.ok({
                     status: ProcessOrderStatus.FoundOpportunity,
-                    spanAttributes: { "event.something": 1234, "event.another": 5678 },
+                    spanAttributes: {},
+                    spanEvents: { something: 1234, another: 5678 },
                     endTime: 789,
                 }),
             );
@@ -1599,7 +1631,8 @@ describe("Test finalizeRound", () => {
             const mockSettle = vi.fn().mockResolvedValue(
                 Result.ok({
                     status: ProcessOrderStatus.FoundOpportunity,
-                    spanAttributes: { "event.something": 1234, "event.another": 5678 },
+                    spanAttributes: {},
+                    spanEvents: { something: 1234, another: 5678 },
                     endTime: 789,
                 }),
             );
@@ -1765,7 +1798,7 @@ describe("Test processOrderInit", () => {
 
             const settlement = result.settlement;
             expect(settlement.pair).toBe("ETH/USDC");
-            expect(settlement.owner).toBe("0xOwner123");
+            expect(settlement.owner).toBe("0xowner123");
             expect(settlement.orderHash).toBe("0xOrder123");
             expect(settlement.startTime).toBeTypeOf("number");
             expect(settlement.settle).toBe(mockSettleFn);
@@ -1775,7 +1808,7 @@ describe("Test processOrderInit", () => {
             expect(checkpointReport.name).toBe("checkpoint_ETH/USDC");
             expect(checkpointReport.attributes["details.pair"]).toBe("ETH/USDC");
             expect(checkpointReport.attributes["details.orderHash"]).toBe("0xOrder123");
-            expect(checkpointReport.attributes["details.owner"]).toBe("0xOwner123");
+            expect(checkpointReport.attributes["details.owner"]).toBe("0xowner123");
             expect(checkpointReport.attributes["details.sender"]).toBe("0xSigner123");
             expect(checkpointReport.endTime).toBeTypeOf("number");
         });
@@ -1816,6 +1849,7 @@ describe("Test processOrderInit", () => {
                 orderDetails,
                 signer: mockSigner,
                 blockNumber: 123n,
+                startTime: expect.any(Number),
             });
         });
     });
@@ -1844,7 +1878,7 @@ describe("Test processOrderInit", () => {
             expect(report.attributes["details.orderHash"]).toBe("0xOrderABC");
             expect(report.attributes["details.orderbook"]).toBeTypeOf("string");
             expect(report.attributes["details.sender"]).toBe("0xSignerDEF");
-            expect(report.attributes["details.owner"]).toBe("0xOwnerXYZ");
+            expect(report.attributes["details.owner"]).toBe("0xownerxyz");
         });
 
         it("should create one checkpoint report per order", async () => {
