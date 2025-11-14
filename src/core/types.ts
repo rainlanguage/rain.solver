@@ -111,7 +111,7 @@ export type FindBestTradeSuccess = SuccessSimulation;
 export type FindBestTradeFailure = Pick<FailedSimulation, "spanAttributes" | "noneNodeError">;
 export type FindBestTradeResult = Result<FindBestTradeSuccess, FindBestTradeFailure>;
 
-/** Represents OTEL compatible event details paired with event name that occures during order proccessing */
+/** Represents OTEL compatible event details paired with event name that occurs during order proccessing */
 export type OrderSpanEvents = Record<
     string,
     {
