@@ -52,7 +52,7 @@ export type ProcessOrderSuccess = ProcessOrderResultBase & {
     txSettlement?: Promise<Result<ProcessTransactionSuccess, ProcessOrderFailure>>;
 };
 
-/** Successful process transaction receipt */
+/** Result of successful transaction processing */
 export type ProcessTransactionSuccess = ProcessOrderResultBase & {
     endTime: number;
     txUrl?: string;
