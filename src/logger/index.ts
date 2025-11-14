@@ -1,6 +1,6 @@
 import { sleep } from "../common";
 import { Resource } from "@opentelemetry/resources";
-import { OrderSpanEvent as OrderSpanEvents } from "../core/types";
+import { OrderSpanEvents as OrderSpanEvents } from "../core/types";
 import { CompressionAlgorithm } from "@opentelemetry/otlp-exporter-base";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { SEMRESATTRS_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
@@ -307,7 +307,7 @@ export class PreAssembledSpan {
      * Records the order processing events
      * @param orderEvents - The order events k/v
      */
-    recordOrderEvents(orderEvents: OrderSpanEvents) {
+    recordOrderEvents(orderEvents: OrderSpanEvents): this {
         for (const eventName in orderEvents) {
             this.addEvent(
                 eventName,
@@ -315,5 +315,6 @@ export class PreAssembledSpan {
                 orderEvents[eventName].startTime,
             );
         }
+        return this;
     }
 }

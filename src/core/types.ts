@@ -40,7 +40,7 @@ export type ProcessOrderResultBase = {
     buyToken: string;
     sellToken: string;
     spanAttributes: Attributes;
-    spanEvents: OrderSpanEvent;
+    spanEvents: OrderSpanEvents;
     gasCost?: bigint;
 };
 
@@ -111,8 +111,8 @@ export type FindBestTradeSuccess = SuccessSimulation;
 export type FindBestTradeFailure = Pick<FailedSimulation, "spanAttributes" | "noneNodeError">;
 export type FindBestTradeResult = Result<FindBestTradeSuccess, FindBestTradeFailure>;
 
-/** Represents OTEL compatible events details paired with thei name that occure during order proccessing */
-export type OrderSpanEvent = Record<
+/** Represents OTEL compatible event details paired with event name that occures during order proccessing */
+export type OrderSpanEvents = Record<
     string,
     {
         startTime: number;

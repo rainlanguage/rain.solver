@@ -9,7 +9,7 @@ import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../signer";
 import { processTransaction } from "./transaction";
 import {
-    OrderSpanEvent,
+    OrderSpanEvents,
     ProcessOrderStatus,
     ProcessOrderSuccess,
     ProcessOrderFailure,
@@ -47,7 +47,7 @@ export async function processOrder(
         symbol: orderDetails.buyTokenSymbol,
     });
     const spanAttributes: Attributes = {};
-    const spanEvents: OrderSpanEvent = {};
+    const spanEvents: OrderSpanEvents = {};
     const tokenPair = `${orderDetails.buyTokenSymbol}/${orderDetails.sellTokenSymbol}`;
     const baseResult: ProcessOrderResultBase = {
         tokenPair,
