@@ -71,7 +71,7 @@ export async function processOrder(
             this.orderManager.removeFromPairMaps(orderDetails);
             const endTime = performance.now();
             const quoteOrderDuration = endTime - quoteOrderTime;
-            spanAttributes["duration.quoteOrder"] = quoteOrderDuration;
+            spanAttributes["events.duration.quoteOrder"] = quoteOrderDuration;
             spanEvents["quoteOrder"] = { startTime: quoteOrderTime, duration: quoteOrderDuration };
             return async () => {
                 return Result.ok({
@@ -87,7 +87,7 @@ export async function processOrder(
         this.orderManager.removeFromPairMaps(orderDetails);
         const endTime = performance.now();
         const quoteOrderDuration = endTime - quoteOrderTime;
-        spanAttributes["duration.quoteOrder"] = quoteOrderDuration;
+        spanAttributes["events.duration.quoteOrder"] = quoteOrderDuration;
         spanEvents["quoteOrder"] = { startTime: quoteOrderTime, duration: quoteOrderDuration };
         return async () =>
             Result.err({
@@ -100,7 +100,7 @@ export async function processOrder(
 
     // record order quote details in span attributes
     const quoteOrderDuration = performance.now() - quoteOrderTime;
-    spanAttributes["duration.quoteOrder"] = quoteOrderDuration;
+    spanAttributes["events.duration.quoteOrder"] = quoteOrderDuration;
     spanEvents["quoteOrder"] = { startTime: quoteOrderTime, duration: quoteOrderDuration };
     spanAttributes["details.quote"] = JSON.stringify({
         maxOutput: formatUnits(orderDetails.takeOrder.quote!.maxOutput, 18),
@@ -122,7 +122,7 @@ export async function processOrder(
         );
     }
     const getPairMarketPriceDuration = performance.now() - getPairMarketPriceTime;
-    spanAttributes["duration.getPairMarketPrice"] = getPairMarketPriceDuration;
+    spanAttributes["events.duration.getPairMarketPrice"] = getPairMarketPriceDuration;
     spanEvents["getPairMarketPrice"] = {
         startTime: getPairMarketPriceTime,
         duration: getPairMarketPriceDuration,
@@ -179,7 +179,7 @@ export async function processOrder(
     }
     spanAttributes["gasPriceMultiplier"] = this.state.gasPriceMultiplier;
     const getEthMarketPriceDuration = performance.now() - getEthMarketPriceTime;
-    spanAttributes["duration.getEthMarketPrice"] = getEthMarketPriceDuration;
+    spanAttributes["events.duration.getEthMarketPrice"] = getEthMarketPriceDuration;
     spanEvents["getEthMarketPrice"] = {
         startTime: getEthMarketPriceTime,
         duration: getEthMarketPriceDuration,
@@ -212,7 +212,7 @@ export async function processOrder(
             spanAttributes["details.noneNodeError"] = false;
         }
         const findBestTradeDuration = endTime - findBestTradeTime;
-        spanAttributes["duration.findBestTrade"] = findBestTradeDuration;
+        spanAttributes["events.duration.findBestTrade"] = findBestTradeDuration;
         spanEvents["findBestTrade"] = {
             startTime: findBestTradeTime,
             duration: findBestTradeDuration,
@@ -235,7 +235,7 @@ export async function processOrder(
         }
     }
     const findBestTradeDuration = endTime - findBestTradeTime;
-    spanAttributes["duration.findBestTrade"] = findBestTradeDuration;
+    spanAttributes["events.duration.findBestTrade"] = findBestTradeDuration;
     spanEvents["findBestTrade"] = { startTime: findBestTradeTime, duration: findBestTradeDuration };
 
     // get block number

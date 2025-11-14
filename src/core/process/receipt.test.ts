@@ -118,7 +118,7 @@ describe("Test processReceipt", () => {
             expect(result.value.spanAttributes["details.netProfit"]).toBeDefined();
             expect(result.value.spanAttributes["details.netProfit"]).toBeTypeOf("number");
             expect(result.value.spanAttributes["details.gasCostL1"]).toBeUndefined();
-            expect(result.value.spanAttributes["duration.transaction"]).toBeGreaterThan(0);
+            expect(result.value.spanAttributes["events.duration.transaction"]).toBeGreaterThan(0);
             expect(result.value.spanEvents["transaction"]).toEqual({
                 startTime: expect.any(Number),
                 duration: expect.any(Number),
@@ -154,7 +154,7 @@ describe("Test processReceipt", () => {
             expect(result.value.inputTokenIncome).toBeUndefined();
             expect(result.value.outputTokenIncome).toBeUndefined();
             expect(result.value.endTime).toBeTypeOf("number");
-            expect(result.value.spanAttributes["duration.transaction"]).toBeGreaterThan(0);
+            expect(result.value.spanAttributes["events.duration.transaction"]).toBeGreaterThan(0);
             expect(result.value.spanEvents["transaction"]).toEqual({
                 startTime: expect.any(Number),
                 duration: expect.any(Number),
@@ -183,7 +183,7 @@ describe("Test processReceipt", () => {
             expect(result.error.error).toBe(mockSimulation);
             expect(result.error.txUrl).toBe(mockArgs.txUrl);
             expect(result.error.spanAttributes["txNoneNodeError"]).toBe(true);
-            expect(result.error.spanAttributes["duration.transaction"]).toBeGreaterThan(0);
+            expect(result.error.spanAttributes["events.duration.transaction"]).toBeGreaterThan(0);
             expect(result.error.spanEvents["transaction"]).toEqual({
                 startTime: expect.any(Number),
                 duration: expect.any(Number),
@@ -223,7 +223,7 @@ describe("Test processReceipt", () => {
 
             assert(result.isErr());
             expect(result.error.spanAttributes["txNoneNodeError"]).toBe(false);
-            expect(result.error.spanAttributes["duration.transaction"]).toBeGreaterThan(0);
+            expect(result.error.spanAttributes["events.duration.transaction"]).toBeGreaterThan(0);
             expect(result.error.spanEvents["transaction"]).toEqual({
                 startTime: expect.any(Number),
                 duration: expect.any(Number),

@@ -107,7 +107,7 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.order"]).toEqual("0xid");
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
         expect(result.value.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
-        expect(result.value.spanAttributes["duration.quoteOrder"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.quoteOrder"]).toBeGreaterThan(0);
         expect(result.value.spanEvents["quoteOrder"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
@@ -139,7 +139,7 @@ describe("Test processOrder", () => {
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
         expect(result.error.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
         expect(result.error.endTime).toBeTypeOf("number");
-        expect(result.error.spanAttributes["duration.quoteOrder"]).toBeGreaterThan(0);
+        expect(result.error.spanAttributes["events.duration.quoteOrder"]).toBeGreaterThan(0);
         expect(result.error.spanEvents["quoteOrder"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
@@ -178,17 +178,19 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.outputToEthPrice"]).toBe("no-way");
         expect(result.value.endTime).toBeTypeOf("number");
-        expect(result.value.spanAttributes["duration.quoteOrder"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.quoteOrder"]).toBeGreaterThan(0);
         expect(result.value.spanEvents["quoteOrder"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
         });
-        expect(result.value.spanAttributes["duration.getPairMarketPrice"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.getPairMarketPrice"]).toBeGreaterThan(
+            0,
+        );
         expect(result.value.spanEvents["getPairMarketPrice"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
         });
-        expect(result.value.spanAttributes["duration.getEthMarketPrice"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.getEthMarketPrice"]).toBeGreaterThan(0);
         expect(result.value.spanEvents["getEthMarketPrice"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
@@ -224,17 +226,19 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.inputToEthPrice"]).toBe("100");
         expect(result.value.spanAttributes["details.outputToEthPrice"]).toBe("0");
         expect(result.value.endTime).toBeTypeOf("number");
-        expect(result.value.spanAttributes["duration.quoteOrder"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.quoteOrder"]).toBeGreaterThan(0);
         expect(result.value.spanEvents["quoteOrder"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
         });
-        expect(result.value.spanAttributes["duration.getPairMarketPrice"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.getPairMarketPrice"]).toBeGreaterThan(
+            0,
+        );
         expect(result.value.spanEvents["getPairMarketPrice"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
         });
-        expect(result.value.spanAttributes["duration.getEthMarketPrice"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.getEthMarketPrice"]).toBeGreaterThan(0);
         expect(result.value.spanEvents["getEthMarketPrice"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
@@ -264,12 +268,14 @@ describe("Test processOrder", () => {
         expect(result.error.spanAttributes["details.pair"]).toBe("BUY/SELL");
         expect(result.error.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
         expect(result.error.endTime).toBeTypeOf("number");
-        expect(result.error.spanAttributes["duration.quoteOrder"]).toBeGreaterThan(0);
+        expect(result.error.spanAttributes["events.duration.quoteOrder"]).toBeGreaterThan(0);
         expect(result.error.spanEvents["quoteOrder"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
         });
-        expect(result.error.spanAttributes["duration.getPairMarketPrice"]).toBeGreaterThan(0);
+        expect(result.error.spanAttributes["events.duration.getPairMarketPrice"]).toBeGreaterThan(
+            0,
+        );
         expect(result.error.spanEvents["getPairMarketPrice"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
@@ -301,17 +307,19 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.pair"]).toBe("BUY/SELL");
         expect(result.value.spanAttributes["details.orderbook"]).toEqual("0xorderbook");
         expect(result.value.endTime).toBeTypeOf("number");
-        expect(result.value.spanAttributes["duration.quoteOrder"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.quoteOrder"]).toBeGreaterThan(0);
         expect(result.value.spanEvents["quoteOrder"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
         });
-        expect(result.value.spanAttributes["duration.getPairMarketPrice"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.getPairMarketPrice"]).toBeGreaterThan(
+            0,
+        );
         expect(result.value.spanEvents["getPairMarketPrice"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
         });
-        expect(result.value.spanAttributes["duration.getEthMarketPrice"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.getEthMarketPrice"]).toBeGreaterThan(0);
         expect(result.value.spanEvents["getEthMarketPrice"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
@@ -348,22 +356,24 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.noneNodeError"]).toBe(true);
         expect(result.value.spanAttributes["details.test"]).toBe("something");
         expect(result.value.endTime).toBeTypeOf("number");
-        expect(result.value.spanAttributes["duration.quoteOrder"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.quoteOrder"]).toBeGreaterThan(0);
         expect(result.value.spanEvents["quoteOrder"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
         });
-        expect(result.value.spanAttributes["duration.getPairMarketPrice"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.getPairMarketPrice"]).toBeGreaterThan(
+            0,
+        );
         expect(result.value.spanEvents["getPairMarketPrice"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
         });
-        expect(result.value.spanAttributes["duration.getEthMarketPrice"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.getEthMarketPrice"]).toBeGreaterThan(0);
         expect(result.value.spanEvents["getEthMarketPrice"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
         });
-        expect(result.value.spanAttributes["duration.findBestTrade"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.findBestTrade"]).toBeGreaterThan(0);
         expect(result.value.spanEvents["findBestTrade"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
@@ -400,22 +410,24 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.noneNodeError"]).toBe(false);
         expect(result.value.spanAttributes["details.test"]).toBe("something");
         expect(result.value.endTime).toBeTypeOf("number");
-        expect(result.value.spanAttributes["duration.quoteOrder"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.quoteOrder"]).toBeGreaterThan(0);
         expect(result.value.spanEvents["quoteOrder"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
         });
-        expect(result.value.spanAttributes["duration.getPairMarketPrice"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.getPairMarketPrice"]).toBeGreaterThan(
+            0,
+        );
         expect(result.value.spanEvents["getPairMarketPrice"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
         });
-        expect(result.value.spanAttributes["duration.getEthMarketPrice"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.getEthMarketPrice"]).toBeGreaterThan(0);
         expect(result.value.spanEvents["getEthMarketPrice"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
         });
-        expect(result.value.spanAttributes["duration.findBestTrade"]).toBeGreaterThan(0);
+        expect(result.value.spanAttributes["events.duration.findBestTrade"]).toBeGreaterThan(0);
         expect(result.value.spanEvents["findBestTrade"]).toEqual({
             startTime: expect.any(Number),
             duration: expect.any(Number),
