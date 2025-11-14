@@ -111,10 +111,7 @@ export async function processReceipt({
             endTime: performance.now(),
         };
 
-        return Result.ok({
-            ...baseResult,
-            ...success,
-        });
+        return Result.ok(success);
     } else {
         const simulation = await (async () => {
             const signerBalance = await signer.getSelfBalance();

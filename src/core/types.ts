@@ -33,14 +33,6 @@ export enum TradeType {
     Stabull = "stabull",
 }
 
-export type OrderSpanEvent = Record<
-    string,
-    {
-        startTime: number;
-        duration: number;
-    }
->;
-
 /** Base type for process order results containing shared fields */
 export type ProcessOrderResultBase = {
     status: ProcessOrderStatus;
@@ -57,7 +49,7 @@ export type ProcessOrderSuccess = ProcessOrderResultBase & {
     endTime: number;
     message?: string;
     txUrl?: string;
-    txSettlement?: Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>>;
+    txSettlement?: Promise<Result<ProcessTransactionSuccess, ProcessOrderFailure>>;
 };
 
 /** Successful process transaction receipt */
@@ -118,3 +110,12 @@ export type SimulationResult = Result<SuccessSimulation, FailedSimulation>;
 export type FindBestTradeSuccess = SuccessSimulation;
 export type FindBestTradeFailure = Pick<FailedSimulation, "spanAttributes" | "noneNodeError">;
 export type FindBestTradeResult = Result<FindBestTradeSuccess, FindBestTradeFailure>;
+
+/** Represents OTEL compatible events details paired with thei name that occure during order proccessing */
+export type OrderSpanEvent = Record<
+    string,
+    {
+        startTime: number;
+        duration: number;
+    }
+>;

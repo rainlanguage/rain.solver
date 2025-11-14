@@ -83,7 +83,7 @@ export async function processTransaction(
             orderbook,
             inputToEthPrice,
             outputToEthPrice,
-            baseResult,
+            baseResult: structuredClone(baseResult),
             txUrl,
             toToken,
             fromToken,
@@ -165,27 +165,15 @@ export async function transactionSettlement(
                 signer.state.gasCosts.push(value.gasCost);
             }
 
-            // record span events
-            for (const eventName in value.spanEvents) {
-                report.addEvent(
-                    eventName,
-                    { duration: value.spanEvents[eventName].duration },
-                    value.spanEvents[eventName].startTime,
-                );
-            }
+            // record span events and attrs
+            report.recordOrderEvents(value.spanEvents);
             report.extendAttrs(value.spanAttributes);
             report.setStatus({ code: SpanStatusCode.OK, message: "found opportunity" });
         } else {
             const err = result.error;
 
-            // record span events
-            for (const eventName in err.spanEvents) {
-                report.addEvent(
-                    eventName,
-                    { duration: err.spanEvents[eventName].duration },
-                    err.spanEvents[eventName].startTime,
-                );
-            }
+            // record span events and attrs
+            report.recordOrderEvents(err.spanEvents);
             report.extendAttrs(err.spanAttributes);
 
             // Tx reverted onchain, this can happen for example
@@ -228,14 +216,8 @@ export async function transactionSettlement(
         );
         report.setAttr("txNoneNodeError", !(await containsNodeError(err)));
 
-        // record span events
-        for (const eventName in baseResult.spanEvents) {
-            report.addEvent(
-                eventName,
-                { duration: baseResult.spanEvents[eventName].duration },
-                baseResult.spanEvents[eventName].startTime,
-            );
-        }
+        // record span events and attrs
+        report.recordOrderEvents(baseResult.spanEvents);
         report.extendAttrs(baseResult.spanAttributes);
 
         // tx failed to get included onchain, this can happen as result of timeout, rpc dropping the tx, etc

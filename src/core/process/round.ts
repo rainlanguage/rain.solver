@@ -303,14 +303,8 @@ export async function finalizeRound(
                 this.state.gasCosts.push(value.gasCost);
             }
 
-            // record span events
-            for (const eventName in value.spanEvents) {
-                report.addEvent(
-                    eventName,
-                    { duration: value.spanEvents[eventName].duration },
-                    value.spanEvents[eventName].startTime,
-                );
-            }
+            // record span events and attrs
+            report.recordOrderEvents(value.spanEvents);
             report.extendAttrs(value.spanAttributes);
 
             // set the otel span status based on report status
@@ -344,14 +338,9 @@ export async function finalizeRound(
         } else {
             const err = result.error;
             endTime = err.endTime;
-            // record span events
-            for (const eventName in err.spanEvents) {
-                report.addEvent(
-                    eventName,
-                    { duration: err.spanEvents[eventName].duration },
-                    err.spanEvents[eventName].startTime,
-                );
-            }
+
+            // record span events and attrs
+            report.recordOrderEvents(err.spanEvents);
             report.extendAttrs(err.spanAttributes);
 
             // Finalize the reports based on error type
