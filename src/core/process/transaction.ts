@@ -142,6 +142,7 @@ export async function transactionSettlement(
         fromToken,
         txSendTime,
         startTime,
+        roundSpanCtx,
     }: TransactionSettlementArgs,
 ): Promise<Result<ProcessTransactionSuccess, ProcessOrderFailure>> {
     const report = new PreAssembledSpan(
@@ -206,7 +207,7 @@ export async function transactionSettlement(
 
         report.end();
         // export the report to logger if logger is available
-        this.logger?.exportPreAssembledSpan(report);
+        this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
 
         return result;
     } catch (err: any) {
@@ -240,7 +241,7 @@ export async function transactionSettlement(
 
         report.end();
         // export the report to logger if logger is available
-        this.logger?.exportPreAssembledSpan(report);
+        this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
 
         return Result.err({
             ...baseResult,

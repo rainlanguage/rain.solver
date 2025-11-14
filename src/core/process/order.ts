@@ -4,6 +4,7 @@ import { Result } from "../../common";
 import { toNumber } from "../../math";
 import { Token } from "sushi/currency";
 import { errorSnapshot } from "../../error";
+import { SpanWithContext } from "../../logger";
 import { formatUnits, parseUnits } from "viem";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../signer";
@@ -23,6 +24,7 @@ export type ProcessOrderArgs = {
     signer: RainSolverSigner;
     blockNumber: bigint;
     startTime: number;
+    roundSpanCtx?: SpanWithContext;
 };
 
 /**
@@ -265,5 +267,6 @@ export async function processOrder(
         inputToEthPrice,
         outputToEthPrice,
         orderbook: orderDetails.orderbook as `0x${string}`,
+        roundSpanCtx: args.roundSpanCtx,
     });
 }
