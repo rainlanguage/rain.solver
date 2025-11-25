@@ -155,6 +155,14 @@ describe("Test PreAssembledSpan", async function () {
         expected.events.push({ name: "event1", startTime: now + 25, attributes: { key: "value" } });
         assert.deepEqual(span, expected);
 
+        span.recordOrderEvents({ orderEvents1: { startTime: 123, duration: 100 } });
+        expected.events.push({
+            name: "orderEvents1",
+            attributes: { duration: 100 },
+            startTime: 123,
+        });
+        assert.deepEqual(span, expected);
+
         span.setAttr("test-attr", "test-value");
         expected.attributes["test-attr"] = "test-value";
         assert.deepEqual(span, expected);

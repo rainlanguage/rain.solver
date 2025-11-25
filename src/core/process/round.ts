@@ -145,7 +145,7 @@ export async function processOrderInit(
         "details.pair": pair,
         "details.orderHash": orderDetails.takeOrder.id,
         "details.orderbook": orderDetails.orderbook,
-        "details.owner": orderDetails.takeOrder.struct.order.owner,
+        "details.owner": owner,
     });
 
     // get updated balance for the orderDetails from owner vaults map
@@ -179,9 +179,9 @@ export async function processOrderInit(
         const endTime = performance.now();
         const settlement: Settlement = {
             pair,
+            owner,
             startTime,
             orderHash: orderDetails.takeOrder.id,
-            owner: orderDetails.takeOrder.struct.order.owner,
             settle: async () => {
                 return Result.ok({
                     endTime,
@@ -193,6 +193,7 @@ export async function processOrderInit(
                         "details.pair": pair,
                         "details.orders": orderDetails.takeOrder.id,
                     },
+                    spanEvents: {},
                 });
             },
         };
@@ -211,9 +212,9 @@ export async function processOrderInit(
         const endTime = performance.now();
         const settlement: Settlement = {
             pair,
+            owner,
             startTime,
             orderHash: orderDetails.takeOrder.id,
-            owner: orderDetails.takeOrder.struct.order.owner,
             settle: async () => {
                 return Result.ok({
                     endTime,
@@ -226,6 +227,7 @@ export async function processOrderInit(
                         "details.pair": pair,
                         "details.orders": orderDetails.takeOrder.id,
                     },
+                    spanEvents: {},
                 });
             },
         };
@@ -250,13 +252,15 @@ export async function processOrderInit(
         orderDetails,
         signer,
         blockNumber,
+        startTime,
+        roundSpanCtx,
     });
     const settlement: Settlement = {
         settle,
         pair,
+        owner,
         startTime,
         orderHash: orderDetails.takeOrder.id,
-        owner: orderDetails.takeOrder.struct.order.owner,
     };
     report.end();
 
@@ -282,10 +286,9 @@ export async function finalizeRound(
 }> {
     const results: Result<ProcessOrderSuccess, ProcessOrderFailure>[] = [];
     const reports: PreAssembledSpan[] = [];
-    for (const { settle, pair, owner, orderHash, startTime } of settlements) {
+    for (const { settle, pair, orderHash, startTime } of settlements) {
         // instantiate a span report for this pair
         const report = new PreAssembledSpan(`order_${pair}`, startTime);
-        report.setAttr("details.owner", owner);
 
         // settle the process results
         // this will return the report of the operation
@@ -302,19 +305,8 @@ export async function finalizeRound(
                 this.state.gasCosts.push(value.gasCost);
             }
 
-            // set the span attributes with the values gathered at processOrder()
-            for (const attrKey in value.spanAttributes) {
-                // record event attrs
-                if (attrKey.startsWith("event.")) {
-                    const _event = value.spanAttributes[attrKey] as number[];
-                    report.addEvent(
-                        attrKey.replace("event.", ""),
-                        { duration: _event[1] },
-                        _event[0] as number,
-                    );
-                    delete value.spanAttributes[attrKey];
-                }
-            }
+            // record span events and attrs
+            report.recordOrderEvents(value.spanEvents);
             report.extendAttrs(value.spanAttributes);
 
             // set the otel span status based on report status
@@ -348,19 +340,9 @@ export async function finalizeRound(
         } else {
             const err = result.error;
             endTime = err.endTime;
-            // set the span attributes with the values gathered at processOrder()
-            for (const attrKey in err.spanAttributes) {
-                // record event attrs
-                if (attrKey.startsWith("event.")) {
-                    const _event = err.spanAttributes[attrKey] as number[];
-                    report.addEvent(
-                        attrKey.replace("event.", ""),
-                        { duration: _event[1] },
-                        _event[0] as number,
-                    );
-                    delete err.spanAttributes[attrKey];
-                }
-            }
+
+            // record span events and attrs
+            report.recordOrderEvents(err.spanEvents);
             report.extendAttrs(err.spanAttributes);
 
             // Finalize the reports based on error type

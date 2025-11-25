@@ -108,7 +108,7 @@ module.exports = [
     [
         ChainId.BASE,
         process?.env?.TEST_BASE_RPC,
-        16418720,
+        38187500,
         [
             WNATIVE[ChainId.BASE],
             new Token({
@@ -131,10 +131,10 @@ module.exports = [
             }),
         ],
         [
-            "0x2B8804c2b652f05F7FDD8e0a02F01eE58F01667E",
-            "0xD6216fC19DB775Df9774a6E33526131dA7D19a2c",
-            "0x3ea31919Ef9b3e72Cc25657b604DB1ACDb1DdB4b",
-            "0xf6D07A291443F31B129Ca7e2b46C6F882f0FAa5b",
+            "0xb2cc224c1c9feE385f8ad6a55b4d94E92359DC59",
+            "0xe3715B2a3bB826cd9EC5429eE85B651f95879D34",
+            "0x4617C0F3e55930fdD72ec6EA92e79D384987C464",
+            "0x7731D522011b4ACE5D812C15539321F373d0E964",
         ],
         [LiquidityProviders.UniswapV3, LiquidityProviders.UniswapV2, LiquidityProviders.BaseSwap],
         ["1", "10000", "10000", "10000"],
