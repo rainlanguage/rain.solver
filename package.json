@@ -59,6 +59,7 @@
         "commander": "^11.0.0",
         "dotenv": "^16.0.3",
         "ethers": "5.7.0",
+        "lodash.clonedeep": "^4.5.0",
         "sushi": "./lib/sushiswap/packages/sushi",
         "viem": "=2.21.35",
         "yaml": "^2.7.1"
@@ -70,6 +71,7 @@
         "@nomiclabs/hardhat-ethers": "^2.0.0",
         "@nomiclabs/hardhat-waffle": "2.0.3",
         "@types/chai": "^4.2.0",
+        "@types/lodash.clonedeep": "^4.5.9",
         "@types/mocha": "^10.0.0",
         "@types/node": "^18.13.0",
         "@typescript-eslint/eslint-plugin": "^5.42.0",
