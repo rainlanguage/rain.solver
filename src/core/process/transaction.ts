@@ -2,6 +2,7 @@ import { RainSolver } from "..";
 import { BaseError } from "viem";
 import { Result } from "../../common";
 import { Token } from "sushi/currency";
+import cloneDeep from "lodash.clonedeep";
 import { processReceipt } from "./receipt";
 import { RainSolverSigner } from "../../signer";
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -85,7 +86,7 @@ export async function processTransaction(
             orderbook,
             inputToEthPrice,
             outputToEthPrice,
-            baseResult: structuredClone(baseResult),
+            baseResult: cloneDeep(baseResult),
             txUrl,
             toToken,
             fromToken,
