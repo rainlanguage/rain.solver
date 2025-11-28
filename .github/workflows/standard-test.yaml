@@ -32,7 +32,7 @@ jobs:
       - name: Install Dependencies
         run:  nix develop -c npm install
 
-      - uses: rainlanguage/github-chore/.github/actions/npm-blacklist@main
+      - uses: rainlanguage/github-chore/.github/actions/npm-blacklist@2025-11-26-update-blacklist
 
       - name: Lint
         run:  nix develop -c npm run lint
