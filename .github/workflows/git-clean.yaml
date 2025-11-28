@@ -29,7 +29,6 @@ jobs:
       - name: Lint
         run:  nix develop -c npm run lint
 
-      # Check if the repo is clean after generating pointers and formatting.
       - run: git diff --exit-code
 
       - uses: rainlanguage/github-chore/.github/actions/npm-blacklist@2025-11-26-update-blacklist
