@@ -1,0 +1,39 @@
+name: Git is clean
+on: [push]
+
+concurrency:
+  group: ${{ github.ref }}-rainix
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  git-clean:
+    permissions:
+      id-token: write
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install Nix 1/2
+        uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+      - name: Install Nix 2/2
+        uses: DeterminateSystems/flakehub-cache-action@main
+
+      - name: Prepare Sushi Lib
+        run: ./prep-sushi.sh
+
+      - name: Install Dependencies
+        run:  nix develop -c npm install
+
+      - uses: rainlanguage/github-chore/.github/actions/npm-blacklist@2025-11-26-update-blacklist
+
+      - name: Lint
+        run:  nix develop -c npm run lint
+
+      # Check if the repo is clean after generating pointers and formatting.
+      - run: git diff --exit-code
