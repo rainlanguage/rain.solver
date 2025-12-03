@@ -1,6 +1,10 @@
 name: Git is clean
 on: [push]
 
+concurrency:
+  group: ${{ github.ref }}-git-clean
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   git-clean:
     permissions:
@@ -31,4 +35,4 @@ jobs:
 
       - run: git diff --exit-code
 
-      - uses: rainlanguage/github-chore/.github/actions/npm-blacklist@2025-11-26-update-blacklist
+      - uses: rainlanguage/github-chore/.github/actions/npm-blacklist@main
