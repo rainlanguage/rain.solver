@@ -86,19 +86,19 @@ describe("Test findBestInterOrderbookTrade", () => {
                 {
                     orderbook: "0xorderbook1",
                     id: "order1",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
                 {
                     orderbook: "0xorderbook1",
                     id: "order2",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
             ],
             [
                 {
                     orderbook: "0xorderbook2",
                     id: "order3",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
             ],
         ];
@@ -158,12 +158,12 @@ describe("Test findBestInterOrderbookTrade", () => {
                 {
                     orderbook: "0xorderbook1",
                     id: "order1",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
                 {
                     orderbook: "0xorderbook1",
                     id: "order2",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
             ],
         ];
@@ -211,14 +211,14 @@ describe("Test findBestInterOrderbookTrade", () => {
                 {
                     orderbook: "0xorderbook1",
                     id: "order1",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
             ],
             [
                 {
                     orderbook: "0xorderbook2",
                     id: "order2",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
             ],
         ];
@@ -291,27 +291,27 @@ describe("Test findBestInterOrderbookTrade", () => {
                 {
                     orderbook: "0xorderbook1",
                     id: "order1",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
                 {
                     orderbook: "0xorderbook1",
                     id: "order2",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
                 {
                     orderbook: "0xorderbook1",
                     id: "order3",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
                 {
                     orderbook: "0xorderbook1",
                     id: "order4",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 }, // should be ignored
                 {
                     orderbook: "0xorderbook1",
                     id: "order5",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 }, // should be ignored
             ],
         ];
@@ -348,7 +348,7 @@ describe("Test findBestInterOrderbookTrade", () => {
                 {
                     orderbook: "0xorderbook1",
                     id: "order1",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
             ],
         ];
@@ -379,7 +379,7 @@ describe("Test findBestInterOrderbookTrade", () => {
             counterpartyOrderDetails: {
                 orderbook: "0xorderbook1",
                 id: "order1",
-                takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
             },
             signer,
             maximumInputFixed: 1000n,
@@ -395,17 +395,17 @@ describe("Test findBestInterOrderbookTrade", () => {
                 {
                     orderbook: "0xorderbook1",
                     id: "order1",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
                 {
                     orderbook: "0xorderbook1",
                     id: "order2",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
                 {
                     orderbook: "0xorderbook1",
                     id: "order3",
-                    takeOrder: { struct: { order: { type: Order.Type.V4 } } },
+                    takeOrder: { struct: { order: { type: Order.Type.V4 } }, quote: {} },
                 },
             ],
         ];
