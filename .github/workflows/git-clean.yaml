@@ -35,4 +35,4 @@ jobs:
 
       - run: git diff --exit-code
 
-      - uses: rainlanguage/github-chore/.github/actions/npm-blacklist@2025-12-04-concurrent-check-npm-blklist
+      - uses: rainlanguage/github-chore/.github/actions/npm-blacklist@main
