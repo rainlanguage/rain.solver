@@ -61,6 +61,12 @@ export async function findBestInterOrderbookTrade(
 
         counterparties.push(...cps);
         return cps.map((counterpartyOrderDetails) => {
+            if (!orderDetails.takeOrder.quote || !counterpartyOrderDetails.takeOrder.quote) {
+                return Result.err({
+                    type: TradeType.InterOrderbook,
+                    spanAttributes: {},
+                }) as SimulationResult;
+            }
             return InterOrderbookTradeSimulator.withArgs({
                 type: TradeType.InterOrderbook,
                 solver: this,
