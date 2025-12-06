@@ -53,11 +53,13 @@ export async function initializeRound(
     }
     for (const orderDetails of iterOrders(orders, shuffle)) {
         // update pools data on each batch start
+        let newPoolCreated = false;
         if (maxConcurrencyCounter === this.appOptions.maxConcurrency) {
-            await this.state.router.sushi?.update(blockNumber).catch(() => undefined);
+            newPoolCreated =
+                (await this.state.router.sushi?.update(blockNumber).catch(() => false)) ?? false;
         }
 
-        await prepareRouter.call(this, orderDetails, blockNumber);
+        await prepareRouter.call(this, orderDetails, blockNumber, newPoolCreated);
 
         concurrencyProcessBatch.push(
             processOrderInit.call(this, orderDetails, blockNumber!, roundSpanCtx),
@@ -98,10 +100,15 @@ export async function initializeRound(
  * @param orderDetails - The order details
  * @param blockNumber - The block number to fetch data at
  */
-export async function prepareRouter(this: RainSolver, orderDetails: Pair, blockNumber?: bigint) {
+export async function prepareRouter(
+    this: RainSolver,
+    orderDetails: Pair,
+    blockNumber?: bigint,
+    newPoolCreated?: boolean,
+) {
     const key = `${orderDetails.sellToken.toLowerCase()}-${orderDetails.buyToken.toLowerCase}`;
     const value = this.state.router.cache.get(key);
-    if (typeof value === "number" && value > 3) return;
+    if (!newPoolCreated && typeof value === "number" && value > 3) return;
 
     const fromToken = new Token({
         chainId: this.state.chainConfig.id,

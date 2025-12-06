@@ -252,8 +252,8 @@ export class SushiRouter extends RainSolverRouterBase {
      * Updates the pool data to the latest block or the specified block number
      * @param blockNumber - Optional block number to fetch the pools data at a specific block height
      */
-    async update(blockNumber?: bigint) {
-        await this.dataFetcher.updatePools(blockNumber);
+    async update(blockNumber?: bigint): Promise<boolean> {
+        return await this.dataFetcher.updatePools(blockNumber);
     }
 
     /**
