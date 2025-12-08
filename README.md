@@ -84,54 +84,92 @@ node rain-solver <OPTIONS>
 
 <br>
 
-The app requires a config yaml file to operate and by default it looks in `./config.yaml`, however the path of the config file can be passed by using `-c` or `--config` flag on cli or set in `CONFIG` env variable, for more details about config file, please see `./config.example.yaml`.
+The app requires a config yaml file to operate and by default it looks in `./config.env.yaml`, however the path of the config file can be passed by using `-c` or `--config` flag on cli or set in `CONFIG` env variable, for more details about config file, please see `./config.example.yaml`.
 
 <br>
 
-### List of available supported dexes (decentralized exchanges)
-- all of the below names are case INSENSITIVE:
-`SushiSwapV2`,
-`SushiSwapV3`,
-`UniswapV2`,
-`UniswapV3`,
-`Trident`,
-`QuickSwap`,
-`ApeSwap`,
-`PancakeSwapV2`,
-`PancakeSwapV3`,
-`TraderJoe`,
-`Dfyn`,
-`Elk`,
-`JetSwap`,
-`SpookySwapV2`,
-`SpookySwapV3`,
-`NetSwap`,
-`NativeWrap`,
-`HoneySwap`,
-`UbeSwap`,
-`Biswap`,
-`CurveSwap`,
-`DovishV3`,
-`Wagmi`,
-`LaserSwap`,
-`BaseSwap`,
-`AlgebraIntegral`,
-`Solarbeam`,
-`Swapsicle`,
-`VVSStandard`,
-`Fraxswap`,
-`SwapBlast`,
-`BlastDEX`,
-`MonoswapV2`,
-`MonoswapV3`,
-`ThrusterV2`,
-`ThrusterV3`,
-`DyorV2`,
-`HyperBlast`,
-`KinetixV2`,
-`KinetixV3`,
-`Enosys`,
-`BlazeSwap`,
+### List of supported dexes as external liquidity (decentralized exchanges)
+- `BalancerV3`
+- `Stabull`
+- `AerodromeSlipstreamV1`
+- `AerodromeSlipstreamV2`
+- `AlienBaseV2`
+- `AlienBaseV3`
+- `ApeSwap`
+- `BakerySwap`
+- `BaseSwapV2`
+- `BaseSwapV3`
+- `Biswap`
+- `BladeSwap`
+- `BlastDEX`
+- `BlazeSwap`
+- `BSCSwap`
+- `COREx`
+- `CroDefiSwap`
+- `DackieSwapV2`
+- `DackieSwapV3`
+- `Dfyn`
+- `DovishV3`
+- `DyorV2`
+- `EddyFinance`
+- `Elk`
+- `Enosys`
+- `Fenix`
+- `GlyphV4`
+- `GravityFinance`
+- `HoneySwap`
+- `Horizon`
+- `HyperBlast`
+- `JetSwap`
+- `KimV4`
+- `KinetixV2`
+- `KinetixV3`
+- `KodiakV2`
+- `KodiakV3`
+- `Kwikswap`
+- `LaserSwapV2`
+- `LynexV1`
+- `LynexV2`
+- `MMFinance`
+- `MonoswapV2`
+- `MonoswapV3`
+- `MSwap`
+- `NetSwap`
+- `NileV3`
+- `NineInch`
+- `PancakeSwapV2`
+- `PancakeSwapV3`
+- `Pangolin`
+- `QuickSwapV2`
+- `QuickSwapV3`
+- `RingExchangeV2`
+- `RingExchangeV3`
+- `Scribe`
+- `ShibaSwap`
+- `Solarbeam`
+- `SparkDexV2`
+- `SparkDexV3`
+- `SparkDexV3.1`
+- `SpookySwapV2`
+- `SpookySwapV3`
+- `SquadSwapV2`
+- `SushiSwapV2`
+- `SushiSwapV3`
+- `SwapBlast`
+- `Swapsicle`
+- `ThrusterV2.1`
+- `ThrusterV2.3`
+- `ThrusterV3`
+- `TraderJoe`
+- `UbeSwap`
+- `UniswapV2`
+- `UniswapV3`
+- `VelodromeSlipstream`
+- `VVSStandard`
+- `VVSFlawless`
+- `Wagmi`
+- `Wigoswap`
+- `ZebraV2`
 
 <br>
 
@@ -155,7 +193,7 @@ HYPERDX_API_KEY=""
 # trace/spans service name, defaults to "rain-solver" if not set
 TRACER_SERVICE_NAME=""
 ```
-If both env variables and CLI argument are set, the CLI arguments will be prioritized and override the env variables.
+
 
 If you install this app as a dependency for your project you can run it by (All the above arguments apply here as well):
 
@@ -171,19 +209,29 @@ In order to run this app periodically to clear orders in Github Actions, first y
 Please be aware that schediled Github Actions can only be run at minimum once every 5 minutes and even that is not guarateed because it depends on Github resource availability at that time, so it is recommended to run the app on personal/reliable host if there is sensitivity with running on a schedule.
 
 ## Developers Guide
-First run the [setup](#setup) section and then you can use following commands either from nix shell (`nix develop -c <COMMAND>`) or normally from your commandline.
+First run the [setup](#setup) section and then you can use following commands:
 To run the tests:
 ```bash
-npm test
+nix develop -c npm test
 ```
-which runs on hardhat forked polygon network.
+which runs both unit and e2e(on hardhat forked polygon network) tests.
+
+To run unit tests:
+```bash
+nix develop -c npm run unit-test
+```
+
+To run e2e tests:
+```bash
+nix develop -c npm run e2e-test
+```
 
 To lint or lint and fix:
 ```bash
-npm run lint
+nix develop -c npm run lint
 ```
 ```bash
-npm run lint-fix
+nix develop -c npm run lint-fix
 ```
 <br>
 

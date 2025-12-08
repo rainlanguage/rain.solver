@@ -1,6 +1,6 @@
 {
     "name": "@rainlanguage/solver",
-    "version": "2.5.1",
+    "version": "3.0.0",
     "description": "NodeJS app that clears Rain orderbook orders against decentralized liquididty providers (decentralized exchanges)",
     "author": "Rain Protocol",
     "license": "CAL-1.0",
