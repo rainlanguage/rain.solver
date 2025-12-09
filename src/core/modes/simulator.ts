@@ -149,7 +149,7 @@ export abstract class TradeSimulatorBase {
 
         // determine the success of the trade with 0.25% headroom
         const headroom = BigInt(
-            (Number(this.tradeArgs.solver.appOptions.gasCoveragePercentage) * 100.25).toFixed(),
+            (Number(this.tradeArgs.solver.appOptions.gasCoveragePercentage) * 100.75).toFixed(),
         );
         let minimumExpected = (estimatedGasCost * headroom) / 10000n;
         this.spanAttributes["gasEst.initial.minBountyExpected"] = minimumExpected.toString();
