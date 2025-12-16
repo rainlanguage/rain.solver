@@ -13,6 +13,8 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - run: exit 1
+
       - name: Install Nix 1/2
         uses: DeterminateSystems/nix-installer-action@main
         with:
@@ -32,3 +34,10 @@ jobs:
       - run: git diff --exit-code
 
       - uses: rainlanguage/github-chore/.github/actions/npm-blacklist@main
+
+      - name: Send Telegram notification
+        if: always()  # This ensures it runs regardless of previous step outcomes
+        uses: rainlanguage/github-chore/.github/actions/telegram-status-report@2025-12-15-tg-ci-status-reporter
+        with:
+          status: ${{ job.status }}
+          message: "some extra msgggggg"
