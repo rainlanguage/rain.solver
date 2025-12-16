@@ -42,4 +42,4 @@ jobs:
           status: ${{ job.status }}
           message: "some extra msgggggg"
           telegram-bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          telegram-chat-id: ${{ vars.TELEGRAM_CHAT_ID }}
+          telegram-chat-id: ${{ secrets.TELEGRAM_CHAT_ID }}
