@@ -13,7 +13,7 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - run: exit 0
+      - run: exit 1
 
       # - name: Install Nix 1/2
       #   uses: DeterminateSystems/nix-installer-action@main
