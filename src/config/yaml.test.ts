@@ -187,7 +187,7 @@ orderbookTradeTypes:
             timeout: "20000",
             maxRatio: true,
             maxConcurrency: undefined,
-            skipSweep: new Set(),
+            skipSweep: undefined,
             ownerProfile: [
                 { "0x4444444444444444444444444444444444444444": "100" },
                 { "0x5555555555555555555555555555555555555555": "max" },
