@@ -429,6 +429,11 @@ export class WalletManager {
         for (const [, tokenDetails] of this.state.watchedTokens) {
             report.setAttr(`details.swaps.${tokenDetails.symbol}.token`, tokenDetails.address);
 
+            if (this.state.appOptions.skipSweep.has(tokenDetails.address.toLowerCase())) {
+                report.setAttr(`details.swaps.${tokenDetails.symbol}.status`, "skipped");
+                continue;
+            }
+
             try {
                 const {
                     route = undefined,

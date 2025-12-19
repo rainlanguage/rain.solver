@@ -118,6 +118,7 @@ export async function sweepFunds(opts: SweepOptions) {
         topupAmount: "0",
         contracts: {},
         orderbookTradeTypes: {} as any,
+        skipSweep: new Set(),
     };
 
     // prepare state config fields

@@ -103,6 +103,11 @@ timeout: 15
 # Option to maximize maxIORatio, default true
 maxRatio: true
 
+# list of tokens to skip sweeping
+skipSweep:
+  - "0x123...456"
+  - "0xabc...def"
+
 # Only clear orders through RP4, excludes intra and inter orderbook clears, default true
 rpOnly: true
 

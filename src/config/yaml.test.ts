@@ -38,6 +38,9 @@ gasPriceMultiplier: 150
 gasLimitMultiplier: 90
 timeout: 20000
 maxRatio: true
+skipSweep:
+    - "0x8888888888888888888888888888888888888888"
+    - "0x9999999999999999999999999999999999999999"
 ownerProfile: $OWNER_PROFILE
 selfFundVaults:
   - token: "0x6666666666666666666666666666666666666666"
@@ -142,6 +145,7 @@ orderbookTradeTypes:
                 interOrderbook: new Set([`0x${"3".repeat(40)}`, `0x${"4".repeat(40)}`]),
                 intraOrderbook: new Set([`0x${"5".repeat(40)}`, `0x${"6".repeat(40)}`]),
             },
+            skipSweep: new Set([`0x${"8".repeat(40)}`, `0x${"9".repeat(40)}`]),
         };
 
         // AppOptions returned from fromYaml() should match expected
@@ -180,6 +184,7 @@ orderbookTradeTypes:
             gasLimitMultiplier: "90",
             timeout: "20000",
             maxRatio: true,
+            skipSweep: undefined,
             ownerProfile: [
                 { "0x4444444444444444444444444444444444444444": "100" },
                 { "0x5555555555555555555555555555555555555555": "max" },
@@ -313,5 +318,7 @@ orderbookTradeTypes:
             interOrderbook: new Set<string>([`0x${"3".repeat(40)}`, `0x${"4".repeat(40)}`]),
             intraOrderbook: new Set<string>([`0x${"5".repeat(40)}`, `0x${"6".repeat(40)}`]),
         });
+
+        assert.deepEqual(result.skipSweep, new Set());
     });
 });

@@ -95,6 +95,8 @@ export type AppOptions = {
     contracts: AppOptionsContracts;
     /** Specifies enabled trade types for each orderbook address */
     orderbookTradeTypes: OrderbookTradeTypes;
+    /** List of tokens to skip when sweeping bounty tokens */
+    skipSweep: Set<string>;
 };
 
 /** Provides methods to instantiate and validate AppOptions */
@@ -261,6 +263,10 @@ export namespace AppOptions {
                         "invalid orderbookTradeTypes.intraOrderbook, expected an array of orderbook addresses",
                     ),
                 },
+                skipSweep: Validator.resolveAddressSet(
+                    input.skipSweep,
+                    "invalid skip sweep list, expected an array of token addresses",
+                ),
             } as AppOptions);
         } catch (error: any) {
             if (error instanceof AppOptionsError) {

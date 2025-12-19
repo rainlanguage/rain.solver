@@ -58,6 +58,9 @@ describe("Test WalletManager", () => {
                 getBalance: vi.fn().mockResolvedValue(0n),
                 chain: { contracts: { multicall3: { address: "0xmulticall" } } },
             },
+            appOptions: {
+                skipSweep: new Set(),
+            },
         } as any);
 
         multiWalletState = new SharedState({
@@ -80,6 +83,9 @@ describe("Test WalletManager", () => {
                 multicall: vi.fn(),
                 getBalance: vi.fn().mockResolvedValue(0n),
                 chain: { contracts: { multicall3: { address: "0xmulticall" } } },
+            },
+            appOptions: {
+                skipSweep: new Set(),
             },
         } as any);
 
