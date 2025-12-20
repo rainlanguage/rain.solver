@@ -55,6 +55,8 @@ npm run build
 <br>
 
 ### CLI
+The app requires a config yaml file to operate and by default it looks in `./config.env.yaml`, however the path of the config file can be passed by using `-c` or `--config` flag on cli or set in `CONFIG` env variable, for more details about config file, please see `./config.example.yaml`.
+
 For starting the app:
 - with nix package manager (recommended way):
 
@@ -84,7 +86,26 @@ node rain-solver <OPTIONS>
 
 <br>
 
-The app requires a config yaml file to operate and by default it looks in `./config.env.yaml`, however the path of the config file can be passed by using `-c` or `--config` flag on cli or set in `CONFIG` env variable, for more details about config file, please see `./config.example.yaml`.
+CLI options can be viewed by running:
+```bash
+node rain-solver -h
+```
+<br>
+
+Alternatively all variables can be specified in env variables with below keys:
+```bash
+# path to config yaml file
+CONFIG=
+
+# Git branch to track for docker compose
+DOCKER_CHANNEL=master
+
+# api key for heyperDx platfomr to send spans to, if not set will send traces to localhost
+HYPERDX_API_KEY=""
+
+# trace/spans service name, defaults to "rain-solver" if not set
+TRACER_SERVICE_NAME=""
+```
 
 <br>
 
@@ -173,41 +194,6 @@ The app requires a config yaml file to operate and by default it looks in `./con
 
 <br>
 
-CLI options can be viewed by running:
-```bash
-node rain-solver -h
-```
-<br>
-
-Alternatively all variables can be specified in env variables with below keys:
-```bash
-# path to config yaml file
-CONFIG=
-
-# Git branch to track for docker compose
-DOCKER_CHANNEL=master
-
-# api key for heyperDx platfomr to send spans to, if not set will send traces to localhost
-HYPERDX_API_KEY=""
-
-# trace/spans service name, defaults to "rain-solver" if not set
-TRACER_SERVICE_NAME=""
-```
-
-
-If you install this app as a dependency for your project you can run it by (All the above arguments apply here as well):
-
-```bash
-rain-solver <OPTIONS>
-```
-
-<br>
-
-## Running On Github Actions
-In order to run this app periodically to clear orders in Github Actions, first you need to fork this repository, then you can modify the `./.github/workflows/take-orders.yaml` file with your desired configuration so the app run periodically. You can set the schedule for the app to run by modifying the cron syntax of the mentioned file and in the last line of the file, you can pass the required/optional arguments for the app to run. All the mentioned CLI arguments can be applied, for wallet private key and rpc url, you can set up Github Secrets.
-
-Please be aware that schediled Github Actions can only be run at minimum once every 5 minutes and even that is not guarateed because it depends on Github resource availability at that time, so it is recommended to run the app on personal/reliable host if there is sensitivity with running on a schedule.
-
 ## Developers Guide
 First run the [setup](#setup) section and then you can use following commands:
 To run the tests:
@@ -238,7 +224,7 @@ nix develop -c npm run lint-fix
 ## Diag Order
 Read this [document](./DiagOrder.md) in order to diag what happenes when an order is being tried to find an opportunity to clear against onchain liquidity, you would find the onchain liquidity price at the time the order is being executed against it as well as the what the order evals to, ie its `maxouput` and `ratio`.
 
-## Docker
+## Running On Docker
 
 Use docker compose if possible as it handles several things for you:
 
@@ -275,3 +261,8 @@ To create a bind mount to a specific absolute path on the host
 ```
 docker volume create --driver local --opt type=none --opt device=<absolute-host-path> --opt o=bind <volume-name>
 ```
+
+## Running On Github Actions
+In order to run this app periodically to clear orders in Github Actions, first you need to fork this repository, then you can modify the `./.github/workflows/take-orders.yaml` file with your desired configuration so the app run periodically. You can set the schedule for the app to run by modifying the cron syntax of the mentioned file and in the last line of the file, you can pass the required/optional arguments for the app to run. All the mentioned CLI arguments can be applied, for wallet private key and rpc url, you can set up Github Secrets.
+
+Please be aware that schediled Github Actions can only be run at minimum once every 5 minutes and even that is not guarateed because it depends on Github resource availability at that time, so it is recommended to run the app on personal/reliable host if there is sensitivity with running on a schedule.
