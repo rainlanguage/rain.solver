@@ -97,6 +97,8 @@ export type AppOptions = {
     orderbookTradeTypes: OrderbookTradeTypes;
     /** The number of orders that will be processed concurrently, default is 1, i.e. no concurrency */
     maxConcurrency: number;
+    /** List of tokens to skip when sweeping bounty tokens */
+    skipSweep: Set<string>;
 };
 
 /** Provides methods to instantiate and validate AppOptions */
@@ -275,6 +277,10 @@ export namespace AppOptions {
                         "invalid orderbookTradeTypes.intraOrderbook, expected an array of orderbook addresses",
                     ),
                 },
+                skipSweep: Validator.resolveAddressSet(
+                    input.skipSweep,
+                    "invalid skip sweep list, expected an array of token addresses",
+                ),
             } as AppOptions);
         } catch (error: any) {
             if (error instanceof AppOptionsError) {
