@@ -36,7 +36,6 @@ nix develop -c npm install
 nix develop -c npm run build
 ```
 
-<br>
 - without nix package manager:
 
 you need to have pnpm `>= v8.15.3` and then run the following:
@@ -52,7 +51,6 @@ and then install the dependencies, requires `>= nodejs v22`:
 npm install
 npm run build
 ```
-<br>
 
 ### CLI
 The app requires a config yaml file to operate and by default it looks in `./config.env.yaml`, however the path of the config file can be passed by using `-c` or `--config` flag on cli or set in `CONFIG` env variable, for more details about config file, please see `./config.example.yaml`.
@@ -90,7 +88,6 @@ CLI options can be viewed by running:
 ```bash
 node rain-solver -h
 ```
-<br>
 
 Alternatively all variables can be specified in env variables with below keys:
 ```bash
@@ -107,9 +104,7 @@ HYPERDX_API_KEY=""
 TRACER_SERVICE_NAME=""
 ```
 
-<br>
-
-### List of supported dexes as external liquidity (decentralized exchanges)
+## List of supported dexes as external liquidity (decentralized exchanges)
 - `BalancerV3`
 - `Stabull`
 - `AerodromeSlipstreamV1`
@@ -221,10 +216,10 @@ nix develop -c npm run lint-fix
 ```
 <br>
 
-## Diag Order
+### Diag Order
 Read this [document](./DiagOrder.md) in order to diag what happenes when an order is being tried to find an opportunity to clear against onchain liquidity, you would find the onchain liquidity price at the time the order is being executed against it as well as the what the order evals to, ie its `maxouput` and `ratio`.
 
-## Running On Docker
+### Running On Docker
 
 Use docker compose if possible as it handles several things for you:
 
@@ -262,7 +257,7 @@ To create a bind mount to a specific absolute path on the host
 docker volume create --driver local --opt type=none --opt device=<absolute-host-path> --opt o=bind <volume-name>
 ```
 
-## Running On Github Actions
+### Running On Github Actions
 In order to run this app periodically to clear orders in Github Actions, first you need to fork this repository, then you can modify the `./.github/workflows/take-orders.yaml` file with your desired configuration so the app run periodically. You can set the schedule for the app to run by modifying the cron syntax of the mentioned file and in the last line of the file, you can pass the required/optional arguments for the app to run. All the mentioned CLI arguments can be applied, for wallet private key and rpc url, you can set up Github Secrets.
 
 Please be aware that schediled Github Actions can only be run at minimum once every 5 minutes and even that is not guarateed because it depends on Github resource availability at that time, so it is recommended to run the app on personal/reliable host if there is sensitivity with running on a schedule.
