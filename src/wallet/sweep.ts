@@ -80,11 +80,16 @@ export async function transferRemainingGasFrom(from: RainSolverSigner, to: `0x${
     const balance = await from.getSelfBalance();
     if (balance <= 0n) return { amount: 0n };
 
-    const cost = await from.estimateGasCost({ to, value: 0n });
+    const cost = await from.estimateGasCost({ to, value: 1n });
     const totalCost = (cost.totalGasCost * 102n) / 100n;
     if (balance > totalCost) {
         const amount = balance - totalCost;
-        const { hash } = await from.sendTx({ to, value: amount });
+        const { hash } = await from.sendTx({
+            to,
+            value: amount,
+            gas: cost.gas,
+            gasPrice: cost.gasPrice,
+        });
         const receipt = await from.waitForReceipt({ hash });
         if (receipt.status === "success") {
             return { amount, txHash: hash };

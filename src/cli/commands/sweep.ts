@@ -53,7 +53,7 @@ export const SweepCmd = new Command("sweep")
             .argParser((val: string) => {
                 const parsed = parseInt(val);
                 assert(!isNaN(parsed), "Wallet length must be an integer greater than 1");
-                assert(parsed > 1, "Wallet length must be an integer greater than 1");
+                assert(parsed > 0, "Wallet length must be an integer greater than 0");
                 return parsed;
             }),
     )
@@ -105,12 +105,12 @@ export async function sweepFunds(opts: SweepOptions) {
         subgraph,
         gasLimitMultiplier: 100,
         gasPriceMultiplier: 107,
+        timeout: 15_000,
 
         // unused fields but need to be defined
         maxRatio: false,
         sleep: 0,
         gasCoveragePercentage: "",
-        timeout: 15,
         botMinBalance: "0",
         poolUpdateInterval: 0,
         route: "single",
