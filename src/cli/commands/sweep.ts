@@ -42,7 +42,7 @@ export const SweepCmd = new Command("sweep")
     .addOption(
         new Option(
             "-r, --rpc <url...>",
-            "RPC URL(s) used to perform transactions, the list should comma delimited when passed as env variable",
+            "RPC URL(s) used to perform transactions, the list should be comma delimited when passed as env variable",
         )
             .env("RPC")
             .argParser(parseList),
