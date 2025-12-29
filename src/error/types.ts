@@ -68,6 +68,8 @@ export const KnownErrors = [
     "minimumSenderOutput",
     "minimum sender output",
     "MinimalOutputBalanceViolation",
+    "Min trade amount",
+    "NegativeBounty",
 ] as const;
 
 /** Represents a decoded solidity error type */
