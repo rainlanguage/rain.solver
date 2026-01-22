@@ -1,5 +1,6 @@
 /** Represents RainOrderbook order subgraph entity type */
 export type SgOrder = {
+    __version: SubgraphVersions; // injected
     id: string;
     owner: string;
     orderHash: string;
@@ -37,6 +38,7 @@ export type SgOrderUpdate = {
 
 /** Represent RainOrderbook transactions entity type */
 export type SgTransaction = {
+    __version: SubgraphVersions; // injected
     events: SgEvent[];
     timestamp: string;
 };
@@ -97,3 +99,8 @@ export type SubgraphSyncState = {
     skip: number;
     lastFetchTimestamp: number;
 };
+
+export enum SubgraphVersions {
+    OLD_V = "old",
+    V6 = "v6",
+}

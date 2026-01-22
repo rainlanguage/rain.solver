@@ -17,11 +17,20 @@ import {
     TakeOrderDetailsV4,
     TakeOrdersConfigTypeV4,
     TakeOrderV4,
+    TakeOrdersConfigTypeV5,
 } from "./v4";
 
 // Re-export types from v3 and v4
 export { OrderV3, OrderProfileV3, PairV3, TakeOrderDetailsV3, TakeOrdersConfigTypeV3, TakeOrderV3 };
-export { OrderV4, OrderProfileV4, PairV4, TakeOrderDetailsV4, TakeOrdersConfigTypeV4, TakeOrderV4 };
+export {
+    OrderV4,
+    OrderProfileV4,
+    PairV4,
+    TakeOrderDetailsV4,
+    TakeOrdersConfigTypeV4,
+    TakeOrderV4,
+    TakeOrdersConfigTypeV5,
+};
 
 /** Represents an order with a specific version */
 export type Order = OrderV3 | OrderV4;
@@ -118,7 +127,14 @@ export type BundledOrders = {
     takeOrders: TakeOrderDetails[];
 };
 
+export enum OrderbookVersions {
+    V4,
+    V5,
+    V6,
+}
+
 export type PairBase = {
+    orderbookVersion: OrderbookVersions;
     orderbook: string;
     buyToken: string;
     buyTokenDecimals: number;
@@ -137,8 +153,19 @@ export namespace Pair {
     }
 
     /** Determines if the Pair is of type V4 */
-    export function isV4(pair: Pair): pair is PairV4 {
-        return pair.takeOrder.struct.order.type === Order.Type.V4;
+    export function isV4OrderbookV5(pair: Pair): pair is PairV4 {
+        return (
+            pair.takeOrder.struct.order.type === Order.Type.V4 &&
+            pair.orderbookVersion === OrderbookVersions.V5
+        );
+    }
+
+    /** Determines if the Pair is of type V4 */
+    export function isV4OrderbookV6(pair: Pair): pair is PairV4 {
+        return (
+            pair.takeOrder.struct.order.type === Order.Type.V4 &&
+            pair.orderbookVersion === OrderbookVersions.V6
+        );
     }
 
     export function tryFromArgs(
@@ -218,7 +245,11 @@ export type OwnerTokenVaultsMap = Map<string, TokenVaultMap>;
 /** orderbook -> OwnerTokenVaultsMap */
 export type OrderbookOwnerTokenVaultsMap = Map<string, OwnerTokenVaultsMap>;
 
-export type TakeOrdersConfigType = TakeOrdersConfigTypeV3 | TakeOrdersConfigTypeV4;
+export type TakeOrdersConfigType =
+    | TakeOrdersConfigTypeV3
+    | TakeOrdersConfigTypeV4
+    | TakeOrdersConfigTypeV5;
+
 export namespace TakeOrdersConfigType {
     /** Checks if the TakeOrdersConfigType is of type V3 */
     export function isV3(config: TakeOrdersConfigType): config is TakeOrdersConfigTypeV3 {
@@ -227,6 +258,11 @@ export namespace TakeOrdersConfigType {
 
     /** Checks if the TakeOrdersConfigType is of type V4 */
     export function isV4(config: TakeOrdersConfigType): config is TakeOrdersConfigTypeV4 {
-        return config.orders[0].order.type === Order.Type.V4;
+        return config.orders[0].order.type === Order.Type.V4 && "minimumInput" in config;
+    }
+
+    /** Checks if the TakeOrdersConfigType is of type V5 */
+    export function isV5(config: TakeOrdersConfigType): config is TakeOrdersConfigTypeV5 {
+        return config.orders[0].order.type === Order.Type.V4 && "minimumIO" in config;
     }
 }

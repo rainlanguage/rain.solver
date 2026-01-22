@@ -4,6 +4,7 @@ import { OrderManager } from ".";
 import { PreAssembledSpan } from "../logger";
 import { applyFilters } from "../subgraph/filter";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
+import { SubgraphVersions } from "../subgraph";
 
 vi.mock("../logger", () => ({
     PreAssembledSpan: vi.fn().mockImplementation((name) => ({
@@ -293,6 +294,7 @@ describe("Test syncOrders", () => {
         const mockResult = {
             "https://subgraph1.com": [
                 {
+                    __version: SubgraphVersions.OLD_V,
                     timestamp: "1640995200",
                     events: [
                         {
@@ -314,6 +316,7 @@ describe("Test syncOrders", () => {
         mockAddOrder.mockResolvedValue(Result.ok(undefined));
 
         await syncOrders.call(mockOrderManager);
+        expect((mockOrder as any).__version).toBe(SubgraphVersions.OLD_V);
         expect(applyFilters).toHaveBeenCalledWith(mockOrder, mockSubgraphManager.filters);
         expect(mockAddOrder).toHaveBeenCalledWith(mockOrder);
         expect(mockSyncStatus["https://subgraph1.com"]["0xorderbook1"]).toEqual({

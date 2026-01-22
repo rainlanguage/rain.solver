@@ -100,6 +100,59 @@ export namespace _v5 {
     ] as const;
 }
 
+export namespace _v6 {
+    // structs
+    export const Float = "bytes32" as const;
+    export const IOV2 = `(address token, bytes32 vaultId)` as const;
+    export const EvaluableV4 = `(address interpreter, address store, bytes bytecode)` as const;
+    export const SignedContextV1 = "(address signer, bytes32[] context, bytes signature)" as const;
+    export const TaskV2 = `(${EvaluableV4} evaluable, ${SignedContextV1}[] signedContext)` as const;
+    export const ClearStateChangeV2 =
+        `(${Float} aliceOutput, ${Float} bobOutput, ${Float} aliceInput, ${Float} bobInput)` as const;
+    export const OrderV4 =
+        `(address owner, ${EvaluableV4} evaluable, ${IOV2}[] validInputs, ${IOV2}[] validOutputs, bytes32 nonce)` as const;
+    export const TakeOrderConfigV4 =
+        `(${OrderV4} order, uint256 inputIOIndex, uint256 outputIOIndex, ${SignedContextV1}[] signedContext)` as const;
+    export const QuoteV2 =
+        `(${OrderV4} order, uint256 inputIOIndex, uint256 outputIOIndex, ${SignedContextV1}[] signedContext)` as const;
+    export const TakeOrdersConfigV5 =
+        `(${Float} minimumInput, ${Float} maximumInput, ${Float} maximumIORatio, ${TakeOrderConfigV4}[] orders, bytes data)` as const;
+    export const OrderConfigV4 =
+        `(${EvaluableV4} evaluable, ${IOV2}[] validInputs, ${IOV2}[] validOutputs, bytes32 nonce, bytes32 secret, bytes meta)` as const;
+    export const ClearConfigV2 =
+        "(uint256 aliceInputIOIndex, uint256 aliceOutputIOIndex, uint256 bobInputIOIndex, uint256 bobOutputIOIndex, bytes32 aliceBountyVaultId, bytes32 bobBountyVaultId)" as const;
+
+    // signatures
+    export const Orderbook = [
+        `event OrderNotFound(address sender, address owner, bytes32 orderHash)` as const,
+        `event AddOrderV3(address sender, bytes32 orderHash, ${OrderV4} order)` as const,
+        `event OrderZeroAmount(address sender, address owner, bytes32 orderHash)` as const,
+        `event RemoveOrderV3(address sender, bytes32 orderHash, ${OrderV4} order)` as const,
+        `event AfterClearV2(address sender, ${ClearStateChangeV2} clearStateChange)` as const,
+        `event OrderExceedsMaxRatio(address sender, address owner, bytes32 orderHash)` as const,
+        `event DepositV2(address sender, address token, bytes32 vaultId, uint256 depositAmountUint256)` as const,
+        `event ClearV3(address sender, ${OrderV4} alice, ${OrderV4} bob, ${ClearConfigV2} clearConfig)` as const,
+        `event TakeOrderV3(address sender, ${TakeOrderConfigV4} config, ${Float} input, ${Float} output)` as const,
+        `event WithdrawV2(address sender, address token, bytes32 vaultId, ${Float} targetAmount, ${Float} withdrawAmount, uint256 withdrawAmountUint256)` as const,
+        `function entask2(${TaskV2}[] calldata tasks) external` as const,
+        `function orderExists(bytes32 orderHash) external view returns (bool exists)` as const,
+        `function vaultBalance2(address owner, address token, bytes32 vaultId) external view returns (${Float} balance)` as const,
+        `function deposit3(address token, bytes32 vaultId, ${Float} depositAmount, ${TaskV2}[] calldata tasks) external` as const,
+        `function withdraw3(address token, bytes32 vaultId, ${Float} targetAmount, ${TaskV2}[] calldata tasks) external` as const,
+        `function removeOrder3(${OrderV4} calldata order, ${TaskV2}[] calldata tasks) external returns (bool stateChanged)` as const,
+        `function addOrder4(${OrderConfigV4} calldata config, ${TaskV2}[] calldata tasks) external returns (bool stateChanged)` as const,
+        `function quote2(${QuoteV2} calldata quoteConfig) external view returns (bool exists, ${Float} outputMax, ${Float} ioRatio)` as const,
+        `function takeOrders4(${TakeOrdersConfigV5} calldata config) external returns (${Float} totalTakerInput, ${Float} totalTakerOutput)` as const,
+        `function clear3(${OrderV4} memory alice, ${OrderV4} memory bob, ${ClearConfigV2} calldata clearConfig, ${SignedContextV1}[] memory aliceSignedContext, ${SignedContextV1}[] memory bobSignedContext) external` as const,
+        "function multicall(bytes[] calldata data) external returns (bytes[] memory results)",
+    ] as const;
+    export const Arb = [
+        "function iRouteProcessor() external view returns (address)",
+        `function arb5(address orderBook, ${TakeOrdersConfigV5} calldata takeOrders, ${TaskV2} calldata task) external payable`,
+        // `function arb4(address orderBook, ${TakeOrdersConfigV5} calldata startTakeOrders, ${TakeOrdersConfigV5} calldata endTakeOrders, bytes calldata exchangeData, ${TaskV2} calldata task) external payable`,
+    ] as const;
+}
+
 /** Keeps Orderbook v4 and v5 related ABIs */
 export namespace OrderbookAbi {
     export namespace V4 {
@@ -183,6 +236,52 @@ export namespace OrderbookAbi {
 
             /** Signature ABI for Arb contract */
             export const Arb = _v5.Arb;
+        }
+
+        // an empty evaluable mainly used as default evaluable for arb contracts
+        export const DefaultArbEvaluable = {
+            interpreter: "0x" + "0".repeat(40),
+            store: "0x" + "0".repeat(40),
+            bytecode: "0x",
+        } as const;
+    }
+
+    export namespace V6 {
+        /** Orderbook and Arb contracts primary parsed ABIs */
+        export namespace Primary {
+            /** Arb contract ABI */
+            export const Arb = parseAbi(_v6.Arb);
+
+            /** Orderbook v4 contract ABI */
+            export const Orderbook = parseAbi(_v6.Orderbook);
+
+            /** Order v4 struct ABI */
+            export const OrderStructAbi = parseAbiParameters(_v6.OrderV4);
+        }
+
+        /** Orderbook v4 structs */
+        export namespace Structs {
+            export const Float = _v6.Float;
+            export const IO = _v6.IOV2;
+            export const Evaluable = _v6.EvaluableV4;
+            export const SignedContext = _v6.SignedContextV1;
+            export const Task = _v6.TaskV2;
+            export const ClearStateChange = _v6.ClearStateChangeV2;
+            export const Order = _v6.OrderV4;
+            export const TakeOrderConfig = _v6.TakeOrderConfigV4;
+            export const OrderConfig = _v6.OrderConfigV4;
+            export const TakeOrdersConfig = _v6.TakeOrdersConfigV5;
+            export const ClearConfig = _v6.ClearConfigV2;
+            export const Quote = _v6.QuoteV2;
+        }
+
+        /** Signature ABI for Orderbook v4 and Arb contracts */
+        export namespace Signatures {
+            /** Signature ABI for Orderbook contract only including vaultBalance() function */
+            export const Orderbook = _v6.Orderbook;
+
+            /** Signature ABI for Arb contract */
+            export const Arb = _v6.Arb;
         }
 
         // an empty evaluable mainly used as default evaluable for arb contracts

@@ -61,6 +61,17 @@ contracts:
     stabullArbAddress: "0x1234...5678"
     # Dispair v5 contract address
     dispair: "0x1234...5678"
+  v6:
+    # Sushi RP arb v6 contract address
+    sushiArbAddress: "0x1234...5678"
+    # Generic arb v6 contract address
+    genericArbAddress: "0x1234...5678"
+    # Balancer arb v6 contract address
+    balancerArbAddress: "0x1234...5678"
+    # Stabull arb v6 contract address
+    stabullArbAddress: "0x1234...5678"
+    # Dispair v6 contract address
+    dispair: "0x1234...5678"
 
 # list of liquidity providers
 # if provided through an env var, they should be separated by a comma
