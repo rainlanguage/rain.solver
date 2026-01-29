@@ -32,9 +32,12 @@ writeRpc:
 
 # List of subgraph urls, required
 # for specifying more than 1 subgraph URL in the env, separate them by a comma
+# NOTE: for v6 orderbook subgraph, prepend the URL with a "v6=" thats because there is
+# no distinction between v5 and v6 subgraphs
 subgraph:
   - https://subgraph-url1.com
   - https://subgraph-url2.com
+  - v6=https://v6-subgraph.com
 
 # Contract addresses for different versions requireed for operating and solving trades
 # at least one version should be partially or fully specified
