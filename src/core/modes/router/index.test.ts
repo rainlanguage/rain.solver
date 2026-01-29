@@ -201,6 +201,61 @@ describe("Test findBestRouterTrade", () => {
         });
     });
 
+    it("should try partial trade if full trade fails with NoRoute reason", async () => {
+        const mockFullTradeError = Result.err({
+            reason: SimulationHaltReason.NoRoute,
+            spanAttributes: { error: "no route" },
+            noneNodeError: "no route for pair trade size",
+        });
+        const mockPartialTradeSuccess = Result.ok({
+            type: "routeProcessor",
+            spanAttributes: { foundOpp: true },
+            estimatedProfit: 50n,
+            oppBlockNumber: 123,
+        });
+
+        (trySimulateTradeSpy as Mock)
+            .mockResolvedValueOnce(mockFullTradeError)
+            .mockResolvedValueOnce(mockPartialTradeSuccess);
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue(500n);
+
+        const result: SimulationResult = await findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+        );
+
+        assert(result.isOk());
+        expect(result.value.spanAttributes.foundOpp).toBe(true);
+        expect(result.value.estimatedProfit).toBe(50n);
+        expect(result.value.type).toBe("routeProcessor");
+        expect(mockRainSolver.state.router.findLargestTradeSize).toHaveBeenCalledWith(
+            orderDetails,
+            toToken,
+            fromToken,
+            1000n,
+            100n,
+            undefined,
+        );
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
+        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith({
+            type: TradeType.Router,
+            solver: mockRainSolver,
+            orderDetails,
+            fromToken,
+            toToken,
+            signer,
+            maximumInputFixed: 500n,
+            ethPrice,
+            isPartial: true,
+            blockNumber: 123n,
+        });
+    });
+
     it("should return error if partial trade size cannot be found", async () => {
         const mockFullTradeError = Result.err({
             type: TradeType.Router,
