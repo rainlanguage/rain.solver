@@ -116,7 +116,7 @@ export namespace _v6 {
     export const QuoteV2 =
         `(${OrderV4} order, uint256 inputIOIndex, uint256 outputIOIndex, ${SignedContextV1}[] signedContext)` as const;
     export const TakeOrdersConfigV5 =
-        `(${Float} minimumInput, ${Float} maximumInput, ${Float} maximumIORatio, ${TakeOrderConfigV4}[] orders, bytes data)` as const;
+        `(${Float} minimumIO, ${Float} maximumIO, ${Float} maximumIORatio, bool IOIsInput, ${TakeOrderConfigV4}[] orders, bytes data)` as const;
     export const OrderConfigV4 =
         `(${EvaluableV4} evaluable, ${IOV2}[] validInputs, ${IOV2}[] validOutputs, bytes32 nonce, bytes32 secret, bytes meta)` as const;
     export const ClearConfigV2 =
@@ -137,8 +137,8 @@ export namespace _v6 {
         `function entask2(${TaskV2}[] calldata tasks) external` as const,
         `function orderExists(bytes32 orderHash) external view returns (bool exists)` as const,
         `function vaultBalance2(address owner, address token, bytes32 vaultId) external view returns (${Float} balance)` as const,
-        `function deposit3(address token, bytes32 vaultId, ${Float} depositAmount, ${TaskV2}[] calldata tasks) external` as const,
-        `function withdraw3(address token, bytes32 vaultId, ${Float} targetAmount, ${TaskV2}[] calldata tasks) external` as const,
+        `function deposit4(address token, bytes32 vaultId, ${Float} depositAmount, ${TaskV2}[] calldata tasks) external` as const,
+        `function withdraw4(address token, bytes32 vaultId, ${Float} targetAmount, ${TaskV2}[] calldata tasks) external` as const,
         `function removeOrder3(${OrderV4} calldata order, ${TaskV2}[] calldata tasks) external returns (bool stateChanged)` as const,
         `function addOrder4(${OrderConfigV4} calldata config, ${TaskV2}[] calldata tasks) external returns (bool stateChanged)` as const,
         `function quote2(${QuoteV2} calldata quoteConfig) external view returns (bool exists, ${Float} outputMax, ${Float} ioRatio)` as const,

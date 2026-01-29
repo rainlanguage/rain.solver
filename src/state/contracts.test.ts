@@ -118,13 +118,13 @@ describe("SolverContracts.fromAppOptions", () => {
         });
         expect(mockClient.readContract).toHaveBeenNthCalledWith(5, {
             address: "0xv6dispair",
-            abi: ABI.Deployer.Primary.Deployer,
-            functionName: "iInterpreter",
+            abi: ABI.Deployer.Primary.DeployerV6,
+            functionName: "I_INTERPRETER",
         });
         expect(mockClient.readContract).toHaveBeenNthCalledWith(6, {
             address: "0xv6dispair",
-            abi: ABI.Deployer.Primary.Deployer,
-            functionName: "iStore",
+            abi: ABI.Deployer.Primary.DeployerV6,
+            functionName: "I_STORE",
         });
     });
 

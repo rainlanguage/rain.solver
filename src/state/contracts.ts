@@ -50,7 +50,7 @@ export namespace SolverContracts {
         const contracts: SolverContracts = {
             v4: await resolveVersionContracts(client, options.contracts.v4),
             v5: await resolveVersionContracts(client, options.contracts.v5),
-            v6: await resolveVersionContracts(client, options.contracts.v6),
+            v6: await resolveVersionContracts(client, options.contracts.v6, "v6"),
 
             getAddressesForTrade(order: Pair, tradeType?: TradeType): TradeAddresses | undefined {
                 if (Pair.isV3(order) && this.v4) {
@@ -72,15 +72,17 @@ export namespace SolverContracts {
 export async function resolveVersionContracts(
     client: PublicClient,
     addresses: AppOptionsContracts["v4" | "v5" | "v6"] | undefined,
+    version?: keyof Omit<SolverContracts, "getAddressesForTrade">,
 ): Promise<SolverContracts["v4" | "v5" | "v6"] | undefined> {
     if (!addresses || !addresses.dispair) {
         return undefined;
     }
+
     const interpreter = await client
         .readContract({
             address: addresses.dispair,
-            functionName: "iInterpreter",
-            abi: ABI.Deployer.Primary.Deployer,
+            functionName: version === "v6" ? "I_INTERPRETER" : "iInterpreter",
+            abi: version === "v6" ? ABI.Deployer.Primary.DeployerV6 : ABI.Deployer.Primary.Deployer,
         })
         .catch(() => undefined);
     if (!interpreter) {
@@ -90,8 +92,8 @@ export async function resolveVersionContracts(
     const store = await client
         .readContract({
             address: addresses.dispair,
-            functionName: "iStore",
-            abi: ABI.Deployer.Primary.Deployer,
+            functionName: version === "v6" ? "I_STORE" : "iStore",
+            abi: version === "v6" ? ABI.Deployer.Primary.DeployerV6 : ABI.Deployer.Primary.Deployer,
         })
         .catch(() => undefined);
     if (!store) {
