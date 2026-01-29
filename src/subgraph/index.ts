@@ -161,7 +161,7 @@ export class SubgraphManager {
                 if (version === SubgraphVersions.V6) {
                     orders.forEach((v) => (v.__version = SubgraphVersions.V6));
                 } else {
-                    orders.forEach((v) => (v.__version = SubgraphVersions.OLD_V));
+                    orders.forEach((v) => (v.__version = SubgraphVersions.LEGACY));
                 }
                 result.push(...orders);
                 if (orders.length < DEFAULT_PAGE_SIZE) {
@@ -244,7 +244,7 @@ export class SubgraphManager {
                         if (this.getSubgraphVersion(url) === SubgraphVersions.V6) {
                             txs.forEach((v) => (v.__version = SubgraphVersions.V6));
                         } else {
-                            txs.forEach((v) => (v.__version = SubgraphVersions.OLD_V));
+                            txs.forEach((v) => (v.__version = SubgraphVersions.LEGACY));
                         }
                         allResults.push(...txs);
                         if (txs.length < DEFAULT_PAGE_SIZE) {
@@ -278,7 +278,7 @@ export class SubgraphManager {
         if (this.versions.v6.has(url)) {
             return SubgraphVersions.V6;
         } else {
-            return SubgraphVersions.OLD_V;
+            return SubgraphVersions.LEGACY;
         }
     }
 }

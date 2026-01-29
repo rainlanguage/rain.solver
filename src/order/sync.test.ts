@@ -294,7 +294,7 @@ describe("Test syncOrders", () => {
         const mockResult = {
             "https://subgraph1.com": [
                 {
-                    __version: SubgraphVersions.OLD_V,
+                    __version: SubgraphVersions.LEGACY,
                     timestamp: "1640995200",
                     events: [
                         {
@@ -316,7 +316,7 @@ describe("Test syncOrders", () => {
         mockAddOrder.mockResolvedValue(Result.ok(undefined));
 
         await syncOrders.call(mockOrderManager);
-        expect((mockOrder as any).__version).toBe(SubgraphVersions.OLD_V);
+        expect((mockOrder as any).__version).toBe(SubgraphVersions.LEGACY);
         expect(applyFilters).toHaveBeenCalledWith(mockOrder, mockSubgraphManager.filters);
         expect(mockAddOrder).toHaveBeenCalledWith(mockOrder);
         expect(mockSyncStatus["https://subgraph1.com"]["0xorderbook1"]).toEqual({

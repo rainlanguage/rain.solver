@@ -252,10 +252,10 @@ export namespace OrderbookAbi {
             /** Arb contract ABI */
             export const Arb = parseAbi(_v6.Arb);
 
-            /** Orderbook v4 contract ABI */
+            /** Orderbook v6 contract ABI */
             export const Orderbook = parseAbi(_v6.Orderbook);
 
-            /** Order v4 struct ABI */
+            /** Order v4 (for orderbook v6) struct ABI */
             export const OrderStructAbi = parseAbiParameters(_v6.OrderV4);
         }
 

@@ -233,7 +233,7 @@ export abstract class RainSolverRouterBase {
     }
 
     /**
-     * Creates a new TakeOrdersConfigTypeV4 based on the given v4 order and other parameters
+     * Creates a new TakeOrdersConfigTypeV5 based on the given v4 order and other parameters
      * This is the default implementation, but child classes can override it if needed.
      * @param order The order pair v4 to create the config for
      * @param maximumInput The maximum input amount

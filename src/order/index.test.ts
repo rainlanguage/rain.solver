@@ -131,7 +131,7 @@ describe("Test OrderManager", () => {
     it("should correctly add v3 orders", async () => {
         const orders = [
             {
-                __version: SubgraphVersions.OLD_V,
+                __version: SubgraphVersions.LEGACY,
                 orderHash: "0xhash1",
                 orderbook: { id: "0xorderbook1" },
                 orderBytes: "0xbytes",
@@ -139,7 +139,7 @@ describe("Test OrderManager", () => {
                 inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 2n }],
             },
             {
-                __version: SubgraphVersions.OLD_V,
+                __version: SubgraphVersions.LEGACY,
                 orderHash: "0xhash2",
                 orderbook: { id: "0xorderbook2" },
                 orderBytes: "0xbytes",
@@ -479,7 +479,7 @@ describe("Test OrderManager", () => {
 
     it("should remove v3 orders", async () => {
         const mockOrder = {
-            __version: SubgraphVersions.OLD_V,
+            __version: SubgraphVersions.LEGACY,
             orderHash: "0xhash",
             orderbook: { id: "0xorderbook" },
             orderBytes: "0xbytes",
@@ -526,7 +526,7 @@ describe("Test OrderManager", () => {
         });
         (Order.tryFromBytes as Mock).mockReturnValueOnce(res);
         const mockOrder = {
-            __version: SubgraphVersions.OLD_V,
+            __version: SubgraphVersions.LEGACY,
             orderHash: "0xhash",
             orderbook: { id: "0xorderbook" },
             orderBytes: "0xbytes",
@@ -716,7 +716,7 @@ describe("Test OrderManager", () => {
             validOutputs: [{ token: "0xoutput1" }, { token: "0xoutput2" }],
         };
         const orderDetails = {
-            __version: SubgraphVersions.OLD_V,
+            __version: SubgraphVersions.LEGACY,
             orderbook: { id: "0xorderbook" },
             outputs: [
                 {
@@ -876,7 +876,7 @@ describe("Test OrderManager", () => {
         // add four orders for the same owner/orderbook with different hashes
         const orders = [
             {
-                __version: SubgraphVersions.OLD_V,
+                __version: SubgraphVersions.LEGACY,
                 orderHash: "0xhash1",
                 orderbook: { id: "0xorderbook" },
                 orderBytes: "0xbytes1",
@@ -896,7 +896,7 @@ describe("Test OrderManager", () => {
                 ],
             },
             {
-                __version: SubgraphVersions.OLD_V,
+                __version: SubgraphVersions.LEGACY,
                 orderHash: "0xhash2",
                 orderbook: { id: "0xorderbook" },
                 orderBytes: "0xbytes2",
@@ -916,7 +916,7 @@ describe("Test OrderManager", () => {
                 ],
             },
             {
-                __version: SubgraphVersions.OLD_V,
+                __version: SubgraphVersions.LEGACY,
                 orderHash: "0xhash3",
                 orderbook: { id: "0xorderbook" },
                 orderBytes: "0xbytes3",
@@ -924,7 +924,7 @@ describe("Test OrderManager", () => {
                 inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 1n }],
             },
             {
-                __version: SubgraphVersions.OLD_V,
+                __version: SubgraphVersions.LEGACY,
                 orderHash: "0xhash4",
                 orderbook: { id: "0xorderbook" },
                 orderBytes: "0xbytes4",
@@ -1051,7 +1051,7 @@ describe("Test OrderManager", () => {
     it("should get opposing orders across different orderbooks", async () => {
         // add two orders in different orderbooks with opposing buy/sell tokens
         const orderA = {
-            __version: SubgraphVersions.OLD_V,
+            __version: SubgraphVersions.LEGACY,
             orderHash: "0xhashA",
             orderbook: { id: "0xorderbookA" },
             orderBytes: "0xbytesA",
@@ -1069,7 +1069,7 @@ describe("Test OrderManager", () => {
             ],
         };
         const orderB = {
-            __version: SubgraphVersions.OLD_V,
+            __version: SubgraphVersions.LEGACY,
             orderHash: "0xhashB",
             orderbook: { id: "0xorderbookB" },
             orderBytes: "0xbytesB",
@@ -1499,7 +1499,7 @@ describe("Test OrderManager", () => {
     it("test getCurrentMetadata method", async () => {
         const orders = [
             {
-                __version: SubgraphVersions.OLD_V,
+                __version: SubgraphVersions.LEGACY,
                 orderHash: "0xhash1",
                 orderbook: { id: "0xorderbook1" },
                 orderBytes: "0xbytes",
@@ -1507,7 +1507,7 @@ describe("Test OrderManager", () => {
                 inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 2n }],
             },
             {
-                __version: SubgraphVersions.OLD_V,
+                __version: SubgraphVersions.LEGACY,
                 orderHash: "0xhash2",
                 orderbook: { id: "0xorderbook2" },
                 orderBytes: "0xbytes",

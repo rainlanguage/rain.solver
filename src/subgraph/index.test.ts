@@ -65,9 +65,9 @@ describe("Test SubgraphManager", () => {
                 data: { data: { orders: [] } },
             });
 
-        const orders = await manager.fetchSubgraphOrders(subgraphUrl, SubgraphVersions.OLD_V);
+        const orders = await manager.fetchSubgraphOrders(subgraphUrl, SubgraphVersions.LEGACY);
         expect(orders).toEqual([mockOrder]);
-        expect(orders[0].__version).toBe(SubgraphVersions.OLD_V);
+        expect(orders[0].__version).toBe(SubgraphVersions.LEGACY);
         expect(manager.syncState[subgraphUrl].lastFetchTimestamp).toBeGreaterThan(0);
     });
 
@@ -194,7 +194,7 @@ describe("Test SubgraphManager", () => {
         expect(status[subgraphUrl].status).toMatch("Fully fetched");
         expect(result[subgraphUrl].length).toBe(3);
         result[subgraphUrl].forEach((v) => {
-            expect(v.__version).toBe(SubgraphVersions.OLD_V);
+            expect(v.__version).toBe(SubgraphVersions.LEGACY);
         });
     });
 

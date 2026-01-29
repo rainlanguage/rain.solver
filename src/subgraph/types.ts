@@ -101,6 +101,6 @@ export type SubgraphSyncState = {
 };
 
 export enum SubgraphVersions {
-    OLD_V = "old",
+    LEGACY = "legacy", // for v4 and v5 orderbooks
     V6 = "v6",
 }

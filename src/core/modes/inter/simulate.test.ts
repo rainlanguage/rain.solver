@@ -651,7 +651,7 @@ describe("Test InterOrderbookTradeSimulator", () => {
             toFloatSpy = vi.spyOn(common, "toFloat");
         });
 
-        it("should return v4 config", () => {
+        it("should return v5 config", () => {
             (encodeAbiParameters as Mock).mockReturnValue("0xdata");
             (minFloatSpy as Mock).mockReturnValueOnce("0xmin");
             (maxFloatSpy as Mock).mockReturnValueOnce("0xmax1").mockReturnValueOnce("0xmax2");

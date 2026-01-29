@@ -82,7 +82,7 @@ export type TakeOrdersConfigTypeV4 = {
     data: `0x${string}`;
 };
 
-/** Represents the take orders configuration structure for version 6 orderbook */
+/** Represents the take orders configuration structure (V5 format) for version 6 orderbook */
 export type TakeOrdersConfigTypeV5 = {
     minimumIO: `0x${string}`;
     maximumIO: `0x${string}`;
