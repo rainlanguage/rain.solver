@@ -257,15 +257,28 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
                 ],
             });
         } else {
-            return encodeFunctionData({
-                abi: ABI.Orderbook.V5.Primary.Arb,
-                functionName: "arb4",
-                args: [
-                    this.tradeArgs.orderDetails.orderbook as `0x${string}`,
-                    takeOrdersConfigStruct,
-                    task,
-                ],
-            });
+            const isV6 = Pair.isV4OrderbookV6(this.tradeArgs.orderDetails);
+            if (isV6) {
+                return encodeFunctionData({
+                    abi: ABI.Orderbook.V6.Primary.Arb,
+                    functionName: "arb5",
+                    args: [
+                        this.tradeArgs.orderDetails.orderbook as `0x${string}`,
+                        takeOrdersConfigStruct,
+                        task,
+                    ],
+                });
+            } else {
+                return encodeFunctionData({
+                    abi: ABI.Orderbook.V5.Primary.Arb,
+                    functionName: "arb4",
+                    args: [
+                        this.tradeArgs.orderDetails.orderbook as `0x${string}`,
+                        takeOrdersConfigStruct,
+                        task,
+                    ],
+                });
+            }
         }
     }
 }

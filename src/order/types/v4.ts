@@ -1,5 +1,5 @@
-import { Evaluable } from "../types";
-import { SgOrder } from "../../subgraph";
+import { Evaluable, OrderbookVersions } from "../types";
+import { SgOrder, SubgraphVersions } from "../../subgraph";
 import { WasmEncodedError } from "@rainlanguage/float";
 import { Order, PairBase, TakeOrderDetailsBase } from ".";
 import { ABI, normalizeFloat, Result } from "../../common";
@@ -82,6 +82,16 @@ export type TakeOrdersConfigTypeV4 = {
     data: `0x${string}`;
 };
 
+/** Represents the take orders configuration structure (V5 format) for version 6 orderbook */
+export type TakeOrdersConfigTypeV5 = {
+    minimumIO: `0x${string}`;
+    maximumIO: `0x${string}`;
+    maximumIORatio: `0x${string}`;
+    IOIsInput: boolean;
+    orders: TakeOrderV4[];
+    data: `0x${string}`;
+};
+
 export type PairV4 = PairBase & {
     takeOrder: TakeOrderDetailsV4;
 };
@@ -117,6 +127,10 @@ export namespace PairV4 {
             return Result.err(outputBalanceRes.error);
         }
         return Result.ok({
+            orderbookVersion:
+                orderDetails.__version === SubgraphVersions.V6
+                    ? OrderbookVersions.V6
+                    : OrderbookVersions.V5,
             orderbook: orderDetails.orderbook.id.toLowerCase(),
             buyToken: inputToken.toLowerCase(),
             buyTokenSymbol: inputSymbol,

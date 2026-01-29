@@ -1,7 +1,7 @@
 import { RainSolver } from "../..";
 import { TradeType } from "../../types";
 import * as common from "../../../common";
-import { Order, Pair } from "../../../order";
+import { Order, OrderbookVersions, Pair } from "../../../order";
 import { ONE18, scaleFrom18 } from "../../../math";
 import { RainSolverSigner } from "../../../signer";
 import { SimulationHaltReason } from "../simulator";
@@ -521,8 +521,9 @@ describe("Test InterOrderbookTradeSimulator", () => {
             });
         });
 
-        it("should return for pair v4", () => {
+        it("should return for pair v4 ob5", () => {
             (encodeFunctionData as Mock).mockReturnValueOnce("0xcalldata");
+            simulator.tradeArgs.orderDetails.orderbookVersion = OrderbookVersions.V5;
             simulator.tradeArgs.orderDetails.takeOrder.struct.order.type = Order.Type.V4;
             const takeOrderConfig = { key: "value" } as any;
             const task = { task: "task-value" } as any;
@@ -532,6 +533,22 @@ describe("Test InterOrderbookTradeSimulator", () => {
             expect(encodeFunctionData).toHaveBeenCalledWith({
                 abi: ABI.Orderbook.V5.Primary.Arb,
                 functionName: "arb4",
+                args: [simulator.tradeArgs.orderDetails.orderbook, takeOrderConfig, task],
+            });
+        });
+
+        it("should return for pair v4 ob6", () => {
+            (encodeFunctionData as Mock).mockReturnValueOnce("0xcalldata");
+            simulator.tradeArgs.orderDetails.orderbookVersion = OrderbookVersions.V6;
+            simulator.tradeArgs.orderDetails.takeOrder.struct.order.type = Order.Type.V4;
+            const takeOrderConfig = { key: "value" } as any;
+            const task = { task: "task-value" } as any;
+            const result = simulator.getCalldata(takeOrderConfig, task);
+            expect(result).toBe("0xcalldata");
+            expect(encodeFunctionData).toHaveBeenCalledTimes(1);
+            expect(encodeFunctionData).toHaveBeenCalledWith({
+                abi: ABI.Orderbook.V6.Primary.Arb,
+                functionName: "arb5",
                 args: [simulator.tradeArgs.orderDetails.orderbook, takeOrderConfig, task],
             });
         });
@@ -618,9 +635,65 @@ describe("Test InterOrderbookTradeSimulator", () => {
         });
     });
 
+    describe("Test getTakeOrdersConfigV5 method", () => {
+        let minFloatSpy: any;
+        let maxFloatSpy: any;
+        let toFloatSpy: any;
+
+        beforeEach(() => {
+            if (minFloatSpy) {
+                minFloatSpy.mockRestore();
+                maxFloatSpy.mockRestore();
+                toFloatSpy.mockRestore();
+            }
+            minFloatSpy = vi.spyOn(common, "minFloat");
+            maxFloatSpy = vi.spyOn(common, "maxFloat");
+            toFloatSpy = vi.spyOn(common, "toFloat");
+        });
+
+        it("should return v5 config", () => {
+            (encodeAbiParameters as Mock).mockReturnValue("0xdata");
+            (minFloatSpy as Mock).mockReturnValueOnce("0xmin");
+            (maxFloatSpy as Mock).mockReturnValueOnce("0xmax1").mockReturnValueOnce("0xmax2");
+            const result = simulator.getTakeOrdersConfigV5(
+                simulator.tradeArgs.orderDetails as any,
+                simulator.tradeArgs.counterpartyOrderDetails,
+                "0x1234",
+            );
+            expect(result).toEqual({
+                minimumIO: "0xmin",
+                maximumIO: "0xmax1",
+                maximumIORatio: "0xmax2",
+                IOIsInput: true,
+                orders: [simulator.tradeArgs.orderDetails.takeOrder.struct],
+                data: "0xdata",
+            });
+            expect(minFloatSpy).toHaveBeenCalledTimes(1);
+            expect(minFloatSpy).toHaveBeenCalledWith(
+                simulator.tradeArgs.orderDetails.sellTokenDecimals,
+            );
+            expect(maxFloatSpy).toHaveBeenCalledTimes(2);
+            expect(maxFloatSpy).toHaveBeenNthCalledWith(
+                1,
+                simulator.tradeArgs.orderDetails.sellTokenDecimals,
+            );
+            expect(maxFloatSpy).toHaveBeenNthCalledWith(2, 18);
+            expect(encodeAbiParameters).toHaveBeenCalledTimes(1);
+            expect(encodeAbiParameters).toHaveBeenCalledWith(
+                [{ type: "address" }, { type: "address" }, { type: "bytes" }],
+                [
+                    simulator.tradeArgs.counterpartyOrderDetails.orderbook as `0x${string}`,
+                    simulator.tradeArgs.counterpartyOrderDetails.orderbook as `0x${string}`,
+                    "0x1234",
+                ],
+            );
+        });
+    });
+
     describe("Test getTakeOrdersConfig method", () => {
         it("should return v3 config", () => {
             const spy = vi.spyOn(simulator, "getTakeOrdersConfigV3");
+            simulator.tradeArgs.orderDetails.orderbookVersion = OrderbookVersions.V4;
             simulator.tradeArgs.orderDetails.takeOrder.struct.order.type = Order.Type.V3;
             simulator.getTakeOrdersConfig(
                 simulator.tradeArgs.orderDetails,
@@ -638,6 +711,25 @@ describe("Test InterOrderbookTradeSimulator", () => {
 
         it("should return v4 config", () => {
             const spy = vi.spyOn(simulator, "getTakeOrdersConfigV4");
+            simulator.tradeArgs.orderDetails.orderbookVersion = OrderbookVersions.V5;
+            simulator.tradeArgs.orderDetails.takeOrder.struct.order.type = Order.Type.V4;
+            simulator.getTakeOrdersConfig(
+                simulator.tradeArgs.orderDetails,
+                simulator.tradeArgs.counterpartyOrderDetails,
+                "0x1234",
+            );
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(spy).toHaveBeenCalledWith(
+                simulator.tradeArgs.orderDetails,
+                simulator.tradeArgs.counterpartyOrderDetails,
+                "0x1234",
+            );
+            spy.mockRestore();
+        });
+
+        it("should return v5 config", () => {
+            const spy = vi.spyOn(simulator, "getTakeOrdersConfigV5");
+            simulator.tradeArgs.orderDetails.orderbookVersion = OrderbookVersions.V6;
             simulator.tradeArgs.orderDetails.takeOrder.struct.order.type = Order.Type.V4;
             simulator.getTakeOrdersConfig(
                 simulator.tradeArgs.orderDetails,
@@ -801,6 +893,129 @@ describe("Test InterOrderbookTradeSimulator", () => {
         });
     });
 
+    describe("Test getEncodedCounterpartyTakeOrdersConfigV5 method", () => {
+        let minFloatSpy: any;
+        let maxFloatSpy: any;
+        let toFloatSpy: any;
+
+        beforeEach(() => {
+            if (minFloatSpy) {
+                minFloatSpy.mockRestore();
+                maxFloatSpy.mockRestore();
+                toFloatSpy.mockRestore();
+            }
+            minFloatSpy = vi.spyOn(common, "minFloat");
+            maxFloatSpy = vi.spyOn(common, "maxFloat");
+            toFloatSpy = vi.spyOn(common, "toFloat");
+        });
+
+        it("should return v5 config", () => {
+            (encodeFunctionData as Mock).mockReturnValue("0xdata");
+            (toFloatSpy as Mock)
+                .mockReturnValueOnce(Result.ok("0xfloat1"))
+                .mockReturnValueOnce(Result.ok("0xfloat2"));
+            (minFloatSpy as Mock).mockReturnValueOnce("0xmin");
+            (maxFloatSpy as Mock).mockReturnValueOnce("0xmax1").mockReturnValueOnce("0xmax2");
+            const result = simulator.getEncodedCounterpartyTakeOrdersConfigV5(
+                simulator.tradeArgs.orderDetails as any,
+                simulator.tradeArgs.counterpartyOrderDetails as any,
+                1234n,
+            );
+            assert(result.isOk());
+            expect(result.value).toEqual("0xdata");
+            expect(maxFloatSpy).toHaveBeenCalledTimes(2);
+            expect(maxFloatSpy).toHaveBeenNthCalledWith(
+                1,
+                simulator.tradeArgs.orderDetails.buyTokenDecimals,
+            );
+            expect(maxFloatSpy).toHaveBeenNthCalledWith(2, 18);
+            expect(toFloatSpy).toHaveBeenCalledTimes(2);
+            expect(minFloatSpy).toHaveBeenCalledTimes(1);
+            expect(minFloatSpy).toHaveBeenCalledWith(
+                simulator.tradeArgs.orderDetails.sellTokenDecimals,
+            );
+            expect(encodeFunctionData).toHaveBeenCalledTimes(1);
+            expect(encodeFunctionData).toHaveBeenCalledWith({
+                abi: ABI.Orderbook.V6.Primary.Orderbook,
+                functionName: "takeOrders4",
+                args: [
+                    {
+                        minimumIO: "0xmin",
+                        maximumIO: "0xfloat1",
+                        maximumIORatio: "0xfloat2",
+                        IOIsInput: true,
+                        orders: [simulator.tradeArgs.counterpartyOrderDetails.takeOrder.struct], // opposing orders
+                        data: "0x",
+                    },
+                ],
+            });
+        });
+
+        it("should return v5 config with ratio 0", () => {
+            (encodeFunctionData as Mock).mockReturnValue("0xdata");
+            (minFloatSpy as Mock).mockReturnValueOnce("0xmin");
+            (maxFloatSpy as Mock).mockReturnValueOnce("0xmax1").mockReturnValueOnce("0xmax2");
+            simulator.tradeArgs.orderDetails.takeOrder.quote!.ratio = 0n;
+            const result = simulator.getEncodedCounterpartyTakeOrdersConfigV5(
+                simulator.tradeArgs.orderDetails as any,
+                simulator.tradeArgs.counterpartyOrderDetails as any,
+                1234n,
+            );
+            assert(result.isOk());
+            expect(result.value).toEqual("0xdata");
+            expect(maxFloatSpy).toHaveBeenCalledTimes(2);
+            expect(maxFloatSpy).toHaveBeenNthCalledWith(
+                1,
+                simulator.tradeArgs.orderDetails.buyTokenDecimals,
+            );
+            expect(maxFloatSpy).toHaveBeenNthCalledWith(2, 18);
+            expect(toFloatSpy).not.toHaveBeenCalled();
+            expect(minFloatSpy).toHaveBeenCalledTimes(1);
+            expect(minFloatSpy).toHaveBeenCalledWith(
+                simulator.tradeArgs.orderDetails.sellTokenDecimals,
+            );
+            expect(encodeFunctionData).toHaveBeenCalledTimes(1);
+            expect(encodeFunctionData).toHaveBeenCalledWith({
+                abi: ABI.Orderbook.V6.Primary.Orderbook,
+                functionName: "takeOrders4",
+                args: [
+                    {
+                        minimumIO: "0xmin",
+                        maximumIO: "0xmax1",
+                        IOIsInput: true,
+                        maximumIORatio: "0xmax2",
+                        orders: [simulator.tradeArgs.counterpartyOrderDetails.takeOrder.struct], // opposing orders
+                        data: "0x",
+                    },
+                ],
+            });
+        });
+
+        it("should return error when toFloat fails", () => {
+            (encodeFunctionData as Mock).mockReturnValue("0xdata");
+            (toFloatSpy as Mock).mockReturnValueOnce(
+                Result.err({ msg: "err", readableMsg: "some msg" }),
+            );
+            (maxFloatSpy as Mock).mockReturnValueOnce("0xmax1").mockReturnValueOnce("0xmax2");
+            const result = simulator.getEncodedCounterpartyTakeOrdersConfigV5(
+                simulator.tradeArgs.orderDetails as any,
+                simulator.tradeArgs.counterpartyOrderDetails as any,
+                1234n,
+            );
+            assert(result.isErr());
+            expect(result.error).toEqual({ msg: "err", readableMsg: "some msg" });
+            expect(maxFloatSpy).toHaveBeenCalledTimes(2);
+            expect(maxFloatSpy).toHaveBeenNthCalledWith(
+                1,
+                simulator.tradeArgs.orderDetails.buyTokenDecimals,
+            );
+            expect(maxFloatSpy).toHaveBeenNthCalledWith(2, 18);
+            expect(toFloatSpy).toHaveBeenCalledTimes(1);
+            expect(minFloatSpy).not.toHaveBeenCalled();
+            expect(encodeFunctionData).not.toHaveBeenCalled();
+        });
+    });
+
     describe("Test getCounterpartyTakeOrdersConfig method", () => {
         it("should return v3 config", () => {
             const spy = vi.spyOn(simulator, "getEncodedCounterpartyTakeOrdersConfigV3");
@@ -825,6 +1040,27 @@ describe("Test InterOrderbookTradeSimulator", () => {
             const spy = vi.spyOn(simulator, "getEncodedCounterpartyTakeOrdersConfigV4");
             simulator.tradeArgs.counterpartyOrderDetails.takeOrder.struct.order.type =
                 Order.Type.V4;
+            simulator.tradeArgs.counterpartyOrderDetails.orderbookVersion = OrderbookVersions.V5;
+            const result = simulator.getCounterpartyTakeOrdersConfig(
+                simulator.tradeArgs.orderDetails,
+                simulator.tradeArgs.counterpartyOrderDetails,
+                123n,
+            );
+            assert(result.isOk());
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(spy).toHaveBeenCalledWith(
+                simulator.tradeArgs.orderDetails,
+                simulator.tradeArgs.counterpartyOrderDetails,
+                123n,
+            );
+            spy.mockRestore();
+        });
+
+        it("should return v5 config", () => {
+            const spy = vi.spyOn(simulator, "getEncodedCounterpartyTakeOrdersConfigV5");
+            simulator.tradeArgs.counterpartyOrderDetails.takeOrder.struct.order.type =
+                Order.Type.V4;
+            simulator.tradeArgs.counterpartyOrderDetails.orderbookVersion = OrderbookVersions.V6;
             const result = simulator.getCounterpartyTakeOrdersConfig(
                 simulator.tradeArgs.orderDetails,
                 simulator.tradeArgs.counterpartyOrderDetails,

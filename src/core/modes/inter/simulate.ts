@@ -19,6 +19,7 @@ import {
     TakeOrdersConfigType,
     TakeOrdersConfigTypeV3,
     TakeOrdersConfigTypeV4,
+    TakeOrdersConfigTypeV5,
 } from "../../../order";
 
 /** Arguments for simulating inter-orderbook trade */
@@ -256,8 +257,10 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
     ): TakeOrdersConfigType {
         if (Pair.isV3(orderDetails)) {
             return this.getTakeOrdersConfigV3(orderDetails, counterpartyOrderDetails, encodedFN);
-        } else {
+        } else if (Pair.isV4OrderbookV5(orderDetails)) {
             return this.getTakeOrdersConfigV4(orderDetails, counterpartyOrderDetails, encodedFN);
+        } else {
+            return this.getTakeOrdersConfigV5(orderDetails, counterpartyOrderDetails, encodedFN);
         }
     }
 
@@ -318,6 +321,35 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
     }
 
     /**
+     * Creates a new TakeOrdersConfigTypeV4 based on the v4 order and counterparty order
+     * @param orderDetails - The order pair v4 to create the config for
+     * @param counterpartyOrderDetails - Counterparty order
+     * @param maximumInputFixed - The trade maximum input
+     */
+    getTakeOrdersConfigV5(
+        orderDetails: PairV4,
+        counterpartyOrderDetails: Pair,
+        encodedFN: `0x${string}`,
+    ): TakeOrdersConfigTypeV5 {
+        const takeOrdersConfigStruct: TakeOrdersConfigTypeV5 = {
+            minimumIO: minFloat(orderDetails.sellTokenDecimals),
+            maximumIO: maxFloat(orderDetails.sellTokenDecimals),
+            maximumIORatio: maxFloat(18),
+            IOIsInput: true,
+            orders: [orderDetails.takeOrder.struct],
+            data: encodeAbiParameters(
+                [{ type: "address" }, { type: "address" }, { type: "bytes" }],
+                [
+                    counterpartyOrderDetails.orderbook as `0x${string}`,
+                    counterpartyOrderDetails.orderbook as `0x${string}`,
+                    encodedFN,
+                ],
+            ),
+        };
+        return takeOrdersConfigStruct;
+    }
+
+    /**
      * Creates the encoded TakeOrdersConfigType based on the order and counterparty order,
      * this is unified method to handle any order versions combiations
      * @param orderDetails - The order pair to create the config for
@@ -337,8 +369,14 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
                     maximumInputFixed,
                 ),
             );
-        } else {
+        } else if (Pair.isV4OrderbookV5(counterpartyOrderDetails)) {
             return this.getEncodedCounterpartyTakeOrdersConfigV4(
+                orderDetails as PairV4,
+                counterpartyOrderDetails as PairV4,
+                maximumInputFixed,
+            );
+        } else {
+            return this.getEncodedCounterpartyTakeOrdersConfigV5(
                 orderDetails as PairV4,
                 counterpartyOrderDetails as PairV4,
                 maximumInputFixed,
@@ -438,6 +476,57 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
     }
 
     /**
+     * Creates encoded TakeOrdersConfigTypeV5 based on the order and counterparty v4 order
+     * @param orderDetails - The order pair
+     * @param counterpartyOrderDetails - Counterparty v4 order to create config for
+     * @param maximumInputFixed - The trade maximum input
+     */
+    getEncodedCounterpartyTakeOrdersConfigV5(
+        orderDetails: Pair,
+        counterpartyOrderDetails: PairV4,
+        maximumInputFixed: bigint,
+    ): Result<`0x${string}`, WasmEncodedError> {
+        let opposingMaxInput: `0x${string}` = maxFloat(orderDetails.buyTokenDecimals);
+        let opposingMaxIORatio: `0x${string}` = maxFloat(18);
+        if (orderDetails.takeOrder.quote!.ratio !== 0n) {
+            const maxInputResult = toFloat(
+                scaleFrom18(
+                    (maximumInputFixed * orderDetails.takeOrder.quote!.ratio) / ONE18,
+                    orderDetails.buyTokenDecimals,
+                ),
+                orderDetails.buyTokenDecimals,
+            );
+            if (maxInputResult.isErr()) {
+                return Result.err(maxInputResult.error);
+            }
+            opposingMaxInput = maxInputResult.value;
+
+            const maxIoRatioResult = toFloat(ONE18 ** 2n / orderDetails.takeOrder.quote!.ratio, 18);
+            if (maxIoRatioResult.isErr()) {
+                return Result.err(maxIoRatioResult.error);
+            }
+            opposingMaxIORatio = maxIoRatioResult.value;
+        }
+
+        // encode takeOrders3() and build tx fields
+        const encodedFN = encodeFunctionData({
+            abi: ABI.Orderbook.V6.Primary.Orderbook,
+            functionName: "takeOrders4",
+            args: [
+                {
+                    minimumIO: minFloat(orderDetails.sellTokenDecimals),
+                    maximumIO: opposingMaxInput, // main maxout * main ratio
+                    maximumIORatio: opposingMaxIORatio, // inverse of main ratio (1 / ratio)
+                    IOIsInput: true,
+                    orders: [counterpartyOrderDetails.takeOrder.struct], // opposing orders
+                    data: "0x",
+                },
+            ],
+        });
+        return Result.ok(encodedFN);
+    }
+
+    /**
      * Builds the calldata based on the order type
      * @param takeOrdersConfigStruct - The take orders config struct
      * @param task - The ensure bounty task object
@@ -454,15 +543,25 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
                 ],
             });
         } else {
-            return encodeFunctionData({
-                abi: ABI.Orderbook.V5.Primary.Arb,
-                functionName: "arb4",
-                args: [
-                    this.tradeArgs.orderDetails.orderbook as `0x${string}`,
-                    takeOrdersConfigStruct,
-                    task,
-                ],
-            });
+            const args = [
+                this.tradeArgs.orderDetails.orderbook as `0x${string}`,
+                takeOrdersConfigStruct,
+                task,
+            ] as const;
+            const isV6 = Pair.isV4OrderbookV6(this.tradeArgs.orderDetails);
+            if (isV6) {
+                return encodeFunctionData({
+                    abi: ABI.Orderbook.V6.Primary.Arb,
+                    functionName: "arb5",
+                    args,
+                });
+            } else {
+                return encodeFunctionData({
+                    abi: ABI.Orderbook.V5.Primary.Arb,
+                    functionName: "arb4",
+                    args,
+                });
+            }
         }
     }
 }

@@ -15,14 +15,14 @@ export async function syncOrders(this: OrderManager) {
             for (const res of events[url]) {
                 if (!res?.events?.length) continue;
                 for (const event of res.events) {
-                    yield { event, url, timestamp: Number(res.timestamp) };
+                    yield { event, url, timestamp: Number(res.timestamp), version: res.__version };
                 }
             }
         }
     };
 
     // process events one by one using generator
-    for (const { event, url } of iterEvents(result)) {
+    for (const { event, url, version } of iterEvents(result)) {
         if (event.__typename === "Deposit" || event.__typename === "Withdrawal") {
             // handle vault balance changes in deposits and withdrawals
             this.updateVault(
@@ -76,6 +76,7 @@ export async function syncOrders(this: OrderManager) {
                     failedAdds: {},
                 };
             }
+            event.order.__version = version;
             const result = await this.addOrder(event.order);
             if (result.isErr()) {
                 syncStatus[url][event.order.orderbook.id].failedAdds[event.order.orderHash] =

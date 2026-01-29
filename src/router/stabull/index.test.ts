@@ -1,5 +1,5 @@
 import { ONE18 } from "../../math";
-import { Order } from "../../order";
+import { Order, OrderbookVersions, TakeOrdersConfigType } from "../../order";
 import { Token } from "sushi/currency";
 import { StabullConstants } from "./constants";
 import { RouterType, RouteStatus } from "../types";
@@ -298,6 +298,7 @@ describe("test StabullRouter", () => {
 
             // Mock order details
             mockOrderDetails = {
+                orderbookVersion: OrderbookVersions.V4,
                 takeOrder: {
                     struct: {
                         order: { type: Order.Type.V3 },
@@ -368,6 +369,7 @@ describe("test StabullRouter", () => {
             expect(tradeParams.type).toBe(RouterType.Stabull);
             expect(tradeParams.quote).toEqual(mockQuote);
             expect(tradeParams.routeVisual).toEqual([]);
+            assert(TakeOrdersConfigType.isV3(tradeParams.takeOrdersConfigStruct));
             expect(tradeParams.takeOrdersConfigStruct.minimumInput).toBe(1n);
             expect(tradeParams.takeOrdersConfigStruct.maximumInput).toBe(maxUint256);
             expect(tradeParams.takeOrdersConfigStruct.maximumIORatio).toBe(maxUint256);
@@ -410,6 +412,7 @@ describe("test StabullRouter", () => {
             expect(tradeParams.type).toBe(RouterType.Stabull);
             expect(tradeParams.quote).toEqual(mockQuote);
             expect(tradeParams.routeVisual).toEqual([]);
+            assert(TakeOrdersConfigType.isV3(tradeParams.takeOrdersConfigStruct));
             expect(tradeParams.takeOrdersConfigStruct.minimumInput).toBe(1n);
             expect(tradeParams.takeOrdersConfigStruct.maximumInput).toBe(mockSwapAmount);
             expect(tradeParams.takeOrdersConfigStruct.maximumIORatio).toBe(mockQuote.price);

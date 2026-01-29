@@ -14,12 +14,23 @@ const _deployer = [
     `function eval4(${_EvalV4} calldata eval) external view returns (${_StackItem}[] calldata stack, bytes32[] calldata writes)`,
 ] as const;
 
+const _deployerV6 = [
+    "function parse2(bytes memory data) external view returns (bytes memory bytecode)",
+    "function I_STORE() external view returns (address)",
+    "function I_INTERPRETER() external view returns (address)",
+    "function I_PARSER() external view returns (address)",
+    `function eval4(${_EvalV4} calldata eval) external view returns (${_StackItem}[] calldata stack, bytes32[] calldata writes)`,
+] as const;
+
 /** Keeps ExpressionDeployer related ABIs */
 export namespace DeployerAbi {
     /** ExpressionDeployerNPE2 contract primary parsed ABI */
     export namespace Primary {
         /** ExpressionDeployerNPE2 contract primary parsed ABI */
         export const Deployer = parseAbi(_deployer);
+
+        /** ExpressionDeployerNPE2 contract primary parsed ABI */
+        export const DeployerV6 = parseAbi(_deployerV6);
     }
 
     /** Deployer signature ABI */
