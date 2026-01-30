@@ -8,6 +8,7 @@ import { findBestRouterTrade } from "./router";
 import { OrderbookTradeTypes } from "../../config";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
+import { findBestRaindexRouterTrade } from "./raindex";
 import { Result, extendObjectWithHeader } from "../../common";
 import { FindBestTradeResult, SimulationResult } from "../types";
 
@@ -59,6 +60,7 @@ export async function findBestTrade(
         findBestRouterTrade: findBestRouterTradeFn,
         findBestIntraOrderbookTrade: findBestIntraOrderbookTradeFn,
         findBestInterOrderbookTrade: findBestInterOrderbookTradeFn,
+        findBestRaindexRouterTrade: findBestRaindexRouterTradeFn,
     } = getEnabledTradeTypeFunctions(this.appOptions.orderbookTradeTypes, orderDetails.orderbook);
 
     const promises = [
@@ -83,6 +85,15 @@ export async function findBestTrade(
             this,
             orderDetails,
             signer,
+            inputToEthPrice,
+            outputToEthPrice,
+            blockNumber,
+        ),
+        findBestRaindexRouterTradeFn?.call(
+            this,
+            orderDetails,
+            signer,
+            fromToken,
             inputToEthPrice,
             outputToEthPrice,
             blockNumber,
@@ -137,6 +148,7 @@ type TradeTypeFunctions = {
     findBestRouterTrade?: typeof findBestRouterTrade;
     findBestIntraOrderbookTrade?: typeof findBestIntraOrderbookTrade;
     findBestInterOrderbookTrade?: typeof findBestInterOrderbookTrade;
+    findBestRaindexRouterTrade?: typeof findBestRaindexRouterTrade;
 };
 
 /**
@@ -156,6 +168,7 @@ export function getEnabledTradeTypeFunctions(
         findBestRouterTrade: undefined,
         findBestIntraOrderbookTrade: undefined,
         findBestInterOrderbookTrade: undefined,
+        findBestRaindexRouterTrade: undefined,
     };
 
     if (orderbookTradeTypes.router.has(address)) {
@@ -170,11 +183,16 @@ export function getEnabledTradeTypeFunctions(
         result.findBestInterOrderbookTrade = findBestInterOrderbookTrade;
         allEnabled = false;
     }
+    if (orderbookTradeTypes.raindexRouter.has(address)) {
+        result.findBestRaindexRouterTrade = findBestRaindexRouterTrade;
+        allEnabled = false;
+    }
     if (allEnabled) {
         return {
             findBestRouterTrade,
             findBestIntraOrderbookTrade,
             findBestInterOrderbookTrade,
+            findBestRaindexRouterTrade,
         };
     } else {
         return result;

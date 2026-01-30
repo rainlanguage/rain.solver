@@ -73,6 +73,8 @@ orderbookTradeTypes:
     - "0x5555555555555555555555555555555555555555"
     - "0x6666666666666666666666666666666666666666"
     - "0x6666666666666666666666666666666666666666"
+  raindexRouter:
+    - "0x9999999999999999999999999999999999999999"
   `;
 
         const path = "./first.test.yaml";
@@ -145,6 +147,7 @@ orderbookTradeTypes:
                 router: new Set([`0x${"1".repeat(40)}`, `0x${"2".repeat(40)}`]),
                 interOrderbook: new Set([`0x${"3".repeat(40)}`, `0x${"4".repeat(40)}`]),
                 intraOrderbook: new Set([`0x${"5".repeat(40)}`, `0x${"6".repeat(40)}`]),
+                raindexRouter: new Set([`0x${"9".repeat(40)}`]),
             },
             maxConcurrency: 15,
             skipSweep: new Set([`0x${"8".repeat(40)}`, `0x${"9".repeat(40)}`]),
@@ -227,6 +230,7 @@ orderbookTradeTypes:
                     `0x${"6".repeat(40)}`,
                     `0x${"6".repeat(40)}`, // duplicate to test set
                 ],
+                raindexRouter: [`0x${"9".repeat(40)}`],
             },
         };
         const res = AppOptions.tryFrom(input);
@@ -321,6 +325,7 @@ orderbookTradeTypes:
             router: new Set<string>([`0x${"1".repeat(40)}`, `0x${"2".repeat(40)}`]),
             interOrderbook: new Set<string>([`0x${"3".repeat(40)}`, `0x${"4".repeat(40)}`]),
             intraOrderbook: new Set<string>([`0x${"5".repeat(40)}`, `0x${"6".repeat(40)}`]),
+            raindexRouter: new Set<string>([`0x${"9".repeat(40)}`]),
         });
 
         assert.deepEqual(result.skipSweep, new Set());

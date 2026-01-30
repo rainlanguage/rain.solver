@@ -25,6 +25,7 @@ export type OrderbookTradeTypes = {
     router: Set<string>;
     interOrderbook: Set<string>;
     intraOrderbook: Set<string>;
+    raindexRouter: Set<string>;
 };
 
 /** Represents a type for app options contracts addresses */
@@ -49,6 +50,7 @@ export type AppOptionsContracts = {
         genericArb?: `0x${string}`;
         balancerArb?: `0x${string}`;
         stabullArb?: `0x${string}`;
+        raindexArb?: `0x${string}`;
     };
 };
 
@@ -282,6 +284,10 @@ export namespace AppOptions {
                     intraOrderbook: Validator.resolveAddressSet(
                         input.orderbookTradeTypes?.intraOrderbook,
                         "invalid orderbookTradeTypes.intraOrderbook, expected an array of orderbook addresses",
+                    ),
+                    raindexRouter: Validator.resolveAddressSet(
+                        input.orderbookTradeTypes?.raindexRouter,
+                        "invalid orderbookTradeTypes.raindexRouter, expected an array of orderbook addresses",
                     ),
                 },
                 skipSweep: Validator.resolveAddressSet(

@@ -533,6 +533,11 @@ export namespace Validator {
             "stabullArbAddress v6",
             true,
         );
+        const raindexArbAddressV6 = resolveAddress(
+            input?.contracts?.v6?.raindexArbAddress,
+            "raindexArbAddress v6",
+            true,
+        );
         const contracts: AppOptionsContracts = {};
         if (
             dispairV4 ||
@@ -569,7 +574,8 @@ export namespace Validator {
             sushiArbAddressV6 ||
             genericArbAddressV6 ||
             balancerArbAddressV6 ||
-            stabullArbAddressV6
+            stabullArbAddressV6 ||
+            raindexArbAddressV6
         ) {
             contracts.v6 = {
                 sushiArb: sushiArbAddressV6 as `0x${string}` | undefined,
@@ -577,6 +583,7 @@ export namespace Validator {
                 genericArb: genericArbAddressV6 as `0x${string}` | undefined,
                 balancerArb: balancerArbAddressV6 as `0x${string}` | undefined,
                 stabullArb: stabullArbAddressV6 as `0x${string}` | undefined,
+                raindexArb: raindexArbAddressV6 as `0x${string}` | undefined,
             };
         }
         return contracts;

@@ -7,6 +7,7 @@ import { quoteSingleOrder } from "./quote";
 import { PreAssembledSpan } from "../logger";
 import { SubgraphManager } from "../subgraph";
 import { downscaleProtection } from "./protection";
+import { BASES_TO_CHECK_TRADES_AGAINST } from "sushi/config";
 import { normalizeFloat, Result, TokenDetails } from "../common";
 import { OrderManagerError, OrderManagerErrorType } from "./error";
 import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
@@ -510,6 +511,41 @@ export class OrderManager {
         const buyToken = orderDetails.buyToken.toLowerCase();
         const ob = orderDetails.orderbook.toLowerCase();
         return getSortedPairList(this.oiPairMap, ob, buyToken, sellToken, counterpartySource);
+    }
+
+    /**
+     * Gets descending sorted list of counterparty orders against routed base tokens by their ratios for a given order
+     * @param orderDetails - Details of the order to find counterparty orders for
+     */
+    getCounterpartyOrdersAgainstBaseTokens(orderDetails: Pair): Map<string, Pair[]> {
+        const sellToken = orderDetails.sellToken.toLowerCase();
+        const buyToken = orderDetails.buyToken.toLowerCase();
+        const ob = orderDetails.orderbook.toLowerCase();
+
+        const result = new Map<string, Pair[]>();
+        // get orders that have same output as the order's input as array
+        // and loop through them to get every possible combination
+        const arr = Array.from(this.oiPairMap.get(ob)?.get(buyToken) ?? []);
+        for (const [tkn] of arr) {
+            // skip mirrored order pairs and pairs with middle token that is not in routing base tokens
+            if (
+                tkn === sellToken ||
+                BASES_TO_CHECK_TRADES_AGAINST[this.state.chainConfig.id].every(
+                    (baseToken) => baseToken.address.toLowerCase() !== tkn,
+                )
+            ) {
+                continue;
+            }
+            const pairs = getSortedPairList(
+                this.oiPairMap,
+                ob,
+                buyToken,
+                tkn,
+                CounterpartySource.IntraOrderbook,
+            );
+            result.set(tkn, pairs);
+        }
+        return result;
     }
 
     /**
