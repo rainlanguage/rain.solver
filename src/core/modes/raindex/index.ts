@@ -156,9 +156,8 @@ export async function findBestRaindexRouterTrade(
             ),
         );
 
-        const listWithProfits = [];
         for (const counterparty of optimals) {
-            listWithProfits.push({
+            optimalTradeOptions.push({
                 ...estimateProfit(
                     orderDetails,
                     counterparty,
@@ -170,13 +169,6 @@ export async function findBestRaindexRouterTrade(
                 counterparty,
             });
         }
-        // sort desc and pick the best
-        listWithProfits.sort((a, b) => {
-            if (a.profit < b.profit) return 1;
-            else if (a.profit > b.profit) return -1;
-            else return 0;
-        });
-        optimalTradeOptions.push(...listWithProfits.slice(0, 1));
     }
 
     // sort desc based on profitability
@@ -186,8 +178,8 @@ export async function findBestRaindexRouterTrade(
         else return 0;
     });
 
-    // simulate top picks
-    const promises = optimalTradeOptions.map((args) => {
+    // simulate top 3 picks
+    const promises = optimalTradeOptions.slice(0, 3).map((args) => {
         const {
             quote,
             profit,
