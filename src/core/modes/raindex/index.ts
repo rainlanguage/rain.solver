@@ -98,7 +98,7 @@ export async function findBestRaindexRouterTrade(
         });
 
         // exit early if no route found
-        if (quoteResult.isErr()) {
+        if (!quoteResult || quoteResult.isErr()) {
             continue;
         }
         const quote = quoteResult.value;
