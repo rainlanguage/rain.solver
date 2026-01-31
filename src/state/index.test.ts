@@ -441,7 +441,7 @@ describe("Test SharedState", () => {
             );
         });
 
-        it("should call getMarketPrice with correct params for partial size uhappy all", async () => {
+        it("should call getMarketPrice with correct params for partial size unhappy all", async () => {
             (sharedState.router.getMarketPrice as Mock)
                 .mockResolvedValueOnce(Result.err("error1"))
                 .mockResolvedValueOnce(Result.err("error2"));
