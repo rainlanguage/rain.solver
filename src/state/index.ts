@@ -330,13 +330,13 @@ export class SharedState {
             return result;
         }
         const partialAmountIn = this.router.findLargestTradeSize(
-            { takeOrder: { quote: { ratio: 0n } } } as any, // mocked as its unused
+            { takeOrder: { quote: { ratio: 0n } } } as any, // ratio unused when absolute
             toToken,
             fromToken,
             amountIn,
             this.gasPrice,
             this.appOptions.route,
-            true,
+            true, // absolute
         );
         if (typeof partialAmountIn !== "bigint") {
             return result;
