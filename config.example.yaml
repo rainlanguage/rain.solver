@@ -73,6 +73,8 @@ contracts:
     balancerArbAddress: "0x1234...5678"
     # Stabull arb v6 contract address
     stabullArbAddress: "0x1234...5678"
+    # Raindex Router arb v6 contract address
+    raindexArbAddress: "0x1234...5678"
     # Dispair v6 contract address
     dispair: "0x1234...5678"
 
@@ -190,5 +192,9 @@ orderbookTradeTypes:
     - "0x1234..."
   # Enable intra-orderbook trades for the given orderbooks
   intraOrderbook:
+    - "0xabcd..."
+    - "0x1234..."
+  # Enable raindex router trades for the given orderbooks
+  raindexRouter:
     - "0xabcd..."
     - "0x1234..."

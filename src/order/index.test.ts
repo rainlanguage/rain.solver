@@ -9,6 +9,7 @@ import { downscaleProtection } from "./protection";
 import { CounterpartySource, Order, Pair } from "./types";
 import { OrderManager, DEFAULT_OWNER_LIMIT, OrderbookVersions } from "./index";
 import { describe, it, expect, beforeEach, vi, Mock, assert } from "vitest";
+import { BASES_TO_CHECK_TRADES_AGAINST } from "sushi/config";
 
 vi.mock("./sync", () => ({
     syncOrders: vi.fn(),
@@ -16,6 +17,12 @@ vi.mock("./sync", () => ({
 
 vi.mock("./protection", () => ({
     downscaleProtection: vi.fn(),
+}));
+
+vi.mock("sushi/config", () => ({
+    BASES_TO_CHECK_TRADES_AGAINST: {
+        [1]: [],
+    },
 }));
 
 vi.mock("viem", async (importOriginal) => ({
@@ -80,6 +87,9 @@ describe("Test OrderManager", () => {
     beforeEach(async () => {
         vi.clearAllMocks();
         state = new (SharedState as Mock)();
+        (state.chainConfig as any) = {
+            id: 1,
+        };
         (state as any).orderManagerConfig = {
             quoteGas: 1000000n,
             ownerLimits: {
@@ -1525,6 +1535,562 @@ describe("Test OrderManager", () => {
             totalOwnersCount: 2,
             totalPairsCount: 2,
             totalDistinctPairsCount: 1,
+        });
+    });
+
+    describe("test getCounterpartyOrdersAgainstBaseTokens() method", async () => {
+        it("should return empty map when no counterparty orders exist against base tokens", () => {
+            const pair = getPair("0xorderbook", "0xhash", "0xoutput", "0xinput");
+
+            const result = orderManager.getCounterpartyOrdersAgainstBaseTokens(pair);
+
+            expect(result).toBeInstanceOf(Map);
+            expect(result.size).toBe(0);
+        });
+
+        it("should return routed counterparty orders against base tokens", async () => {
+            // Mock BASES_TO_CHECK_TRADES_AGAINST to include a specific base token
+            const mockBaseToken = { address: "0xbasetoken", symbol: "BASE", decimals: 18 };
+            (BASES_TO_CHECK_TRADES_AGAINST as any)[state.chainConfig.id] = [mockBaseToken as any];
+
+            const orderARes = Result.ok({
+                type: Order.Type.V4,
+                owner: "0xowner",
+                validInputs: [
+                    {
+                        token: "0xinput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                validOutputs: [
+                    {
+                        token: "0xoutput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            });
+            const orderBRes = Result.ok({
+                type: Order.Type.V4,
+                owner: "0xowner",
+                validInputs: [
+                    {
+                        token: "0xbasetoken",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                validOutputs: [
+                    {
+                        token: "0xinput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            });
+            (Order.tryFromBytes as Mock)
+                .mockReturnValueOnce(orderARes)
+                .mockReturnValueOnce(orderBRes);
+            const orderA = {
+                __version: SubgraphVersions.V6,
+                orderHash: "0xhashA",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytesA",
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            };
+            const orderB = {
+                __version: SubgraphVersions.V6,
+                orderHash: "0xhashB",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytesB",
+                outputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xbasetoken", symbol: "BASE", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            };
+
+            await orderManager.addOrder(orderA as any);
+            await orderManager.addOrder(orderB as any);
+
+            const pairA = getPair("0xorderbook", "0xhashA", "0xoutput", "0xinput");
+            const result = orderManager.getCounterpartyOrdersAgainstBaseTokens(pairA);
+
+            expect(result).toBeInstanceOf(Map);
+            expect(result.size).toBe(1);
+            expect(result.has("0xbasetoken")).toBe(true);
+
+            const baseTokenPairs = result.get("0xbasetoken");
+            expect(Array.isArray(baseTokenPairs)).toBe(true);
+            expect(baseTokenPairs?.length).toBe(1);
+            expect(baseTokenPairs?.[0].takeOrder.id).toBe("0xhashb");
+            expect(baseTokenPairs?.[0].buyToken).toBe("0xbasetoken");
+            expect(baseTokenPairs?.[0].sellToken).toBe("0xinput");
+        });
+
+        it("should skip mirrored pairs (same input/output)", async () => {
+            const mockBaseToken = { address: "0xbasetoken", symbol: "BASE", decimals: 18 };
+            (BASES_TO_CHECK_TRADES_AGAINST as any)[state.chainConfig.id] = [mockBaseToken as any];
+
+            const orderARes = Result.ok({
+                type: Order.Type.V4,
+                owner: "0xowner",
+                validInputs: [
+                    {
+                        token: "0xinput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                validOutputs: [
+                    {
+                        token: "0xoutput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            });
+            const orderBRes = Result.ok({
+                type: Order.Type.V4,
+                owner: "0xowner",
+                validInputs: [
+                    {
+                        token: "0xoutput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                validOutputs: [
+                    {
+                        token: "0xinput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            });
+            (Order.tryFromBytes as Mock)
+                .mockReturnValueOnce(orderARes)
+                .mockReturnValueOnce(orderBRes);
+            const orderA = {
+                __version: SubgraphVersions.V6,
+                orderHash: "0xhashA",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytesA",
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            };
+            const orderB = {
+                __version: SubgraphVersions.V6,
+                orderHash: "0xhashB",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytesB",
+                outputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "BASE", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            };
+
+            await orderManager.addOrder(orderA as any);
+            await orderManager.addOrder(orderB as any);
+
+            const pairA = getPair("0xorderbook", "0xhashA", "0xoutput", "0xinput");
+            const result = orderManager.getCounterpartyOrdersAgainstBaseTokens(pairA);
+
+            // Should not include the mirrored pair
+            expect(result.size).toBe(0);
+        });
+
+        it("should skip non-base tokens", async () => {
+            const mockBaseToken = { address: "0xbasetoken", symbol: "BASE", decimals: 18 };
+            (BASES_TO_CHECK_TRADES_AGAINST as any)[state.chainConfig.id] = [mockBaseToken as any];
+
+            const orderARes = Result.ok({
+                type: Order.Type.V4,
+                owner: "0xowner",
+                validInputs: [
+                    {
+                        token: "0xinput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                validOutputs: [
+                    {
+                        token: "0xoutput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            });
+            const orderBRes = Result.ok({
+                type: Order.Type.V4,
+                owner: "0xowner",
+                validInputs: [
+                    {
+                        token: "0xnonebasetoken",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                validOutputs: [
+                    {
+                        token: "0xinput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            });
+            (Order.tryFromBytes as Mock)
+                .mockReturnValueOnce(orderARes)
+                .mockReturnValueOnce(orderBRes);
+            const orderA = {
+                __version: SubgraphVersions.V6,
+                orderHash: "0xhashA",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytesA",
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            };
+            const orderB = {
+                __version: SubgraphVersions.V6,
+                orderHash: "0xhashB",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytesB",
+                outputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xnonebasetoken", symbol: "BASE", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            };
+
+            await orderManager.addOrder(orderA as any);
+            await orderManager.addOrder(orderB as any);
+
+            const pairA = getPair("0xorderbook", "0xhashA", "0xoutput", "0xinput");
+            const result = orderManager.getCounterpartyOrdersAgainstBaseTokens(pairA);
+
+            // Should not include non-base token pairs
+            expect(result.size).toBe(0);
+        });
+
+        it("should return multiple routed counterparty orders for different base tokens", async () => {
+            const mockBaseToken1 = { address: "0xbasetoken1", symbol: "BASE1", decimals: 18 };
+            const mockBaseToken2 = { address: "0xbasetoken2", symbol: "BASE2", decimals: 6 };
+            (BASES_TO_CHECK_TRADES_AGAINST as any)[state.chainConfig.id] = [
+                mockBaseToken1 as any,
+                mockBaseToken2 as any,
+            ];
+
+            const orderARes = Result.ok({
+                type: Order.Type.V4,
+                owner: "0xowner",
+                validInputs: [
+                    {
+                        token: "0xinput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                validOutputs: [
+                    {
+                        token: "0xoutput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            });
+            const orderBRes = Result.ok({
+                type: Order.Type.V4,
+                owner: "0xowner",
+                validInputs: [
+                    {
+                        token: "0xbasetoken1",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                validOutputs: [
+                    {
+                        token: "0xinput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            });
+            const orderCRes = Result.ok({
+                type: Order.Type.V4,
+                owner: "0xowner",
+                validInputs: [
+                    {
+                        token: "0xbasetoken2",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                validOutputs: [
+                    {
+                        token: "0xinput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            });
+            (Order.tryFromBytes as Mock)
+                .mockReturnValueOnce(orderARes)
+                .mockReturnValueOnce(orderBRes)
+                .mockReturnValueOnce(orderCRes);
+            const orderA = {
+                __version: SubgraphVersions.V6,
+                orderHash: "0xhashA",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytesA",
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            };
+            const orderB = {
+                __version: SubgraphVersions.V6,
+                orderHash: "0xhashB",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytesB",
+                outputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xbasetoken1", symbol: "BASE", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            };
+            const orderC = {
+                __version: SubgraphVersions.V6,
+                orderHash: "0xhashC",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytesC",
+                outputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xbasetoken2", symbol: "BASE", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            };
+
+            await orderManager.addOrder(orderA as any);
+            await orderManager.addOrder(orderB as any);
+            await orderManager.addOrder(orderC as any);
+
+            const pairA = getPair("0xorderbook", "0xhashA", "0xoutput", "0xinput");
+            const result = orderManager.getCounterpartyOrdersAgainstBaseTokens(pairA);
+
+            expect(result.size).toBe(2);
+            expect(result.has("0xbasetoken1")).toBe(true);
+            expect(result.has("0xbasetoken2")).toBe(true);
+
+            const baseToken1Pairs = result.get("0xbasetoken1");
+            expect(baseToken1Pairs?.length).toBe(1);
+            expect(baseToken1Pairs?.[0].takeOrder.id).toBe("0xhashb");
+            expect(baseToken1Pairs?.[0].buyToken).toBe("0xbasetoken1");
+            expect(baseToken1Pairs?.[0].sellToken).toBe("0xinput");
+
+            const baseToken2Pairs = result.get("0xbasetoken2");
+            expect(baseToken2Pairs?.length).toBe(1);
+            expect(baseToken2Pairs?.[0].takeOrder.id).toBe("0xhashc");
+            expect(baseToken2Pairs?.[0].buyToken).toBe("0xbasetoken2");
+            expect(baseToken2Pairs?.[0].sellToken).toBe("0xinput");
+        });
+
+        it("should call getSortedPairList with correct parameters", async () => {
+            const mockBaseToken = { address: "0xbasetoken", symbol: "BASE", decimals: 18 };
+            (BASES_TO_CHECK_TRADES_AGAINST as any)[state.chainConfig.id] = [mockBaseToken as any];
+
+            const orderARes = Result.ok({
+                type: Order.Type.V4,
+                owner: "0xowner",
+                validInputs: [
+                    {
+                        token: "0xinput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                validOutputs: [
+                    {
+                        token: "0xoutput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            });
+            const orderBRes = Result.ok({
+                type: Order.Type.V4,
+                owner: "0xowner",
+                validInputs: [
+                    {
+                        token: "0xbasetoken",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                validOutputs: [
+                    {
+                        token: "0xinput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            });
+            (Order.tryFromBytes as Mock)
+                .mockReturnValueOnce(orderARes)
+                .mockReturnValueOnce(orderBRes);
+            const orderA = {
+                __version: SubgraphVersions.V6,
+                orderHash: "0xhashA",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytesA",
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            };
+            const orderB = {
+                __version: SubgraphVersions.V6,
+                orderHash: "0xhashB",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytesB",
+                outputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xbasetoken", symbol: "BASE", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            };
+
+            await orderManager.addOrder(orderA as any);
+            await orderManager.addOrder(orderB as any);
+
+            const getSortedPairListSpy = vi.spyOn(pairFns, "getSortedPairList");
+
+            const pairA = getPair("0xorderbook", "0xhashA", "0xoutput", "0xinput");
+            orderManager.getCounterpartyOrdersAgainstBaseTokens(pairA);
+
+            expect(getSortedPairListSpy).toHaveBeenCalledWith(
+                orderManager.oiPairMap,
+                "0xorderbook",
+                "0xinput",
+                "0xbasetoken",
+                CounterpartySource.IntraOrderbook,
+            );
+
+            getSortedPairListSpy.mockRestore();
         });
     });
 });

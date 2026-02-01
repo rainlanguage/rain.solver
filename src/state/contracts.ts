@@ -30,6 +30,7 @@ export type SolverContracts = {
         genericArb?: `0x${string}`;
         balancerArb?: `0x${string}`;
         stabullArb?: `0x${string}`;
+        raindexArb?: `0x${string}`;
         dispair: Dispair;
     };
 
@@ -119,6 +120,9 @@ export async function resolveVersionContracts(
     if (addresses.stabullArb) {
         result.stabullArb = addresses.stabullArb;
     }
+    if ("raindexArb" in addresses && addresses.raindexArb) {
+        result.raindexArb = addresses.raindexArb;
+    }
     return result;
 }
 
@@ -198,6 +202,15 @@ export function versionAddressGetter<
                 dispair: contracts.dispair,
                 destination: order.orderbook as `0x${string}`,
             };
+        }
+        case TradeType.Raindex: {
+            if ("raindexArb" in contracts && contracts.raindexArb) {
+                return {
+                    dispair: contracts.dispair,
+                    destination: contracts.raindexArb as `0x${string}`,
+                };
+            }
+            return undefined;
         }
         default: {
             return undefined;

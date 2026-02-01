@@ -740,6 +740,317 @@ describe("Test yaml Validator methods", async function () {
             "unexpected error",
         );
     });
+
+    it("test Validator resolveContracts", async function () {
+        const sushiArbV4 = `0x${"1".repeat(40)}`;
+        const dispairV4 = `0x${"2".repeat(40)}`;
+        const genericArbV4 = `0x${"3".repeat(40)}`;
+        const balancerArbV4 = `0x${"4".repeat(40)}`;
+        const stabullArbV4 = `0x${"5".repeat(40)}`;
+
+        const sushiArbV5 = `0x${"6".repeat(40)}`;
+        const dispairV5 = `0x${"7".repeat(40)}`;
+        const genericArbV5 = `0x${"8".repeat(40)}`;
+        const balancerArbV5 = `0x${"9".repeat(40)}`;
+        const stabullArbV5 = `0x${"a".repeat(40)}`;
+
+        const sushiArbV6 = `0x${"b".repeat(40)}`;
+        const dispairV6 = `0x${"c".repeat(40)}`;
+        const genericArbV6 = `0x${"d".repeat(40)}`;
+        const balancerArbV6 = `0x${"e".repeat(40)}`;
+        const stabullArbV6 = `0x${"f".repeat(40)}`;
+        const raindexArbV6 = `0x${"1".repeat(39)}1`;
+
+        // happy path: all v4 contracts provided
+        let input: any = {
+            contracts: {
+                v4: {
+                    sushiArbAddress: sushiArbV4,
+                    dispair: dispairV4,
+                    genericArbAddress: genericArbV4,
+                    balancerArbAddress: balancerArbV4,
+                    stabullArbAddress: stabullArbV4,
+                },
+            },
+        };
+        let result = Validator.resolveContracts(input);
+        let expected: any = {
+            v4: {
+                sushiArb: sushiArbV4 as `0x${string}`,
+                dispair: dispairV4 as `0x${string}`,
+                genericArb: genericArbV4 as `0x${string}`,
+                balancerArb: balancerArbV4 as `0x${string}`,
+                stabullArb: stabullArbV4 as `0x${string}`,
+            },
+        };
+        assert.deepEqual(result, expected);
+
+        // happy path: all v5 contracts provided
+        input = {
+            contracts: {
+                v5: {
+                    sushiArbAddress: sushiArbV5,
+                    dispair: dispairV5,
+                    genericArbAddress: genericArbV5,
+                    balancerArbAddress: balancerArbV5,
+                    stabullArbAddress: stabullArbV5,
+                },
+            },
+        };
+        result = Validator.resolveContracts(input);
+        expected = {
+            v5: {
+                sushiArb: sushiArbV5 as `0x${string}`,
+                dispair: dispairV5 as `0x${string}`,
+                genericArb: genericArbV5 as `0x${string}`,
+                balancerArb: balancerArbV5 as `0x${string}`,
+                stabullArb: stabullArbV5 as `0x${string}`,
+            },
+        };
+        assert.deepEqual(result, expected);
+
+        // happy path: all v6 contracts provided including raindex
+        input = {
+            contracts: {
+                v6: {
+                    sushiArbAddress: sushiArbV6,
+                    dispair: dispairV6,
+                    genericArbAddress: genericArbV6,
+                    balancerArbAddress: balancerArbV6,
+                    stabullArbAddress: stabullArbV6,
+                    raindexArbAddress: raindexArbV6,
+                },
+            },
+        };
+        result = Validator.resolveContracts(input);
+        expected = {
+            v6: {
+                sushiArb: sushiArbV6 as `0x${string}`,
+                dispair: dispairV6 as `0x${string}`,
+                genericArb: genericArbV6 as `0x${string}`,
+                balancerArb: balancerArbV6 as `0x${string}`,
+                stabullArb: stabullArbV6 as `0x${string}`,
+                raindexArb: raindexArbV6 as `0x${string}`,
+            },
+        };
+        assert.deepEqual(result, expected);
+
+        // happy path: mix of v4, v5, and v6 contracts
+        input = {
+            contracts: {
+                v4: {
+                    sushiArbAddress: sushiArbV4,
+                    dispair: dispairV4,
+                },
+                v5: {
+                    genericArbAddress: genericArbV5,
+                },
+                v6: {
+                    balancerArbAddress: balancerArbV6,
+                    raindexArbAddress: raindexArbV6,
+                },
+            },
+        };
+        result = Validator.resolveContracts(input);
+        expected = {
+            v4: {
+                sushiArb: sushiArbV4 as `0x${string}`,
+                dispair: dispairV4 as `0x${string}`,
+                genericArb: undefined,
+                balancerArb: undefined,
+                stabullArb: undefined,
+            },
+            v5: {
+                sushiArb: undefined,
+                dispair: undefined,
+                genericArb: genericArbV5 as `0x${string}`,
+                balancerArb: undefined,
+                stabullArb: undefined,
+            },
+            v6: {
+                sushiArb: undefined,
+                dispair: undefined,
+                genericArb: undefined,
+                balancerArb: balancerArbV6 as `0x${string}`,
+                stabullArb: undefined,
+                raindexArb: raindexArbV6 as `0x${string}`,
+            },
+        };
+        assert.deepEqual(result, expected);
+
+        // happy path: partial v4 contracts
+        input = {
+            contracts: {
+                v4: {
+                    sushiArbAddress: sushiArbV4,
+                },
+            },
+        };
+        result = Validator.resolveContracts(input);
+        expected = {
+            v4: {
+                sushiArb: sushiArbV4 as `0x${string}`,
+                dispair: undefined,
+                genericArb: undefined,
+                balancerArb: undefined,
+                stabullArb: undefined,
+            },
+        };
+        assert.deepEqual(result, expected);
+
+        // happy path: partial v5 contracts
+        input = {
+            contracts: {
+                v5: {
+                    dispair: dispairV5,
+                    balancerArbAddress: balancerArbV5,
+                },
+            },
+        };
+        result = Validator.resolveContracts(input);
+        expected = {
+            v5: {
+                sushiArb: undefined,
+                dispair: dispairV5 as `0x${string}`,
+                genericArb: undefined,
+                balancerArb: balancerArbV5 as `0x${string}`,
+                stabullArb: undefined,
+            },
+        };
+        assert.deepEqual(result, expected);
+
+        // happy path: partial v6 contracts
+        input = {
+            contracts: {
+                v6: {
+                    raindexArbAddress: raindexArbV6,
+                },
+            },
+        };
+        result = Validator.resolveContracts(input);
+        expected = {
+            v6: {
+                sushiArb: undefined,
+                dispair: undefined,
+                genericArb: undefined,
+                balancerArb: undefined,
+                stabullArb: undefined,
+                raindexArb: raindexArbV6 as `0x${string}`,
+            },
+        };
+        assert.deepEqual(result, expected);
+
+        // happy path: no contracts provided (empty object returned)
+        input = {};
+        result = Validator.resolveContracts(input);
+        expected = {};
+        assert.deepEqual(result, expected);
+
+        // happy path: contracts object exists but no versions provided
+        input = { contracts: {} };
+        result = Validator.resolveContracts(input);
+        expected = {};
+        assert.deepEqual(result, expected);
+
+        // happy path: using env variables for v4
+        process.env.SUSHI_ARB_V4 = sushiArbV4;
+        process.env.DISPAIR_V4 = dispairV4;
+        input = {
+            contracts: {
+                v4: {
+                    sushiArbAddress: "$SUSHI_ARB_V4",
+                    dispair: "$DISPAIR_V4",
+                },
+            },
+        };
+        result = Validator.resolveContracts(input);
+        expected = {
+            v4: {
+                sushiArb: sushiArbV4 as `0x${string}`,
+                dispair: dispairV4 as `0x${string}`,
+                genericArb: undefined,
+                balancerArb: undefined,
+                stabullArb: undefined,
+            },
+        };
+        assert.deepEqual(result, expected);
+
+        // happy path: using env variables for v6 including raindex
+        process.env.RAINDEX_ARB_V6 = raindexArbV6;
+        process.env.BALANCER_ARB_V6 = balancerArbV6;
+        input = {
+            contracts: {
+                v6: {
+                    raindexArbAddress: "$RAINDEX_ARB_V6",
+                    balancerArbAddress: "$BALANCER_ARB_V6",
+                },
+            },
+        };
+        result = Validator.resolveContracts(input);
+        expected = {
+            v6: {
+                sushiArb: undefined,
+                dispair: undefined,
+                genericArb: undefined,
+                balancerArb: balancerArbV6 as `0x${string}`,
+                stabullArb: undefined,
+                raindexArb: raindexArbV6 as `0x${string}`,
+            },
+        };
+        assert.deepEqual(result, expected);
+
+        // unhappy: invalid address format for v4 sushiArbAddress
+        input = {
+            contracts: {
+                v4: {
+                    sushiArbAddress: "invalid_address",
+                },
+            },
+        };
+        assert.throws(
+            () => Validator.resolveContracts(input),
+            "expected valid sushiArbAddress v4 contract address",
+        );
+
+        // unhappy: invalid address format for v5 dispair
+        input = {
+            contracts: {
+                v5: {
+                    dispair: "0x123", // too short
+                },
+            },
+        };
+        assert.throws(
+            () => Validator.resolveContracts(input),
+            "expected valid dispair v5 contract address",
+        );
+
+        // unhappy: invalid address format for v6 raindexArbAddress
+        input = {
+            contracts: {
+                v6: {
+                    raindexArbAddress: "not_an_address",
+                },
+            },
+        };
+        assert.throws(
+            () => Validator.resolveContracts(input),
+            "expected valid raindexArbAddress v6 contract address",
+        );
+
+        // unhappy: undefined env variable
+        delete process.env.UNDEFINED_CONTRACT;
+        input = {
+            contracts: {
+                v4: {
+                    sushiArbAddress: "$UNDEFINED_CONTRACT",
+                },
+            },
+        };
+        result = Validator.resolveContracts(input);
+        expected = {};
+        assert.deepEqual(result, expected);
+    });
 });
 
 describe("Test yaml Validator helpers", async function () {
