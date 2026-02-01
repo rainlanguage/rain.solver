@@ -1,6 +1,6 @@
 import { RainSolver } from "../..";
 import { TradeType } from "../../types";
-import { Order, Pair } from "../../../order";
+import { Order, OrderbookVersions, Pair } from "../../../order";
 import { ONE18, scaleFrom18 } from "../../../math";
 import { RainSolverSigner } from "../../../signer";
 import { SimulationHaltReason } from "../simulator";
@@ -522,8 +522,9 @@ describe("Test RouterTradeSimulator", () => {
             });
         });
 
-        it("should return for pair v4", () => {
+        it("should return for pair v4 ob5", () => {
             (encodeFunctionData as Mock).mockReturnValueOnce("0xcalldata");
+            simulator.tradeArgs.orderDetails.orderbookVersion = OrderbookVersions.V5;
             simulator.tradeArgs.orderDetails.takeOrder.struct.order.type = Order.Type.V4;
             const takeOrderConfig = { key: "value" } as any;
             const task = { task: "task-value" } as any;
@@ -533,6 +534,22 @@ describe("Test RouterTradeSimulator", () => {
             expect(encodeFunctionData).toHaveBeenCalledWith({
                 abi: ABI.Orderbook.V5.Primary.Arb,
                 functionName: "arb4",
+                args: [simulator.tradeArgs.orderDetails.orderbook, takeOrderConfig, task],
+            });
+        });
+
+        it("should return for pair v4 ob6", () => {
+            (encodeFunctionData as Mock).mockReturnValueOnce("0xcalldata");
+            simulator.tradeArgs.orderDetails.orderbookVersion = OrderbookVersions.V6;
+            simulator.tradeArgs.orderDetails.takeOrder.struct.order.type = Order.Type.V4;
+            const takeOrderConfig = { key: "value" } as any;
+            const task = { task: "task-value" } as any;
+            const result = simulator.getCalldata(takeOrderConfig, task);
+            expect(result).toBe("0xcalldata");
+            expect(encodeFunctionData).toHaveBeenCalledTimes(1);
+            expect(encodeFunctionData).toHaveBeenCalledWith({
+                abi: ABI.Orderbook.V6.Primary.Arb,
+                functionName: "arb5",
                 args: [simulator.tradeArgs.orderDetails.orderbook, takeOrderConfig, task],
             });
         });

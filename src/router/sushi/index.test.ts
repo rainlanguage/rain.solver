@@ -1,5 +1,5 @@
 import { ONE18 } from "../../math";
-import { Order } from "../../order";
+import { Order, OrderbookVersions, TakeOrdersConfigType } from "../../order";
 import { RouteLeg } from "sushi/tines";
 import { Token } from "sushi/currency";
 import { SharedState } from "../../state";
@@ -638,6 +638,7 @@ describe("test SushiRouter methods", () => {
         beforeEach(() => {
             // Mock order details
             mockOrderDetails = {
+                orderbookVersion: OrderbookVersions.V4,
                 takeOrder: {
                     struct: {
                         order: { type: Order.Type.V3 },
@@ -723,6 +724,7 @@ describe("test SushiRouter methods", () => {
             expect(tradeParams.type).toBe(RouterType.Sushi);
             expect(tradeParams.quote).toEqual(mockQuote);
             expect(tradeParams.routeVisual).toEqual(["some route"]);
+            assert(TakeOrdersConfigType.isV3(tradeParams.takeOrdersConfigStruct));
             expect(tradeParams.takeOrdersConfigStruct.minimumInput).toBe(1n);
             expect(tradeParams.takeOrdersConfigStruct.maximumInput).toBe(maxUint256);
             expect(tradeParams.takeOrdersConfigStruct.maximumIORatio).toBe(maxUint256);
@@ -794,6 +796,7 @@ describe("test SushiRouter methods", () => {
             expect(tradeParams.type).toBe(RouterType.Sushi);
             expect(tradeParams.quote).toEqual(mockQuote);
             expect(tradeParams.routeVisual).toEqual(["some route"]);
+            assert(TakeOrdersConfigType.isV3(tradeParams.takeOrdersConfigStruct));
             expect(tradeParams.takeOrdersConfigStruct.minimumInput).toBe(1n);
             expect(tradeParams.takeOrdersConfigStruct.maximumInput).toBe(mockSwapAmount);
             expect(tradeParams.takeOrdersConfigStruct.maximumIORatio).toBe(3000n * ONE18);

@@ -1,5 +1,5 @@
 import axios from "axios";
-import { SgOrder } from "./types";
+import { SgOrder, SubgraphVersions } from "./types";
 import { ErrorSeverity } from "../error";
 import { SubgraphManager } from "./index";
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -31,6 +31,25 @@ describe("Test SubgraphManager", () => {
         });
     });
 
+    it("should keep track of subgraph versions", () => {
+        const url1 = "https:example1.com";
+        const url2 = "https:exmaple2.com";
+        const _manager = new SubgraphManager({
+            subgraphs: [url1, `v6=${url2}`],
+            filters: undefined,
+            requestTimeout: 1000,
+        });
+        expect(_manager.syncState[url1]).toBeDefined();
+        expect(_manager.syncState[url1].skip).toBe(0);
+        expect(_manager.syncState[url1].lastFetchTimestamp).toBe(0);
+        expect(_manager.versions.oldVersions).toEqual(new Set([url1]));
+
+        expect(_manager.syncState[url2]).toBeDefined();
+        expect(_manager.syncState[url2].skip).toBe(0);
+        expect(_manager.syncState[url2].lastFetchTimestamp).toBe(0);
+        expect(_manager.versions.v6).toEqual(new Set([url2]));
+    });
+
     it("should initialize syncState for each subgraph", () => {
         expect(manager.syncState[subgraphUrl]).toBeDefined();
         expect(manager.syncState[subgraphUrl].skip).toBe(0);
@@ -46,14 +65,30 @@ describe("Test SubgraphManager", () => {
                 data: { data: { orders: [] } },
             });
 
-        const orders = await manager.fetchSubgraphOrders(subgraphUrl);
+        const orders = await manager.fetchSubgraphOrders(subgraphUrl, SubgraphVersions.LEGACY);
         expect(orders).toEqual([mockOrder]);
+        expect(orders[0].__version).toBe(SubgraphVersions.LEGACY);
+        expect(manager.syncState[subgraphUrl].lastFetchTimestamp).toBeGreaterThan(0);
+    });
+
+    it("test fetchSubgraphOrders: should fetch and paginate orders v6", async () => {
+        (axios.post as Mock)
+            .mockResolvedValueOnce({
+                data: { data: { orders: [mockOrder] } },
+            })
+            .mockResolvedValueOnce({
+                data: { data: { orders: [] } },
+            });
+
+        const orders = await manager.fetchSubgraphOrders(subgraphUrl, SubgraphVersions.V6);
+        expect(orders).toEqual([mockOrder]);
+        expect(orders[0].__version).toBe(SubgraphVersions.V6);
         expect(manager.syncState[subgraphUrl].lastFetchTimestamp).toBeGreaterThan(0);
     });
 
     it("test fetchSubgraphOrders: should throw on invalid response", async () => {
         (axios.post as Mock).mockResolvedValueOnce({ data: { data: {} } });
-        await expect(manager.fetchSubgraphOrders(subgraphUrl)).rejects.toBe(
+        await expect(manager.fetchSubgraphOrders(subgraphUrl, SubgraphVersions.V6)).rejects.toBe(
             "Received invalid response",
         );
     });
@@ -158,6 +193,9 @@ describe("Test SubgraphManager", () => {
         const { status, result } = await manager.getUpstreamEvents();
         expect(status[subgraphUrl].status).toMatch("Fully fetched");
         expect(result[subgraphUrl].length).toBe(3);
+        result[subgraphUrl].forEach((v) => {
+            expect(v.__version).toBe(SubgraphVersions.LEGACY);
+        });
     });
 
     it("test getUpstreamEvents: should handle errors and partial sync", async () => {

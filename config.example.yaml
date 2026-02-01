@@ -32,9 +32,12 @@ writeRpc:
 
 # List of subgraph urls, required
 # for specifying more than 1 subgraph URL in the env, separate them by a comma
+# NOTE: for v6 orderbook subgraph, prepend the URL with "v6=" because the v5 and v6
+# subgraph schemas are identical and this prefix is needed to identify the version
 subgraph:
   - https://subgraph-url1.com
   - https://subgraph-url2.com
+  - v6=https://v6-subgraph.com
 
 # Contract addresses for different versions requireed for operating and solving trades
 # at least one version should be partially or fully specified
@@ -60,6 +63,17 @@ contracts:
     # Stabull arb v5 contract address
     stabullArbAddress: "0x1234...5678"
     # Dispair v5 contract address
+    dispair: "0x1234...5678"
+  v6:
+    # Sushi RP arb v6 contract address
+    sushiArbAddress: "0x1234...5678"
+    # Generic arb v6 contract address
+    genericArbAddress: "0x1234...5678"
+    # Balancer arb v6 contract address
+    balancerArbAddress: "0x1234...5678"
+    # Stabull arb v6 contract address
+    stabullArbAddress: "0x1234...5678"
+    # Dispair v6 contract address
     dispair: "0x1234...5678"
 
 # list of liquidity providers

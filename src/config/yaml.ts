@@ -43,6 +43,13 @@ export type AppOptionsContracts = {
         balancerArb?: `0x${string}`;
         stabullArb?: `0x${string}`;
     };
+    v6?: {
+        sushiArb?: `0x${string}`;
+        dispair?: `0x${string}`;
+        genericArb?: `0x${string}`;
+        balancerArb?: `0x${string}`;
+        stabullArb?: `0x${string}`;
+    };
 };
 
 /** Rain Solver app yaml configurations */

@@ -15,6 +15,7 @@ import {
     TakeOrdersConfigType,
     TakeOrdersConfigTypeV3,
     TakeOrdersConfigTypeV4,
+    TakeOrdersConfigTypeV5,
 } from "../order";
 
 /** Represents the different router types */
@@ -232,6 +233,53 @@ export abstract class RainSolverRouterBase {
     }
 
     /**
+     * Creates a new TakeOrdersConfigTypeV5 based on the given v4 order and other parameters
+     * This is the default implementation, but child classes can override it if needed.
+     * @param order The order pair v4 to create the config for
+     * @param maximumInput The maximum input amount
+     * @param price The current market price for input amount
+     * @param data The TakeOrdersConfig data
+     * @param maxRatio Whether to use the maximum IO ratio
+     * @param isPartial Whether the trade is a partial fill
+     */
+    getTakeOrdersConfigV5(
+        order: PairV4,
+        maximumInput: bigint,
+        price: bigint,
+        data: `0x${string}`,
+        maxRatio: boolean,
+        isPartial: boolean,
+    ): Result<TakeOrdersConfigTypeV5, WasmEncodedError> {
+        let maximumInputFloat: `0x${string}` = maxFloat(order.sellTokenDecimals);
+        if (isPartial) {
+            const valueResult = toFloat(maximumInput, order.sellTokenDecimals);
+            if (valueResult.isErr()) {
+                return Result.err(valueResult.error);
+            }
+            maximumInputFloat = valueResult.value;
+        }
+
+        let maximumIORatioFloat: `0x${string}` = maxFloat(18);
+        if (!maxRatio) {
+            const valueResult = toFloat(price, 18);
+            if (valueResult.isErr()) {
+                return Result.err(valueResult.error);
+            }
+            maximumIORatioFloat = valueResult.value;
+        }
+
+        const takeOrdersConfigStruct: TakeOrdersConfigTypeV5 = {
+            minimumIO: minFloat(order.sellTokenDecimals),
+            maximumIO: maximumInputFloat,
+            maximumIORatio: maximumIORatioFloat,
+            IOIsInput: true,
+            orders: [order.takeOrder.struct],
+            data,
+        };
+        return Result.ok(takeOrdersConfigStruct);
+    }
+
+    /**
      * Creates a new TakeOrdersConfigType based on the given order, its version and other parameters
      * This is the default implementation that works for both V3 and V4 orders, but child classes can
      * override it if needed.
@@ -254,8 +302,17 @@ export abstract class RainSolverRouterBase {
             return Result.ok(
                 this.getTakeOrdersConfigV3(order, maximumInput, price, data, maxRatio, isPartial),
             );
-        } else {
+        } else if (Pair.isV4OrderbookV5(order)) {
             return this.getTakeOrdersConfigV4(
+                order,
+                maximumInput,
+                price,
+                data,
+                maxRatio,
+                isPartial,
+            );
+        } else {
+            return this.getTakeOrdersConfigV5(
                 order,
                 maximumInput,
                 price,
