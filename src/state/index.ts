@@ -310,15 +310,49 @@ export class SharedState {
      * @param skipFetch - (optional) Skips a fresh onchain call to fetch pools
      * @returns The market price for the token pair or undefined if no route were found
      */
-    getMarketPrice(fromToken: Token, toToken: Token, blockNumber?: bigint, skipFetch?: boolean) {
-        return this.router.getMarketPrice({
+    async getMarketPrice(
+        fromToken: Token,
+        toToken: Token,
+        blockNumber?: bigint,
+        skipFetch?: boolean,
+    ) {
+        const amountIn = parseUnits("1", fromToken.decimals);
+        const result = await this.router.getMarketPrice({
             fromToken,
             toToken,
             blockNumber,
             gasPrice: this.gasPrice,
-            amountIn: parseUnits("1", fromToken.decimals),
+            amountIn,
             sushiRouteType: this.appOptions.route,
             skipFetch: !!skipFetch,
         });
+        if (result.isOk()) {
+            return result;
+        }
+        const partialAmountIn = this.router.findLargestTradeSize(
+            { takeOrder: { quote: { ratio: 0n } } } as any, // ratio unused when absolute
+            toToken,
+            fromToken,
+            amountIn,
+            this.gasPrice,
+            this.appOptions.route,
+            true, // absolute
+        );
+        if (typeof partialAmountIn !== "bigint") {
+            return result;
+        }
+        const partialResult = await this.router.getMarketPrice({
+            fromToken,
+            toToken,
+            blockNumber,
+            gasPrice: this.gasPrice,
+            amountIn: partialAmountIn,
+            sushiRouteType: this.appOptions.route,
+            skipFetch: !!skipFetch,
+        });
+        if (partialResult.isOk()) {
+            return partialResult;
+        }
+        return result;
     }
 }
