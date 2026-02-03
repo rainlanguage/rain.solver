@@ -482,6 +482,7 @@ export class SushiRouter extends RainSolverRouterBase {
         maximumInputFixed: bigint,
         gasPriceBI: bigint,
         routeType: "single" | "multi" = "single",
+        absolute = false,
     ): bigint | undefined {
         const result: bigint[] = [];
         const gasPrice = Number(gasPriceBI);
@@ -506,6 +507,9 @@ export class SushiRouter extends RainSolverRouterBase {
 
             if (route.status == "NoWay") {
                 maximumInput = maximumInput - initAmount / 2n ** i;
+            } else if (absolute) {
+                result.unshift(maxInput18);
+                maximumInput = maximumInput + initAmount / 2n ** i;
             } else {
                 const price = calculatePrice18(
                     maximumInput,
