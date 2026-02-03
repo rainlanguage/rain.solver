@@ -12,7 +12,11 @@ import { SimulationResult, TradeType } from "../../types";
 import { getOptimalSortedList } from "../../../order/pair";
 import { SushiRouter, SushiRouterQuote } from "../../../router";
 import { Result, extendObjectWithHeader } from "../../../common";
-import { calcCounterpartyInputProfit, calcCounterpartyInputToEthPrice, calcCounterpartyOutputToEthPrice } from "./utils";
+import {
+    calcCounterpartyInputProfit,
+    calcCounterpartyInputToEthPrice,
+    calcCounterpartyOutputToEthPrice,
+} from "./utils";
 
 export enum RouteLegType {
     RAINDEX,
@@ -258,7 +262,10 @@ export function estimateProfit(
     counterpartyInputToEthPrice: bigint;
     counterpartyOutputToEthPrice: bigint;
 } {
-    const { counterpartyMaxOutput, counterpartyInputProfit } = calcCounterpartyInputProfit(counterparty, quote)
+    const { counterpartyMaxOutput, counterpartyInputProfit } = calcCounterpartyInputProfit(
+        counterparty,
+        quote,
+    );
     const orderMaxInput =
         (orderDetails.takeOrder.quote!.maxOutput * orderDetails.takeOrder.quote!.ratio) / ONE18;
     // cant trade, so 0 profit
