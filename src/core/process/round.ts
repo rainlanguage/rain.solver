@@ -2,8 +2,8 @@ import { RainSolver } from "..";
 import { Token } from "sushi/currency";
 import { iterRandom, Result } from "../../common";
 import { SpanStatusCode } from "@opentelemetry/api";
-import { OrderbookVersions, Pair } from "../../order";
 import { PreAssembledSpan, SpanWithContext } from "../../logger";
+import { OrderbookVersions, Pair, ZERO_BYTES_32 } from "../../order";
 import { ErrorSeverity, errorSnapshot, isTimeout, KnownErrors } from "../../error";
 import {
     ProcessOrderStatus,
@@ -189,7 +189,7 @@ export async function processOrderInit(
         (orderDetails.orderbookVersion === OrderbookVersions.V6 &&
             orderDetails.takeOrder.struct.order.validOutputs[
                 orderDetails.takeOrder.struct.outputIOIndex
-            ].vaultId !== 0n &&
+            ].vaultId !== ZERO_BYTES_32 &&
             orderDetails.sellTokenVaultBalance <= 0n)
     ) {
         const endTime = performance.now();
