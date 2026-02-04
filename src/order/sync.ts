@@ -1,7 +1,7 @@
-import { OrderManager } from ".";
+import { OrderbookVersions, OrderManager } from ".";
 import { errorSnapshot } from "../error";
 import { PreAssembledSpan } from "../logger";
-import { SgTransaction } from "../subgraph/types";
+import { SgTransaction, SubgraphVersions } from "../subgraph/types";
 import { applyFilters } from "../subgraph/filter";
 
 /** Syncs orders and vaults to upstream changes since the last fetch */
@@ -35,6 +35,7 @@ export async function syncOrders(this: OrderManager) {
                 },
                 BigInt(event.vault.vaultId),
                 event.vault.balance,
+                version === SubgraphVersions.V6 ? OrderbookVersions.V6 : ("" as any),
             );
         }
         if (event.__typename === "Clear" || event.__typename === "TakeOrder") {
@@ -50,6 +51,7 @@ export async function syncOrders(this: OrderManager) {
                     },
                     BigInt(trade.inputVaultBalanceChange.vault.vaultId),
                     trade.inputVaultBalanceChange.vault.balance,
+                    version === SubgraphVersions.V6 ? OrderbookVersions.V6 : ("" as any),
                 );
                 this.updateVault(
                     trade.outputVaultBalanceChange.orderbook.id,
@@ -61,6 +63,7 @@ export async function syncOrders(this: OrderManager) {
                     },
                     BigInt(trade.outputVaultBalanceChange.vault.vaultId),
                     trade.outputVaultBalanceChange.vault.balance,
+                    version === SubgraphVersions.V6 ? OrderbookVersions.V6 : ("" as any),
                 );
             });
         }

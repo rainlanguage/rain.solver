@@ -85,6 +85,7 @@ describe("Test syncOrders", () => {
             },
             123n,
             "1000000000000000000",
+            "",
         );
         expect(mockUpdateVault).toHaveBeenCalledTimes(1);
     });
@@ -129,6 +130,7 @@ describe("Test syncOrders", () => {
             },
             456n,
             "500000000",
+            "",
         );
         expect(mockUpdateVault).toHaveBeenCalledTimes(1);
     });
@@ -194,6 +196,7 @@ describe("Test syncOrders", () => {
             },
             100n,
             "2000000000000000000",
+            "",
         );
         expect(mockUpdateVault).toHaveBeenNthCalledWith(
             2,
@@ -206,6 +209,7 @@ describe("Test syncOrders", () => {
             },
             200n,
             "1000000000",
+            "",
         );
     });
 
@@ -270,6 +274,7 @@ describe("Test syncOrders", () => {
             },
             789n,
             "50000000",
+            "",
         );
         expect(mockUpdateVault).toHaveBeenNthCalledWith(
             2,
@@ -282,6 +287,7 @@ describe("Test syncOrders", () => {
             },
             101112n,
             "3000000000000000000",
+            "",
         );
     });
 
