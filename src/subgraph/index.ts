@@ -6,7 +6,7 @@ import { statusCheckQuery } from "./query";
 import { PreAssembledSpan } from "../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { ErrorSeverity, errorSnapshot } from "../error";
-import { SgOrder, SgTransaction, SubgraphSyncState } from "./types";
+import { SgOrder, SgTransaction, SubgraphSyncState, SubgraphVersions } from "./types";
 import { getTxsQuery, orderbooksQuery, DEFAULT_PAGE_SIZE, getQueryPaginated } from "./query";
 
 // re-export
@@ -15,6 +15,12 @@ export * from "./config";
 
 // default headers for axios subgraph queries
 export const headers = { "Content-Type": "application/json" } as const;
+
+// keeps track of subgraoh versions
+export type SubgraphVersionList = {
+    oldVersions: Set<string>;
+    v6: Set<string>;
+};
 
 /**
  * Manages multiple subgraph endpoints, providing methods to fetch, sync, and monitor order edtails.
@@ -25,6 +31,10 @@ export const headers = { "Content-Type": "application/json" } as const;
 export class SubgraphManager {
     /** List of subgraph urls */
     readonly subgraphs: string[];
+    readonly versions: SubgraphVersionList = {
+        oldVersions: new Set(),
+        v6: new Set(),
+    };
     /** Subgraph filters */
     readonly filters?: SgFilter;
     /** Subgraphs sync state */
@@ -34,10 +44,18 @@ export class SubgraphManager {
     requestTimeout?: number;
 
     constructor(config: SubgraphConfig) {
-        this.subgraphs = config.subgraphs;
+        this.subgraphs = config.subgraphs.map((url) => {
+            if (url.startsWith("v6=")) {
+                this.versions.v6.add(url.slice(3));
+                return url.slice(3);
+            } else {
+                this.versions.oldVersions.add(url);
+                return url;
+            }
+        });
         this.filters = config.filters;
         this.requestTimeout = config.requestTimeout;
-        config.subgraphs.forEach(
+        this.subgraphs.forEach(
             (url) =>
                 (this.syncState[url] = {
                     skip: 0,
@@ -125,7 +143,7 @@ export class SubgraphManager {
      * Fetches details of all orders that are active from the given subgraph url
      * @param url - The subgraph url
      */
-    async fetchSubgraphOrders(url: string): Promise<SgOrder[]> {
+    async fetchSubgraphOrders(url: string, version: SubgraphVersions): Promise<SgOrder[]> {
         const result: SgOrder[] = [];
         let skip = 0;
         let timestamp = Date.now();
@@ -139,7 +157,12 @@ export class SubgraphManager {
                 { headers, timeout: this.requestTimeout },
             );
             if (res?.data?.data?.orders) {
-                const orders = res.data.data.orders;
+                const orders: SgOrder[] = res.data.data.orders;
+                if (version === SubgraphVersions.V6) {
+                    orders.forEach((v) => (v.__version = SubgraphVersions.V6));
+                } else {
+                    orders.forEach((v) => (v.__version = SubgraphVersions.LEGACY));
+                }
                 result.push(...orders);
                 if (orders.length < DEFAULT_PAGE_SIZE) {
                     break;
@@ -167,7 +190,7 @@ export class SubgraphManager {
         const report = new PreAssembledSpan("fetch-orders");
         const promises = this.subgraphs.map(async (url) => {
             try {
-                const result = await this.fetchSubgraphOrders(url);
+                const result = await this.fetchSubgraphOrders(url, this.getSubgraphVersion(url));
                 report.setAttr(`fetchStatus.${url}`, "Fully fetched");
                 return result;
             } catch (error) {
@@ -216,8 +239,13 @@ export class SubgraphManager {
                     );
                     if (typeof res?.data?.data?.transactions !== "undefined") {
                         partiallyFetched = true;
-                        const txs = res.data.data.transactions;
+                        const txs: SgTransaction[] = res.data.data.transactions;
                         this.syncState[url].skip += txs.length;
+                        if (this.getSubgraphVersion(url) === SubgraphVersions.V6) {
+                            txs.forEach((v) => (v.__version = SubgraphVersions.V6));
+                        } else {
+                            txs.forEach((v) => (v.__version = SubgraphVersions.LEGACY));
+                        }
                         allResults.push(...txs);
                         if (txs.length < DEFAULT_PAGE_SIZE) {
                             status[url].status = "Fully fetched";
@@ -243,5 +271,14 @@ export class SubgraphManager {
         results.forEach((v, i) => (result[this.subgraphs[i]] = v));
 
         return { status, result };
+    }
+
+    // get the version of the subgraph url
+    getSubgraphVersion(url: string): SubgraphVersions {
+        if (this.versions.v6.has(url)) {
+            return SubgraphVersions.V6;
+        } else {
+            return SubgraphVersions.LEGACY;
+        }
     }
 }

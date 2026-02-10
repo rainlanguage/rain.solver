@@ -1,5 +1,5 @@
 import { ONE18 } from "../../math";
-import { Order } from "../../order";
+import { Order, OrderbookVersions, TakeOrdersConfigType } from "../../order";
 import { Token } from "sushi/currency";
 import { AddressProvider } from "@balancer/sdk";
 import { RouterType, RouteStatus } from "../types";
@@ -1001,6 +1001,7 @@ describe("test BalancerRouter", () => {
 
             // Mock order details
             mockOrderDetails = {
+                orderbookVersion: OrderbookVersions.V4,
                 takeOrder: {
                     struct: {
                         order: { type: Order.Type.V3 },
@@ -1090,6 +1091,7 @@ describe("test BalancerRouter", () => {
             expect(tradeParams.type).toBe(RouterType.Balancer);
             expect(tradeParams.quote).toEqual(mockQuote);
             expect(tradeParams.routeVisual).toEqual(["some route visual"]);
+            assert(TakeOrdersConfigType.isV3(tradeParams.takeOrdersConfigStruct));
             expect(tradeParams.takeOrdersConfigStruct.minimumInput).toBe(1n);
             expect(tradeParams.takeOrdersConfigStruct.maximumInput).toBe(maxUint256);
             expect(tradeParams.takeOrdersConfigStruct.maximumIORatio).toBe(maxUint256);
@@ -1150,6 +1152,7 @@ describe("test BalancerRouter", () => {
             expect(tradeParams.type).toBe(RouterType.Balancer);
             expect(tradeParams.quote).toEqual(mockQuote);
             expect(tradeParams.routeVisual).toEqual(["some route visual"]);
+            assert(TakeOrdersConfigType.isV3(tradeParams.takeOrdersConfigStruct));
             expect(tradeParams.takeOrdersConfigStruct.minimumInput).toBe(1n);
             expect(tradeParams.takeOrdersConfigStruct.maximumInput).toBe(mockSwapAmount);
             expect(tradeParams.takeOrdersConfigStruct.maximumIORatio).toBe(mockQuote.price);

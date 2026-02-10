@@ -1,5 +1,5 @@
 import assert from "assert";
-import { Order } from "./index";
+import { Order, OrderbookVersions } from "./index";
 import { V3, PairV3 } from "./v3";
 import { SgOrder } from "../../subgraph";
 import { decodeAbiParameters } from "viem";
@@ -108,6 +108,7 @@ describe("PairV3.fromArgs", () => {
             mockOutputVaultMetadata,
         );
         expect(result).toEqual({
+            orderbookVersion: OrderbookVersions.V4,
             orderbook: mockOrderDetails.orderbook.id.toLowerCase(),
             buyToken: mockInputVaultMetadata.token.toLowerCase(),
             buyTokenSymbol: mockInputVaultMetadata.symbol,

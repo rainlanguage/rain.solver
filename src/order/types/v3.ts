@@ -1,4 +1,4 @@
-import { Evaluable } from "../types";
+import { Evaluable, OrderbookVersions } from "../types";
 import { SgOrder } from "../../subgraph";
 import { ABI, Result } from "../../common";
 import { Order, PairBase, TakeOrderDetailsBase } from ".";
@@ -111,6 +111,7 @@ export namespace PairV3 {
         } = outputVaultDetails;
 
         return {
+            orderbookVersion: OrderbookVersions.V4,
             orderbook: orderDetails.orderbook.id.toLowerCase(),
             buyToken: inputToken.toLowerCase(),
             buyTokenSymbol: inputSymbol,

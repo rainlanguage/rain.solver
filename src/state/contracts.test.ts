@@ -34,6 +34,13 @@ describe("SolverContracts.fromAppOptions", () => {
                     balancerArb: "0xv5balancerArb" as `0x${string}`,
                     stabullArb: "0xv5stabullArb" as `0x${string}`,
                 },
+                v6: {
+                    dispair: "0xv6dispair" as `0x${string}`,
+                    sushiArb: "0xv6sushiArb" as `0x${string}`,
+                    genericArb: "0xv6genericArb" as `0x${string}`,
+                    balancerArb: "0xv6balancerArb" as `0x${string}`,
+                    stabullArb: "0xv6stabullArb" as `0x${string}`,
+                },
             },
         } as AppOptions;
     });
@@ -44,7 +51,9 @@ describe("SolverContracts.fromAppOptions", () => {
             .mockResolvedValueOnce("0xv4interpreter" as `0x${string}`) // v4 interpreter
             .mockResolvedValueOnce("0xv4store" as `0x${string}`) // v4 store
             .mockResolvedValueOnce("0xv5interpreter" as `0x${string}`) // v5 interpreter
-            .mockResolvedValueOnce("0xv5store" as `0x${string}`); // v5 store
+            .mockResolvedValueOnce("0xv5store" as `0x${string}`) // v5 store
+            .mockResolvedValueOnce("0xv6interpreter" as `0x${string}`) // v6 interpreter
+            .mockResolvedValueOnce("0xv6store" as `0x${string}`); // v6 store
 
         const result = await SolverContracts.fromAppOptions(mockClient, mockAppOptions);
 
@@ -71,11 +80,22 @@ describe("SolverContracts.fromAppOptions", () => {
                     store: "0xv5store",
                 },
             },
+            v6: {
+                sushiArb: "0xv6sushiArb",
+                genericArb: "0xv6genericArb",
+                balancerArb: "0xv6balancerArb",
+                stabullArb: "0xv6stabullArb",
+                dispair: {
+                    deployer: "0xv6dispair",
+                    interpreter: "0xv6interpreter",
+                    store: "0xv6store",
+                },
+            },
             getAddressesForTrade: expect.any(Function),
         });
 
         // Verify contract calls
-        expect(mockClient.readContract).toHaveBeenCalledTimes(4);
+        expect(mockClient.readContract).toHaveBeenCalledTimes(6);
         expect(mockClient.readContract).toHaveBeenNthCalledWith(1, {
             address: "0xv4dispair",
             abi: ABI.Deployer.Primary.Deployer,
@@ -96,15 +116,27 @@ describe("SolverContracts.fromAppOptions", () => {
             abi: ABI.Deployer.Primary.Deployer,
             functionName: "iStore",
         });
+        expect(mockClient.readContract).toHaveBeenNthCalledWith(5, {
+            address: "0xv6dispair",
+            abi: ABI.Deployer.Primary.DeployerV6,
+            functionName: "I_INTERPRETER",
+        });
+        expect(mockClient.readContract).toHaveBeenNthCalledWith(6, {
+            address: "0xv6dispair",
+            abi: ABI.Deployer.Primary.DeployerV6,
+            functionName: "I_STORE",
+        });
     });
 
     it("should handle missing v4 contracts gracefully", async () => {
         mockAppOptions.contracts.v4 = undefined;
 
-        // Only mock v5 calls
+        // Only mock v5 and v6 calls
         mockClient.readContract
             .mockResolvedValueOnce("0xv5interpreter" as `0x${string}`) // v5 interpreter
-            .mockResolvedValueOnce("0xv5store" as `0x${string}`); // v5 store
+            .mockResolvedValueOnce("0xv5store" as `0x${string}`) // v5 store
+            .mockResolvedValueOnce("0xv6interpreter" as `0x${string}`) // v6 interpreter
+            .mockResolvedValueOnce("0xv6store" as `0x${string}`); // v6 store
 
         const result = await SolverContracts.fromAppOptions(mockClient, mockAppOptions);
 
@@ -121,19 +153,32 @@ describe("SolverContracts.fromAppOptions", () => {
                     store: "0xv5store",
                 },
             },
+            v6: {
+                sushiArb: "0xv6sushiArb",
+                genericArb: "0xv6genericArb",
+                balancerArb: "0xv6balancerArb",
+                stabullArb: "0xv6stabullArb",
+                dispair: {
+                    deployer: "0xv6dispair",
+                    interpreter: "0xv6interpreter",
+                    store: "0xv6store",
+                },
+            },
             getAddressesForTrade: expect.any(Function),
         });
 
-        expect(mockClient.readContract).toHaveBeenCalledTimes(2);
+        expect(mockClient.readContract).toHaveBeenCalledTimes(4);
     });
 
     it("should handle missing v5 contracts gracefully", async () => {
         mockAppOptions.contracts.v5 = undefined;
 
-        // Only mock v4 calls
+        // Only mock v4 and v6 calls
         mockClient.readContract
             .mockResolvedValueOnce("0xv4interpreter" as `0x${string}`) // v4 interpreter
-            .mockResolvedValueOnce("0xv4store" as `0x${string}`); // v4 store
+            .mockResolvedValueOnce("0xv4store" as `0x${string}`) // v4 store
+            .mockResolvedValueOnce("0xv6interpreter" as `0x${string}`) // v6 interpreter
+            .mockResolvedValueOnce("0xv6store" as `0x${string}`); // v6 store
 
         const result = await SolverContracts.fromAppOptions(mockClient, mockAppOptions);
 
@@ -150,21 +195,76 @@ describe("SolverContracts.fromAppOptions", () => {
                 },
             },
             v5: undefined,
+            v6: {
+                sushiArb: "0xv6sushiArb",
+                genericArb: "0xv6genericArb",
+                balancerArb: "0xv6balancerArb",
+                stabullArb: "0xv6stabullArb",
+                dispair: {
+                    deployer: "0xv6dispair",
+                    interpreter: "0xv6interpreter",
+                    store: "0xv6store",
+                },
+            },
             getAddressesForTrade: expect.any(Function),
         });
 
-        expect(mockClient.readContract).toHaveBeenCalledTimes(2);
+        expect(mockClient.readContract).toHaveBeenCalledTimes(4);
+    });
+
+    it("should handle missing v6 contracts gracefully", async () => {
+        mockAppOptions.contracts.v6 = undefined;
+
+        // Only mock v4 and v5 calls
+        mockClient.readContract
+            .mockResolvedValueOnce("0xv4interpreter" as `0x${string}`) // v4 interpreter
+            .mockResolvedValueOnce("0xv4store" as `0x${string}`) // v4 store
+            .mockResolvedValueOnce("0xv5interpreter" as `0x${string}`) // v5 interpreter
+            .mockResolvedValueOnce("0xv5store" as `0x${string}`); // v5 store
+
+        const result = await SolverContracts.fromAppOptions(mockClient, mockAppOptions);
+
+        expect(result).toEqual({
+            v4: {
+                sushiArb: "0xv4sushiArb",
+                genericArb: "0xv4genericArb",
+                balancerArb: "0xv4balancerArb",
+                stabullArb: "0xv4stabullArb",
+                dispair: {
+                    deployer: "0xv4dispair",
+                    interpreter: "0xv4interpreter",
+                    store: "0xv4store",
+                },
+            },
+            v5: {
+                sushiArb: "0xv5sushiArb",
+                genericArb: "0xv5genericArb",
+                balancerArb: "0xv5balancerArb",
+                stabullArb: "0xv5stabullArb",
+                dispair: {
+                    deployer: "0xv5dispair",
+                    interpreter: "0xv5interpreter",
+                    store: "0xv5store",
+                },
+            },
+            v6: undefined,
+            getAddressesForTrade: expect.any(Function),
+        });
+
+        expect(mockClient.readContract).toHaveBeenCalledTimes(4);
     });
 
     it("should handle missing dispair address", async () => {
         mockAppOptions.contracts.v4!.dispair = undefined as any;
         mockAppOptions.contracts.v5!.dispair = undefined as any;
+        mockAppOptions.contracts.v6!.dispair = undefined as any;
 
         const result = await SolverContracts.fromAppOptions(mockClient, mockAppOptions);
 
         expect(result).toEqual({
             v4: undefined,
             v5: undefined,
+            v6: undefined,
             getAddressesForTrade: expect.any(Function),
         });
 
@@ -180,10 +280,11 @@ describe("SolverContracts.fromAppOptions", () => {
         expect(result).toEqual({
             v4: undefined,
             v5: undefined,
+            v6: undefined,
             getAddressesForTrade: expect.any(Function),
         });
 
-        expect(mockClient.readContract).toHaveBeenCalledTimes(2);
+        expect(mockClient.readContract).toHaveBeenCalledTimes(3);
     });
 
     it("should handle partial contract read errors", async () => {
@@ -192,7 +293,9 @@ describe("SolverContracts.fromAppOptions", () => {
             .mockResolvedValueOnce("0xv4interpreter" as `0x${string}`) // v4 interpreter
             .mockResolvedValueOnce("0xv4store" as `0x${string}`) // v4 store
             .mockRejectedValueOnce(new Error("v5 interpreter failed")) // v5 interpreter error
-            .mockRejectedValueOnce(new Error("v5 store failed")); // v5 store error
+            .mockRejectedValueOnce(new Error("v5 store failed")) // v5 store error
+            .mockRejectedValueOnce(new Error("v6 interpreter failed")) // v6 interpreter error
+            .mockRejectedValueOnce(new Error("v6 store failed")); // v6 store error
 
         const result = await SolverContracts.fromAppOptions(mockClient, mockAppOptions);
 
@@ -209,6 +312,7 @@ describe("SolverContracts.fromAppOptions", () => {
                 },
             },
             v5: undefined,
+            v6: undefined,
             getAddressesForTrade: expect.any(Function),
         });
     });
@@ -224,12 +328,19 @@ describe("SolverContracts.fromAppOptions", () => {
             sushiArb: "0xv5sushiArb" as `0x${string}`,
             // Missing genericArb and balancerArb
         };
+        mockAppOptions.contracts.v6 = {
+            dispair: "0xv6dispair" as `0x${string}`,
+            sushiArb: "0xv6sushiArb" as `0x${string}`,
+            // Missing genericArb and balancerArb
+        };
 
         mockClient.readContract
             .mockResolvedValueOnce("0xv4interpreter" as `0x${string}`)
             .mockResolvedValueOnce("0xv4store" as `0x${string}`)
             .mockResolvedValueOnce("0xv5interpreter" as `0x${string}`)
-            .mockResolvedValueOnce("0xv5store" as `0x${string}`);
+            .mockResolvedValueOnce("0xv5store" as `0x${string}`)
+            .mockResolvedValueOnce("0xv6interpreter" as `0x${string}`)
+            .mockResolvedValueOnce("0xv6store" as `0x${string}`);
 
         const result = await SolverContracts.fromAppOptions(mockClient, mockAppOptions);
 
@@ -251,6 +362,15 @@ describe("SolverContracts.fromAppOptions", () => {
                 },
                 // genericArb and balancerArb should not be present
             },
+            v6: {
+                sushiArb: "0xv6sushiArb",
+                dispair: {
+                    deployer: "0xv6dispair",
+                    interpreter: "0xv6interpreter",
+                    store: "0xv6store",
+                },
+                // genericArb and balancerArb should not be present
+            },
             getAddressesForTrade: expect.any(Function),
         });
 
@@ -260,6 +380,8 @@ describe("SolverContracts.fromAppOptions", () => {
         expect(result.v4).not.toHaveProperty("balancerArb");
         expect(result.v5).not.toHaveProperty("genericArb");
         expect(result.v5).not.toHaveProperty("balancerArb");
+        expect(result.v6).not.toHaveProperty("genericArb");
+        expect(result.v6).not.toHaveProperty("balancerArb");
     });
 
     it("should return undefined for version when interpreter fetch fails", async () => {
@@ -267,13 +389,16 @@ describe("SolverContracts.fromAppOptions", () => {
             .mockResolvedValueOnce("0xv4interpreter" as `0x${string}`) // v4 interpreter success
             .mockRejectedValueOnce(new Error("v4 store failed")) // v4 store error
             .mockRejectedValueOnce(new Error("v5 interpreter failed")) // v5 interpreter error
-            .mockResolvedValueOnce("0xv5store" as `0x${string}`); // v5 store success
+            .mockResolvedValueOnce("0xv5store" as `0x${string}`) // v5 store success
+            .mockRejectedValueOnce(new Error("v6 interpreter failed")) // v6 interpreter error
+            .mockResolvedValueOnce("0xv6store" as `0x${string}`); // v6 store success
 
         const result = await SolverContracts.fromAppOptions(mockClient, mockAppOptions);
 
         expect(result).toEqual({
             v4: undefined, // Should be undefined because store fetch failed
             v5: undefined, // Should be undefined because interpreter fetch failed
+            v6: undefined,
             getAddressesForTrade: expect.any(Function),
         });
     });
@@ -282,13 +407,16 @@ describe("SolverContracts.fromAppOptions", () => {
         mockClient.readContract
             .mockRejectedValueOnce(new Error("v4 interpreter failed")) // v4 interpreter error
             .mockResolvedValueOnce("0xv5interpreter" as `0x${string}`) // v5 interpreter success
-            .mockRejectedValueOnce(new Error("v5 store failed")); // v5 store error
+            .mockRejectedValueOnce(new Error("v5 store failed")) // v5 store error
+            .mockResolvedValueOnce("0xv6interpreter" as `0x${string}`) // v6 interpreter success
+            .mockRejectedValueOnce(new Error("v6 store failed")); // v6 store error
 
         const result = await SolverContracts.fromAppOptions(mockClient, mockAppOptions);
 
         expect(result).toEqual({
             v4: undefined, // Should be undefined because interpreter fetch failed
             v5: undefined, // Should be undefined because store fetch failed
+            v6: undefined,
             getAddressesForTrade: expect.any(Function),
         });
     });
@@ -301,6 +429,7 @@ describe("SolverContracts.fromAppOptions", () => {
         expect(result).toEqual({
             v4: undefined,
             v5: undefined,
+            v6: undefined,
             getAddressesForTrade: expect.any(Function),
         });
 

@@ -1,6 +1,6 @@
 import { maxUint256 } from "viem";
 import { RainSolverRouterBase } from "./types";
-import { Order, Pair, PairV3, PairV4 } from "../order";
+import { Order, OrderbookVersions, Pair, PairV3, PairV4 } from "../order";
 import { maxFloat, minFloat, Result, toFloat } from "../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
@@ -189,6 +189,137 @@ describe("Test RainSolverRouterBase", () => {
         });
     });
 
+    describe("Test getTakeOrdersConfigV5 method", () => {
+        let router: MockRouter;
+        let order: PairV4;
+        const maximumInput = 100n;
+        const price = 200n;
+        const data = "0xdata" as `0x${string}`;
+
+        beforeEach(() => {
+            vi.clearAllMocks();
+            router = new MockRouter(1, {} as any);
+            order = {
+                sellTokenDecimals: 6,
+                takeOrder: {
+                    struct: {
+                        order: { type: Order.Type.V3 },
+                    },
+                },
+            } as any;
+        });
+
+        it("should return correct config", () => {
+            (maxFloat as Mock).mockReturnValue("0xff");
+            (minFloat as Mock).mockReturnValue("0x01");
+            (toFloat as Mock).mockReturnValue(Result.ok("0x1234"));
+            const result = router.getTakeOrdersConfigV5(
+                order,
+                maximumInput,
+                price,
+                data,
+                true,
+                false,
+            );
+            assert(result.isOk());
+            expect(result.value).toEqual({
+                minimumIO: "0x01",
+                maximumIO: "0xff",
+                IOIsInput: true,
+                maximumIORatio: "0xff",
+                orders: [order.takeOrder.struct],
+                data,
+            });
+            expect(maxFloat).toHaveBeenCalledTimes(2);
+            expect(maxFloat).toHaveBeenCalledWith(18);
+            expect(maxFloat).toHaveBeenCalledWith(6);
+            expect(minFloat).toHaveBeenCalledTimes(1);
+            expect(minFloat).toHaveBeenCalledWith(6);
+            expect(toFloat).not.toHaveBeenCalled();
+        });
+
+        it("should return correct config partial true", () => {
+            (maxFloat as Mock).mockReturnValue("0xff");
+            (minFloat as Mock).mockReturnValue("0x01");
+            (toFloat as Mock).mockReturnValue(Result.ok("0x1234"));
+            const result = router.getTakeOrdersConfigV5(
+                order,
+                maximumInput,
+                price,
+                data,
+                true,
+                true,
+            );
+            assert(result.isOk());
+            expect(result.value).toEqual({
+                minimumIO: "0x01",
+                maximumIO: "0x1234",
+                IOIsInput: true,
+                maximumIORatio: "0xff",
+                orders: [order.takeOrder.struct],
+                data,
+            });
+            expect(maxFloat).toHaveBeenCalledTimes(2);
+            expect(maxFloat).toHaveBeenCalledWith(18);
+            expect(maxFloat).toHaveBeenCalledWith(6);
+            expect(minFloat).toHaveBeenCalledTimes(1);
+            expect(minFloat).toHaveBeenCalledWith(6);
+            expect(toFloat).toHaveBeenCalledTimes(1);
+            expect(toFloat).toHaveBeenCalledWith(maximumInput, 6);
+        });
+
+        it("should return correct config maxRatio false", () => {
+            (maxFloat as Mock).mockReturnValue("0xff");
+            (minFloat as Mock).mockReturnValue("0x01");
+            (toFloat as Mock).mockReturnValue(Result.ok("0x1234"));
+            const result = router.getTakeOrdersConfigV5(
+                order,
+                maximumInput,
+                price,
+                data,
+                false,
+                false,
+            );
+            assert(result.isOk());
+            expect(result.value).toEqual({
+                minimumIO: "0x01",
+                maximumIO: "0xff",
+                IOIsInput: true,
+                maximumIORatio: "0x1234",
+                orders: [order.takeOrder.struct],
+                data,
+            });
+            expect(maxFloat).toHaveBeenCalledTimes(2);
+            expect(maxFloat).toHaveBeenCalledWith(18);
+            expect(maxFloat).toHaveBeenCalledWith(6);
+            expect(minFloat).toHaveBeenCalledTimes(1);
+            expect(minFloat).toHaveBeenCalledWith(6);
+            expect(toFloat).toHaveBeenCalledTimes(1);
+            expect(toFloat).toHaveBeenCalledWith(price, 18);
+        });
+
+        it("should return error when toFloat fails", () => {
+            (maxFloat as Mock).mockReturnValue("0xff");
+            (minFloat as Mock).mockReturnValue("0x01");
+            (toFloat as Mock).mockReturnValue(Result.err({ readableMsg: "some error" }));
+            const result = router.getTakeOrdersConfigV5(
+                order,
+                maximumInput,
+                price,
+                data,
+                true,
+                true,
+            );
+            assert(result.isErr());
+            expect(result.error.readableMsg).toBe("some error");
+            expect(maxFloat).toHaveBeenCalledTimes(1);
+            expect(maxFloat).toHaveBeenCalledWith(6);
+            expect(minFloat).not.toHaveBeenCalled();
+            expect(toFloat).toHaveBeenCalledTimes(1);
+            expect(toFloat).toHaveBeenCalledWith(maximumInput, 6);
+        });
+    });
+
     describe("Test getTakeOrdersConfig method", () => {
         let router: MockRouter;
         let order: Pair;
@@ -211,6 +342,7 @@ describe("Test RainSolverRouterBase", () => {
         });
 
         it("should return v3 result", () => {
+            order.orderbookVersion = OrderbookVersions.V4;
             const spy = vi.spyOn(router, "getTakeOrdersConfigV3");
             router.getTakeOrdersConfig(order, maximumInput, price, data, maxRatio, isPartial);
             expect(spy).toHaveBeenCalledWith(order, maximumInput, price, data, maxRatio, isPartial);
@@ -219,8 +351,19 @@ describe("Test RainSolverRouterBase", () => {
         });
 
         it("should return v4 result", () => {
+            order.orderbookVersion = OrderbookVersions.V5;
             order.takeOrder.struct.order.type = Order.Type.V4;
             const spy = vi.spyOn(router, "getTakeOrdersConfigV4");
+            router.getTakeOrdersConfig(order, maximumInput, price, data, maxRatio, isPartial);
+            expect(spy).toHaveBeenCalledWith(order, maximumInput, price, data, maxRatio, isPartial);
+
+            spy.mockRestore();
+        });
+
+        it("should return v5 result", () => {
+            order.orderbookVersion = OrderbookVersions.V6;
+            order.takeOrder.struct.order.type = Order.Type.V4;
+            const spy = vi.spyOn(router, "getTakeOrdersConfigV5");
             router.getTakeOrdersConfig(order, maximumInput, price, data, maxRatio, isPartial);
             expect(spy).toHaveBeenCalledWith(order, maximumInput, price, data, maxRatio, isPartial);
 

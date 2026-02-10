@@ -512,6 +512,27 @@ export namespace Validator {
             "stabullArbAddress v5",
             true,
         );
+        const dispairV6 = resolveAddress(input?.contracts?.v6?.dispair, "dispair v6", true);
+        const sushiArbAddressV6 = resolveAddress(
+            input?.contracts?.v6?.sushiArbAddress,
+            "sushiArbAddress v6",
+            true,
+        );
+        const genericArbAddressV6 = resolveAddress(
+            input?.contracts?.v6?.genericArbAddress,
+            "genericArbAddress v6",
+            true,
+        );
+        const balancerArbAddressV6 = resolveAddress(
+            input?.contracts?.v6?.balancerArbAddress,
+            "balancerArbAddress v6",
+            true,
+        );
+        const stabullArbAddressV6 = resolveAddress(
+            input?.contracts?.v6?.stabullArbAddress,
+            "stabullArbAddress v6",
+            true,
+        );
         const contracts: AppOptionsContracts = {};
         if (
             dispairV4 ||
@@ -541,6 +562,21 @@ export namespace Validator {
                 genericArb: genericArbAddressV5 as `0x${string}` | undefined,
                 balancerArb: balancerArbAddressV5 as `0x${string}` | undefined,
                 stabullArb: stabullArbAddressV5 as `0x${string}` | undefined,
+            };
+        }
+        if (
+            dispairV6 ||
+            sushiArbAddressV6 ||
+            genericArbAddressV6 ||
+            balancerArbAddressV6 ||
+            stabullArbAddressV6
+        ) {
+            contracts.v6 = {
+                sushiArb: sushiArbAddressV6 as `0x${string}` | undefined,
+                dispair: dispairV6 as `0x${string}` | undefined,
+                genericArb: genericArbAddressV6 as `0x${string}` | undefined,
+                balancerArb: balancerArbAddressV6 as `0x${string}` | undefined,
+                stabullArb: stabullArbAddressV6 as `0x${string}` | undefined,
             };
         }
         return contracts;
