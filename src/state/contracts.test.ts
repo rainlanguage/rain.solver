@@ -40,6 +40,7 @@ describe("SolverContracts.fromAppOptions", () => {
                     genericArb: "0xv6genericArb" as `0x${string}`,
                     balancerArb: "0xv6balancerArb" as `0x${string}`,
                     stabullArb: "0xv6stabullArb" as `0x${string}`,
+                    raindexArb: "0xv6raindexArb" as `0x${string}`,
                 },
             },
         } as AppOptions;
@@ -85,6 +86,7 @@ describe("SolverContracts.fromAppOptions", () => {
                 genericArb: "0xv6genericArb",
                 balancerArb: "0xv6balancerArb",
                 stabullArb: "0xv6stabullArb",
+                raindexArb: "0xv6raindexArb",
                 dispair: {
                     deployer: "0xv6dispair",
                     interpreter: "0xv6interpreter",
@@ -158,6 +160,7 @@ describe("SolverContracts.fromAppOptions", () => {
                 genericArb: "0xv6genericArb",
                 balancerArb: "0xv6balancerArb",
                 stabullArb: "0xv6stabullArb",
+                raindexArb: "0xv6raindexArb",
                 dispair: {
                     deployer: "0xv6dispair",
                     interpreter: "0xv6interpreter",
@@ -200,6 +203,7 @@ describe("SolverContracts.fromAppOptions", () => {
                 genericArb: "0xv6genericArb",
                 balancerArb: "0xv6balancerArb",
                 stabullArb: "0xv6stabullArb",
+                raindexArb: "0xv6raindexArb",
                 dispair: {
                     deployer: "0xv6dispair",
                     interpreter: "0xv6interpreter",
@@ -603,6 +607,49 @@ describe("resolveVersionContracts", () => {
             abi: ABI.Deployer.Primary.Deployer,
         });
     });
+
+    it("should resolve version contracts for v6 with all addresses when all contract calls succeed", async () => {
+        const mockAddresses = {
+            dispair: "0xdispairAddress" as `0x${string}`,
+            sushiArb: "0xsushiArbAddress" as `0x${string}`,
+            genericArb: "0xgenericArbAddress" as `0x${string}`,
+            balancerArb: "0xbalancerArbAddress" as `0x${string}`,
+            stabullArb: "0xstabullArbAddress" as `0x${string}`,
+            raindexArb: "0xraindexArb" as `0x${string}`,
+        };
+
+        // Mock successful contract calls
+        mockClient.readContract
+            .mockResolvedValueOnce("0xinterpreterAddress" as `0x${string}`) // iInterpreter
+            .mockResolvedValueOnce("0xstoreAddress" as `0x${string}`); // iStore
+
+        const result = await resolveVersionContracts(mockClient, mockAddresses, "v6");
+
+        expect(result).toEqual({
+            dispair: {
+                deployer: "0xdispairAddress",
+                interpreter: "0xinterpreterAddress",
+                store: "0xstoreAddress",
+            },
+            sushiArb: "0xsushiArbAddress",
+            genericArb: "0xgenericArbAddress",
+            balancerArb: "0xbalancerArbAddress",
+            stabullArb: "0xstabullArbAddress",
+            raindexArb: "0xraindexArb",
+        });
+
+        expect(mockClient.readContract).toHaveBeenCalledTimes(2);
+        expect(mockClient.readContract).toHaveBeenNthCalledWith(1, {
+            address: "0xdispairAddress",
+            functionName: "I_INTERPRETER",
+            abi: ABI.Deployer.Primary.DeployerV6,
+        });
+        expect(mockClient.readContract).toHaveBeenNthCalledWith(2, {
+            address: "0xdispairAddress",
+            functionName: "I_STORE",
+            abi: ABI.Deployer.Primary.DeployerV6,
+        });
+    });
 });
 
 describe("versionAddressGetter", () => {
@@ -806,5 +853,20 @@ describe("versionAddressGetter", () => {
             dispair: mockContracts.dispair,
             destination: "0xorderbookAddress",
         });
+    });
+
+    it("should return raindexArb for Raindex tradeType when available", () => {
+        mockContracts.raindexArb = "0xraindexArb";
+        const result = versionAddressGetter(mockContracts, mockOrder, TradeType.Raindex);
+
+        expect(result).toEqual({
+            dispair: mockContracts.dispair,
+            destination: "0xraindexArb",
+        });
+    });
+
+    it("should return undefined for Raindex tradeType when raindexRab is not available", () => {
+        const result = versionAddressGetter(mockContracts, mockOrder, TradeType.Raindex);
+        expect(result).toBeUndefined();
     });
 });

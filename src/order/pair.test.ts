@@ -1,6 +1,12 @@
-import { CounterpartySource, OrderbooksPairMap, Pair } from "./types";
-import { addToPairMap, removeFromPairMap, getSortedPairList, sortPairList } from "./pair";
 import { describe, it, expect, beforeEach } from "vitest";
+import { CounterpartySource, OrderbooksPairMap, Pair } from "./types";
+import {
+    sortPairList,
+    addToPairMap,
+    removeFromPairMap,
+    getSortedPairList,
+    getOptimalSortedList,
+} from "./pair";
 
 describe("Test add/remove to pairMap functions", () => {
     const orderbook1 = "0xorderbook1";
@@ -451,5 +457,210 @@ describe("Test sortPairList function", () => {
         // last two should have no quotes
         expect(sorted[5][1].takeOrder.quote).toBeUndefined();
         expect(sorted[6][1].takeOrder.quote).toBeUndefined();
+    });
+});
+
+describe("Test getOptimalSortedList function", () => {
+    const createPair = (hash: string, quote?: { ratio: bigint; maxOutput: bigint }): Pair =>
+        ({
+            orderbook: "0xorderbook",
+            buyToken: "0xinput",
+            sellToken: "0xoutput",
+            takeOrder: {
+                id: hash,
+                quote,
+            },
+        }) as any;
+
+    it("should return empty array for empty input", () => {
+        const result = getOptimalSortedList([]);
+        expect(result).toEqual([]);
+    });
+
+    it("should return single pair when only one option exists", () => {
+        const pair = createPair("hash1", { ratio: 10n, maxOutput: 100n });
+        const result = getOptimalSortedList([pair]);
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toBe(pair);
+    });
+
+    it("should filter out pairs without quotes", () => {
+        const pairs = [
+            createPair("hash1", { ratio: 10n, maxOutput: 100n }),
+            createPair("hash2"), // no quote
+            createPair("hash3", { ratio: 5n, maxOutput: 200n }),
+            createPair("hash4"), // no quote
+        ];
+
+        const result = getOptimalSortedList(pairs);
+
+        // Should only include pairs with quotes
+        expect(result.every((p) => p.takeOrder.quote !== undefined)).toBe(true);
+    });
+
+    it("should return Pareto-optimal options sorted descending by maxOutput", () => {
+        // Create pairs with different input/output combinations
+        // Pair format: [input (ratio * maxOutput), maxOutput]
+        const pairs = [
+            createPair("hash1", { ratio: 2n, maxOutput: 100n }), // input: 200, output: 100
+            createPair("hash2", { ratio: 3n, maxOutput: 150n }), // input: 450, output: 150 (dominated)
+            createPair("hash3", { ratio: 1n, maxOutput: 200n }), // input: 200, output: 200 (Pareto)
+            createPair("hash4", { ratio: 2n, maxOutput: 250n }), // input: 500, output: 250 (dominated)
+            createPair("hash5", { ratio: 1n, maxOutput: 300n }), // input: 300, output: 300 (Pareto)
+        ];
+
+        const result = getOptimalSortedList(pairs);
+
+        // Pareto-optimal set (least input, most output):
+        // hash3: input 200, output 200
+        // hash5: input 300, output 300
+        // Sorted descending by maxOutput: hash5, hash3
+        expect(result).toHaveLength(2);
+        expect(result[0].takeOrder.id).toBe("hash5");
+        expect(result[0].takeOrder.quote?.maxOutput).toBe(300n);
+        expect(result[1].takeOrder.id).toBe("hash3");
+        expect(result[1].takeOrder.quote?.maxOutput).toBe(200n);
+    });
+
+    it("should handle pairs with equal input but different outputs", () => {
+        const pairs = [
+            createPair("hash1", { ratio: 2n, maxOutput: 100n }), // input: 200, output: 100
+            createPair("hash2", { ratio: 1n, maxOutput: 200n }), // input: 200, output: 200 (better)
+            createPair("hash3", { ratio: 4n, maxOutput: 50n }), // input: 200, output: 50
+        ];
+
+        const result = getOptimalSortedList(pairs);
+
+        // With same input (200), highest output (200) wins
+        expect(result).toHaveLength(1);
+        expect(result[0].takeOrder.id).toBe("hash2");
+        expect(result[0].takeOrder.quote?.maxOutput).toBe(200n);
+    });
+
+    it("should handle pairs with equal output but different inputs", () => {
+        const pairs = [
+            createPair("hash1", { ratio: 5n, maxOutput: 100n }), // input: 500, output: 100
+            createPair("hash2", { ratio: 3n, maxOutput: 100n }), // input: 300, output: 100 (better)
+            createPair("hash3", { ratio: 2n, maxOutput: 100n }), // input: 200, output: 100 (best)
+        ];
+
+        const result = getOptimalSortedList(pairs);
+
+        // With same output (100), lowest input (200) wins
+        expect(result).toHaveLength(1);
+        expect(result[0].takeOrder.id).toBe("hash3");
+        expect(result[0].takeOrder.quote?.ratio).toBe(2n);
+    });
+
+    it("should correctly identify Pareto frontier with multiple options", () => {
+        const pairs = [
+            createPair("hash1", { ratio: 10n, maxOutput: 50n }), // input: 500, output: 50 (dominated)
+            createPair("hash2", { ratio: 5n, maxOutput: 100n }), // input: 500, output: 100 (Pareto)
+            createPair("hash3", { ratio: 4n, maxOutput: 150n }), // input: 600, output: 150 (Pareto)
+            createPair("hash4", { ratio: 6n, maxOutput: 120n }), // input: 720, output: 120 (dominated)
+            createPair("hash5", { ratio: 3n, maxOutput: 200n }), // input: 600, output: 200 (Pareto)
+            createPair("hash6", { ratio: 2n, maxOutput: 350n }), // input: 700, output: 350 (Pareto)
+        ];
+
+        const result = getOptimalSortedList(pairs);
+
+        // Pareto frontier (sorted by input, then by output):
+        // hash2: input 500, output 100
+        // hash5: input 600, output 200 (better output than hash3 with same input)
+        // hash6: input 700, output 350
+        expect(result).toHaveLength(3);
+
+        // Should be sorted descending by maxOutput
+        expect(result[0].takeOrder.id).toBe("hash6");
+        expect(result[0].takeOrder.quote?.maxOutput).toBe(350n);
+
+        expect(result[1].takeOrder.id).toBe("hash5");
+        expect(result[1].takeOrder.quote?.maxOutput).toBe(200n);
+
+        expect(result[2].takeOrder.id).toBe("hash2");
+        expect(result[2].takeOrder.quote?.maxOutput).toBe(100n);
+    });
+
+    it("should handle all pairs being Pareto-optimal", () => {
+        // Each pair has progressively more input and more output
+        const pairs = [
+            createPair("hash1", { ratio: 1n, maxOutput: 100n }), // input: 100, output: 100
+            createPair("hash2", { ratio: 1n, maxOutput: 200n }), // input: 200, output: 200
+            createPair("hash3", { ratio: 1n, maxOutput: 300n }), // input: 300, output: 300
+        ];
+
+        const result = getOptimalSortedList(pairs);
+
+        // All are Pareto-optimal
+        expect(result).toHaveLength(3);
+
+        // Sorted descending by maxOutput
+        expect(result[0].takeOrder.id).toBe("hash3");
+        expect(result[1].takeOrder.id).toBe("hash2");
+        expect(result[2].takeOrder.id).toBe("hash1");
+    });
+
+    it("should handle pairs with very small differences", () => {
+        const pairs = [
+            createPair("hash1", { ratio: 1n, maxOutput: 100n }), // input: 100, output: 100
+            createPair("hash2", { ratio: 1n, maxOutput: 101n }), // input: 101, output: 101
+            createPair("hash3", { ratio: 1n, maxOutput: 102n }), // input: 102, output: 102
+        ];
+
+        const result = getOptimalSortedList(pairs);
+
+        // All are Pareto-optimal (each has more input and more output)
+        expect(result).toHaveLength(3);
+        expect(result[0].takeOrder.quote?.maxOutput).toBe(102n);
+        expect(result[1].takeOrder.quote?.maxOutput).toBe(101n);
+        expect(result[2].takeOrder.quote?.maxOutput).toBe(100n);
+    });
+
+    it("should handle edge case where all pairs have same input and output", () => {
+        const pairs = [
+            createPair("hash1", { ratio: 2n, maxOutput: 50n }), // input: 100, output: 50
+            createPair("hash2", { ratio: 5n, maxOutput: 20n }), // input: 100, output: 20
+            createPair("hash3", { ratio: 1n, maxOutput: 100n }), // input: 100, output: 100
+        ];
+
+        const result = getOptimalSortedList(pairs);
+
+        // With same input, only the one with highest output is Pareto-optimal
+        expect(result).toHaveLength(1);
+        expect(result[0].takeOrder.id).toBe("hash3");
+        expect(result[0].takeOrder.quote?.maxOutput).toBe(100n);
+    });
+
+    it("should handle mix of pairs with and without quotes", () => {
+        const pairs = [
+            createPair("hash1", { ratio: 2n, maxOutput: 100n }), // input: 200, output: 100
+            createPair("hash2"), // no quote
+            createPair("hash3", { ratio: 1n, maxOutput: 200n }), // input: 200, output: 200 (Pareto)
+            createPair("hash4"), // no quote
+            createPair("hash5", { ratio: 1n, maxOutput: 300n }), // input: 300, output: 300 (Pareto)
+        ];
+
+        const result = getOptimalSortedList(pairs);
+
+        // Only pairs with quotes, and only Pareto-optimal ones
+        expect(result).toHaveLength(2);
+        expect(result[0].takeOrder.id).toBe("hash5");
+        expect(result[1].takeOrder.id).toBe("hash3");
+        expect(result.every((p) => p.takeOrder.quote !== undefined)).toBe(true);
+    });
+
+    it("should maintain stability for equivalent Pareto options", () => {
+        const pairs = [
+            createPair("hash1", { ratio: 2n, maxOutput: 100n }), // input: 200, output: 100
+            createPair("hash2", { ratio: 4n, maxOutput: 50n }), // input: 200, output: 50
+            createPair("hash3", { ratio: 1n, maxOutput: 200n }), // input: 200, output: 200
+        ];
+
+        const result = getOptimalSortedList(pairs);
+
+        // With same input, only highest output is Pareto-optimal
+        expect(result).toHaveLength(1);
+        expect(result[0].takeOrder.id).toBe("hash3");
     });
 });

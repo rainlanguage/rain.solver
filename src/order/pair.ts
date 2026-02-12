@@ -79,6 +79,7 @@ export function removeFromPairMap(
  * @param output - The output token address to get pairs from
  * @param input - The input token address to get pairs from
  * @param counterpartySource - Determines the type of counterparty orders source to return
+ * @param sortBy - Either by ratio first (default) or by max out first
  */
 export function getSortedPairList<
     counterpartySource extends CounterpartySource = CounterpartySource.IntraOrderbook,
@@ -145,4 +146,55 @@ export function sortPairList(a: [string, Pair], b: [string, Pair]): number {
             return 0;
         }
     }
+}
+
+/**
+ * Picks the optimal trade options from the given list based on Pareto-optimization
+ * algo (least given away, most taken) sorted descending by the max output.
+ *
+ * @remarks in Pareto algo, there is never a single best pick (well actually in picking
+ * the best trade option there almost never is a best option, its a relative choice as
+ * its a problem with 2 variables that needs optimization, which are trade size and
+ * exchange rate, e.g. there can be a trade option with worse exchange rate than the
+ * other but with larger trade size which would result in larger absolute profit), but
+ * rather group of optimal options which our strategy is to sort them based on the
+ * highest maxout to lowest which would give the counterparty order owner the most
+ * cleared amount while the solver makes the most optimal profit
+ *
+ * @param options - The trade options
+ */
+export function getOptimalSortedList(options: Pair[]): Pair[] {
+    // sort based on least input and most output
+    options.sort((a, b) => {
+        if (!a.takeOrder.quote && !b.takeOrder.quote) return 0;
+        if (!a.takeOrder.quote) return 1;
+        if (!b.takeOrder.quote) return -1;
+        const aInput = a.takeOrder.quote.ratio * a.takeOrder.quote.maxOutput;
+        const bInput = b.takeOrder.quote.ratio * b.takeOrder.quote.maxOutput;
+        if (aInput < bInput) {
+            return -1;
+        } else if (aInput > bInput) {
+            return 1;
+        } else {
+            // if maxinputs are equal, sort by maxoutput
+            if (a.takeOrder.quote.maxOutput < b.takeOrder.quote.maxOutput) {
+                return 1;
+            } else if (a.takeOrder.quote.maxOutput > b.takeOrder.quote.maxOutput) {
+                return -1;
+            } else {
+                return 0;
+            }
+        }
+    });
+
+    // pick pareto optimized options
+    const paretoOpts: Pair[] = [];
+    let maxoutBase = -1n;
+    for (const opt of options) {
+        if (opt.takeOrder.quote?.maxOutput && opt.takeOrder.quote.maxOutput > maxoutBase) {
+            paretoOpts.push(opt);
+            maxoutBase = opt.takeOrder.quote.maxOutput;
+        }
+    }
+    return paretoOpts.reverse(); // reverse to be sorted desc based on maxout
 }
