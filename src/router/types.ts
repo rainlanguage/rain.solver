@@ -18,6 +18,13 @@ import {
     TakeOrdersConfigTypeV5,
 } from "../order";
 
+/*
+ * Default price imapct tolerance used for getting unit market price.
+ * this is not used for actual trade size finding in simulations but
+ * only for getting market price for unit token.
+ */
+export const DEFAULT_PRICE_IMPACT_TOLERANCE = 2.5 as const;
+
 /** Represents the different router types */
 export enum RouterType {
     /** The Sushi router (RainDataFetcher) */
