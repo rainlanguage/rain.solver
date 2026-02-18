@@ -72,6 +72,9 @@ describe("Test RaindexRouterTradeSimulator", () => {
                 gasPrice: 1000000000000000000n,
                 chainConfig: {
                     id: 1,
+                    routeProcessors: {
+                        "4": "0xrouter",
+                    },
                 },
                 contracts: {
                     getAddressesForTrade: vi.fn().mockReturnValue({
