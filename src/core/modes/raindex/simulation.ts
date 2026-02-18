@@ -134,8 +134,15 @@ export class RaindexRouterTradeSimulator extends TradeSimulatorBase {
         const legs = [
             {
                 routeLegType: RouteLegType.SUSHI,
-                destination: addresses.destination as `0x${string}`,
-                data: rpParams.routeCode,
+                destination: this.tradeArgs.solver.state.chainConfig.routeProcessors["4"],
+                data: encodeAbiParameters(
+                    [{ type: "address" }, { type: "address" }, { type: "bytes" }],
+                    [
+                        this.tradeArgs.orderDetails.sellToken as `0x${string}`,
+                        this.tradeArgs.counterpartyOrderDetails.buyToken as `0x${string}`,
+                        rpParams.routeCode,
+                    ],
+                ),
             },
         ];
         const exchangeData = encodeAbiParameters(ABI.Orderbook.V6.Primary.RouteLeg, [legs]);
