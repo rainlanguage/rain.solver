@@ -1,4 +1,5 @@
 import { encodeAbiParameters, hexToBytes } from "viem";
+import { Result } from "../common";
 
 export { fetchOracleContext } from "./fetch";
 
@@ -148,9 +149,9 @@ export async function fetchSignedContext(
     url: string,
     orders: OracleOrderRequest[],
     healthMap: OracleHealthMap,
-): Promise<SignedContextV1[]> {
+): Promise<Result<SignedContextV1[], string>> {
     if (isInCooloff(healthMap, url)) {
-        throw new Error(`Oracle ${url} is in cooloff, skipping`);
+        return Result.err(`Oracle ${url} is in cooloff, skipping`);
     }
 
     const tuples = orders.map((req) => ({
@@ -176,30 +177,33 @@ export async function fetchSignedContext(
         });
 
         if (!response.ok) {
-            throw new Error(`Oracle request failed: ${response.status} ${response.statusText}`);
+            recordOracleFailure(healthMap, url);
+            return Result.err(`Oracle request failed: ${response.status} ${response.statusText}`);
         }
 
         json = await response.json();
     } catch (err) {
         recordOracleFailure(healthMap, url);
-        throw err;
+        return Result.err(`Oracle fetch error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
         clearTimeout(timeout);
     }
 
     if (!Array.isArray(json)) {
         recordOracleFailure(healthMap, url);
-        throw new Error("Oracle response must be an array");
+        return Result.err("Oracle response must be an array");
     }
 
     if (json.length !== orders.length) {
         recordOracleFailure(healthMap, url);
-        throw new Error(
+        return Result.err(
             `Oracle response length (${json.length}) does not match request length (${orders.length})`,
         );
     }
 
-    const contexts: SignedContextV1[] = json.map((entry: unknown, i: number) => {
+    // Validate shape of each entry
+    for (let i = 0; i < json.length; i++) {
+        const entry = json[i];
         if (
             typeof entry !== "object" ||
             entry === null ||
@@ -208,11 +212,10 @@ export async function fetchSignedContext(
             typeof (entry as any).signature !== "string"
         ) {
             recordOracleFailure(healthMap, url);
-            throw new Error(`Oracle response[${i}] is not a valid SignedContextV1`);
+            return Result.err(`Oracle response[${i}] is not a valid SignedContextV1`);
         }
-        return entry as SignedContextV1;
-    });
+    }
 
     recordOracleSuccess(healthMap, url);
-    return contexts;
+    return Result.ok(json as SignedContextV1[]);
 }

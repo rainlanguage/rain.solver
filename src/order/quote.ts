@@ -39,10 +39,9 @@ export async function quoteSingleOrderV3(
     gas?: bigint,
 ) {
     if (state) {
-        try {
-            await fetchOracleContext.call(state, orderDetails);
-        } catch (error) {
-            console.warn("Failed to fetch oracle context:", error);
+        const oracleResult = await fetchOracleContext.call(state, orderDetails);
+        if (oracleResult.isErr()) {
+            console.warn("Failed to fetch oracle context:", oracleResult.error);
         }
     }
 
@@ -88,10 +87,9 @@ export async function quoteSingleOrderV4(
     gas?: bigint,
 ) {
     if (state) {
-        try {
-            await fetchOracleContext.call(state, orderDetails);
-        } catch (error) {
-            console.warn("Failed to fetch oracle context:", error);
+        const oracleResult = await fetchOracleContext.call(state, orderDetails);
+        if (oracleResult.isErr()) {
+            console.warn("Failed to fetch oracle context:", oracleResult.error);
         }
     }
 
