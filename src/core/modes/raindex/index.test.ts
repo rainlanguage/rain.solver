@@ -13,6 +13,7 @@ import { extendObjectWithHeader } from "../../../common";
 import { RaindexRouterTradeSimulator } from "./simulation";
 import { estimateProfit, findBestRaindexRouterTrade } from "./index";
 import { describe, it, expect, vi, Mock, beforeEach, assert } from "vitest";
+import { ONE18 } from "../../../math";
 
 // mocks
 vi.mock("../../../common", async (importOriginal) => ({
@@ -218,7 +219,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
         assert(result.isErr());
         expect(result.error.type).toBe(TradeType.Raindex);
         expect(result.error.spanAttributes.error).toContain(
-            "no counterparties found for raindex router trade",
+            "no counterparties (with profitable trade) found for raindex router trade",
         );
         expect(extendObjectWithHeader).not.toHaveBeenCalled();
         expect(isV4OrderbookV6Spy).toHaveBeenCalledWith(orderDetails);
@@ -292,7 +293,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
         assert(result.isErr());
         expect(result.error.type).toBe(TradeType.Raindex);
         expect(result.error.spanAttributes.error).toContain(
-            "no counterparties found for raindex router trade",
+            "no counterparties (with profitable trade) found for raindex router trade",
         );
         expect(extendObjectWithHeader).not.toHaveBeenCalled();
         expect(isV4OrderbookV6Spy).toHaveBeenCalledWith(orderDetails);
@@ -417,7 +418,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
         assert(result.isErr());
         expect(result.error.type).toBe(TradeType.Raindex);
         expect(result.error.spanAttributes.error).toContain(
-            "no counterparties found for raindex router trade",
+            "no counterparties (with profitable trade) found for raindex router trade",
         );
         expect(extendObjectWithHeader).not.toHaveBeenCalled();
         expect(isV4OrderbookV6Spy).toHaveBeenCalledWith(orderDetails);
@@ -470,8 +471,8 @@ describe("Test findBestRaindexRouterTrade function", () => {
             takeOrder: {
                 id: "0xcounterpartyhash",
                 quote: {
-                    maxOutput: parseUnits("50", 18),
-                    ratio: parseUnits("1", 18),
+                    maxOutput: parseUnits("200", 18),
+                    ratio: parseUnits("0.25", 18),
                 },
                 struct: {
                     orderbook: { id: "0xorderbook" },
@@ -492,7 +493,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
         );
 
         const mockQuote = {
-            amountOut: 100n,
+            amountOut: parseUnits("200", 18),
             price: parseUnits("1", 18),
             route: {
                 pcMap: new Map(),
@@ -578,8 +579,8 @@ describe("Test findBestRaindexRouterTrade function", () => {
             takeOrder: {
                 id: "0xhash",
                 quote: {
-                    maxOutput: parseUnits("100", 18),
-                    ratio: parseUnits("1", 18),
+                    maxOutput: parseUnits("125", 18),
+                    ratio: parseUnits("0.8", 18),
                 },
                 struct: {
                     orderbook: { id: "0xorderbook" },
@@ -595,7 +596,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
             takeOrder: {
                 id: "0xcounterparty1",
                 quote: {
-                    maxOutput: parseUnits("50", 18),
+                    maxOutput: parseUnits("120", 18),
                     ratio: parseUnits("1", 18),
                 },
                 struct: {
@@ -612,8 +613,8 @@ describe("Test findBestRaindexRouterTrade function", () => {
             takeOrder: {
                 id: "0xcounterparty2",
                 quote: {
-                    maxOutput: parseUnits("60", 18),
-                    ratio: parseUnits("1.2", 18),
+                    maxOutput: parseUnits("160", 18),
+                    ratio: parseUnits("0.6", 18),
                 },
                 struct: {
                     orderbook: { id: "0xorderbook" },
@@ -643,7 +644,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
         );
 
         const mockQuote = {
-            amountOut: 100n,
+            amountOut: parseUnits("200", 18),
             price: parseUnits("1", 18),
             route: {
                 pcMap: new Map(),
@@ -728,7 +729,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
             type: TradeType.Raindex,
             solver,
             orderDetails,
-            counterpartyOrderDetails: counterparty1,
+            counterpartyOrderDetails: counterparty2,
             signer,
             maximumInputFixed: expect.any(BigInt),
             counterpartyInputToEthPrice: expect.any(BigInt),
@@ -743,7 +744,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
             type: TradeType.Raindex,
             solver,
             orderDetails,
-            counterpartyOrderDetails: counterparty2,
+            counterpartyOrderDetails: counterparty1,
             signer,
             maximumInputFixed: expect.any(BigInt),
             counterpartyInputToEthPrice: expect.any(BigInt),
@@ -784,8 +785,8 @@ describe("Test findBestRaindexRouterTrade function", () => {
             takeOrder: {
                 id: "0xcounterpartyhash",
                 quote: {
-                    maxOutput: parseUnits("50", 18),
-                    ratio: parseUnits("1", 18),
+                    maxOutput: parseUnits("150", 18),
+                    ratio: parseUnits("0.3", 18),
                 },
                 struct: {
                     orderbook: { id: "0xorderbook" },
@@ -806,7 +807,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
         );
 
         const mockQuote = {
-            amountOut: 100n,
+            amountOut: parseUnits("200", 18),
             price: parseUnits("1", 18),
             route: {
                 pcMap: new Map(),
@@ -885,22 +886,20 @@ describe("Test findBestRaindexRouterTrade function", () => {
 });
 
 describe("Test estimateProfit function", () => {
-    let calcCounterpartyInputProfitSpy: any;
     let calcCounterpartyOutputToEthPriceSpy: any;
     let calcCounterpartyInputToEthPriceSpy: any;
 
     beforeEach(() => {
-        calcCounterpartyInputProfitSpy = vi.spyOn(utils, "calcCounterpartyInputProfit");
         calcCounterpartyOutputToEthPriceSpy = vi.spyOn(utils, "calcCounterpartyOutputToEthPrice");
         calcCounterpartyInputToEthPriceSpy = vi.spyOn(utils, "calcCounterpartyInputToEthPrice");
     });
 
-    it("should return zero profit when order max input exceeds counterparty max output", () => {
+    it("should return zero profit when router output is lower than counterparty order max input", () => {
         const orderDetails = {
             takeOrder: {
                 quote: {
                     maxOutput: parseUnits("100", 18),
-                    ratio: parseUnits("3", 18), // High ratio
+                    ratio: parseUnits("2", 18),
                 },
             },
         } as any;
@@ -915,31 +914,36 @@ describe("Test estimateProfit function", () => {
             },
         } as any;
 
-        const quote = {} as any;
+        const quote = {
+            amountOut: parseUnits("200", 18),
+            price: parseUnits("1", 18),
+            route: {
+                pcMap: new Map(),
+                route: { legs: [] },
+            },
+        } as any;
 
-        (calcCounterpartyInputProfitSpy as Mock).mockReturnValueOnce({
-            counterpartyMaxOutput: 0n,
-            counterpartyInputProfit: parseUnits("200", 18),
-        });
         const result = estimateProfit(orderDetails, counterparty, quote);
 
-        // orderMaxInput: 100e18 * 3e18 / 1e18 = 300e18
-        // counterpartyMaxOutput: 40e18 (less than 300e18)
+        // orderMaxInput: 100e18 * 2e18 / 1e18 = 200e18
+        // counterpartyMaxOutput: 50e18 (less than 200e18)
+        // orderMaxOutput: (min of 50e18 and 400e18) / 2e18 = 25e18
+        // router output = 1 * 25e18 = 25e18
+        // router output 25e18 < counterparty maxoutput 50e18
         // Cannot trade, returns zero
         expect(result.profit).toBe(0n);
         expect(result.counterpartyInputToEthPrice).toBe(0n);
         expect(result.counterpartyOutputToEthPrice).toBe(0n);
-        expect(calcCounterpartyInputProfitSpy).toHaveBeenCalledWith(counterparty, quote);
         expect(calcCounterpartyInputToEthPriceSpy).not.toHaveBeenCalled();
         expect(calcCounterpartyOutputToEthPriceSpy).not.toHaveBeenCalled();
     });
 
-    it("should return corrrect profit when order max input is lower counterparty max output", () => {
+    it("should return corrrect profit with only counterparty input profit", () => {
         const orderDetails = {
             takeOrder: {
                 quote: {
                     maxOutput: parseUnits("100", 18),
-                    ratio: parseUnits("3", 18),
+                    ratio: parseUnits("2", 18),
                 },
             },
         } as any;
@@ -954,22 +958,191 @@ describe("Test estimateProfit function", () => {
             },
         } as any;
 
-        const quote = {} as any;
+        const quote = {
+            amountOut: parseUnits("200", 18),
+            price: parseUnits("3", 18),
+            route: {
+                pcMap: new Map(),
+                route: { legs: [] },
+            },
+        } as any;
 
-        (calcCounterpartyInputProfitSpy as Mock).mockReturnValueOnce({
-            counterpartyMaxOutput: parseUnits("400", 18),
-            counterpartyInputProfit: parseUnits("100", 18),
-        });
         (calcCounterpartyInputToEthPriceSpy as Mock).mockReturnValueOnce(parseUnits("1.5", 18));
         (calcCounterpartyOutputToEthPriceSpy as Mock).mockReturnValueOnce(parseUnits("2.5", 18));
         const result = estimateProfit(orderDetails, counterparty, quote, "1", "2");
 
         // orderMaxInput: 100e18 * 3e18 / 1e18 = 300e18
         // counterpartyMaxOutput: 400e18 (more than 300e18)
-        expect(result.profit).toBe(parseUnits("250", 18) + parseUnits("150", 18));
+
+        // orderMaxInput: 100e18 * 2e18 / 1e18 = 200e18
+        // counterpartyMaxOutput: 50e18 (less than 200e18)
+        // orderMaxOutput: (min of 50e18 and 400e18) / 2e18 = 25e18
+        // router output = 3 * 25e18 = 75e18
+        // router output 75e18 > counterparty maxoutput 50e18
+        // counterparty input profit: 75e18 - 50e18 = 25e18 * (1.5 to eth price)
+        expect(result.profit).toBe((parseUnits("25", 18) * parseUnits("1.5", 18)) / ONE18);
         expect(result.counterpartyInputToEthPrice).toBe(parseUnits("1.5", 18));
         expect(result.counterpartyOutputToEthPrice).toBe(parseUnits("2.5", 18));
-        expect(calcCounterpartyInputProfitSpy).toHaveBeenCalledWith(counterparty, quote);
+        expect(calcCounterpartyInputToEthPriceSpy).toHaveBeenCalledWith(quote, "2");
+        expect(calcCounterpartyOutputToEthPriceSpy).toHaveBeenCalledWith(
+            parseUnits("1.5", 18),
+            counterparty.takeOrder.quote!.ratio,
+            "1",
+        );
+    });
+
+    it("should return corrrect profit with only counterparty output profit capped at counterparty maxoutput", () => {
+        const orderDetails = {
+            takeOrder: {
+                quote: {
+                    maxOutput: parseUnits("100", 18),
+                    ratio: parseUnits("2", 18),
+                },
+            },
+        } as any;
+
+        const counterparty = {
+            buyTokenDecimals: 18,
+            takeOrder: {
+                quote: {
+                    maxOutput: parseUnits("250", 18),
+                    ratio: parseUnits("0.2", 18),
+                },
+            },
+        } as any;
+
+        const quote = {
+            amountOut: parseUnits("200", 18),
+            price: parseUnits("0.5", 18),
+            route: {
+                pcMap: new Map(),
+                route: { legs: [] },
+            },
+        } as any;
+
+        (calcCounterpartyInputToEthPriceSpy as Mock).mockReturnValueOnce(parseUnits("1.5", 18));
+        (calcCounterpartyOutputToEthPriceSpy as Mock).mockReturnValueOnce(parseUnits("2.5", 18));
+        const result = estimateProfit(orderDetails, counterparty, quote, "1", "2");
+
+        // orderMaxInput: 100e18 * 2e18 / 1e18 = 200e18
+        // counterpartyMaxOutput: 250e18 (more than 200e18)
+        // orderMaxOutput: (min of 250e18 and 200e18) / 2e18 = 100e18
+        // router output = 0.5 * 100e18 = 50e18
+        // router output covers full counterparty trade, so no counterparty input profir
+        // counterparty output profit: 250e18(counterparty output) - 200e18 (order max input) = 50e18
+        // profit to eth: 50e18 * 2.5
+        expect(result.profit).toBe((parseUnits("50", 18) * parseUnits("2.5", 18)) / ONE18);
+        expect(result.counterpartyInputToEthPrice).toBe(parseUnits("1.5", 18));
+        expect(result.counterpartyOutputToEthPrice).toBe(parseUnits("2.5", 18));
+        expect(calcCounterpartyInputToEthPriceSpy).toHaveBeenCalledWith(quote, "2");
+        expect(calcCounterpartyOutputToEthPriceSpy).toHaveBeenCalledWith(
+            parseUnits("1.5", 18),
+            counterparty.takeOrder.quote!.ratio,
+            "1",
+        );
+    });
+
+    it("should return corrrect profit with only counterparty output profit capped at counterparty maxinput from router", () => {
+        const orderDetails = {
+            takeOrder: {
+                quote: {
+                    maxOutput: parseUnits("100", 18),
+                    ratio: parseUnits("2", 18),
+                },
+            },
+        } as any;
+
+        const counterparty = {
+            buyTokenDecimals: 18,
+            takeOrder: {
+                quote: {
+                    maxOutput: parseUnits("400", 18),
+                    ratio: parseUnits("0.25", 18),
+                },
+            },
+        } as any;
+
+        const quote = {
+            amountOut: parseUnits("200", 18),
+            price: parseUnits("0.8", 18),
+            route: {
+                pcMap: new Map(),
+                route: { legs: [] },
+            },
+        } as any;
+
+        (calcCounterpartyInputToEthPriceSpy as Mock).mockReturnValueOnce(parseUnits("1.5", 18));
+        (calcCounterpartyOutputToEthPriceSpy as Mock).mockReturnValueOnce(parseUnits("2.5", 18));
+        const result = estimateProfit(orderDetails, counterparty, quote, "1", "2");
+
+        // orderMaxInput: 100e18 * 2e18 / 1e18 = 200e18
+        // counterpartyMaxOutput: 400e18 (more than 200e18)
+        // orderMaxOutput: (min of 200e18 and 400e18) / 2e18 = 100e18
+        // router output = 0.8 * 100e18 = 80e18
+        // router output covers partial counterparty trade, so no counterparty input profit, but partial countery output profit
+        // counterparty output: 80e18 / 0.25 = 320e18
+        // counterparty output profit: 320e18 (counterparty output) - 200e18 (order max input) = 120e18
+        // profit to eth: 120e18 * 2.5
+        expect(result.profit).toBe((parseUnits("120", 18) * parseUnits("2.5", 18)) / ONE18);
+        expect(result.counterpartyInputToEthPrice).toBe(parseUnits("1.5", 18));
+        expect(result.counterpartyOutputToEthPrice).toBe(parseUnits("2.5", 18));
+        expect(calcCounterpartyInputToEthPriceSpy).toHaveBeenCalledWith(quote, "2");
+        expect(calcCounterpartyOutputToEthPriceSpy).toHaveBeenCalledWith(
+            parseUnits("1.5", 18),
+            counterparty.takeOrder.quote!.ratio,
+            "1",
+        );
+    });
+
+    it("should return corrrect profit with both counterparty io profits", () => {
+        const orderDetails = {
+            takeOrder: {
+                quote: {
+                    maxOutput: parseUnits("100", 18),
+                    ratio: parseUnits("2", 18),
+                },
+            },
+        } as any;
+
+        const counterparty = {
+            buyTokenDecimals: 18,
+            takeOrder: {
+                quote: {
+                    maxOutput: parseUnits("500", 18),
+                    ratio: parseUnits("0.2", 18),
+                },
+            },
+        } as any;
+
+        const quote = {
+            amountOut: parseUnits("200", 18),
+            price: parseUnits("1.5", 18),
+            route: {
+                pcMap: new Map(),
+                route: { legs: [] },
+            },
+        } as any;
+
+        (calcCounterpartyInputToEthPriceSpy as Mock).mockReturnValueOnce(parseUnits("1.5", 18));
+        (calcCounterpartyOutputToEthPriceSpy as Mock).mockReturnValueOnce(parseUnits("2.5", 18));
+        const result = estimateProfit(orderDetails, counterparty, quote, "1", "2");
+
+        // orderMaxInput: 100e18 * 2e18 / 1e18 = 200e18
+        // counterpartyMaxOutput: 500e18 (more than 200e18)
+        // orderMaxOutput: (min of 200e18 and 500e18) / 2e18 = 100e18
+        // router output = 1.5 * 100e18 = 150e18
+        // counterparty max input: 500e18 / 0.2 = 100e18
+        // router output covers full counterparty trade, with extra tokens remaining
+        // counterparty input profit: 150e18 - 100e18 = 50e18
+        // counterparty input profit to eth: 50e18 * 1.5
+        // counterparty output profit: 500e18 (counterparty output) - 200e18 (order max input) = 300e18
+        // profit to eth: 300e18 * 2.5
+        expect(result.profit).toBe(
+            (parseUnits("300", 18) * parseUnits("2.5", 18)) / ONE18 +
+                (parseUnits("50", 18) * parseUnits("1.5", 18)) / ONE18,
+        );
+        expect(result.counterpartyInputToEthPrice).toBe(parseUnits("1.5", 18));
+        expect(result.counterpartyOutputToEthPrice).toBe(parseUnits("2.5", 18));
         expect(calcCounterpartyInputToEthPriceSpy).toHaveBeenCalledWith(quote, "2");
         expect(calcCounterpartyOutputToEthPriceSpy).toHaveBeenCalledWith(
             parseUnits("1.5", 18),
