@@ -4,78 +4,46 @@ import { AppOptions } from "../config";
 import { ABI, normalizeFloat } from "../common";
 import { BundledOrders, Pair, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData, PublicClient } from "viem";
-import { extractOracleUrl, fetchSignedContext, OracleManager } from "../oracle";
-
-/**
- * If the order has oracle metadata, fetch signed context and inject it
- * into the takeOrder struct. Failures are swallowed so quoting proceeds
- * with empty signed context.
- */
-async function fetchOracleContext(
-    orderDetails: Pair,
-    oracleManager: OracleManager,
-): Promise<void> {
-    const orderMeta = (orderDetails as any).meta;
-    if (!orderMeta) return;
-
-    const oracleUrl = extractOracleUrl(orderMeta);
-    if (!oracleUrl) return;
-
-    const signedContexts = await fetchSignedContext(
-        oracleUrl,
-        [
-            {
-                order: orderDetails.takeOrder.struct.order,
-                inputIOIndex: orderDetails.takeOrder.struct.inputIOIndex,
-                outputIOIndex: orderDetails.takeOrder.struct.outputIOIndex,
-                counterparty: "0x0000000000000000000000000000000000000000",
-            },
-        ],
-        oracleManager,
-    );
-
-    orderDetails.takeOrder.struct.signedContext = signedContexts;
-}
+import { fetchOracleContext } from "../oracle";
 
 /**
  * Quotes a single order
  * @param orderDetails - Order details to quote
  * @param viemClient - Viem client
+ * @param state - SharedState for oracle health tracking
  * @param blockNumber - Optional block number
  * @param gas - Optional read gas
  */
 export async function quoteSingleOrder(
     orderDetails: Pair,
     viemClient: PublicClient,
+    state?: SharedState,
     blockNumber?: bigint,
     gas?: bigint,
-    oracleManager?: OracleManager,
 ) {
     if (Pair.isV3(orderDetails)) {
-        return quoteSingleOrderV3(orderDetails, viemClient, blockNumber, gas, oracleManager);
+        return quoteSingleOrderV3(orderDetails, viemClient, state, blockNumber, gas);
     } else {
-        return quoteSingleOrderV4(orderDetails, viemClient, blockNumber, gas, oracleManager);
+        return quoteSingleOrderV4(orderDetails, viemClient, state, blockNumber, gas);
     }
 }
 
 /**
  * Quotes a single order v3
- * @param orderDetails - Order details to quote
- * @param viemClient - Viem client
- * @param blockNumber - Optional block number
- * @param gas - Optional read gas
  */
 export async function quoteSingleOrderV3(
     orderDetails: Pair,
     viemClient: PublicClient,
+    state?: SharedState,
     blockNumber?: bigint,
     gas?: bigint,
-    oracleManager?: OracleManager,
 ) {
-    try {
-        if (oracleManager) await fetchOracleContext(orderDetails, oracleManager);
-    } catch (error) {
-        console.warn("Failed to fetch oracle context:", error);
+    if (state) {
+        try {
+            await fetchOracleContext.call(state, orderDetails);
+        } catch (error) {
+            console.warn("Failed to fetch oracle context:", error);
+        }
     }
 
     const { data } = await viemClient
@@ -111,22 +79,20 @@ export async function quoteSingleOrderV3(
 
 /**
  * Quotes a single order v4
- * @param orderDetails - Order details to quote
- * @param viemClient - Viem client
- * @param blockNumber - Optional block number
- * @param gas - Optional read gas
  */
 export async function quoteSingleOrderV4(
     orderDetails: Pair,
     viemClient: PublicClient,
+    state?: SharedState,
     blockNumber?: bigint,
     gas?: bigint,
-    oracleManager?: OracleManager,
 ) {
-    try {
-        if (oracleManager) await fetchOracleContext(orderDetails, oracleManager);
-    } catch (error) {
-        console.warn("Failed to fetch oracle context:", error);
+    if (state) {
+        try {
+            await fetchOracleContext.call(state, orderDetails);
+        } catch (error) {
+            console.warn("Failed to fetch oracle context:", error);
+        }
     }
 
     const { data } = await viemClient

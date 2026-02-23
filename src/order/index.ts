@@ -10,7 +10,6 @@ import { downscaleProtection } from "./protection";
 import { normalizeFloat, Result, TokenDetails } from "../common";
 import { OrderManagerError, OrderManagerErrorType } from "./error";
 import { addToPairMap, removeFromPairMap, getSortedPairList } from "./pair";
-import { OracleManager } from "../oracle";
 import {
     Pair,
     Order,
@@ -43,8 +42,6 @@ export class OrderManager {
     readonly state: SharedState;
     /** Subgraph manager instance */
     readonly subgraphManager: SubgraphManager;
-    /** Oracle health tracker */
-    readonly oracleManager: OracleManager;
 
     /** Orderbooks owners profile map */
     ownersMap: OrderbooksOwnersProfileMap;
@@ -87,7 +84,6 @@ export class OrderManager {
         this.quoteGas = state.orderManagerConfig.quoteGas;
         this.ownerLimits = state.orderManagerConfig.ownerLimits;
         this.subgraphManager = subgraphManager ?? new SubgraphManager(state.subgraphConfig);
-        this.oracleManager = new OracleManager();
     }
 
     /**
@@ -465,9 +461,9 @@ export class OrderManager {
         return await quoteSingleOrder(
             orderDetails,
             this.state.client,
+            this.state,
             blockNumber,
             this.quoteGas,
-            this.oracleManager,
         );
     }
 
