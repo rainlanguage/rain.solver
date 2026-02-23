@@ -12,11 +12,7 @@ import { SimulationResult, TradeType } from "../../types";
 import { getOptimalSortedList } from "../../../order/pair";
 import { SushiRouter, SushiRouterQuote } from "../../../router";
 import { Result, extendObjectWithHeader } from "../../../common";
-import {
-    calcCounterpartyInputProfit,
-    calcCounterpartyInputToEthPrice,
-    calcCounterpartyOutputToEthPrice,
-} from "./utils";
+import { calcCounterpartyInputToEthPrice, calcCounterpartyOutputToEthPrice } from "./utils";
 
 export enum RouteLegType {
     RAINDEX,
@@ -183,41 +179,44 @@ export async function findBestRaindexRouterTrade(
     });
 
     // simulate top 3 picks
-    const promises = optimalTradeOptions.slice(0, 3).map((args) => {
-        const {
-            quote,
-            profit,
-            rpParams,
-            routeVisual,
-            counterparty: counterpartyOrderDetails,
-            counterpartyInputToEthPrice,
-            counterpartyOutputToEthPrice,
-        } = args;
-        if (!Pair.isV4OrderbookV6(counterpartyOrderDetails)) {
-            spanAttributes["error"] =
-                "Cannot trade as raindex router as counterparty order is not deployed on v6 orderbook";
-            return Result.err({
+    const promises = optimalTradeOptions
+        .filter((v) => v.profit > 0n)
+        .slice(0, 3)
+        .map((args) => {
+            const {
+                quote,
+                profit,
+                rpParams,
+                routeVisual,
+                counterparty: counterpartyOrderDetails,
+                counterpartyInputToEthPrice,
+                counterpartyOutputToEthPrice,
+            } = args;
+            if (!Pair.isV4OrderbookV6(counterpartyOrderDetails)) {
+                spanAttributes["error"] =
+                    "Cannot trade as raindex router as counterparty order is not deployed on v6 orderbook";
+                return Result.err({
+                    type: TradeType.Raindex,
+                    spanAttributes,
+                    reason: SimulationHaltReason.UndefinedTradeDestinationAddress,
+                }) as SimulationResult;
+            }
+            return RaindexRouterTradeSimulator.withArgs({
                 type: TradeType.Raindex,
-                spanAttributes,
-                reason: SimulationHaltReason.UndefinedTradeDestinationAddress,
-            }) as SimulationResult;
-        }
-        return RaindexRouterTradeSimulator.withArgs({
-            type: TradeType.Raindex,
-            solver: this,
-            orderDetails,
-            counterpartyOrderDetails,
-            signer,
-            maximumInputFixed,
-            counterpartyInputToEthPrice,
-            counterpartyOutputToEthPrice,
-            blockNumber,
-            quote,
-            profit,
-            rpParams,
-            routeVisual,
-        }).trySimulateTrade();
-    });
+                solver: this,
+                orderDetails,
+                counterpartyOrderDetails,
+                signer,
+                maximumInputFixed,
+                counterpartyInputToEthPrice,
+                counterpartyOutputToEthPrice,
+                blockNumber,
+                quote,
+                profit,
+                rpParams,
+                routeVisual,
+            }).trySimulateTrade();
+        });
 
     const results = await Promise.all(promises);
     if (results.some((res) => res.isOk())) {
@@ -241,7 +240,8 @@ export async function findBestRaindexRouterTrade(
             allNoneNodeErrors.push(res.error.noneNodeError);
         }
         if (!results.length) {
-            spanAttributes["error"] = "no counterparties found for raindex router trade";
+            spanAttributes["error"] =
+                "no counterparties (with profitable trade) found for raindex router trade";
         }
         return Result.err({
             type: TradeType.Raindex,
@@ -262,22 +262,50 @@ export function estimateProfit(
     counterpartyInputToEthPrice: bigint;
     counterpartyOutputToEthPrice: bigint;
 } {
-    const { counterpartyMaxOutput, counterpartyInputProfit } = calcCounterpartyInputProfit(
-        counterparty,
-        quote,
-    );
-    const orderMaxInput =
+    let orderMaxInput =
         (orderDetails.takeOrder.quote!.maxOutput * orderDetails.takeOrder.quote!.ratio) / ONE18;
-    // cant trade, so 0 profit
-    if (orderMaxInput > counterpartyMaxOutput) {
+    let orderMaxOuput = orderDetails.takeOrder.quote!.maxOutput;
+
+    // cap order's io tomax possible trade size from counterparty
+    if (counterparty.takeOrder.quote!.maxOutput < orderMaxInput) {
+        orderMaxInput = counterparty.takeOrder.quote!.maxOutput;
+        orderMaxOuput =
+            orderDetails.takeOrder.quote!.ratio === 0n
+                ? orderDetails.takeOrder.quote!.maxOutput
+                : (orderMaxInput * ONE18) / orderDetails.takeOrder.quote!.ratio;
+    }
+
+    // calculate router output and counterparty max input and profit
+    const routerOutput = (orderMaxOuput * quote.price) / ONE18;
+    let counterpartyMaxInput =
+        (counterparty.takeOrder.quote!.maxOutput * counterparty.takeOrder.quote!.ratio) / ONE18;
+    let counterpartyInputProfit = routerOutput - counterpartyMaxInput;
+
+    // cap counterparty max input if router output is lower
+    if (routerOutput < counterpartyMaxInput) {
+        counterpartyMaxInput = routerOutput;
+        counterpartyInputProfit = 0n;
+    }
+
+    // calculate counterparty max output from the calculated coiunterparty max input
+    const counterpartyMaxOutput =
+        counterparty.takeOrder.quote!.ratio === 0n
+            ? counterparty.takeOrder.quote!.maxOutput
+            : (counterpartyMaxInput * ONE18) / counterparty.takeOrder.quote!.ratio;
+
+    // short circuit, cant trade
+    // as the counterparty max output now is lower than order's max input
+    if (counterpartyMaxOutput < orderMaxInput) {
         return {
             profit: 0n,
             counterpartyInputToEthPrice: 0n,
             counterpartyOutputToEthPrice: 0n,
         };
     }
-    const counterpartyOutputProfit = counterpartyMaxOutput - orderMaxInput;
 
+    // from here on we are sure is trade is possible
+    // and we can calcultae the possible profits
+    const counterpartyOutputProfit = counterpartyMaxOutput - orderMaxInput;
     const counterpartyInputToEthPrice = calcCounterpartyInputToEthPrice(quote, outputToEthPrice);
     const counterpartyOutputToEthPrice = calcCounterpartyOutputToEthPrice(
         counterpartyInputToEthPrice,
