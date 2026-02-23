@@ -1,5 +1,6 @@
 import { Pair } from "../order/types";
 import { SharedState } from "../state";
+import { Result } from "../common";
 import { extractOracleUrl, fetchSignedContext } from ".";
 
 /**
@@ -7,19 +8,19 @@ import { extractOracleUrl, fetchSignedContext } from ".";
  * into the takeOrder struct. Called with SharedState as `this` to access
  * the oracle health map.
  *
- * Failures are swallowed so quoting proceeds with empty signed context.
+ * Returns Result — callers decide how to handle failures.
  */
 export async function fetchOracleContext(
     this: SharedState,
     orderDetails: Pair,
-): Promise<void> {
+): Promise<Result<void, string>> {
     const orderMeta = (orderDetails as any).meta;
-    if (!orderMeta) return;
+    if (!orderMeta) return Result.ok(undefined);
 
     const oracleUrl = extractOracleUrl(orderMeta);
-    if (!oracleUrl) return;
+    if (!oracleUrl) return Result.ok(undefined);
 
-    const signedContexts = await fetchSignedContext(
+    const result = await fetchSignedContext(
         oracleUrl,
         [
             {
@@ -32,5 +33,10 @@ export async function fetchOracleContext(
         this.oracleHealth,
     );
 
-    orderDetails.takeOrder.struct.signedContext = signedContexts;
+    if (result.isErr()) {
+        return Result.err(result.error);
+    }
+
+    orderDetails.takeOrder.struct.signedContext = result.value;
+    return Result.ok(undefined);
 }
