@@ -163,7 +163,13 @@ describe("Test RaindexRouterTradeSimulator", () => {
             expect(simulator.spanAttributes["counterpartyOutputToEthPrice"]).toBe(
                 formatUnits(tradeArgs.counterpartyOutputToEthPrice, 18),
             );
-            expect(simulator.spanAttributes["route"]).toEqual(tradeArgs.routeVisual);
+            expect(simulator.spanAttributes["route"]).toEqual([
+                `${tradeArgs.orderDetails.sellTokenSymbol} (order output)`,
+                ...tradeArgs.routeVisual,
+                `${tradeArgs.counterpartyOrderDetails.buyTokenSymbol} (counterparty input)/${
+                    tradeArgs.counterpartyOrderDetails.sellTokenSymbol
+                } (counterparty output - order input)`,
+            ]);
             expect(simulator.spanAttributes["routeQuote"]).toBe(
                 formatUnits(tradeArgs.quote.price, 18),
             );

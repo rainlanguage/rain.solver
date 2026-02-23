@@ -80,13 +80,10 @@ export class RaindexRouterTradeSimulator extends TradeSimulatorBase {
             counterpartyOrderDetails,
             maximumInputFixed,
             blockNumber,
-            // type,
-            // solver,
-            // signer,
             counterpartyInputToEthPrice,
             counterpartyOutputToEthPrice,
             quote,
-            // profit,
+            profit,
             rpParams,
             routeVisual,
         } = this.tradeArgs;
@@ -101,7 +98,14 @@ export class RaindexRouterTradeSimulator extends TradeSimulatorBase {
             counterpartyOutputToEthPrice,
             18,
         );
-        this.spanAttributes["route"] = routeVisual;
+        this.spanAttributes["initEstimatedProfitETH"] = formatUnits(profit, 18);
+        this.spanAttributes["route"] = [
+            `${orderDetails.sellTokenSymbol} (order output)`,
+            ...routeVisual,
+            `${counterpartyOrderDetails.buyTokenSymbol} (counterparty input)/${
+                counterpartyOrderDetails.sellTokenSymbol
+            } (counterparty output - order input)`,
+        ];
         this.spanAttributes["routeQuote"] = formatUnits(quote.price, 18);
         this.spanAttributes["oppBlockNumber"] = Number(blockNumber);
         this.spanAttributes["counterpartyPair"] =
