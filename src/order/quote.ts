@@ -4,6 +4,7 @@ import { AppOptions } from "../config";
 import { ABI, normalizeFloat } from "../common";
 import { BundledOrders, Pair, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData, PublicClient } from "viem";
+import { extractOracleUrl, fetchSignedContext } from "../oracle";
 
 /**
  * Quotes a single order
@@ -38,6 +39,29 @@ export async function quoteSingleOrderV3(
     blockNumber?: bigint,
     gas?: bigint,
 ) {
+    // Check if order has oracle metadata and fetch signed context
+    try {
+        const orderMeta = (orderDetails as any).orderDetails?.meta;
+        if (orderMeta) {
+            const oracleUrl = extractOracleUrl(orderMeta);
+            if (oracleUrl) {
+                // Fetch signed context for this order
+                const signedContexts = await fetchSignedContext(oracleUrl, [{
+                    order: orderDetails.takeOrder.struct.order,
+                    inputIOIndex: orderDetails.takeOrder.struct.inputIOIndex,
+                    outputIOIndex: orderDetails.takeOrder.struct.outputIOIndex,
+                    counterparty: '0x0000000000000000000000000000000000000000' // Unknown at quote time
+                }]);
+                
+                // Update the signed context in the takeOrder struct
+                orderDetails.takeOrder.struct.signedContext = signedContexts;
+            }
+        }
+    } catch (error) {
+        // Oracle failures should not prevent quoting - log warning and continue with empty context
+        console.warn('Failed to fetch oracle data for quote:', error);
+    }
+
     const { data } = await viemClient
         .call({
             to: orderDetails.orderbook as `0x${string}`,
@@ -82,6 +106,29 @@ export async function quoteSingleOrderV4(
     blockNumber?: bigint,
     gas?: bigint,
 ) {
+    // Check if order has oracle metadata and fetch signed context
+    try {
+        const orderMeta = (orderDetails as any).orderDetails?.meta;
+        if (orderMeta) {
+            const oracleUrl = extractOracleUrl(orderMeta);
+            if (oracleUrl) {
+                // Fetch signed context for this order
+                const signedContexts = await fetchSignedContext(oracleUrl, [{
+                    order: orderDetails.takeOrder.struct.order,
+                    inputIOIndex: orderDetails.takeOrder.struct.inputIOIndex,
+                    outputIOIndex: orderDetails.takeOrder.struct.outputIOIndex,
+                    counterparty: '0x0000000000000000000000000000000000000000' // Unknown at quote time
+                }]);
+                
+                // Update the signed context in the takeOrder struct
+                orderDetails.takeOrder.struct.signedContext = signedContexts;
+            }
+        }
+    } catch (error) {
+        // Oracle failures should not prevent quoting - log warning and continue with empty context
+        console.warn('Failed to fetch oracle data for quote:', error);
+    }
+
     const { data } = await viemClient
         .call({
             to: orderDetails.orderbook as `0x${string}`,
