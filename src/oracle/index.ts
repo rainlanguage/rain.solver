@@ -42,16 +42,12 @@ export interface OracleOrderRequest {
 }
 
 // ---------------------------------------------------------------------------
-// Retry & cooloff configuration
+// Cooloff configuration
 // ---------------------------------------------------------------------------
 
 /** Per-request timeout */
 const ORACLE_TIMEOUT_MS = 5_000;
-/** Max retries per request (total attempts = MAX_RETRIES + 1) */
-const MAX_RETRIES = 2;
-/** Base delay between retries (doubled each attempt) */
-const RETRY_BASE_DELAY_MS = 500;
-/** How long to skip a failing oracle after repeated failures */
+/** How long to skip a failing oracle after consecutive failures */
 const COOLOFF_DURATION_MS = 5 * 60 * 1_000; // 5 minutes
 /** Number of consecutive failures before entering cooloff */
 const COOLOFF_THRESHOLD = 3;
@@ -85,7 +81,8 @@ function recordFailure(url: string) {
     if (state.consecutiveFailures >= COOLOFF_THRESHOLD) {
         state.cooloffUntil = Date.now() + COOLOFF_DURATION_MS;
         console.warn(
-            `Oracle ${url} entered cooloff for ${COOLOFF_DURATION_MS / 1000}s after ${state.consecutiveFailures} consecutive failures`,
+            `Oracle ${url} entered cooloff for ${COOLOFF_DURATION_MS / 1000}s ` +
+                `after ${state.consecutiveFailures} consecutive failures`,
         );
     }
 }
@@ -155,60 +152,6 @@ const oracleBatchAbiParams = [
 ] as const;
 
 // ---------------------------------------------------------------------------
-// Core fetch with retry
-// ---------------------------------------------------------------------------
-
-/** Sleep helper */
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * Single attempt to fetch signed contexts from an oracle endpoint.
- */
-async function fetchOnce(url: string, body: Uint8Array): Promise<unknown> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), ORACLE_TIMEOUT_MS);
-
-    let response: Response;
-    try {
-        response = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/octet-stream" },
-            body,
-            signal: controller.signal,
-        });
-    } finally {
-        clearTimeout(timeout);
-    }
-
-    if (!response.ok) {
-        throw new Error(`Oracle request failed: ${response.status} ${response.statusText}`);
-    }
-
-    return response.json();
-}
-
-/**
- * Fetch with exponential backoff retry.
- */
-async function fetchWithRetry(url: string, body: Uint8Array): Promise<unknown> {
-    let lastError: Error | undefined;
-
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        try {
-            return await fetchOnce(url, body);
-        } catch (err) {
-            lastError = err instanceof Error ? err : new Error(String(err));
-            if (attempt < MAX_RETRIES) {
-                const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
-                await sleep(delay);
-            }
-        }
-    }
-
-    throw lastError;
-}
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -218,10 +161,10 @@ async function fetchWithRetry(url: string, body: Uint8Array): Promise<unknown> {
  * POSTs abi.encode((OrderV4, uint256, uint256, address)[]) and expects
  * a JSON array of SignedContextV1 objects back, matching request length.
  *
- * Includes:
- * - Exponential backoff retry (up to MAX_RETRIES)
- * - Per-URL cooloff: after COOLOFF_THRESHOLD consecutive failures, the URL
- *   is skipped for COOLOFF_DURATION_MS before being retried
+ * Single attempt with a hard timeout — no retries, no in-loop delays.
+ * Failed oracles accumulate toward a cooloff threshold. Once in cooloff,
+ * the URL is skipped immediately for COOLOFF_DURATION_MS so one bad
+ * oracle server can't hold up unrelated orders.
  *
  * @param url - Oracle endpoint URL
  * @param orders - Array of order requests (usually 1 per IO pair)
@@ -231,7 +174,7 @@ export async function fetchSignedContext(
     url: string,
     orders: OracleOrderRequest[],
 ): Promise<SignedContextV1[]> {
-    // Skip if oracle is in cooloff
+    // Skip immediately if oracle is in cooloff
     if (isInCooloff(url)) {
         throw new Error(`Oracle ${url} is in cooloff, skipping`);
     }
@@ -246,12 +189,29 @@ export async function fetchSignedContext(
     const encoded = encodeAbiParameters(oracleBatchAbiParams, [tuples]);
     const body = hexToBytes(encoded);
 
+    // Single attempt — fail fast, no retries
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), ORACLE_TIMEOUT_MS);
+
     let json: unknown;
     try {
-        json = await fetchWithRetry(url, body);
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/octet-stream" },
+            body,
+            signal: controller.signal,
+        });
+
+        if (!response.ok) {
+            throw new Error(`Oracle request failed: ${response.status} ${response.statusText}`);
+        }
+
+        json = await response.json();
     } catch (err) {
         recordFailure(url);
         throw err;
+    } finally {
+        clearTimeout(timeout);
     }
 
     // Validate response
@@ -275,13 +235,12 @@ export async function fetchSignedContext(
             !Array.isArray((entry as any).context) ||
             typeof (entry as any).signature !== "string"
         ) {
+            recordFailure(url);
             throw new Error(`Oracle response[${i}] is not a valid SignedContextV1`);
         }
         return entry as SignedContextV1;
     });
 
-    // Success — clear failure state
     recordSuccess(url);
-
     return contexts;
 }
