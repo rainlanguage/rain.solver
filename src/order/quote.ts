@@ -4,28 +4,35 @@ import { AppOptions } from "../config";
 import { ABI, normalizeFloat } from "../common";
 import { BundledOrders, Pair, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData, PublicClient } from "viem";
-import { extractOracleUrl, fetchSignedContext } from "../oracle";
+import { extractOracleUrl, fetchSignedContext, OracleManager } from "../oracle";
 
 /**
  * If the order has oracle metadata, fetch signed context and inject it
  * into the takeOrder struct. Failures are swallowed so quoting proceeds
  * with empty signed context.
  */
-async function fetchOracleContext(orderDetails: Pair): Promise<void> {
+async function fetchOracleContext(
+    orderDetails: Pair,
+    oracleManager: OracleManager,
+): Promise<void> {
     const orderMeta = (orderDetails as any).meta;
     if (!orderMeta) return;
 
     const oracleUrl = extractOracleUrl(orderMeta);
     if (!oracleUrl) return;
 
-    const signedContexts = await fetchSignedContext(oracleUrl, [
-        {
-            order: orderDetails.takeOrder.struct.order,
-            inputIOIndex: orderDetails.takeOrder.struct.inputIOIndex,
-            outputIOIndex: orderDetails.takeOrder.struct.outputIOIndex,
-            counterparty: "0x0000000000000000000000000000000000000000",
-        },
-    ]);
+    const signedContexts = await fetchSignedContext(
+        oracleUrl,
+        [
+            {
+                order: orderDetails.takeOrder.struct.order,
+                inputIOIndex: orderDetails.takeOrder.struct.inputIOIndex,
+                outputIOIndex: orderDetails.takeOrder.struct.outputIOIndex,
+                counterparty: "0x0000000000000000000000000000000000000000",
+            },
+        ],
+        oracleManager,
+    );
 
     orderDetails.takeOrder.struct.signedContext = signedContexts;
 }
@@ -42,11 +49,12 @@ export async function quoteSingleOrder(
     viemClient: PublicClient,
     blockNumber?: bigint,
     gas?: bigint,
+    oracleManager?: OracleManager,
 ) {
     if (Pair.isV3(orderDetails)) {
-        return quoteSingleOrderV3(orderDetails, viemClient, blockNumber, gas);
+        return quoteSingleOrderV3(orderDetails, viemClient, blockNumber, gas, oracleManager);
     } else {
-        return quoteSingleOrderV4(orderDetails, viemClient, blockNumber, gas);
+        return quoteSingleOrderV4(orderDetails, viemClient, blockNumber, gas, oracleManager);
     }
 }
 
@@ -62,9 +70,10 @@ export async function quoteSingleOrderV3(
     viemClient: PublicClient,
     blockNumber?: bigint,
     gas?: bigint,
+    oracleManager?: OracleManager,
 ) {
     try {
-        await fetchOracleContext(orderDetails);
+        if (oracleManager) await fetchOracleContext(orderDetails, oracleManager);
     } catch (error) {
         console.warn("Failed to fetch oracle context:", error);
     }
@@ -112,9 +121,10 @@ export async function quoteSingleOrderV4(
     viemClient: PublicClient,
     blockNumber?: bigint,
     gas?: bigint,
+    oracleManager?: OracleManager,
 ) {
     try {
-        await fetchOracleContext(orderDetails);
+        if (oracleManager) await fetchOracleContext(orderDetails, oracleManager);
     } catch (error) {
         console.warn("Failed to fetch oracle context:", error);
     }
