@@ -1,5 +1,6 @@
 import { encodeAbiParameters, hexToBytes } from "viem";
 import { Result } from "../common";
+import { Order } from "../order/types";
 
 export { fetchOracleContext } from "./fetch";
 
@@ -19,33 +20,18 @@ export function extractOracleUrl(metaHex: string): string | null {
 }
 
 /**
- * Signed context response from oracle endpoint.
- * Maps directly to SignedContextV1 in the orderbook contract.
- */
-export interface SignedContextV1 {
-    signer: string;
-    context: string[];
-    signature: string;
-}
-
-/**
- * Order details for an oracle request entry.
+ * Oracle request entry — mirrors the spec's (OrderV4, uint256, uint256, address) tuple.
+ * Uses the existing Order.V3 | Order.V4 types from the order module.
  */
 export interface OracleOrderRequest {
-    order: {
-        owner: string;
-        evaluable: { interpreter: string; store: string; bytecode: string };
-        validInputs: { token: string; vaultId: string }[];
-        validOutputs: { token: string; vaultId: string }[];
-        nonce: string;
-    };
+    order: Order.V3 | Order.V4;
     inputIOIndex: number;
     outputIOIndex: number;
-    counterparty: string;
+    counterparty: `0x${string}`;
 }
 
 // ---------------------------------------------------------------------------
-// Oracle health / cooloff helpers
+// Oracle health / cooloff
 // ---------------------------------------------------------------------------
 
 /** Per-request timeout */
@@ -91,8 +77,10 @@ export function recordOracleFailure(healthMap: OracleHealthMap, url: string) {
 /**
  * ABI parameter definition for the batch oracle request body.
  * Encodes as: abi.encode((OrderV4, uint256, uint256, address)[])
+ *
+ * Uses the same struct shape as ABI.Orderbook.V5.OrderV4 / IOV2 / EvaluableV4.
  */
-export const oracleBatchAbiParams = [
+const oracleBatchAbiParams = [
     {
         type: "tuple[]",
         components: [
@@ -136,6 +124,10 @@ export const oracleBatchAbiParams = [
     },
 ] as const;
 
+// ---------------------------------------------------------------------------
+// Fetch
+// ---------------------------------------------------------------------------
+
 /**
  * Fetch signed contexts from an oracle endpoint (batch format).
  *
@@ -149,7 +141,7 @@ export async function fetchSignedContext(
     url: string,
     orders: OracleOrderRequest[],
     healthMap: OracleHealthMap,
-): Promise<Result<SignedContextV1[], string>> {
+): Promise<Result<any[], string>> {
     if (isInCooloff(healthMap, url)) {
         return Result.err(`Oracle ${url} is in cooloff, skipping`);
     }
@@ -158,7 +150,7 @@ export async function fetchSignedContext(
         order: req.order,
         inputIOIndex: BigInt(req.inputIOIndex),
         outputIOIndex: BigInt(req.outputIOIndex),
-        counterparty: req.counterparty as `0x${string}`,
+        counterparty: req.counterparty,
     }));
 
     const encoded = encodeAbiParameters(oracleBatchAbiParams, [tuples]);
@@ -184,7 +176,9 @@ export async function fetchSignedContext(
         json = await response.json();
     } catch (err) {
         recordOracleFailure(healthMap, url);
-        return Result.err(`Oracle fetch error: ${err instanceof Error ? err.message : String(err)}`);
+        return Result.err(
+            `Oracle fetch error: ${err instanceof Error ? err.message : String(err)}`,
+        );
     } finally {
         clearTimeout(timeout);
     }
@@ -207,9 +201,9 @@ export async function fetchSignedContext(
         if (
             typeof entry !== "object" ||
             entry === null ||
-            typeof (entry as any).signer !== "string" ||
-            !Array.isArray((entry as any).context) ||
-            typeof (entry as any).signature !== "string"
+            typeof entry.signer !== "string" ||
+            !Array.isArray(entry.context) ||
+            typeof entry.signature !== "string"
         ) {
             recordOracleFailure(healthMap, url);
             return Result.err(`Oracle response[${i}] is not a valid SignedContextV1`);
@@ -217,5 +211,5 @@ export async function fetchSignedContext(
     }
 
     recordOracleSuccess(healthMap, url);
-    return Result.ok(json as SignedContextV1[]);
+    return Result.ok(json);
 }
