@@ -1,7 +1,6 @@
 import { encodeAbiParameters, hexToBytes } from "viem";
-import { OracleManager } from "./manager";
 
-export { OracleManager } from "./manager";
+export { fetchOracleContext } from "./fetch";
 
 /**
  * Extract oracle URL from order meta bytes.
@@ -44,14 +43,55 @@ export interface OracleOrderRequest {
     counterparty: string;
 }
 
+// ---------------------------------------------------------------------------
+// Oracle health / cooloff helpers
+// ---------------------------------------------------------------------------
+
 /** Per-request timeout */
-const ORACLE_TIMEOUT_MS = 5_000;
+export const ORACLE_TIMEOUT_MS = 5_000;
+/** How long to skip a failing oracle (ms) */
+export const COOLOFF_DURATION_MS = 5 * 60 * 1_000;
+/** Consecutive failures before entering cooloff */
+export const COOLOFF_THRESHOLD = 3;
+
+export type OracleHealthMap = Map<string, { consecutiveFailures: number; cooloffUntil: number }>;
+
+export function isInCooloff(healthMap: OracleHealthMap, url: string): boolean {
+    const state = healthMap.get(url);
+    if (!state || state.cooloffUntil === 0) return false;
+    if (Date.now() >= state.cooloffUntil) {
+        state.cooloffUntil = 0;
+        return false;
+    }
+    return true;
+}
+
+export function recordOracleSuccess(healthMap: OracleHealthMap, url: string) {
+    healthMap.set(url, { consecutiveFailures: 0, cooloffUntil: 0 });
+}
+
+export function recordOracleFailure(healthMap: OracleHealthMap, url: string) {
+    const state = healthMap.get(url) ?? { consecutiveFailures: 0, cooloffUntil: 0 };
+    state.consecutiveFailures++;
+    if (state.consecutiveFailures >= COOLOFF_THRESHOLD) {
+        state.cooloffUntil = Date.now() + COOLOFF_DURATION_MS;
+        console.warn(
+            `Oracle ${url} entered cooloff for ${COOLOFF_DURATION_MS / 1000}s ` +
+                `after ${state.consecutiveFailures} consecutive failures`,
+        );
+    }
+    healthMap.set(url, state);
+}
+
+// ---------------------------------------------------------------------------
+// ABI encoding
+// ---------------------------------------------------------------------------
 
 /**
  * ABI parameter definition for the batch oracle request body.
  * Encodes as: abi.encode((OrderV4, uint256, uint256, address)[])
  */
-const oracleBatchAbiParams = [
+export const oracleBatchAbiParams = [
     {
         type: "tuple[]",
         components: [
@@ -102,21 +142,14 @@ const oracleBatchAbiParams = [
  * a JSON array of SignedContextV1 objects back, matching request length.
  *
  * Single attempt with a hard timeout — no retries, no in-loop delays.
- * Uses the provided OracleManager to track failures and skip oracles
- * in cooloff.
- *
- * @param url - Oracle endpoint URL
- * @param orders - Array of order requests (usually 1 per IO pair)
- * @param oracleManager - Health tracker for cooloff management
- * @returns Array of signed contexts in the same order as the request
+ * Uses the provided health map for cooloff tracking.
  */
 export async function fetchSignedContext(
     url: string,
     orders: OracleOrderRequest[],
-    oracleManager: OracleManager,
+    healthMap: OracleHealthMap,
 ): Promise<SignedContextV1[]> {
-    // Skip immediately if oracle is in cooloff
-    if (oracleManager.isInCooloff(url)) {
+    if (isInCooloff(healthMap, url)) {
         throw new Error(`Oracle ${url} is in cooloff, skipping`);
     }
 
@@ -130,7 +163,6 @@ export async function fetchSignedContext(
     const encoded = encodeAbiParameters(oracleBatchAbiParams, [tuples]);
     const body = hexToBytes(encoded);
 
-    // Single attempt — fail fast, no retries
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), ORACLE_TIMEOUT_MS);
 
@@ -149,20 +181,19 @@ export async function fetchSignedContext(
 
         json = await response.json();
     } catch (err) {
-        oracleManager.recordFailure(url);
+        recordOracleFailure(healthMap, url);
         throw err;
     } finally {
         clearTimeout(timeout);
     }
 
-    // Validate response
     if (!Array.isArray(json)) {
-        oracleManager.recordFailure(url);
+        recordOracleFailure(healthMap, url);
         throw new Error("Oracle response must be an array");
     }
 
     if (json.length !== orders.length) {
-        oracleManager.recordFailure(url);
+        recordOracleFailure(healthMap, url);
         throw new Error(
             `Oracle response length (${json.length}) does not match request length (${orders.length})`,
         );
@@ -176,12 +207,12 @@ export async function fetchSignedContext(
             !Array.isArray((entry as any).context) ||
             typeof (entry as any).signature !== "string"
         ) {
-            oracleManager.recordFailure(url);
+            recordOracleFailure(healthMap, url);
             throw new Error(`Oracle response[${i}] is not a valid SignedContextV1`);
         }
         return entry as SignedContextV1;
     });
 
-    oracleManager.recordSuccess(url);
+    recordOracleSuccess(healthMap, url);
     return contexts;
 }
