@@ -87,13 +87,14 @@ export async function findBestRaindexRouterTrade(
         });
 
         // get route details from sushi dataFetcher
+        const key = `${fromToken.address.toLowerCase()}-${toToken.address.toLowerCase()}`;
         const quoteResult = await this.state.router.sushi?.tryQuote({
             fromToken,
             toToken,
             amountIn: maximumInput,
             gasPrice: this.state.gasPrice,
             blockNumber,
-            skipFetch: true,
+            skipFetch: this.state.router.cache.has(key),
             sushiRouteType: this.state.appOptions.route,
         });
 
