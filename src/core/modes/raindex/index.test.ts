@@ -129,9 +129,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
         expect(extendObjectWithHeader).not.toHaveBeenCalled();
         expect(isV4OrderbookV6Spy).toHaveBeenCalledWith(orderDetails);
         expect(solver.state.contracts.getAddressesForTrade).not.toHaveBeenCalledWith();
-        expect(
-            solver.orderManager.getCounterpartyOrdersAgainstBaseTokens,
-        ).not.toHaveBeenCalledWith();
+        expect(solver.orderManager.getCounterpartyOrdersAgainstBaseTokens).not.toHaveBeenCalled();
         expect(solver.state.router.sushi!.tryQuote).not.toHaveBeenCalledWith();
         expect(routeProcessor4ParamsSpy).not.toHaveBeenCalled();
         expect(visualizeRouteSpy).not.toHaveBeenCalled();

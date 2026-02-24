@@ -20,10 +20,6 @@ vi.mock("./inter", () => ({
     findBestInterOrderbookTrade: vi.fn(),
 }));
 
-// vi.mock("./balancer", () => ({
-//     findBestBalancerTrade: vi.fn(),
-// }));
-
 vi.mock("./raindex", () => ({
     findBestRaindexRouterTrade: vi.fn(),
 }));
@@ -321,7 +317,7 @@ describe("Test findBestTrade", () => {
             oppBlockNumber: 123,
         });
         const raindexResult = Result.ok({
-            type: "interOrderbook",
+            type: "raindex",
             spanAttributes: { foundOpp: true },
             estimatedProfit: 120n,
             oppBlockNumber: 123,
@@ -671,7 +667,7 @@ describe("Test getEnabledTrades", () => {
         expect(result.findBestInterOrderbookTrade).toBe(findBestInterOrderbookTrade);
     });
 
-    it("should return only inter-orderbook trade when orderbook is in raindex router set", () => {
+    it("should return only raindex routed trade when orderbook is in raindex router set", () => {
         const orderbookTradeTypes: OrderbookTradeTypes = {
             router: new Set(),
             intraOrderbook: new Set(),

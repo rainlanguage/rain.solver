@@ -24,7 +24,7 @@ export enum RouteLegType {
 /**
  * Tries to find the best raindex routed trade for the given order,
  * it will simultaneously try to find the best trade against other
- * orders routed through a middle base token swaped through sushi RP
+ * orders routed through a middle base token swapped through sushi RP
  * @param this - RainSolver instance
  * @param orderDetails - The details of the order to be processed
  * @param signer - The signer to be used for the trade

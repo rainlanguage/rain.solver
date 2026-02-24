@@ -256,10 +256,16 @@ describe("Test RaindexRouterTradeSimulator", () => {
 
             // First order (main order)
             expect(takeOrders[0].IOIsInput).toBe(false);
+            expect(takeOrders[0].maximumIO).toBe(maxFloat(18));
+            expect(takeOrders[0].minimumIO).toBe(minFloat(18));
+            expect(takeOrders[0].maximumIORatio).toBe(maxFloat(18));
             expect(takeOrders[0].data).toBe("0x");
 
             // Second order (counterparty)
             expect(takeOrders[1].IOIsInput).toBe(false);
+            expect(takeOrders[1].maximumIO).toBe(maxFloat(18));
+            expect(takeOrders[1].minimumIO).toBe(minFloat(18));
+            expect(takeOrders[1].maximumIORatio).toBe(maxFloat(18));
             expect(takeOrders[1].data).toBe("0x");
         });
     });
@@ -308,6 +314,7 @@ describe("Test RaindexRouterTradeSimulator", () => {
                 EnsureBountyTaskErrorType.ComposeError,
             );
             (getEnsureBountyTaskBytecode as Mock).mockResolvedValueOnce(Result.err(error));
+            const getCalldataSpy = vi.spyOn(simulator, "getCalldata");
 
             const result = await simulator.setTransactionData(preparedParams);
             assert(result.isErr());
@@ -315,6 +322,9 @@ describe("Test RaindexRouterTradeSimulator", () => {
             expect(result.error.reason).toBe(SimulationHaltReason.FailedToGetTaskBytecode);
             expect(result.error.spanAttributes["isNodeError"]).toBe(false);
             expect(result.error.spanAttributes["duration"]).toBeGreaterThan(0);
+            expect(getCalldataSpy).not.toHaveBeenCalled();
+
+            getCalldataSpy.mockRestore();
         });
 
         it("should return success with bytecode when gasCoveragePercentage is not zero", async () => {

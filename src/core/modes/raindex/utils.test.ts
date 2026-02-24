@@ -90,4 +90,9 @@ describe("Test calcCounterpartyInputToEthPrice function", () => {
         // (1e18 * 1e18) / 0.5e18 = 2e18
         expect(result).toBe(parseUnits("2", 18));
     });
+
+    it("should return zero when quote price is zero", () => {
+        const quote = { amountOut: 100n, price: 0n } as any;
+        expect(calcCounterpartyInputToEthPrice(quote, "2.0")).toBe(0n);
+    });
 });

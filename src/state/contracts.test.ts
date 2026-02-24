@@ -865,7 +865,7 @@ describe("versionAddressGetter", () => {
         });
     });
 
-    it("should return undefined for Raindex tradeType when raindexRab is not available", () => {
+    it("should return undefined for Raindex tradeType when raindexArb is not available", () => {
         const result = versionAddressGetter(mockContracts, mockOrder, TradeType.Raindex);
         expect(result).toBeUndefined();
     });

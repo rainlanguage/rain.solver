@@ -16,7 +16,7 @@ import {
     getEnsureBountyTaskBytecode,
 } from "../../../task";
 
-/** Arguments for simulating inter-orderbook trade */
+/** Arguments for simulating raindex routed trade */
 export type SimulateRaindexRouterTradeArgs = {
     /** The type of trade */
     type: TradeType.Raindex;
@@ -57,7 +57,7 @@ export type RaindexRouterTradePreparedParams = {
 };
 
 /**
- * Simulates a trade between 2 orders wwith different IO through a external route
+ * Simulates a trade between 2 orders wwith different IO through an external route
  *
  * The `RaindexRouterTradeSimulator` class extends {@link TradeSimulatorBase} and is responsible for:
  * - Simulating trades between two order with external route such as A/B (order) -> B/C (external) -> C/A (order)
@@ -160,8 +160,8 @@ export class RaindexRouterTradeSimulator extends TradeSimulatorBase {
                 IOIsInput: false,
             },
             {
-                minimumIO: minFloat(this.tradeArgs.orderDetails.buyTokenDecimals),
-                maximumIO: maxFloat(this.tradeArgs.orderDetails.buyTokenDecimals),
+                minimumIO: minFloat(this.tradeArgs.counterpartyOrderDetails.buyTokenDecimals),
+                maximumIO: maxFloat(this.tradeArgs.counterpartyOrderDetails.buyTokenDecimals),
                 maximumIORatio: maxFloat(18),
                 orders: [this.tradeArgs.counterpartyOrderDetails.takeOrder.struct],
                 data: "0x",
