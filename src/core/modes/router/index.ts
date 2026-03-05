@@ -71,11 +71,16 @@ export async function findBestRouterTrade(
     }
     extendObjectWithHeader(spanAttributes, fullTradeSizeSimResult.error.spanAttributes, "full");
 
-    // return early if only if errors are dest address or task bytecode
-    // try partial trade size in any other case
+    // return early if dryrun failed
+    // in other words only try partial trade size if the full trade size failed due
+    // to order ratio being greater than market price or there was no route for full
+    // trade size, that's because if for example for a pair there is only 1 pool and that
+    // pool has certain amount of reserves that cant cover the full trade size but can
+    // cover partial, we still need to try it
     if (
-        fullTradeSizeSimResult.error.reason == SimulationHaltReason.FailedToGetTaskBytecode ||
-        fullTradeSizeSimResult.error.reason == SimulationHaltReason.UndefinedTradeDestinationAddress
+        fullTradeSizeSimResult.error.reason !== SimulationHaltReason.NoRoute &&
+        fullTradeSizeSimResult.error.reason !==
+            SimulationHaltReason.OrderRatioGreaterThanMarketPrice
     ) {
         return Result.err({
             type: fullTradeSizeSimResult.error.type,
