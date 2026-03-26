@@ -7,24 +7,51 @@ export { fetchOracleContext } from "./fetch";
 /**
  * Extract oracle URL from order meta bytes.
  *
- * TODO: Replace with SDK's RaindexOrder.extractOracleUrl() once the wasm
- * package includes it. Pending rain.orderbook PR #2478.
+ * Searches for the RaindexSignedContextOracleV1 CBOR item identified by
+ * magic number 0xff7a1507ba4419ca and extracts the URL payload.
  *
  * @param metaHex - Hex string of meta bytes (e.g. "0x1234...")
  * @returns Oracle URL if found, null otherwise
  */
 export function extractOracleUrl(metaHex: string): string | null {
-    // TODO: Implement CBOR decoding to find RaindexSignedContextOracleV1
-    // magic number 0xff7a1507ba4419ca and extract URL.
-    return null;
+    if (!metaHex) return null;
+    const hex = metaHex.startsWith("0x") ? metaHex.slice(2) : metaHex;
+
+    // RaindexSignedContextOracleV1 magic number
+    const magicHex = "ff7a1507ba4419ca";
+    const magicIdx = hex.indexOf(magicHex);
+    if (magicIdx === -1) return null;
+
+    // The URL is encoded as a CBOR byte string before the magic in the same
+    // CBOR map: a2 00 58<len> <url_bytes> 01 1b<magic>
+    // Find "https://" or "http://" in hex before the magic
+    const httpsHex = Buffer.from("https://").toString("hex");
+    const httpHex = Buffer.from("http://").toString("hex");
+
+    const searchRegion = hex.substring(0, magicIdx);
+    let urlStartIdx = searchRegion.lastIndexOf(httpsHex);
+    if (urlStartIdx === -1) urlStartIdx = searchRegion.lastIndexOf(httpHex);
+    if (urlStartIdx === -1) return null;
+
+    // URL ends before the "01 1b" marker (CBOR key 1, uint64 prefix) that precedes the magic
+    const endMarker = "011b";
+    const endIdx = searchRegion.lastIndexOf(endMarker);
+    if (endIdx === -1 || endIdx < urlStartIdx) return null;
+
+    const urlHex = hex.substring(urlStartIdx, endIdx);
+    try {
+        return Buffer.from(urlHex, "hex").toString("utf8");
+    } catch {
+        return null;
+    }
 }
 
 /**
  * Oracle request entry — mirrors the spec's (OrderV4, uint256, uint256, address) tuple.
- * Uses the existing Order.V3 | Order.V4 types from the order module.
+ * Only V4 orders support oracle signed context.
  */
 export interface OracleOrderRequest {
-    order: Order.V3 | Order.V4;
+    order: Order.V4;
     inputIOIndex: number;
     outputIOIndex: number;
     counterparty: `0x${string}`;
@@ -75,53 +102,48 @@ export function recordOracleFailure(healthMap: OracleHealthMap, url: string) {
 // ---------------------------------------------------------------------------
 
 /**
- * ABI parameter definition for the batch oracle request body.
- * Encodes as: abi.encode((OrderV4, uint256, uint256, address)[])
+ * ABI parameter definition for a single oracle request body.
+ * Encodes as: abi.encode(OrderV4, uint256, uint256, address)
  *
  * Uses the same struct shape as ABI.Orderbook.V5.OrderV4 / IOV2 / EvaluableV4.
  */
-const oracleBatchAbiParams = [
+const oracleSingleAbiParams = [
     {
-        type: "tuple[]",
+        name: "order",
+        type: "tuple",
         components: [
+            { name: "owner", type: "address" },
             {
-                name: "order",
+                name: "evaluable",
                 type: "tuple",
                 components: [
-                    { name: "owner", type: "address" },
-                    {
-                        name: "evaluable",
-                        type: "tuple",
-                        components: [
-                            { name: "interpreter", type: "address" },
-                            { name: "store", type: "address" },
-                            { name: "bytecode", type: "bytes" },
-                        ],
-                    },
-                    {
-                        name: "validInputs",
-                        type: "tuple[]",
-                        components: [
-                            { name: "token", type: "address" },
-                            { name: "vaultId", type: "bytes32" },
-                        ],
-                    },
-                    {
-                        name: "validOutputs",
-                        type: "tuple[]",
-                        components: [
-                            { name: "token", type: "address" },
-                            { name: "vaultId", type: "bytes32" },
-                        ],
-                    },
-                    { name: "nonce", type: "bytes32" },
+                    { name: "interpreter", type: "address" },
+                    { name: "store", type: "address" },
+                    { name: "bytecode", type: "bytes" },
                 ],
             },
-            { name: "inputIOIndex", type: "uint256" },
-            { name: "outputIOIndex", type: "uint256" },
-            { name: "counterparty", type: "address" },
+            {
+                name: "validInputs",
+                type: "tuple[]",
+                components: [
+                    { name: "token", type: "address" },
+                    { name: "vaultId", type: "bytes32" },
+                ],
+            },
+            {
+                name: "validOutputs",
+                type: "tuple[]",
+                components: [
+                    { name: "token", type: "address" },
+                    { name: "vaultId", type: "bytes32" },
+                ],
+            },
+            { name: "nonce", type: "bytes32" },
         ],
     },
+    { name: "inputIOIndex", type: "uint256" },
+    { name: "outputIOIndex", type: "uint256" },
+    { name: "counterparty", type: "address" },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -129,31 +151,31 @@ const oracleBatchAbiParams = [
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch signed contexts from an oracle endpoint (batch format).
+ * Fetch signed context from an oracle endpoint (single request format).
  *
- * POSTs abi.encode((OrderV4, uint256, uint256, address)[]) and expects
- * a JSON array of SignedContextV1 objects back, matching request length.
+ * POSTs abi.encode(OrderV4, uint256, uint256, address) and expects
+ * a JSON SignedContextV1 object back.
  *
  * Single attempt with a hard timeout — no retries, no in-loop delays.
  * Uses the provided health map for cooloff tracking.
  */
 export async function fetchSignedContext(
     url: string,
-    orders: OracleOrderRequest[],
+    request: OracleOrderRequest,
     healthMap: OracleHealthMap,
-): Promise<Result<any[], string>> {
+): Promise<Result<any, string>> {
     if (isInCooloff(healthMap, url)) {
         return Result.err(`Oracle ${url} is in cooloff, skipping`);
     }
 
-    const tuples = orders.map((req) => ({
-        order: req.order,
-        inputIOIndex: BigInt(req.inputIOIndex),
-        outputIOIndex: BigInt(req.outputIOIndex),
-        counterparty: req.counterparty,
-    }));
-
-    const encoded = encodeAbiParameters(oracleBatchAbiParams, [tuples]);
+    // Strip the internal `type` discriminant before ABI encoding
+    const { type: _type, ...orderStruct } = request.order;
+    const encoded = encodeAbiParameters(oracleSingleAbiParams, [
+        orderStruct,
+        BigInt(request.inputIOIndex),
+        BigInt(request.outputIOIndex),
+        request.counterparty,
+    ]);
     const body = hexToBytes(encoded);
 
     const controller = new AbortController();
@@ -183,31 +205,16 @@ export async function fetchSignedContext(
         clearTimeout(timeout);
     }
 
-    if (!Array.isArray(json)) {
+    // Validate shape of response
+    if (
+        typeof json !== "object" ||
+        json === null ||
+        typeof (json as any).signer !== "string" ||
+        !Array.isArray((json as any).context) ||
+        typeof (json as any).signature !== "string"
+    ) {
         recordOracleFailure(healthMap, url);
-        return Result.err("Oracle response must be an array");
-    }
-
-    if (json.length !== orders.length) {
-        recordOracleFailure(healthMap, url);
-        return Result.err(
-            `Oracle response length (${json.length}) does not match request length (${orders.length})`,
-        );
-    }
-
-    // Validate shape of each entry
-    for (let i = 0; i < json.length; i++) {
-        const entry = json[i];
-        if (
-            typeof entry !== "object" ||
-            entry === null ||
-            typeof entry.signer !== "string" ||
-            !Array.isArray(entry.context) ||
-            typeof entry.signature !== "string"
-        ) {
-            recordOracleFailure(healthMap, url);
-            return Result.err(`Oracle response[${i}] is not a valid SignedContextV1`);
-        }
+        return Result.err("Oracle response is not a valid SignedContextV1");
     }
 
     recordOracleSuccess(healthMap, url);
