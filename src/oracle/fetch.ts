@@ -1,41 +1,183 @@
-import { Order, Pair } from "../order/types";
-import { SharedState } from "../state";
 import { Result } from "../common";
-import { fetchSignedContext } from ".";
+import { SignedContextV2 } from "../order/types/v4";
+import { OracleError, OracleErrorType } from "./error";
+import { encodeAbiParameters, hexToBytes } from "viem";
+import {
+    OracleConstants,
+    OracleHealthMap,
+    OracleOrderRequest,
+    OracleSingleAbiParams,
+} from "./types";
 
 /**
- * If the order has an oracle URL, fetch signed context and inject it
- * into the takeOrder struct. Called with SharedState as `this` to access
- * the oracle health map.
+ * Fetch signed context from an oracle endpoint (single request format).
  *
- * Returns Result — callers decide how to handle failures.
+ * POSTs abi.encode(OrderV4, uint256, uint256, address) and expects
+ * a JSON SignedContextV1 object back.
+ *
+ * Single attempt with a hard timeout — no retries, no in-loop delays.
+ * Uses the provided health map for cooloff tracking.
+ *
+ * @param url - Oracle URL
+ * @param request - Order to request orcale for
+ * @param healthMap - Oracle endpoint health tracking for cooloff
  */
-export async function fetchOracleContext(
-    this: SharedState,
-    orderDetails: Pair,
-): Promise<Result<void, string>> {
-    const oracleUrl = orderDetails.oracleUrl;
-    if (!oracleUrl) return Result.ok(undefined);
-
-    // Oracle signed context only supported for V4 orders
-    const order = orderDetails.takeOrder.struct.order;
-    if (order.type !== Order.Type.V4) return Result.ok(undefined);
-
-    const result = await fetchSignedContext(
-        oracleUrl,
-        {
-            order: order as Order.V4,
-            inputIOIndex: orderDetails.takeOrder.struct.inputIOIndex,
-            outputIOIndex: orderDetails.takeOrder.struct.outputIOIndex,
-            counterparty: "0x0000000000000000000000000000000000000000",
-        },
-        this.oracleHealth,
-    );
-
-    if (result.isErr()) {
-        return Result.err(result.error);
+export async function fetchSignedContext(
+    url: string,
+    request: OracleOrderRequest,
+    healthMap: OracleHealthMap,
+): Promise<Result<SignedContextV2, OracleError>> {
+    if (!OracleConstants.isKnown(url)) {
+        return Result.err(
+            new OracleError(`Oracle ${url} is unknown, skipping`, OracleErrorType.Cooloff),
+        );
     }
 
-    orderDetails.takeOrder.struct.signedContext = [result.value];
-    return Result.ok(undefined);
+    if (isInCooloff(healthMap, url)) {
+        return Result.err(
+            new OracleError(`Oracle ${url} is in cooloff, skipping`, OracleErrorType.Cooloff),
+        );
+    }
+
+    // Strip the internal `type` discriminant before ABI encoding
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { type: _type, ...orderStruct } = request.order;
+    const encoded = encodeAbiParameters(OracleSingleAbiParams, [
+        orderStruct,
+        BigInt(request.inputIOIndex),
+        BigInt(request.outputIOIndex),
+        request.counterparty,
+    ]);
+    const body = hexToBytes(encoded);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), OracleConstants.ORACLE_TIMEOUT_MS);
+
+    let json: unknown;
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/octet-stream" },
+            body,
+            signal: controller.signal,
+        });
+
+        if (!response.ok) {
+            recordOracleFailure(healthMap, url);
+            return Result.err(
+                new OracleError(
+                    `Oracle request failed: ${response.status} ${response.statusText}`,
+                    OracleErrorType.RequestFailed,
+                ),
+            );
+        }
+
+        json = await response.json();
+    } catch (err) {
+        recordOracleFailure(healthMap, url);
+        return Result.err(
+            new OracleError(
+                `Oracle fetch error: ${err instanceof Error ? err.message : String(err)}`,
+                OracleErrorType.FetchError,
+            ),
+        );
+    } finally {
+        clearTimeout(timeout);
+    }
+
+    // Validate shape of response
+    if (isValidSignedContextV2(json)) {
+        recordOracleSuccess(healthMap, url);
+        return Result.ok(json);
+    }
+
+    recordOracleFailure(healthMap, url);
+    return Result.err(
+        new OracleError(
+            "Oracle response is not a valid SignedContextV2",
+            OracleErrorType.InvalidResponseType,
+        ),
+    );
+}
+
+/**
+ * Extract oracle URL from order meta bytes.
+ *
+ * Searches for the RaindexSignedContextOracleV1 CBOR item identified by
+ * magic number 0xff7a1507ba4419ca and extracts the URL payload.
+ *
+ * @param metaHex - Hex string of meta bytes (e.g. "0x1234...")
+ * @returns Oracle URL if found, null otherwise
+ */
+export function extractOracleUrl(metaHex: string): string | undefined {
+    if (!metaHex) return undefined;
+    metaHex = metaHex.toLowerCase();
+    const hex = metaHex.startsWith("0x") ? metaHex.slice(2) : metaHex;
+
+    const magicIdx = hex.indexOf(OracleConstants.RaindexSignedContextOracleV1);
+    if (magicIdx === -1) return undefined;
+
+    // The URL is encoded as a CBOR byte string before the magic in the same
+    // CBOR map: a2 00 58<len> <url_bytes> 01 1b<magic>
+    // Find "https://" or "http://" in hex before the magic
+    const httpsHex = Buffer.from("https://").toString("hex");
+    const httpHex = Buffer.from("http://").toString("hex");
+
+    const searchRegion = hex.substring(0, magicIdx);
+    let urlStartIdx = searchRegion.lastIndexOf(httpsHex);
+    if (urlStartIdx === -1) urlStartIdx = searchRegion.lastIndexOf(httpHex);
+    if (urlStartIdx === -1) return undefined;
+
+    // URL ends before the "01 1b" marker (CBOR key 1, uint64 prefix) that precedes the magic
+    const endMarker = "011b";
+    const endIdx = searchRegion.lastIndexOf(endMarker);
+    if (endIdx === -1 || endIdx < urlStartIdx) return undefined;
+
+    const urlHex = hex.substring(urlStartIdx, endIdx);
+    try {
+        return Buffer.from(urlHex, "hex").toString("utf8");
+    } catch {
+        return undefined;
+    }
+}
+
+/** Checks if the given oracle URL is in cooloff period or not */
+export function isInCooloff(healthMap: OracleHealthMap, url: string): boolean {
+    const state = healthMap.get(url);
+    if (!state || state.cooloffUntil === 0) return false;
+    if (Date.now() >= state.cooloffUntil) {
+        state.cooloffUntil = 0;
+        return false;
+    }
+    return true;
+}
+
+/** Records the sucess in orcale health map */
+export function recordOracleSuccess(healthMap: OracleHealthMap, url: string) {
+    healthMap.set(url, { consecutiveFailures: 0, cooloffUntil: 0 });
+}
+
+/** Records the failure in orcale health map */
+export function recordOracleFailure(healthMap: OracleHealthMap, url: string) {
+    const state = healthMap.get(url) ?? { consecutiveFailures: 0, cooloffUntil: 0 };
+    state.consecutiveFailures++;
+    if (state.consecutiveFailures >= OracleConstants.COOLOFF_THRESHOLD) {
+        state.cooloffUntil = Date.now() + OracleConstants.COOLOFF_DURATION_MS;
+        // console.warn(
+        //     `Oracle ${url} entered cooloff for ${COOLOFF_DURATION_MS / 1000}s ` +
+        //         `after ${state.consecutiveFailures} consecutive failures`,
+        // );
+    }
+    healthMap.set(url, state);
+}
+
+/** Validates if the given value is of SignedContextV2 type */
+export function isValidSignedContextV2(value: any): value is SignedContextV2 {
+    return !(
+        typeof value !== "object" ||
+        value === null ||
+        typeof (value as any).signer !== "string" ||
+        !Array.isArray((value as any).context) ||
+        typeof (value as any).signature !== "string"
+    );
 }

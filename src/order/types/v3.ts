@@ -3,7 +3,7 @@ import { SgOrder } from "../../subgraph";
 import { ABI, Result } from "../../common";
 import { Order, PairBase, TakeOrderDetailsBase } from ".";
 import { decodeAbiParameters, DecodeAbiParametersErrorType } from "viem";
-import { extractOracleUrl } from "../../oracle";
+import { extractOracleUrl } from "../../oracle/fetch";
 
 // these types are used in orderbook v4
 
@@ -122,7 +122,7 @@ export namespace PairV3 {
             sellTokenSymbol: outputSymbol,
             sellTokenDecimals: outputDecimals,
             sellTokenVaultBalance: BigInt(outputBalance),
-            oracleUrl: orderDetails.meta ? extractOracleUrl(orderDetails.meta) : null,
+            oracleUrl: orderDetails.meta ? extractOracleUrl(orderDetails.meta) : undefined,
             takeOrder: {
                 id: orderHash,
                 struct: {

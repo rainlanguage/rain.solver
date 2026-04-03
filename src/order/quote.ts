@@ -1,10 +1,10 @@
 import { ChainId } from "sushi";
 import { SharedState } from "../state";
 import { AppOptions } from "../config";
+import { fetchOracleContext } from "../oracle";
 import { ABI, normalizeFloat } from "../common";
 import { BundledOrders, Pair, TakeOrder } from "./types";
-import { decodeFunctionResult, encodeFunctionData, PublicClient } from "viem";
-import { fetchOracleContext } from "../oracle";
+import { decodeFunctionResult, encodeFunctionData } from "viem";
 
 /**
  * Quotes a single order
@@ -16,15 +16,14 @@ import { fetchOracleContext } from "../oracle";
  */
 export async function quoteSingleOrder(
     orderDetails: Pair,
-    viemClient: PublicClient,
-    state?: SharedState,
+    state: SharedState,
     blockNumber?: bigint,
     gas?: bigint,
 ) {
     if (Pair.isV3(orderDetails)) {
-        return quoteSingleOrderV3(orderDetails, viemClient, state, blockNumber, gas);
+        return quoteSingleOrderV3(orderDetails, state, blockNumber, gas);
     } else {
-        return quoteSingleOrderV4(orderDetails, viemClient, state, blockNumber, gas);
+        return quoteSingleOrderV4(orderDetails, state, blockNumber, gas);
     }
 }
 
@@ -33,19 +32,16 @@ export async function quoteSingleOrder(
  */
 export async function quoteSingleOrderV3(
     orderDetails: Pair,
-    viemClient: PublicClient,
-    state?: SharedState,
+    state: SharedState,
     blockNumber?: bigint,
     gas?: bigint,
 ) {
-    if (state) {
-        const oracleResult = await fetchOracleContext.call(state, orderDetails);
-        if (oracleResult.isErr()) {
-            console.warn("Failed to fetch oracle context:", oracleResult.error);
-        }
+    const oracleResult = await fetchOracleContext.call(state, orderDetails);
+    if (oracleResult.isErr()) {
+        throw oracleResult.error;
     }
 
-    const { data } = await viemClient
+    const { data } = await state.client
         .call({
             to: orderDetails.orderbook as `0x${string}`,
             data: encodeFunctionData({
@@ -81,19 +77,16 @@ export async function quoteSingleOrderV3(
  */
 export async function quoteSingleOrderV4(
     orderDetails: Pair,
-    viemClient: PublicClient,
-    state?: SharedState,
+    state: SharedState,
     blockNumber?: bigint,
     gas?: bigint,
 ) {
-    if (state) {
-        const oracleResult = await fetchOracleContext.call(state, orderDetails);
-        if (oracleResult.isErr()) {
-            console.warn("Failed to fetch oracle context:", oracleResult.error);
-        }
+    const oracleResult = await fetchOracleContext.call(state, orderDetails);
+    if (oracleResult.isErr()) {
+        throw oracleResult.error;
     }
 
-    const { data } = await viemClient
+    const { data } = await state.client
         .call({
             to: orderDetails.orderbook as `0x${string}`,
             data: encodeFunctionData({

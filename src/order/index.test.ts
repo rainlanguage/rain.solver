@@ -1404,6 +1404,7 @@ describe("Test OrderManager", () => {
             sellTokenDecimals: 6,
             buyTokenVaultBalance: 1000n,
             sellTokenVaultBalance: 2000n,
+            oracleUrl: undefined,
             takeOrder: {
                 id: "0xHash",
                 struct: {

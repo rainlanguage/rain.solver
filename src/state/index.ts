@@ -9,6 +9,7 @@ import { SushiRouter } from "../router/sushi";
 import { AddressProvider } from "@balancer/sdk";
 import { WalletConfig } from "../wallet/config";
 import { Result, TokenDetails } from "../common";
+import { OracleHealthMap } from "../oracle/types";
 import { RainSolverRouter } from "../router/router";
 import { SubgraphConfig } from "../subgraph/config";
 import { RainSolverBaseError } from "../error/types";
@@ -225,7 +226,7 @@ export class SharedState {
     /** List of latest successful transactions gas costs */
     gasCosts: bigint[] = [];
     /** Oracle endpoint health tracking for cooloff */
-    oracleHealth: Map<string, { consecutiveFailures: number; cooloffUntil: number }> = new Map();
+    oracleHealth: OracleHealthMap = new Map();
 
     constructor(config: SharedStateConfig) {
         this.appOptions = config.appOptions;

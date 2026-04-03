@@ -3,7 +3,7 @@ import { SgOrder, SubgraphVersions } from "../../subgraph";
 import { WasmEncodedError } from "@rainlanguage/float";
 import { Order, PairBase, TakeOrderDetailsBase } from ".";
 import { ABI, normalizeFloat, Result } from "../../common";
-import { extractOracleUrl } from "../../oracle";
+import { extractOracleUrl } from "../../oracle/fetch";
 import { decodeAbiParameters, DecodeAbiParametersErrorType } from "viem";
 
 // these types are used in orderbook v5
@@ -57,11 +57,17 @@ export namespace V4 {
     }
 }
 
+export type SignedContextV2 = {
+    signer: `0x${string}`;
+    context: `0x${string}`[];
+    signature: `0x${string}`;
+};
+
 export type TakeOrderV4 = {
     order: V4;
     inputIOIndex: number;
     outputIOIndex: number;
-    signedContext: any[];
+    signedContext: SignedContextV2[];
 };
 
 export type TakeOrderDetailsV4 = TakeOrderDetailsBase & {
@@ -141,7 +147,7 @@ export namespace PairV4 {
             sellTokenSymbol: outputSymbol,
             sellTokenDecimals: outputDecimals,
             sellTokenVaultBalance: outputBalanceRes.value,
-            oracleUrl: orderDetails.meta ? extractOracleUrl(orderDetails.meta) : null,
+            oracleUrl: orderDetails.meta ? extractOracleUrl(orderDetails.meta) : undefined,
             takeOrder: {
                 id: orderHash,
                 struct: {

@@ -52,16 +52,16 @@ export namespace _v5 {
     export const Float = "bytes32" as const;
     export const IOV2 = `(address token, bytes32 vaultId)` as const;
     export const EvaluableV4 = `(address interpreter, address store, bytes bytecode)` as const;
-    export const SignedContextV1 = "(address signer, bytes32[] context, bytes signature)" as const;
-    export const TaskV2 = `(${EvaluableV4} evaluable, ${SignedContextV1}[] signedContext)` as const;
+    export const SignedContextV2 = "(address signer, bytes32[] context, bytes signature)" as const;
+    export const TaskV2 = `(${EvaluableV4} evaluable, ${SignedContextV2}[] signedContext)` as const;
     export const ClearStateChangeV2 =
         `(${Float} aliceOutput, ${Float} bobOutput, ${Float} aliceInput, ${Float} bobInput)` as const;
     export const OrderV4 =
         `(address owner, ${EvaluableV4} evaluable, ${IOV2}[] validInputs, ${IOV2}[] validOutputs, bytes32 nonce)` as const;
     export const TakeOrderConfigV4 =
-        `(${OrderV4} order, uint256 inputIOIndex, uint256 outputIOIndex, ${SignedContextV1}[] signedContext)` as const;
+        `(${OrderV4} order, uint256 inputIOIndex, uint256 outputIOIndex, ${SignedContextV2}[] signedContext)` as const;
     export const QuoteV2 =
-        `(${OrderV4} order, uint256 inputIOIndex, uint256 outputIOIndex, ${SignedContextV1}[] signedContext)` as const;
+        `(${OrderV4} order, uint256 inputIOIndex, uint256 outputIOIndex, ${SignedContextV2}[] signedContext)` as const;
     export const TakeOrdersConfigV4 =
         `(${Float} minimumInput, ${Float} maximumInput, ${Float} maximumIORatio, ${TakeOrderConfigV4}[] orders, bytes data)` as const;
     export const OrderConfigV4 =
@@ -90,7 +90,7 @@ export namespace _v5 {
         `function addOrder3(${OrderConfigV4} calldata config, ${TaskV2}[] calldata tasks) external returns (bool stateChanged)` as const,
         `function quote2(${QuoteV2} calldata quoteConfig) external view returns (bool exists, ${Float} outputMax, ${Float} ioRatio)` as const,
         `function takeOrders3(${TakeOrdersConfigV4} calldata config) external returns (${Float} totalTakerInput, ${Float} totalTakerOutput)` as const,
-        `function clear3(${OrderV4} memory alice, ${OrderV4} memory bob, ${ClearConfigV2} calldata clearConfig, ${SignedContextV1}[] memory aliceSignedContext, ${SignedContextV1}[] memory bobSignedContext) external` as const,
+        `function clear3(${OrderV4} memory alice, ${OrderV4} memory bob, ${ClearConfigV2} calldata clearConfig, ${SignedContextV2}[] memory aliceSignedContext, ${SignedContextV2}[] memory bobSignedContext) external` as const,
         "function multicall(bytes[] calldata data) external returns (bytes[] memory results)",
     ] as const;
     export const Arb = [
@@ -105,16 +105,16 @@ export namespace _v6 {
     export const Float = "bytes32" as const;
     export const IOV2 = `(address token, bytes32 vaultId)` as const;
     export const EvaluableV4 = `(address interpreter, address store, bytes bytecode)` as const;
-    export const SignedContextV1 = "(address signer, bytes32[] context, bytes signature)" as const;
-    export const TaskV2 = `(${EvaluableV4} evaluable, ${SignedContextV1}[] signedContext)` as const;
+    export const SignedContextV2 = "(address signer, bytes32[] context, bytes signature)" as const;
+    export const TaskV2 = `(${EvaluableV4} evaluable, ${SignedContextV2}[] signedContext)` as const;
     export const ClearStateChangeV2 =
         `(${Float} aliceOutput, ${Float} bobOutput, ${Float} aliceInput, ${Float} bobInput)` as const;
     export const OrderV4 =
         `(address owner, ${EvaluableV4} evaluable, ${IOV2}[] validInputs, ${IOV2}[] validOutputs, bytes32 nonce)` as const;
     export const TakeOrderConfigV4 =
-        `(${OrderV4} order, uint256 inputIOIndex, uint256 outputIOIndex, ${SignedContextV1}[] signedContext)` as const;
+        `(${OrderV4} order, uint256 inputIOIndex, uint256 outputIOIndex, ${SignedContextV2}[] signedContext)` as const;
     export const QuoteV2 =
-        `(${OrderV4} order, uint256 inputIOIndex, uint256 outputIOIndex, ${SignedContextV1}[] signedContext)` as const;
+        `(${OrderV4} order, uint256 inputIOIndex, uint256 outputIOIndex, ${SignedContextV2}[] signedContext)` as const;
     export const TakeOrdersConfigV5 =
         `(${Float} minimumIO, ${Float} maximumIO, ${Float} maximumIORatio, bool IOIsInput, ${TakeOrderConfigV4}[] orders, bytes data)` as const;
     export const OrderConfigV4 =
@@ -143,7 +143,7 @@ export namespace _v6 {
         `function addOrder4(${OrderConfigV4} calldata config, ${TaskV2}[] calldata tasks) external returns (bool stateChanged)` as const,
         `function quote2(${QuoteV2} calldata quoteConfig) external view returns (bool exists, ${Float} outputMax, ${Float} ioRatio)` as const,
         `function takeOrders4(${TakeOrdersConfigV5} calldata config) external returns (${Float} totalTakerInput, ${Float} totalTakerOutput)` as const,
-        `function clear3(${OrderV4} memory alice, ${OrderV4} memory bob, ${ClearConfigV2} calldata clearConfig, ${SignedContextV1}[] memory aliceSignedContext, ${SignedContextV1}[] memory bobSignedContext) external` as const,
+        `function clear3(${OrderV4} memory alice, ${OrderV4} memory bob, ${ClearConfigV2} calldata clearConfig, ${SignedContextV2}[] memory aliceSignedContext, ${SignedContextV2}[] memory bobSignedContext) external` as const,
         "function multicall(bytes[] calldata data) external returns (bytes[] memory results)",
     ] as const;
     export const Arb = [
@@ -218,7 +218,7 @@ export namespace OrderbookAbi {
             export const Float = _v5.Float;
             export const IO = _v5.IOV2;
             export const Evaluable = _v5.EvaluableV4;
-            export const SignedContext = _v5.SignedContextV1;
+            export const SignedContext = _v5.SignedContextV2;
             export const Task = _v5.TaskV2;
             export const ClearStateChange = _v5.ClearStateChangeV2;
             export const Order = _v5.OrderV4;
@@ -264,7 +264,7 @@ export namespace OrderbookAbi {
             export const Float = _v6.Float;
             export const IO = _v6.IOV2;
             export const Evaluable = _v6.EvaluableV4;
-            export const SignedContext = _v6.SignedContextV1;
+            export const SignedContext = _v6.SignedContextV2;
             export const Task = _v6.TaskV2;
             export const ClearStateChange = _v6.ClearStateChangeV2;
             export const Order = _v6.OrderV4;
