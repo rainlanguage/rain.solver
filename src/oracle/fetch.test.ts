@@ -1,15 +1,14 @@
+import { Order } from "../order";
 import { OracleErrorType } from "./error";
-import { describe, it, expect, vi, beforeEach, afterEach, assert } from "vitest";
 import { OracleConstants, OracleHealthMap, OracleOrderRequest } from "./types";
+import { describe, it, expect, vi, beforeEach, afterEach, assert } from "vitest";
 import {
     isInCooloff,
     extractOracleUrl,
     fetchSignedContext,
     recordOracleSuccess,
     recordOracleFailure,
-    isValidSignedContextV2,
 } from "./fetch";
-import { Order } from "../order";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -723,108 +722,5 @@ describe("recordOracleFailure", () => {
         const state = healthMap.get(testUrl);
         expect(state?.consecutiveFailures).toBe(2);
         expect(state?.cooloffUntil).toBe(existingCooloff);
-    });
-});
-
-describe("isValidSignedContextV2", () => {
-    it("returns true for valid SignedContextV2 object", () => {
-        const valid = {
-            signer: "0x1234567890abcdef",
-            context: ["0x01", "0x02"],
-            signature: "0xabcdef",
-        };
-        expect(isValidSignedContextV2(valid)).toBe(true);
-    });
-
-    it("returns true for valid object with empty context array", () => {
-        const valid = {
-            signer: "0x1234",
-            context: [],
-            signature: "0xsig",
-        };
-        expect(isValidSignedContextV2(valid)).toBe(true);
-    });
-
-    it("returns false for null", () => {
-        expect(isValidSignedContextV2(null)).toBe(false);
-    });
-
-    it("returns false for undefined", () => {
-        expect(isValidSignedContextV2(undefined)).toBe(false);
-    });
-
-    it("returns false for non-object types", () => {
-        expect(isValidSignedContextV2("string")).toBe(false);
-        expect(isValidSignedContextV2(123)).toBe(false);
-        expect(isValidSignedContextV2(true)).toBe(false);
-    });
-
-    it("returns false when signer is missing", () => {
-        const invalid = {
-            context: ["0x01"],
-            signature: "0xsig",
-        };
-        expect(isValidSignedContextV2(invalid)).toBe(false);
-    });
-
-    it("returns false when signer is not a string", () => {
-        const invalid = {
-            signer: 12345,
-            context: ["0x01"],
-            signature: "0xsig",
-        };
-        expect(isValidSignedContextV2(invalid)).toBe(false);
-    });
-
-    it("returns false when context is missing", () => {
-        const invalid = {
-            signer: "0x1234",
-            signature: "0xsig",
-        };
-        expect(isValidSignedContextV2(invalid)).toBe(false);
-    });
-
-    it("returns false when context is not an array", () => {
-        const invalid = {
-            signer: "0x1234",
-            context: "not-an-array",
-            signature: "0xsig",
-        };
-        expect(isValidSignedContextV2(invalid)).toBe(false);
-    });
-
-    it("returns false when signature is missing", () => {
-        const invalid = {
-            signer: "0x1234",
-            context: ["0x01"],
-        };
-        expect(isValidSignedContextV2(invalid)).toBe(false);
-    });
-
-    it("returns false when signature is not a string", () => {
-        const invalid = {
-            signer: "0x1234",
-            context: ["0x01"],
-            signature: 12345,
-        };
-        expect(isValidSignedContextV2(invalid)).toBe(false);
-    });
-
-    it("returns true when extra properties are present", () => {
-        const valid = {
-            signer: "0x1234",
-            context: ["0x01"],
-            signature: "0xsig",
-            extraField: "extra",
-        };
-        expect(isValidSignedContextV2(valid)).toBe(true);
-    });
-
-    it("returns false for empty object", () => {
-        expect(isValidSignedContextV2({})).toBe(false);
-    });
-
-    it("returns false for array", () => {
-        expect(isValidSignedContextV2([])).toBe(false);
     });
 });

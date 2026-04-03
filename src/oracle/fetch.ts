@@ -13,7 +13,7 @@ import {
  * Fetch signed context from an oracle endpoint (single request format).
  *
  * POSTs abi.encode(OrderV4, uint256, uint256, address) and expects
- * a JSON SignedContextV1 object back.
+ * a JSON SignedContextV2 object back.
  *
  * Single attempt with a hard timeout — no retries, no in-loop delays.
  * Uses the provided health map for cooloff tracking.
@@ -86,7 +86,7 @@ export async function fetchSignedContext(
     }
 
     // Validate shape of response
-    if (isValidSignedContextV2(json)) {
+    if (SignedContextV2.isValid(json)) {
         recordOracleSuccess(healthMap, url);
         return Result.ok(json);
     }
@@ -169,15 +169,4 @@ export function recordOracleFailure(healthMap: OracleHealthMap, url: string) {
         // );
     }
     healthMap.set(url, state);
-}
-
-/** Validates if the given value is of SignedContextV2 type */
-export function isValidSignedContextV2(value: any): value is SignedContextV2 {
-    return !(
-        typeof value !== "object" ||
-        value === null ||
-        typeof (value as any).signer !== "string" ||
-        !Array.isArray((value as any).context) ||
-        typeof (value as any).signature !== "string"
-    );
 }

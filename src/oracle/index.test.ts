@@ -53,7 +53,7 @@ describe("fetchOracleContext", () => {
         expect(fetchSignedContext as Mock).not.toHaveBeenCalled();
     });
 
-    it("returns currectly call fetchSignedContext when Order V4 when it returns error", async () => {
+    it("returns correctly call fetchSignedContext when Order V4 when it returns error", async () => {
         const error = new OracleError("some error", OracleErrorType.FetchError);
         (fetchSignedContext as Mock).mockResolvedValueOnce(Result.err(error));
         const result = await fetchOracleContext.call(mockState, mockOrderDetails);
@@ -73,7 +73,7 @@ describe("fetchOracleContext", () => {
         );
     });
 
-    it("returns currectly call fetchSignedContext when Order V4 when it returns ok", async () => {
+    it("returns correctly call fetchSignedContext when Order V4 when it returns ok", async () => {
         const validSignedContext = {
             signer: "0x000000000000000000000000abcdef1234567890",
             context: [

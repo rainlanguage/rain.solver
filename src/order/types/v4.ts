@@ -62,6 +62,19 @@ export type SignedContextV2 = {
     context: `0x${string}`[];
     signature: `0x${string}`;
 };
+export namespace SignedContextV2 {
+    /** Validates if the given value is of SignedContextV2 type */
+    export function isValid(value: any): value is SignedContextV2 {
+        return !(
+            typeof value !== "object" ||
+            value === null ||
+            typeof (value as any).signer !== "string" ||
+            !Array.isArray((value as any).context) ||
+            (value as any).context.some((v: any) => typeof v !== "string") ||
+            typeof (value as any).signature !== "string"
+        );
+    }
+}
 
 export type TakeOrderV4 = {
     order: V4;
