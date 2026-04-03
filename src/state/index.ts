@@ -2,7 +2,7 @@ import { GasManager } from "../gas";
 import { ChainId } from "sushi/chain";
 import { AppOptions } from "../config";
 import { Token } from "sushi/currency";
-import { BalancerRouter } from "../router";
+import { BalancerRouter, DEFAULT_PRICE_IMPACT_TOLERANCE } from "../router";
 import { LiquidityProviders } from "sushi";
 import { SolverContracts } from "./contracts";
 import { SushiRouter } from "../router/sushi";
@@ -329,7 +329,12 @@ export class SharedState {
             sushiRouteType: this.appOptions.route,
             skipFetch: !!skipFetch,
         });
-        if (result.isOk()) {
+        if (
+            result.isOk() &&
+            (!result.value.route ||
+                typeof result.value.route.priceImpact === "undefined" ||
+                result.value.route.priceImpact <= DEFAULT_PRICE_IMPACT_TOLERANCE)
+        ) {
             return result;
         }
         const partialAmountIn = this.router.findLargestTradeSize(

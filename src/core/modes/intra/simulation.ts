@@ -265,7 +265,65 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
     }
 
     /**
-     * Builds the calldata for v4 order
+     * Builds the calldata for v4 order on Orderbook V6
+     * @param task - The ensure withdraw bounty task object
+     */
+    getCalldataForV4OrderV6(task: TaskType): `0x${string}` {
+        const withdrawInputCalldata = encodeFunctionData({
+            abi: ABI.Orderbook.V6.Primary.Orderbook,
+            functionName: "withdraw4",
+            args: [
+                this.tradeArgs.orderDetails.buyToken,
+                this.inputBountyVaultId,
+                maxFloat(this.tradeArgs.orderDetails.buyTokenDecimals),
+                [],
+            ],
+        });
+        const withdrawOutputCalldata = encodeFunctionData({
+            abi: ABI.Orderbook.V6.Primary.Orderbook,
+            functionName: "withdraw4",
+            args: [
+                this.tradeArgs.orderDetails.sellToken,
+                this.outputBountyVaultId,
+                maxFloat(this.tradeArgs.orderDetails.sellTokenDecimals),
+                this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0" ? [] : [task],
+            ],
+        });
+        const clear3Calldata = encodeFunctionData({
+            abi: ABI.Orderbook.V6.Primary.Orderbook,
+            functionName: "clear3",
+            args: [
+                this.tradeArgs.orderDetails.takeOrder.struct.order,
+                this.tradeArgs.counterpartyOrderDetails.struct.order,
+                {
+                    aliceInputIOIndex: BigInt(
+                        this.tradeArgs.orderDetails.takeOrder.struct.inputIOIndex,
+                    ),
+                    aliceOutputIOIndex: BigInt(
+                        this.tradeArgs.orderDetails.takeOrder.struct.outputIOIndex,
+                    ),
+                    bobInputIOIndex: BigInt(
+                        this.tradeArgs.counterpartyOrderDetails.struct.inputIOIndex,
+                    ),
+                    bobOutputIOIndex: BigInt(
+                        this.tradeArgs.counterpartyOrderDetails.struct.outputIOIndex,
+                    ),
+                    aliceBountyVaultId: this.inputBountyVaultId,
+                    bobBountyVaultId: this.outputBountyVaultId,
+                },
+                [],
+                [],
+            ],
+        });
+        return encodeFunctionData({
+            abi: ABI.Orderbook.V6.Primary.Orderbook,
+            functionName: "multicall",
+            args: [[clear3Calldata, withdrawInputCalldata, withdrawOutputCalldata]],
+        });
+    }
+
+    /**
+     * Builds the calldata for v4 order on Orderbook V5
      * @param task - The ensure withdraw bounty task object
      */
     getCalldataForV4Order(task: TaskType): `0x${string}` {
@@ -329,6 +387,8 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
     getCalldata(task: TaskType): `0x${string}` {
         if (Pair.isV3(this.tradeArgs.orderDetails)) {
             return this.getCalldataForV3Order(task);
+        } else if (Pair.isV4OrderbookV6(this.tradeArgs.orderDetails)) {
+            return this.getCalldataForV4OrderV6(task);
         } else {
             return this.getCalldataForV4Order(task);
         }

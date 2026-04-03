@@ -4,6 +4,7 @@ import { findBestRouterTrade } from "./router";
 import { OrderbookTradeTypes } from "../../config";
 import { findBestIntraOrderbookTrade } from "./intra";
 import { findBestInterOrderbookTrade } from "./inter";
+import { findBestRaindexRouterTrade } from "./raindex";
 import { findBestTrade, getEnabledTradeTypeFunctions } from "./index";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
@@ -19,8 +20,8 @@ vi.mock("./inter", () => ({
     findBestInterOrderbookTrade: vi.fn(),
 }));
 
-vi.mock("./balancer", () => ({
-    findBestBalancerTrade: vi.fn(),
+vi.mock("./raindex", () => ({
+    findBestRaindexRouterTrade: vi.fn(),
 }));
 
 describe("Test findBestTrade", () => {
@@ -37,6 +38,7 @@ describe("Test findBestTrade", () => {
                     router: new Set(),
                     intraOrderbook: new Set(),
                     interOrderbook: new Set(),
+                    raindexRouter: new Set(),
                 } as any,
             },
             state: {
@@ -79,10 +81,17 @@ describe("Test findBestTrade", () => {
             estimatedProfit: 150n,
             oppBlockNumber: 123,
         });
+        const raindexResult = Result.ok({
+            type: "raindex",
+            spanAttributes: { foundOpp: true },
+            estimatedProfit: 50n,
+            oppBlockNumber: 123,
+        });
 
         (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
+        (findBestRaindexRouterTrade as Mock).mockResolvedValue(raindexResult);
 
         const result = await findBestTrade.call(mockRainSolver, args);
 
@@ -110,10 +119,16 @@ describe("Test findBestTrade", () => {
             spanAttributes: { error: "no counterparty" },
             noneNodeError: "inter orderbook failed",
         });
+        const raindexResult = Result.err({
+            type: "raindex",
+            spanAttributes: { error: "no route" },
+            noneNodeError: "raindex router failed",
+        });
 
         (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
+        (findBestRaindexRouterTrade as Mock).mockResolvedValue(raindexResult);
 
         const result = await findBestTrade.call(mockRainSolver, args);
 
@@ -140,10 +155,16 @@ describe("Test findBestTrade", () => {
             spanAttributes: { error: "no counterparty", pairs: 2 },
             noneNodeError: "inter orderbook failed",
         });
+        const raindexResult = Result.err({
+            type: "raindex",
+            spanAttributes: { error: "failed", route: 1 },
+            noneNodeError: "raindex router failed",
+        });
 
         (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
+        (findBestRaindexRouterTrade as Mock).mockResolvedValue(raindexResult);
 
         const result = await findBestTrade.call(mockRainSolver, args);
 
@@ -155,6 +176,8 @@ describe("Test findBestTrade", () => {
         expect(result.error.spanAttributes["intraOrderbook.checked"]).toBe(5);
         expect(result.error.spanAttributes["interOrderbook.error"]).toBe("no counterparty");
         expect(result.error.spanAttributes["interOrderbook.pairs"]).toBe(2);
+        expect(result.error.spanAttributes["raindex.error"]).toBe("failed");
+        expect(result.error.spanAttributes["raindex.route"]).toBe(1);
     });
 
     it("should only call route processor when rpOnly is true", async () => {
@@ -185,6 +208,7 @@ describe("Test findBestTrade", () => {
         );
         expect(findBestIntraOrderbookTrade).not.toHaveBeenCalled();
         expect(findBestInterOrderbookTrade).not.toHaveBeenCalled();
+        expect(findBestRaindexRouterTrade).not.toHaveBeenCalled();
     });
 
     it("should only call balancer router when balancerRouter is available", async () => {
@@ -195,6 +219,7 @@ describe("Test findBestTrade", () => {
                     router: new Set(),
                     intraOrderbook: new Set(),
                     interOrderbook: new Set(),
+                    raindexRouter: new Set(),
                 } as any,
             },
             state: {
@@ -223,10 +248,17 @@ describe("Test findBestTrade", () => {
             estimatedProfit: 120n,
             oppBlockNumber: 123,
         });
+        const raindexResult = Result.ok({
+            type: "raindex",
+            spanAttributes: { foundOpp: true },
+            estimatedProfit: 120n,
+            oppBlockNumber: 123,
+        });
 
         (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
+        (findBestRaindexRouterTrade as Mock).mockResolvedValue(raindexResult);
 
         const result = await findBestTrade.call(mocksolver, args);
 
@@ -255,6 +287,14 @@ describe("Test findBestTrade", () => {
             args.outputToEthPrice,
             args.blockNumber,
         );
+        expect(findBestRaindexRouterTrade).toHaveBeenCalledWith(
+            args.orderDetails,
+            args.signer,
+            args.fromToken,
+            args.inputToEthPrice,
+            args.outputToEthPrice,
+            args.blockNumber,
+        );
     });
 
     it("should call all modes when rpOnly is false", async () => {
@@ -276,10 +316,17 @@ describe("Test findBestTrade", () => {
             estimatedProfit: 120n,
             oppBlockNumber: 123,
         });
+        const raindexResult = Result.ok({
+            type: "raindex",
+            spanAttributes: { foundOpp: true },
+            estimatedProfit: 120n,
+            oppBlockNumber: 123,
+        });
 
         (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
+        (findBestRaindexRouterTrade as Mock).mockResolvedValue(raindexResult);
 
         const result = await findBestTrade.call(mockRainSolver, args);
 
@@ -308,6 +355,14 @@ describe("Test findBestTrade", () => {
             args.outputToEthPrice,
             args.blockNumber,
         );
+        expect(findBestRaindexRouterTrade).toHaveBeenCalledWith(
+            args.orderDetails,
+            args.signer,
+            args.fromToken,
+            args.inputToEthPrice,
+            args.outputToEthPrice,
+            args.blockNumber,
+        );
     });
 
     it("should sort results by estimated profit in descending order", async () => {
@@ -329,10 +384,17 @@ describe("Test findBestTrade", () => {
             estimatedProfit: 200n, // middle
             oppBlockNumber: 123,
         });
+        const raindexResult = Result.ok({
+            type: "raindex",
+            spanAttributes: { foundOpp: true },
+            estimatedProfit: 250n, // middle
+            oppBlockNumber: 123,
+        });
 
         (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
+        (findBestRaindexRouterTrade as Mock).mockResolvedValue(raindexResult);
 
         const result = await findBestTrade.call(mockRainSolver, args);
 
@@ -358,10 +420,17 @@ describe("Test findBestTrade", () => {
             estimatedProfit: 75n,
             oppBlockNumber: 123,
         });
+        const raindexResult = Result.ok({
+            type: "raindex",
+            spanAttributes: { foundOpp: true },
+            estimatedProfit: 65n,
+            oppBlockNumber: 123,
+        });
 
         (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
+        (findBestRaindexRouterTrade as Mock).mockResolvedValue(raindexResult);
 
         const result = await findBestTrade.call(mockRainSolver, args);
 
@@ -390,6 +459,13 @@ describe("Test findBestTrade", () => {
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(
             Result.err({
                 type: "interOrderbook",
+                spanAttributes: { error: "failed" },
+                noneNodeError: "failed",
+            }),
+        );
+        (findBestRaindexRouterTrade as Mock).mockResolvedValue(
+            Result.err({
+                type: "raindex",
                 spanAttributes: { error: "failed" },
                 noneNodeError: "failed",
             }),
@@ -426,6 +502,13 @@ describe("Test findBestTrade", () => {
                 noneNodeError: "failed",
             }),
         );
+        (findBestRaindexRouterTrade as Mock).mockResolvedValue(
+            Result.err({
+                type: "raindex",
+                spanAttributes: { error: "failed" },
+                noneNodeError: "failed",
+            }),
+        );
 
         await findBestTrade.call(mockRainSolver, args);
 
@@ -451,6 +534,14 @@ describe("Test findBestTrade", () => {
             args.outputToEthPrice,
             args.blockNumber,
         );
+        expect(findBestRaindexRouterTrade).toHaveBeenCalledWith(
+            args.orderDetails,
+            args.signer,
+            args.fromToken,
+            args.inputToEthPrice,
+            args.outputToEthPrice,
+            args.blockNumber,
+        );
     });
 
     it("should preserve span attributes from error results with proper headers", async () => {
@@ -469,10 +560,16 @@ describe("Test findBestTrade", () => {
             spanAttributes: { interError: "no counterparty", interPairs: 2 },
             noneNodeError: "inter orderbook failed",
         });
+        const raindexResult = Result.err({
+            type: "raindex",
+            spanAttributes: { raindexError: "no route", route: 0 },
+            noneNodeError: "raindex router failed",
+        });
 
         (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
         (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
+        (findBestRaindexRouterTrade as Mock).mockResolvedValue(raindexResult);
 
         const result = await findBestTrade.call(mockRainSolver, args);
 
@@ -483,6 +580,8 @@ describe("Test findBestTrade", () => {
         expect(result.error.spanAttributes["intraOrderbook.intraChecked"]).toBe(5);
         expect(result.error.spanAttributes["interOrderbook.interError"]).toBe("no counterparty");
         expect(result.error.spanAttributes["interOrderbook.interPairs"]).toBe(2);
+        expect(result.error.spanAttributes["raindex.raindexError"]).toBe("no route");
+        expect(result.error.spanAttributes["raindex.route"]).toBe(0);
     });
 });
 
@@ -496,6 +595,7 @@ describe("Test getEnabledTrades", () => {
             router: new Set([anotherAddress]),
             intraOrderbook: new Set([anotherAddress]),
             interOrderbook: new Set([anotherAddress]),
+            raindexRouter: new Set([anotherAddress]),
         };
 
         const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
@@ -503,6 +603,7 @@ describe("Test getEnabledTrades", () => {
         expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
         expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);
         expect(result.findBestInterOrderbookTrade).toBe(findBestInterOrderbookTrade);
+        expect(result.findBestRaindexRouterTrade).toBe(findBestRaindexRouterTrade);
     });
 
     it("should return all trade functions when all sets are empty", () => {
@@ -510,6 +611,7 @@ describe("Test getEnabledTrades", () => {
             router: new Set(),
             intraOrderbook: new Set(),
             interOrderbook: new Set(),
+            raindexRouter: new Set(),
         };
 
         const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
@@ -517,6 +619,7 @@ describe("Test getEnabledTrades", () => {
         expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
         expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);
         expect(result.findBestInterOrderbookTrade).toBe(findBestInterOrderbookTrade);
+        expect(result.findBestRaindexRouterTrade).toBe(findBestRaindexRouterTrade);
     });
 
     it("should return only router trade when orderbook is in router set", () => {
@@ -524,6 +627,7 @@ describe("Test getEnabledTrades", () => {
             router: new Set([mockOrderbookAddressLowercase]),
             intraOrderbook: new Set(),
             interOrderbook: new Set(),
+            raindexRouter: new Set(),
         };
 
         const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
@@ -538,6 +642,7 @@ describe("Test getEnabledTrades", () => {
             router: new Set(),
             intraOrderbook: new Set([mockOrderbookAddressLowercase]),
             interOrderbook: new Set(),
+            raindexRouter: new Set(),
         };
 
         const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
@@ -552,6 +657,7 @@ describe("Test getEnabledTrades", () => {
             router: new Set(),
             intraOrderbook: new Set(),
             interOrderbook: new Set([mockOrderbookAddressLowercase]),
+            raindexRouter: new Set(),
         };
 
         const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
@@ -561,11 +667,28 @@ describe("Test getEnabledTrades", () => {
         expect(result.findBestInterOrderbookTrade).toBe(findBestInterOrderbookTrade);
     });
 
+    it("should return only raindex routed trade when orderbook is in raindex router set", () => {
+        const orderbookTradeTypes: OrderbookTradeTypes = {
+            router: new Set(),
+            intraOrderbook: new Set(),
+            interOrderbook: new Set(),
+            raindexRouter: new Set([mockOrderbookAddressLowercase]),
+        };
+
+        const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
+
+        expect(result.findBestRouterTrade).toBeUndefined();
+        expect(result.findBestIntraOrderbookTrade).toBeUndefined();
+        expect(result.findBestInterOrderbookTrade).toBeUndefined();
+        expect(result.findBestRaindexRouterTrade).toBe(findBestRaindexRouterTrade);
+    });
+
     it("should return multiple trade functions when orderbook is in multiple sets", () => {
         const orderbookTradeTypes: OrderbookTradeTypes = {
             router: new Set([mockOrderbookAddressLowercase]),
             intraOrderbook: new Set([mockOrderbookAddressLowercase]),
             interOrderbook: new Set(),
+            raindexRouter: new Set(),
         };
 
         const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
@@ -573,6 +696,7 @@ describe("Test getEnabledTrades", () => {
         expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
         expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);
         expect(result.findBestInterOrderbookTrade).toBeUndefined();
+        expect(result.findBestRaindexRouterTrade).toBeUndefined();
     });
 
     it("should return all trade functions when orderbook is in all sets", () => {
@@ -580,6 +704,7 @@ describe("Test getEnabledTrades", () => {
             router: new Set([mockOrderbookAddressLowercase]),
             intraOrderbook: new Set([mockOrderbookAddressLowercase]),
             interOrderbook: new Set([mockOrderbookAddressLowercase]),
+            raindexRouter: new Set([mockOrderbookAddressLowercase]),
         };
 
         const result = getEnabledTradeTypeFunctions(orderbookTradeTypes, mockOrderbookAddress);
@@ -587,5 +712,6 @@ describe("Test getEnabledTrades", () => {
         expect(result.findBestRouterTrade).toBe(findBestRouterTrade);
         expect(result.findBestIntraOrderbookTrade).toBe(findBestIntraOrderbookTrade);
         expect(result.findBestInterOrderbookTrade).toBe(findBestInterOrderbookTrade);
+        expect(result.findBestRaindexRouterTrade).toBe(findBestRaindexRouterTrade);
     });
 });

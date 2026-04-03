@@ -2,9 +2,12 @@ import { Pair } from "../order";
 import { SushiRouter } from "./sushi";
 import { Token } from "sushi/currency";
 import { Err, Result } from "../common";
+import { MultiRoute } from "sushi/tines";
+import { StabullRouter } from "./stabull";
 import { LiquidityProviders } from "sushi";
 import { BalancerRouter } from "./balancer";
 import { Account, Chain, PublicClient, Transport, parseUnits } from "viem";
+import { StabullRouterError, StabullRouterErrorType } from "./stabull/error";
 import {
     TradeParamsType,
     GetTradeParamsArgs,
@@ -20,8 +23,6 @@ import {
     BalancerRouterErrorType,
     RainSolverRouterErrorType,
 } from "./error";
-import { StabullRouter } from "./stabull";
-import { StabullRouterError, StabullRouterErrorType } from "./stabull/error";
 
 export type RainSolverRouterConfig = {
     /** The chain id of the operating chain */
@@ -139,7 +140,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
      */
     async getMarketPrice(
         params: RainSolverRouterQuoteParams,
-    ): Promise<Result<{ price: string }, RainSolverRouterError>> {
+    ): Promise<Result<{ price: string; route?: MultiRoute }, RainSolverRouterError>> {
         const key = `${params.fromToken.address.toLowerCase()}-${params.toToken.address.toLowerCase}`;
         let value = this.cache.get(key);
         if (typeof value === "number") {
@@ -170,7 +171,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
         if (results.every((res) => !res?.isOk())) {
             return Result.err(getError("Failed to get market price", results));
         }
-        return results[0] as Result<{ price: string }, RainSolverRouterError>;
+        return results[0] as Result<{ price: string; route?: MultiRoute }, RainSolverRouterError>;
     }
 
     /**
