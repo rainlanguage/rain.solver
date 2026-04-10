@@ -13,7 +13,10 @@ export namespace OracleConstants {
     export const COOLOFF_DURATION_MS = 5 * 60 * 1_000;
 
     /** List of known oracle URLs */
-    export const KnownUrls = ["https://st0x-oracle-server.fly.dev/context"] as const;
+    export const KnownUrls = [
+        "https://st0x-oracle-server.fly.dev/context",
+        "https://st0x-oracle-server.fly.dev/context/v1",
+    ] as const;
 
     export function isKnown(url: string): boolean {
         return KnownUrls.includes(url as any);

@@ -39,11 +39,8 @@ export async function fetchSignedContext(
         );
     }
 
-    // Strip the internal `type` discriminant before ABI encoding
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { type: _type, ...orderStruct } = request.order;
     const encoded = encodeAbiParameters(OracleSingleAbiParams, [
-        orderStruct,
+        request.order,
         BigInt(request.inputIOIndex),
         BigInt(request.outputIOIndex),
         request.counterparty,
@@ -79,6 +76,7 @@ export async function fetchSignedContext(
             new OracleError(
                 `Oracle fetch error: ${err instanceof Error ? err.message : String(err)}`,
                 OracleErrorType.FetchError,
+                err,
             ),
         );
     } finally {
