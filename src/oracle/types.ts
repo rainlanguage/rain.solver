@@ -16,7 +16,7 @@ export namespace OracleConstants {
     export const KnownUrls = ["https://st0x-oracle-server.fly.dev/context"] as const;
 
     export function isKnown(url: string): boolean {
-        return KnownUrls.some((v) => v.startsWith(url));
+        return KnownUrls.some((v) => url.startsWith(v));
     }
 }
 
