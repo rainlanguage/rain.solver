@@ -78,26 +78,37 @@ export async function resolveVersionContracts(
         return undefined;
     }
 
-    const interpreter = await client
+    let interpreter = await client
         .readContract({
             address: addresses.dispair,
             functionName: version === "v6" ? "I_INTERPRETER" : "iInterpreter",
             abi: version === "v6" ? ABI.Deployer.Primary.DeployerV6 : ABI.Deployer.Primary.Deployer,
         })
         .catch(() => undefined);
-    if (!interpreter) {
-        return undefined;
-    }
 
-    const store = await client
+    let store = await client
         .readContract({
             address: addresses.dispair,
             functionName: version === "v6" ? "I_STORE" : "iStore",
             abi: version === "v6" ? ABI.Deployer.Primary.DeployerV6 : ABI.Deployer.Primary.Deployer,
         })
         .catch(() => undefined);
-    if (!store) {
-        return undefined;
+
+    // In Rain V6, the "deployer" address from the rainlang registry may
+    // actually be the parser, which doesn't expose I_INTERPRETER/I_STORE.
+    // Fall back to using the dispair address itself for all three fields —
+    // the actual interpreter/store will be taken from the order's evaluable
+    // struct at execution time. This allows intra-orderbook clearing
+    // (which doesn't need the task deployer) to work without a "real"
+    // deployer address.
+    if (!interpreter || !store) {
+        console.warn(
+            `Could not read interpreter/store from dispair ${addresses.dispair} — ` +
+                `using fallback. Task bytecode generation will fail; set gasCoveragePercentage="0" ` +
+                `to skip bounty tasks.`,
+        );
+        interpreter = addresses.dispair;
+        store = addresses.dispair;
     }
 
     const result: any = {
