@@ -63,15 +63,25 @@ export type SignedContextV2 = {
     signature: `0x${string}`;
 };
 export namespace SignedContextV2 {
+    /** Validates if the given value is a list of SignedContextV2 type */
+    export function isValidList(value: any): value is SignedContextV2[] {
+        return !(
+            typeof value !== "object" ||
+            value === null ||
+            !Array.isArray(value) ||
+            value.some((v) => !isValid(v))
+        );
+    }
+
     /** Validates if the given value is of SignedContextV2 type */
     export function isValid(value: any): value is SignedContextV2 {
         return !(
             typeof value !== "object" ||
             value === null ||
-            typeof (value as any).signer !== "string" ||
-            !Array.isArray((value as any).context) ||
-            (value as any).context.some((v: any) => typeof v !== "string") ||
-            typeof (value as any).signature !== "string"
+            typeof value.signer !== "string" ||
+            !Array.isArray(value.context) ||
+            value.context.some((v: any) => typeof v !== "string") ||
+            typeof value.signature !== "string"
         );
     }
 }

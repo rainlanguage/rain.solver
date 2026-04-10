@@ -1,7 +1,8 @@
 import { Order } from "../order";
+import axios, { AxiosError } from "axios";
 import { OracleErrorType } from "./error";
 import { OracleConstants, OracleHealthMap, OracleOrderRequest } from "./types";
-import { describe, it, expect, vi, beforeEach, afterEach, assert } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, assert, Mock } from "vitest";
 import {
     isInCooloff,
     extractOracleUrl,
@@ -10,9 +11,18 @@ import {
     recordOracleFailure,
 } from "./fetch";
 
-// Mock fetch globally
-const mockFetch = vi.fn();
-vi.stubGlobal("fetch", mockFetch);
+// Mock axios
+vi.mock("axios", async () => {
+    const actual = await vi.importActual<typeof import("axios")>("axios");
+    return {
+        default: {
+            ...actual.default,
+            post: vi.fn(),
+            isAxiosError: vi.fn(),
+        },
+        AxiosError: actual.AxiosError,
+    };
+});
 
 describe("fetchSignedContext", () => {
     let healthMap: OracleHealthMap;
@@ -57,17 +67,10 @@ describe("fetchSignedContext", () => {
 
     beforeEach(() => {
         healthMap = new Map();
-        mockFetch.mockReset();
-        vi.useFakeTimers();
-        vi.setSystemTime(new Date("2026-04-03T12:00:00Z"));
+        vi.clearAllMocks();
 
         // Mock OracleConstants.isKnown to return true for test URL
         vi.spyOn(OracleConstants, "isKnown").mockReturnValue(true);
-    });
-
-    afterEach(() => {
-        vi.useRealTimers();
-        vi.restoreAllMocks();
     });
 
     it("returns error when URL is unknown", async () => {
@@ -94,9 +97,12 @@ describe("fetchSignedContext", () => {
     });
 
     it("returns valid SignedContextV2 on successful response", async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => validSignedContext,
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: [validSignedContext],
+            status: 200,
+            statusText: "OK",
+            headers: {},
+            config: {} as any,
         });
 
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
@@ -107,9 +113,12 @@ describe("fetchSignedContext", () => {
 
     it("records success in health map on valid response", async () => {
         healthMap.set(testUrl, { consecutiveFailures: 3, cooloffUntil: 0 });
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => validSignedContext,
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: [validSignedContext],
+            status: 200,
+            statusText: "OK",
+            headers: {},
+            config: {} as any,
         });
 
         await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
@@ -119,26 +128,49 @@ describe("fetchSignedContext", () => {
         expect(state?.cooloffUntil).toBe(0);
     });
 
-    it("returns error on non-ok response", async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: false,
-            status: 500,
-            statusText: "Internal Server Error",
-        });
+    it("returns error on response error (500)", async () => {
+        const axiosError = new AxiosError(
+            "Request failed with status code 500",
+            "ERR_BAD_RESPONSE",
+            {} as any,
+            {},
+            {
+                status: 500,
+                statusText: "Internal Server Error",
+                data: {},
+                headers: {},
+                config: {} as any,
+            },
+        );
+
+        (axios.post as Mock).mockRejectedValueOnce(axiosError);
+        (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.RequestFailed);
         expect(result.error.message).toContain("500");
+        expect(result.error.message).toContain("Internal Server Error");
     });
 
-    it("records failure in health map on non-ok response", async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: false,
-            status: 500,
-            statusText: "Internal Server Error",
-        });
+    it("records failure in health map on response error", async () => {
+        const axiosError = new AxiosError(
+            "Request failed with status code 500",
+            "ERR_BAD_RESPONSE",
+            {} as any,
+            {},
+            {
+                status: 500,
+                statusText: "Internal Server Error",
+                data: {},
+                headers: {},
+                config: {} as any,
+            },
+        );
+
+        (axios.post as Mock).mockRejectedValueOnce(axiosError);
+        (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
         await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
@@ -146,18 +178,26 @@ describe("fetchSignedContext", () => {
         expect(state?.consecutiveFailures).toBe(1);
     });
 
-    it("returns error on fetch exception", async () => {
-        mockFetch.mockRejectedValueOnce(new Error("Network error"));
+    it("returns error on network error", async () => {
+        const axiosError = new AxiosError("Network Error", "ERR_NETWORK", {} as any, {}, undefined);
+        axiosError.request = {};
+
+        (axios.post as Mock).mockRejectedValueOnce(axiosError);
+        (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
         assert(result.isErr());
-        expect(result.error.type).toBe(OracleErrorType.FetchError);
-        expect(result.error.message).toContain("Network error");
+        expect(result.error.type).toBe(OracleErrorType.RequestFailed);
+        expect(result.error.message).toContain("Network Error");
     });
 
-    it("records failure in health map on fetch exception", async () => {
-        mockFetch.mockRejectedValueOnce(new Error("Network error"));
+    it("records failure in health map on network error", async () => {
+        const axiosError = new AxiosError("Network Error", "ERR_NETWORK", {} as any, {}, undefined);
+        axiosError.request = {};
+
+        (axios.post as Mock).mockRejectedValueOnce(axiosError);
+        (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
         await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
@@ -166,9 +206,12 @@ describe("fetchSignedContext", () => {
     });
 
     it("returns error on invalid response shape", async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ invalid: "response" }),
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: { invalid: "response" },
+            status: 200,
+            statusText: "OK",
+            headers: {},
+            config: {} as any,
         });
 
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
@@ -178,9 +221,12 @@ describe("fetchSignedContext", () => {
     });
 
     it("records failure in health map on invalid response shape", async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({ invalid: "response" }),
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: { invalid: "response" },
+            status: 200,
+            statusText: "OK",
+            headers: {},
+            config: {} as any,
         });
 
         await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
@@ -189,52 +235,67 @@ describe("fetchSignedContext", () => {
         expect(state?.consecutiveFailures).toBe(1);
     });
 
-    it("sends correct request headers and method", async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => validSignedContext,
+    it("sends correct request headers", async () => {
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: [validSignedContext],
+            status: 200,
+            statusText: "OK",
+            headers: {},
+            config: {} as any,
         });
 
         await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
-        expect(mockFetch).toHaveBeenCalledWith(
+        expect(axios.post).toHaveBeenCalledWith(
             testUrl,
+            expect.any(Uint8Array),
             expect.objectContaining({
-                method: "POST",
                 headers: { "Content-Type": "application/octet-stream" },
+                timeout: OracleConstants.ORACLE_TIMEOUT_MS,
+                responseType: "json",
             }),
         );
     });
 
     it("sends body as Uint8Array", async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => validSignedContext,
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: [validSignedContext],
+            status: 200,
+            statusText: "OK",
+            headers: {},
+            config: {} as any,
         });
 
         await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
-        const callArgs = mockFetch.mock.calls[0][1];
-        expect(callArgs.body).toBeInstanceOf(Uint8Array);
+        const callArgs = (axios.post as Mock).mock.calls[0];
+        expect(callArgs[1]).toBeInstanceOf(Uint8Array);
     });
 
-    it("handles non-Error exceptions gracefully", async () => {
-        mockFetch.mockRejectedValueOnce("string error");
+    it("handles non-AxiosError exceptions gracefully", async () => {
+        const genericError = new Error("Generic error");
+        (axios.post as Mock).mockRejectedValueOnce(genericError);
+        (axios.isAxiosError as any as Mock).mockReturnValue(false);
 
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.FetchError);
-        expect(result.error.message).toContain("string error");
+        expect(result.error.message).toContain("Generic error");
     });
 
     it("handles response with missing signer", async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({
-                context: ["0x01"],
-                signature: "0xsig",
-            }),
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: [
+                {
+                    context: ["0x01"],
+                    signature: "0xsig",
+                },
+            ],
+            status: 200,
+            statusText: "OK",
+            headers: {},
+            config: {} as any,
         });
 
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
@@ -244,12 +305,17 @@ describe("fetchSignedContext", () => {
     });
 
     it("handles response with missing context", async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({
-                signer: "0x1234",
-                signature: "0xsig",
-            }),
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: [
+                {
+                    signer: "0x1234",
+                    signature: "0xsig",
+                },
+            ],
+            status: 200,
+            statusText: "OK",
+            headers: {},
+            config: {} as any,
         });
 
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
@@ -259,12 +325,17 @@ describe("fetchSignedContext", () => {
     });
 
     it("handles response with missing signature", async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({
-                signer: "0x1234",
-                context: ["0x01"],
-            }),
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: [
+                {
+                    signer: "0x1234",
+                    context: ["0x01"],
+                },
+            ],
+            status: 200,
+            statusText: "OK",
+            headers: {},
+            config: {} as any,
         });
 
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
@@ -274,11 +345,22 @@ describe("fetchSignedContext", () => {
     });
 
     it("handles 404 response", async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: false,
-            status: 404,
-            statusText: "Not Found",
-        });
+        const axiosError = new AxiosError(
+            "Request failed with status code 404",
+            "ERR_BAD_REQUEST",
+            {} as any,
+            {},
+            {
+                status: 404,
+                statusText: "Not Found",
+                data: {},
+                headers: {},
+                config: {} as any,
+            },
+        );
+
+        (axios.post as Mock).mockRejectedValueOnce(axiosError);
+        (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
@@ -287,30 +369,29 @@ describe("fetchSignedContext", () => {
         expect(result.error.message).toContain("404");
     });
 
-    it("handles json parsing error", async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => {
-                throw new Error("Invalid JSON");
+    it("handles 400 Bad Request response", async () => {
+        const axiosError = new AxiosError(
+            "Request failed with status code 400",
+            "ERR_BAD_REQUEST",
+            {} as any,
+            {},
+            {
+                status: 400,
+                statusText: "Bad Request",
+                data: { error: "Invalid request body" },
+                headers: {},
+                config: {} as any,
             },
-        });
+        );
+
+        (axios.post as Mock).mockRejectedValueOnce(axiosError);
+        (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
         assert(result.isErr());
-        expect(result.error.type).toBe(OracleErrorType.FetchError);
-    });
-
-    it("uses abort controller for timeout", async () => {
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => validSignedContext,
-        });
-
-        await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
-
-        const callArgs = mockFetch.mock.calls[0][1];
-        expect(callArgs.signal).toBeInstanceOf(AbortSignal);
+        expect(result.error.type).toBe(OracleErrorType.RequestFailed);
+        expect(result.error.message).toContain("400");
     });
 
     it("processes expired cooloff correctly", async () => {
@@ -320,14 +401,66 @@ describe("fetchSignedContext", () => {
             cooloffUntil: Date.now() - 1000,
         });
 
-        mockFetch.mockResolvedValueOnce({
-            ok: true,
-            json: async () => validSignedContext,
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: [validSignedContext],
+            status: 200,
+            statusText: "OK",
+            headers: {},
+            config: {} as any,
         });
 
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
         assert(result.isOk());
+    });
+
+    it("handles timeout error", async () => {
+        const axiosError = new AxiosError(
+            "timeout of 5000ms exceeded",
+            "ECONNABORTED",
+            {} as any,
+            {},
+            undefined,
+        );
+        axiosError.request = {};
+
+        (axios.post as Mock).mockRejectedValueOnce(axiosError);
+        (axios.isAxiosError as any as Mock).mockReturnValue(true);
+
+        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+
+        assert(result.isErr());
+        expect(result.error.type).toBe(OracleErrorType.RequestFailed);
+    });
+
+    it("handles cancelled request", async () => {
+        const axiosError = new AxiosError(
+            "Request cancelled",
+            "ERR_CANCELED",
+            {} as any,
+            {},
+            undefined,
+        );
+        axiosError.request = {};
+
+        (axios.post as Mock).mockRejectedValueOnce(axiosError);
+        (axios.isAxiosError as any as Mock).mockReturnValue(true);
+
+        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+
+        assert(result.isErr());
+        expect(result.error.type).toBe(OracleErrorType.RequestFailed);
+    });
+
+    it("handles non-Error string exceptions", async () => {
+        (axios.post as Mock).mockRejectedValueOnce("string error");
+        (axios.isAxiosError as any as Mock).mockReturnValue(false);
+
+        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+
+        assert(result.isErr());
+        expect(result.error.type).toBe(OracleErrorType.FetchError);
+        expect(result.error.message).toContain("string error");
     });
 });
 

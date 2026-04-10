@@ -188,105 +188,326 @@ describe("PairV4.fromArgs", () => {
     });
 });
 
-describe("SignedContextV2.isValid", () => {
-    it("returns true for valid SignedContextV2 object", () => {
-        const valid = {
-            signer: "0x1234567890abcdef",
-            context: ["0x01", "0x02"],
-            signature: "0xabcdef",
-        };
-        expect(SignedContextV2.isValid(valid)).toBe(true);
+describe("SignedContextV2", () => {
+    describe("test isValid() function", () => {
+        it("returns true for valid SignedContextV2 object", () => {
+            const valid = {
+                signer: "0x1234567890abcdef",
+                context: ["0x01", "0x02"],
+                signature: "0xabcdef",
+            };
+            expect(SignedContextV2.isValid(valid)).toBe(true);
+        });
+
+        it("returns true for valid object with empty context array", () => {
+            const valid = {
+                signer: "0x1234",
+                context: [],
+                signature: "0xsig",
+            };
+            expect(SignedContextV2.isValid(valid)).toBe(true);
+        });
+
+        it("returns false for null", () => {
+            expect(SignedContextV2.isValid(null)).toBe(false);
+        });
+
+        it("returns false for undefined", () => {
+            expect(SignedContextV2.isValid(undefined)).toBe(false);
+        });
+
+        it("returns false for non-object types", () => {
+            expect(SignedContextV2.isValid("string")).toBe(false);
+            expect(SignedContextV2.isValid(123)).toBe(false);
+            expect(SignedContextV2.isValid(true)).toBe(false);
+        });
+
+        it("returns false when signer is missing", () => {
+            const invalid = {
+                context: ["0x01"],
+                signature: "0xsig",
+            };
+            expect(SignedContextV2.isValid(invalid)).toBe(false);
+        });
+
+        it("returns false when signer is not a string", () => {
+            const invalid = {
+                signer: 12345,
+                context: ["0x01"],
+                signature: "0xsig",
+            };
+            expect(SignedContextV2.isValid(invalid)).toBe(false);
+        });
+
+        it("returns false when context is missing", () => {
+            const invalid = {
+                signer: "0x1234",
+                signature: "0xsig",
+            };
+            expect(SignedContextV2.isValid(invalid)).toBe(false);
+        });
+
+        it("returns false when context is not an array", () => {
+            const invalid = {
+                signer: "0x1234",
+                context: "not-an-array",
+                signature: "0xsig",
+            };
+            expect(SignedContextV2.isValid(invalid)).toBe(false);
+        });
+
+        it("returns false when signature is missing", () => {
+            const invalid = {
+                signer: "0x1234",
+                context: ["0x01"],
+            };
+            expect(SignedContextV2.isValid(invalid)).toBe(false);
+        });
+
+        it("returns false when signature is not a string", () => {
+            const invalid = {
+                signer: "0x1234",
+                context: ["0x01"],
+                signature: 12345,
+            };
+            expect(SignedContextV2.isValid(invalid)).toBe(false);
+        });
+
+        it("returns true when extra properties are present", () => {
+            const valid = {
+                signer: "0x1234",
+                context: ["0x01"],
+                signature: "0xsig",
+                extraField: "extra",
+            };
+            expect(SignedContextV2.isValid(valid)).toBe(true);
+        });
+
+        it("returns false for empty object", () => {
+            expect(SignedContextV2.isValid({})).toBe(false);
+        });
+
+        it("returns false for array", () => {
+            expect(SignedContextV2.isValid([])).toBe(false);
+        });
     });
 
-    it("returns true for valid object with empty context array", () => {
-        const valid = {
-            signer: "0x1234",
-            context: [],
-            signature: "0xsig",
-        };
-        expect(SignedContextV2.isValid(valid)).toBe(true);
-    });
+    describe("test isValidList() function", () => {
+        it("returns true for valid array of SignedContextV2 objects", () => {
+            const validList = [
+                {
+                    signer: "0x1234567890abcdef",
+                    context: ["0x01", "0x02"],
+                    signature: "0xabcdef",
+                },
+                {
+                    signer: "0xabcdef1234567890",
+                    context: ["0x03"],
+                    signature: "0x123456",
+                },
+            ];
+            expect(SignedContextV2.isValidList(validList)).toBe(true);
+        });
 
-    it("returns false for null", () => {
-        expect(SignedContextV2.isValid(null)).toBe(false);
-    });
+        it("returns true for single item array", () => {
+            const validList = [
+                {
+                    signer: "0x1234",
+                    context: ["0x01"],
+                    signature: "0xsig",
+                },
+            ];
+            expect(SignedContextV2.isValidList(validList)).toBe(true);
+        });
 
-    it("returns false for undefined", () => {
-        expect(SignedContextV2.isValid(undefined)).toBe(false);
-    });
+        it("returns true for empty array", () => {
+            expect(SignedContextV2.isValidList([])).toBe(true);
+        });
 
-    it("returns false for non-object types", () => {
-        expect(SignedContextV2.isValid("string")).toBe(false);
-        expect(SignedContextV2.isValid(123)).toBe(false);
-        expect(SignedContextV2.isValid(true)).toBe(false);
-    });
+        it("returns true for array with empty context arrays", () => {
+            const validList = [
+                {
+                    signer: "0x1234",
+                    context: [],
+                    signature: "0xsig",
+                },
+                {
+                    signer: "0x5678",
+                    context: [],
+                    signature: "0xsig2",
+                },
+            ];
+            expect(SignedContextV2.isValidList(validList)).toBe(true);
+        });
 
-    it("returns false when signer is missing", () => {
-        const invalid = {
-            context: ["0x01"],
-            signature: "0xsig",
-        };
-        expect(SignedContextV2.isValid(invalid)).toBe(false);
-    });
+        it("returns false for null", () => {
+            expect(SignedContextV2.isValidList(null)).toBe(false);
+        });
 
-    it("returns false when signer is not a string", () => {
-        const invalid = {
-            signer: 12345,
-            context: ["0x01"],
-            signature: "0xsig",
-        };
-        expect(SignedContextV2.isValid(invalid)).toBe(false);
-    });
+        it("returns false for undefined", () => {
+            expect(SignedContextV2.isValidList(undefined)).toBe(false);
+        });
 
-    it("returns false when context is missing", () => {
-        const invalid = {
-            signer: "0x1234",
-            signature: "0xsig",
-        };
-        expect(SignedContextV2.isValid(invalid)).toBe(false);
-    });
+        it("returns false for non-array types", () => {
+            expect(SignedContextV2.isValidList("string")).toBe(false);
+            expect(SignedContextV2.isValidList(123)).toBe(false);
+            expect(SignedContextV2.isValidList(true)).toBe(false);
+        });
 
-    it("returns false when context is not an array", () => {
-        const invalid = {
-            signer: "0x1234",
-            context: "not-an-array",
-            signature: "0xsig",
-        };
-        expect(SignedContextV2.isValid(invalid)).toBe(false);
-    });
+        it("returns false for object instead of array", () => {
+            const obj = {
+                signer: "0x1234",
+                context: ["0x01"],
+                signature: "0xsig",
+            };
+            expect(SignedContextV2.isValidList(obj)).toBe(false);
+        });
 
-    it("returns false when signature is missing", () => {
-        const invalid = {
-            signer: "0x1234",
-            context: ["0x01"],
-        };
-        expect(SignedContextV2.isValid(invalid)).toBe(false);
-    });
+        it("returns false when array contains invalid item (missing signer)", () => {
+            const invalidList = [
+                {
+                    signer: "0x1234",
+                    context: ["0x01"],
+                    signature: "0xsig",
+                },
+                {
+                    context: ["0x02"],
+                    signature: "0xsig2",
+                },
+            ];
+            expect(SignedContextV2.isValidList(invalidList)).toBe(false);
+        });
 
-    it("returns false when signature is not a string", () => {
-        const invalid = {
-            signer: "0x1234",
-            context: ["0x01"],
-            signature: 12345,
-        };
-        expect(SignedContextV2.isValid(invalid)).toBe(false);
-    });
+        it("returns false when array contains invalid item (missing context)", () => {
+            const invalidList = [
+                {
+                    signer: "0x1234",
+                    context: ["0x01"],
+                    signature: "0xsig",
+                },
+                {
+                    signer: "0x5678",
+                    signature: "0xsig2",
+                },
+            ];
+            expect(SignedContextV2.isValidList(invalidList)).toBe(false);
+        });
 
-    it("returns true when extra properties are present", () => {
-        const valid = {
-            signer: "0x1234",
-            context: ["0x01"],
-            signature: "0xsig",
-            extraField: "extra",
-        };
-        expect(SignedContextV2.isValid(valid)).toBe(true);
-    });
+        it("returns false when array contains invalid item (missing signature)", () => {
+            const invalidList = [
+                {
+                    signer: "0x1234",
+                    context: ["0x01"],
+                    signature: "0xsig",
+                },
+                {
+                    signer: "0x5678",
+                    context: ["0x02"],
+                },
+            ];
+            expect(SignedContextV2.isValidList(invalidList)).toBe(false);
+        });
 
-    it("returns false for empty object", () => {
-        expect(SignedContextV2.isValid({})).toBe(false);
-    });
+        it("returns false when array contains non-object item", () => {
+            const invalidList = [
+                {
+                    signer: "0x1234",
+                    context: ["0x01"],
+                    signature: "0xsig",
+                },
+                "not an object",
+            ];
+            expect(SignedContextV2.isValidList(invalidList)).toBe(false);
+        });
 
-    it("returns false for array", () => {
-        expect(SignedContextV2.isValid([])).toBe(false);
+        it("returns false when array contains null item", () => {
+            const invalidList = [
+                {
+                    signer: "0x1234",
+                    context: ["0x01"],
+                    signature: "0xsig",
+                },
+                null,
+            ];
+            expect(SignedContextV2.isValidList(invalidList)).toBe(false);
+        });
+
+        it("returns false when array contains item with invalid signer type", () => {
+            const invalidList = [
+                {
+                    signer: "0x1234",
+                    context: ["0x01"],
+                    signature: "0xsig",
+                },
+                {
+                    signer: 12345,
+                    context: ["0x02"],
+                    signature: "0xsig2",
+                },
+            ];
+            expect(SignedContextV2.isValidList(invalidList)).toBe(false);
+        });
+
+        it("returns false when array contains item with invalid context type", () => {
+            const invalidList = [
+                {
+                    signer: "0x1234",
+                    context: ["0x01"],
+                    signature: "0xsig",
+                },
+                {
+                    signer: "0x5678",
+                    context: "not-an-array",
+                    signature: "0xsig2",
+                },
+            ];
+            expect(SignedContextV2.isValidList(invalidList)).toBe(false);
+        });
+
+        it("returns false when array contains item with invalid signature type", () => {
+            const invalidList = [
+                {
+                    signer: "0x1234",
+                    context: ["0x01"],
+                    signature: "0xsig",
+                },
+                {
+                    signer: "0x5678",
+                    context: ["0x02"],
+                    signature: 12345,
+                },
+            ];
+            expect(SignedContextV2.isValidList(invalidList)).toBe(false);
+        });
+
+        it("returns true when all items have extra properties", () => {
+            const validList = [
+                {
+                    signer: "0x1234",
+                    context: ["0x01"],
+                    signature: "0xsig",
+                    extra: "field1",
+                },
+                {
+                    signer: "0x5678",
+                    context: ["0x02"],
+                    signature: "0xsig2",
+                    another: "field2",
+                },
+            ];
+            expect(SignedContextV2.isValidList(validList)).toBe(true);
+        });
+
+        it("returns false when first item is valid but second is invalid", () => {
+            const invalidList = [
+                {
+                    signer: "0x1234",
+                    context: ["0x01"],
+                    signature: "0xsig",
+                },
+                {},
+            ];
+            expect(SignedContextV2.isValidList(invalidList)).toBe(false);
+        });
     });
 });

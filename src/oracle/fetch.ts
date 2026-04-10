@@ -1,4 +1,5 @@
 import { Result } from "../common";
+import axios, { AxiosError } from "axios";
 import { SignedContextV2 } from "../order/types/v4";
 import { OracleError, OracleErrorType } from "./error";
 import { encodeAbiParameters, hexToBytes } from "viem";
@@ -40,53 +41,64 @@ export async function fetchSignedContext(
     }
 
     const encoded = encodeAbiParameters(OracleSingleAbiParams, [
-        request.order,
-        BigInt(request.inputIOIndex),
-        BigInt(request.outputIOIndex),
-        request.counterparty,
+        [
+            {
+                order: request.order,
+                inputIOIndex: BigInt(request.inputIOIndex),
+                outputIOIndex: BigInt(request.outputIOIndex),
+                counterparty: request.counterparty,
+            },
+        ],
     ]);
     const body = hexToBytes(encoded);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), OracleConstants.ORACLE_TIMEOUT_MS);
-
     let json: unknown;
     try {
-        const response = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/octet-stream" },
-            body,
-            signal: controller.signal,
+        const response = await axios.post(url, body, {
+            headers: {
+                "Content-Type": "application/octet-stream",
+            },
+            timeout: OracleConstants.ORACLE_TIMEOUT_MS,
+            responseType: "json",
         });
 
-        if (!response.ok) {
-            recordOracleFailure(healthMap, url);
+        json = response.data;
+    } catch (error) {
+        recordOracleFailure(healthMap, url);
+        if (axios.isAxiosError(error)) {
+            const axiosError = error as AxiosError;
+            if (axiosError.response) {
+                return Result.err(
+                    new OracleError(
+                        `Oracle request failed with: ${axiosError.response.status} ${axiosError.response.statusText}`,
+                        OracleErrorType.RequestFailed,
+                        axiosError,
+                    ),
+                );
+            } else {
+                return Result.err(
+                    new OracleError(
+                        `Oracle request failed with msg: ${axiosError.message}`,
+                        OracleErrorType.RequestFailed,
+                        axiosError,
+                    ),
+                );
+            }
+        } else {
             return Result.err(
                 new OracleError(
-                    `Oracle request failed: ${response.status} ${response.statusText}`,
-                    OracleErrorType.RequestFailed,
+                    `Oracle fetch error: ${error instanceof Error ? error.message : String(error)}`,
+                    OracleErrorType.FetchError,
+                    error,
                 ),
             );
         }
-
-        json = await response.json();
-    } catch (err) {
-        recordOracleFailure(healthMap, url);
-        return Result.err(
-            new OracleError(
-                `Oracle fetch error: ${err instanceof Error ? err.message : String(err)}`,
-                OracleErrorType.FetchError,
-                err,
-            ),
-        );
-    } finally {
-        clearTimeout(timeout);
     }
 
     // Validate shape of response
-    if (SignedContextV2.isValid(json)) {
+    if (SignedContextV2.isValidList(json)) {
         recordOracleSuccess(healthMap, url);
-        return Result.ok(json);
+        return Result.ok(json[0]);
     }
 
     recordOracleFailure(healthMap, url);
