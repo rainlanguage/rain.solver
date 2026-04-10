@@ -103,47 +103,57 @@ export function recordOracleFailure(healthMap: OracleHealthMap, url: string) {
 
 /**
  * ABI parameter definition for a single oracle request body.
- * Encodes as: abi.encode(OrderV4, uint256, uint256, address)
  *
- * Uses the same struct shape as ABI.Orderbook.V5.OrderV4 / IOV2 / EvaluableV4.
+ * The oracle server (rain.orderbook and st0x-oracle-server) decodes
+ * with alloy's `abi_decode()` which expects the body to be
+ * `abi.encode((OrderV4, uint256, uint256, address))` — a SINGLE
+ * wrapping tuple. viem's `encodeAbiParameters` with 4 top-level
+ * params produces `abi.encode(OrderV4, uint256, uint256, address)`
+ * (separate params, different byte layout). We fix the mismatch by
+ * wrapping all fields in a single tuple parameter.
  */
 const oracleSingleAbiParams = [
     {
-        name: "order",
-        type: "tuple",
+        type: "tuple" as const,
         components: [
-            { name: "owner", type: "address" },
             {
-                name: "evaluable",
-                type: "tuple",
+                name: "order",
+                type: "tuple" as const,
                 components: [
-                    { name: "interpreter", type: "address" },
-                    { name: "store", type: "address" },
-                    { name: "bytecode", type: "bytes" },
+                    { name: "owner", type: "address" as const },
+                    {
+                        name: "evaluable",
+                        type: "tuple" as const,
+                        components: [
+                            { name: "interpreter", type: "address" as const },
+                            { name: "store", type: "address" as const },
+                            { name: "bytecode", type: "bytes" as const },
+                        ],
+                    },
+                    {
+                        name: "validInputs",
+                        type: "tuple[]" as const,
+                        components: [
+                            { name: "token", type: "address" as const },
+                            { name: "vaultId", type: "bytes32" as const },
+                        ],
+                    },
+                    {
+                        name: "validOutputs",
+                        type: "tuple[]" as const,
+                        components: [
+                            { name: "token", type: "address" as const },
+                            { name: "vaultId", type: "bytes32" as const },
+                        ],
+                    },
+                    { name: "nonce", type: "bytes32" as const },
                 ],
             },
-            {
-                name: "validInputs",
-                type: "tuple[]",
-                components: [
-                    { name: "token", type: "address" },
-                    { name: "vaultId", type: "bytes32" },
-                ],
-            },
-            {
-                name: "validOutputs",
-                type: "tuple[]",
-                components: [
-                    { name: "token", type: "address" },
-                    { name: "vaultId", type: "bytes32" },
-                ],
-            },
-            { name: "nonce", type: "bytes32" },
+            { name: "inputIOIndex", type: "uint256" as const },
+            { name: "outputIOIndex", type: "uint256" as const },
+            { name: "counterparty", type: "address" as const },
         ],
     },
-    { name: "inputIOIndex", type: "uint256" },
-    { name: "outputIOIndex", type: "uint256" },
-    { name: "counterparty", type: "address" },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -171,10 +181,12 @@ export async function fetchSignedContext(
     // Strip the internal `type` discriminant before ABI encoding
     const { type: _type, ...orderStruct } = request.order;
     const encoded = encodeAbiParameters(oracleSingleAbiParams, [
-        orderStruct,
-        BigInt(request.inputIOIndex),
-        BigInt(request.outputIOIndex),
-        request.counterparty,
+        {
+            order: orderStruct,
+            inputIOIndex: BigInt(request.inputIOIndex),
+            outputIOIndex: BigInt(request.outputIOIndex),
+            counterparty: request.counterparty,
+        },
     ]);
     const body = hexToBytes(encoded);
 
