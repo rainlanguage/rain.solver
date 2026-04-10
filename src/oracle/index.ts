@@ -205,18 +205,30 @@ export async function fetchSignedContext(
         clearTimeout(timeout);
     }
 
-    // Validate shape of response
+    // The oracle server returns a JSON **array** of SignedContextV1 objects
+    // whose length matches the number of requests (we always send one).
+    // Extract the first element so callers get a single SignedContextV1.
+    let item: unknown = json;
+    if (Array.isArray(json)) {
+        if (json.length === 0) {
+            recordOracleFailure(healthMap, url);
+            return Result.err("Oracle returned empty array");
+        }
+        item = json[0];
+    }
+
+    // Validate shape of single SignedContextV1
     if (
-        typeof json !== "object" ||
-        json === null ||
-        typeof (json as any).signer !== "string" ||
-        !Array.isArray((json as any).context) ||
-        typeof (json as any).signature !== "string"
+        typeof item !== "object" ||
+        item === null ||
+        typeof (item as any).signer !== "string" ||
+        !Array.isArray((item as any).context) ||
+        typeof (item as any).signature !== "string"
     ) {
         recordOracleFailure(healthMap, url);
         return Result.err("Oracle response is not a valid SignedContextV1");
     }
 
     recordOracleSuccess(healthMap, url);
-    return Result.ok(json);
+    return Result.ok(item);
 }
