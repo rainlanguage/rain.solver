@@ -1,5 +1,5 @@
+import axios from "axios";
 import { Result } from "../common";
-import axios, { AxiosError } from "axios";
 import { SignedContextV2 } from "../order/types/v4";
 import { OracleError, OracleErrorType } from "./error";
 import { encodeAbiParameters, hexToBytes } from "viem";
@@ -52,7 +52,6 @@ export async function fetchSignedContext(
     ]);
     const body = hexToBytes(encoded);
 
-    let json: unknown;
     try {
         const response = await axios.post(url, body, {
             headers: {
@@ -62,52 +61,41 @@ export async function fetchSignedContext(
             responseType: "json",
         });
 
-        json = response.data;
-    } catch (error) {
-        recordOracleFailure(healthMap, url);
-        if (axios.isAxiosError(error)) {
-            const axiosError = error as AxiosError;
-            if (axiosError.response) {
-                return Result.err(
-                    new OracleError(
-                        `Oracle request failed with: ${axiosError.response.status} ${axiosError.response.statusText}`,
-                        OracleErrorType.RequestFailed,
-                        axiosError,
-                    ),
-                );
-            } else {
-                return Result.err(
-                    new OracleError(
-                        `Oracle request failed with msg: ${axiosError.message}`,
-                        OracleErrorType.RequestFailed,
-                        axiosError,
-                    ),
-                );
-            }
+        // Validate shape of response
+        if (SignedContextV2.isValidList(response.data)) {
+            recordOracleSuccess(healthMap, url);
+            return Result.ok(response.data[0]);
         } else {
+            recordOracleFailure(healthMap, url);
             return Result.err(
                 new OracleError(
-                    `Oracle fetch error: ${error instanceof Error ? error.message : String(error)}`,
-                    OracleErrorType.FetchError,
-                    error,
+                    "Oracle response is not a valid SignedContextV2 list",
+                    OracleErrorType.InvalidResponseType,
+                    response.data,
                 ),
             );
         }
-    }
+    } catch (err) {
+        recordOracleFailure(healthMap, url);
 
-    // Validate shape of response
-    if (SignedContextV2.isValidList(json)) {
-        recordOracleSuccess(healthMap, url);
-        return Result.ok(json[0]);
-    }
+        // default error if not AxiosError type
+        let error = new OracleError(
+            `Oracle fetch error: ${err instanceof Error ? err.message : String(err)}`,
+            OracleErrorType.FetchError,
+            err,
+        );
 
-    recordOracleFailure(healthMap, url);
-    return Result.err(
-        new OracleError(
-            "Oracle response is not a valid SignedContextV2",
-            OracleErrorType.InvalidResponseType,
-        ),
-    );
+        if (axios.isAxiosError(err)) {
+            if (err.response) {
+                error = new OracleError(
+                    `Oracle request failed with: ${err.response.status} ${err.response.statusText}`,
+                    OracleErrorType.RequestFailed,
+                    err,
+                );
+            }
+        }
+        return Result.err(error);
+    }
 }
 
 /**

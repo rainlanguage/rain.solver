@@ -188,7 +188,7 @@ describe("fetchSignedContext", () => {
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
         assert(result.isErr());
-        expect(result.error.type).toBe(OracleErrorType.RequestFailed);
+        expect(result.error.type).toBe(OracleErrorType.FetchError);
         expect(result.error.message).toContain("Network Error");
     });
 
@@ -430,7 +430,7 @@ describe("fetchSignedContext", () => {
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
         assert(result.isErr());
-        expect(result.error.type).toBe(OracleErrorType.RequestFailed);
+        expect(result.error.type).toBe(OracleErrorType.FetchError);
     });
 
     it("handles cancelled request", async () => {
@@ -449,7 +449,7 @@ describe("fetchSignedContext", () => {
         const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
         assert(result.isErr());
-        expect(result.error.type).toBe(OracleErrorType.RequestFailed);
+        expect(result.error.type).toBe(OracleErrorType.FetchError);
     });
 
     it("handles non-Error string exceptions", async () => {
