@@ -125,43 +125,59 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
         )!;
 
         // build clear function call data and withdraw tasks
-        const taskBytecodeResult = await getEnsureBountyTaskBytecode(
-            {
-                type: EnsureBountyTaskType.Internal,
-                botAddress: this.tradeArgs.signer.account.address,
-                inputToken: this.tradeArgs.orderDetails.buyToken,
-                outputToken: this.tradeArgs.orderDetails.sellToken,
-                orgInputBalance: this.tradeArgs.inputBalance,
-                orgOutputBalance: this.tradeArgs.outputBalance,
-                inputToEthPrice: parseUnits(this.tradeArgs.inputToEthPrice, 18),
-                outputToEthPrice: parseUnits(this.tradeArgs.outputToEthPrice, 18),
-                minimumExpected: params.minimumExpected,
-                sender: this.tradeArgs.signer.account.address,
-            },
-            this.tradeArgs.solver.state.client,
-            addresses.dispair,
-        );
-        if (taskBytecodeResult.isErr()) {
-            const errMsg = await errorSnapshot("", taskBytecodeResult.error);
-            this.spanAttributes["isNodeError"] =
-                taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
-            this.spanAttributes["error"] = errMsg;
-            const result = {
-                type: TradeType.IntraOrderbook,
-                spanAttributes: this.spanAttributes,
-                reason: SimulationHaltReason.FailedToGetTaskBytecode,
+        // When gasCoveragePercentage is "0", the bounty task isn't
+        // included in the withdraw call, so skip the expensive on-chain
+        // compilation that requires dispair addresses.
+        const noBounty = this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0";
+        let task: TaskType;
+        if (noBounty) {
+            task = {
+                evaluable: {
+                    interpreter: "0x0000000000000000000000000000000000000000",
+                    store: "0x0000000000000000000000000000000000000000",
+                    bytecode: "0x",
+                },
+                signedContext: [],
             };
-            this.spanAttributes["duration"] = performance.now() - this.startTime;
-            return Result.err(result);
+        } else {
+            const taskBytecodeResult = await getEnsureBountyTaskBytecode(
+                {
+                    type: EnsureBountyTaskType.Internal,
+                    botAddress: this.tradeArgs.signer.account.address,
+                    inputToken: this.tradeArgs.orderDetails.buyToken,
+                    outputToken: this.tradeArgs.orderDetails.sellToken,
+                    orgInputBalance: this.tradeArgs.inputBalance,
+                    orgOutputBalance: this.tradeArgs.outputBalance,
+                    inputToEthPrice: parseUnits(this.tradeArgs.inputToEthPrice, 18),
+                    outputToEthPrice: parseUnits(this.tradeArgs.outputToEthPrice, 18),
+                    minimumExpected: params.minimumExpected,
+                    sender: this.tradeArgs.signer.account.address,
+                },
+                this.tradeArgs.solver.state.client,
+                addresses.dispair,
+            );
+            if (taskBytecodeResult.isErr()) {
+                const errMsg = await errorSnapshot("", taskBytecodeResult.error);
+                this.spanAttributes["isNodeError"] =
+                    taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
+                this.spanAttributes["error"] = errMsg;
+                const result = {
+                    type: TradeType.IntraOrderbook,
+                    spanAttributes: this.spanAttributes,
+                    reason: SimulationHaltReason.FailedToGetTaskBytecode,
+                };
+                this.spanAttributes["duration"] = performance.now() - this.startTime;
+                return Result.err(result);
+            }
+            task = {
+                evaluable: {
+                    interpreter: addresses.dispair.interpreter as `0x${string}`,
+                    store: addresses.dispair.store as `0x${string}`,
+                    bytecode: taskBytecodeResult.value,
+                },
+                signedContext: [],
+            };
         }
-        const task = {
-            evaluable: {
-                interpreter: addresses.dispair.interpreter as `0x${string}`,
-                store: addresses.dispair.store as `0x${string}`,
-                bytecode: taskBytecodeResult.value,
-            },
-            signedContext: [],
-        };
 
         params.rawtx.data = this.getCalldata(task);
         return Result.ok(void 0);
@@ -253,8 +269,8 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                     aliceBountyVaultId: BigInt(this.inputBountyVaultId),
                     bobBountyVaultId: BigInt(this.outputBountyVaultId),
                 },
-                [],
-                [],
+                this.tradeArgs.orderDetails.takeOrder.struct.signedContext,
+                this.tradeArgs.counterpartyOrderDetails.struct.signedContext,
             ],
         });
         return encodeFunctionData({
@@ -311,8 +327,8 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                     aliceBountyVaultId: this.inputBountyVaultId,
                     bobBountyVaultId: this.outputBountyVaultId,
                 },
-                [],
-                [],
+                this.tradeArgs.orderDetails.takeOrder.struct.signedContext,
+                this.tradeArgs.counterpartyOrderDetails.struct.signedContext,
             ],
         });
         return encodeFunctionData({

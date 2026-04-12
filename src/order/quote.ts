@@ -4,40 +4,47 @@ import { AppOptions } from "../config";
 import { ABI, normalizeFloat } from "../common";
 import { BundledOrders, Pair, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData, PublicClient } from "viem";
+import { fetchOracleContext } from "../oracle";
 
 /**
  * Quotes a single order
  * @param orderDetails - Order details to quote
  * @param viemClient - Viem client
+ * @param state - SharedState for oracle health tracking
  * @param blockNumber - Optional block number
  * @param gas - Optional read gas
  */
 export async function quoteSingleOrder(
     orderDetails: Pair,
     viemClient: PublicClient,
+    state?: SharedState,
     blockNumber?: bigint,
     gas?: bigint,
 ) {
     if (Pair.isV3(orderDetails)) {
-        return quoteSingleOrderV3(orderDetails, viemClient, blockNumber, gas);
+        return quoteSingleOrderV3(orderDetails, viemClient, state, blockNumber, gas);
     } else {
-        return quoteSingleOrderV4(orderDetails, viemClient, blockNumber, gas);
+        return quoteSingleOrderV4(orderDetails, viemClient, state, blockNumber, gas);
     }
 }
 
 /**
  * Quotes a single order v3
- * @param orderDetails - Order details to quote
- * @param viemClient - Viem client
- * @param blockNumber - Optional block number
- * @param gas - Optional read gas
  */
 export async function quoteSingleOrderV3(
     orderDetails: Pair,
     viemClient: PublicClient,
+    state?: SharedState,
     blockNumber?: bigint,
     gas?: bigint,
 ) {
+    if (state) {
+        const oracleResult = await fetchOracleContext.call(state, orderDetails);
+        if (oracleResult.isErr()) {
+            console.warn("Failed to fetch oracle context:", oracleResult.error);
+        }
+    }
+
     const { data } = await viemClient
         .call({
             to: orderDetails.orderbook as `0x${string}`,
@@ -71,17 +78,21 @@ export async function quoteSingleOrderV3(
 
 /**
  * Quotes a single order v4
- * @param orderDetails - Order details to quote
- * @param viemClient - Viem client
- * @param blockNumber - Optional block number
- * @param gas - Optional read gas
  */
 export async function quoteSingleOrderV4(
     orderDetails: Pair,
     viemClient: PublicClient,
+    state?: SharedState,
     blockNumber?: bigint,
     gas?: bigint,
 ) {
+    if (state) {
+        const oracleResult = await fetchOracleContext.call(state, orderDetails);
+        if (oracleResult.isErr()) {
+            console.warn("Failed to fetch oracle context:", oracleResult.error);
+        }
+    }
+
     const { data } = await viemClient
         .call({
             to: orderDetails.orderbook as `0x${string}`,

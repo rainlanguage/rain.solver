@@ -458,7 +458,13 @@ export class OrderManager {
      * @param blockNumber - Optional block number for the quote
      */
     async quoteOrder(orderDetails: Pair, blockNumber?: bigint) {
-        return await quoteSingleOrder(orderDetails, this.state.client, blockNumber, this.quoteGas);
+        return await quoteSingleOrder(
+            orderDetails,
+            this.state.client,
+            this.state,
+            blockNumber,
+            this.quoteGas,
+        );
     }
 
     /**
