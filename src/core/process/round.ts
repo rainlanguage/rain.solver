@@ -106,7 +106,7 @@ export async function prepareRouter(
     blockNumber?: bigint,
     newPoolCreated?: boolean,
 ) {
-    const key = `${orderDetails.sellToken.toLowerCase()}-${orderDetails.buyToken.toLowerCase}`;
+    const key = `${orderDetails.sellToken.toLowerCase()}-${orderDetails.buyToken.toLowerCase()}`;
     const value = this.state.router.cache.get(key);
     if (!newPoolCreated && typeof value === "number" && value > 3) return;
 

@@ -141,7 +141,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
     async getMarketPrice(
         params: RainSolverRouterQuoteParams,
     ): Promise<Result<{ price: string; route?: MultiRoute }, RainSolverRouterError>> {
-        const key = `${params.fromToken.address.toLowerCase()}-${params.toToken.address.toLowerCase}`;
+        const key = `${params.fromToken.address.toLowerCase()}-${params.toToken.address.toLowerCase()}`;
         let value = this.cache.get(key);
         if (typeof value === "number") {
             if (value < 4) this.cache.set(key, ++value);
@@ -181,7 +181,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
     async tryQuote(
         params: RainSolverRouterQuoteParams,
     ): Promise<Result<RainSolverRouterQuote, RainSolverRouterError>> {
-        const key = `${params.fromToken.address.toLowerCase()}-${params.toToken.address.toLowerCase}`;
+        const key = `${params.fromToken.address.toLowerCase()}-${params.toToken.address.toLowerCase()}`;
         let value = this.cache.get(key);
         if (typeof value === "number") {
             if (value < 4) this.cache.set(key, ++value);
@@ -219,7 +219,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
     async findBestRoute(
         params: RainSolverRouterQuoteParams,
     ): Promise<Result<RainSolverRouterQuote, RainSolverRouterError>> {
-        const key = `${params.fromToken.address.toLowerCase()}-${params.toToken.address.toLowerCase}`;
+        const key = `${params.fromToken.address.toLowerCase()}-${params.toToken.address.toLowerCase()}`;
         let value = this.cache.get(key);
         if (typeof value === "number") {
             if (value < 4) this.cache.set(key, ++value);
@@ -253,7 +253,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
     async getTradeParams(
         args: GetTradeParamsArgs,
     ): Promise<Result<TradeParamsType, RainSolverRouterError>> {
-        const key = `${args.fromToken.address.toLowerCase()}-${args.toToken.address.toLowerCase}`;
+        const key = `${args.fromToken.address.toLowerCase()}-${args.toToken.address.toLowerCase()}`;
         let value = this.cache.get(key);
         if (typeof value === "number") {
             if (value < 4) this.cache.set(key, ++value);
