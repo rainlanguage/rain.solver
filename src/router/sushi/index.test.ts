@@ -1,14 +1,15 @@
 import { ONE18 } from "../../math";
-import { Order, OrderbookVersions, TakeOrdersConfigType } from "../../order";
-import { RouteLeg } from "sushi/tines";
 import { Token } from "sushi/currency";
 import { SharedState } from "../../state";
 import { Dispair, Result } from "../../common";
-import { maxUint256, PublicClient } from "viem";
+import { calculateEffectivePrice } from "./index";
 import { RouterType, RouteStatus } from "../types";
+import { RouteLeg, MultiRoute } from "sushi/tines";
+import { maxUint256, PublicClient, parseUnits } from "viem";
 import { SushiRouterError, SushiRouterErrorType } from "./error";
 import { LiquidityProviders, RainDataFetcher, Router } from "sushi";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
+import { Order, OrderbookVersions, TakeOrdersConfigType } from "../../order";
 import { SushiRouter, SushiQuoteParams, ExcludedLiquidityProviders } from ".";
 
 // mock the sushi dependencies
@@ -1019,5 +1020,148 @@ describe("test SushiRouter methods", () => {
             expect(typeof result).toBe("bigint");
             expect(result).toBeGreaterThan(0n);
         });
+    });
+});
+
+describe("calculateEffectivePrice", () => {
+    const mockFromToken = new Token({
+        address: "0x1111111111111111111111111111111111111111",
+        decimals: 18,
+        symbol: "TOKEN1",
+        chainId: 1,
+        name: "Token 1",
+    });
+
+    const mockToToken = new Token({
+        address: "0x2222222222222222222222222222222222222222",
+        decimals: 6,
+        symbol: "TOKEN2",
+        chainId: 1,
+        name: "Token 2",
+    });
+
+    it("should return the base price when priceImpact is undefined", () => {
+        const maximumInput = parseUnits("100", 18);
+        const route: MultiRoute = {
+            status: RouteStatus.Success,
+            amountOutBI: parseUnits("200", 6),
+            priceImpact: undefined,
+        } as any as MultiRoute;
+
+        const result = calculateEffectivePrice(maximumInput, route, mockFromToken, mockToToken);
+
+        // Expected price: (200 * 10^6 * 10^18) / (100 * 10^18) = 2 * 10^6 = 2000000
+        // Scaled to 18 decimals: 2 * 10^18
+        expect(result).toBe(parseUnits("2", 18));
+    });
+
+    it("should apply price impact when priceImpact is defined", () => {
+        const maximumInput = parseUnits("100", 18);
+        const route: MultiRoute = {
+            status: RouteStatus.Success,
+            amountOutBI: parseUnits("200", 6),
+            priceImpact: 0.05, // 5% price impact
+        } as any as MultiRoute;
+
+        const result = calculateEffectivePrice(maximumInput, route, mockFromToken, mockToToken);
+
+        // Base price: 2 * 10^18
+        // With 5% impact: 2 * 0.95 = 1.9 * 10^18
+        expect(result).toBe(parseUnits("1.9", 18));
+    });
+
+    it("should handle zero price impact", () => {
+        const maximumInput = parseUnits("100", 18);
+        const route: MultiRoute = {
+            status: RouteStatus.Success,
+            amountOutBI: parseUnits("150", 6),
+            priceImpact: 0,
+        } as any as MultiRoute;
+
+        const result = calculateEffectivePrice(maximumInput, route, mockFromToken, mockToToken);
+
+        // Price: 1.5 * 10^18, no impact
+        expect(result).toBe(parseUnits("1.5", 18));
+    });
+
+    it("should handle small price impact correctly", () => {
+        const maximumInput = parseUnits("1000", 18);
+        const route: MultiRoute = {
+            status: RouteStatus.Success,
+            amountOutBI: parseUnits("1000", 6),
+            priceImpact: 0.001, // 0.1% price impact
+        } as any as MultiRoute;
+
+        const result = calculateEffectivePrice(maximumInput, route, mockFromToken, mockToToken);
+
+        // Base price: 1 * 10^18
+        // With 0.1% impact: 1 * 0.999 = 0.999 * 10^18
+        expect(result).toBe(parseUnits("0.999", 18));
+    });
+
+    it("should handle very small amounts", () => {
+        const maximumInput = parseUnits("0.001", 18); // 1e-3
+        const route: MultiRoute = {
+            status: RouteStatus.Success,
+            amountOutBI: parseUnits("0.002", 6), // 2e-3
+            priceImpact: 0.1, // 10% price impact
+        } as any as MultiRoute;
+
+        const result = calculateEffectivePrice(maximumInput, route, mockFromToken, mockToToken);
+
+        // Base price: 2 * 10^18
+        // With 10% impact: 2 * 0.9 = 1.8 * 10^18
+        expect(result).toBe(parseUnits("1.8", 18));
+    });
+
+    it("should handle different token decimals", () => {
+        const token8Decimals: Token = {
+            ...mockFromToken,
+            decimals: 8,
+        } as Token;
+
+        const maximumInput = parseUnits("50", 8);
+        const route: MultiRoute = {
+            status: RouteStatus.Success,
+            amountOutBI: parseUnits("100", 6),
+            priceImpact: 0.02, // 2% price impact
+        } as any as MultiRoute;
+
+        const result = calculateEffectivePrice(maximumInput, route, token8Decimals, mockToToken);
+
+        // Base price: 2 * 10^18
+        // With 2% impact: 2 * 0.98 = 1.96 * 10^18
+        expect(result).toBe(parseUnits("1.96", 18));
+    });
+
+    it("should handle high price impact", () => {
+        const maximumInput = parseUnits("1000", 18);
+        const route: MultiRoute = {
+            status: RouteStatus.Success,
+            amountOutBI: parseUnits("500", 6),
+            priceImpact: 0.5, // 50% price impact
+        } as any as MultiRoute;
+
+        const result = calculateEffectivePrice(maximumInput, route, mockFromToken, mockToToken);
+
+        // Base price: 0.5 * 10^18
+        // With 50% impact: 0.5 * 0.5 = 0.25 * 10^18
+        expect(result).toBe(parseUnits("0.25", 18));
+    });
+
+    it("should handle very small price impact (scientific notation)", () => {
+        const maximumInput = parseUnits("10000", 18);
+        const route: MultiRoute = {
+            status: RouteStatus.Success,
+            amountOutBI: parseUnits("10000", 6),
+            priceImpact: 1e-20, // extremely small impact
+        } as any as MultiRoute;
+
+        const result = calculateEffectivePrice(maximumInput, route, mockFromToken, mockToToken);
+
+        // Base price: 1 * 10^18
+        // With negligible impact, should be very close to base price
+        expect(result).toBeGreaterThan(parseUnits("0.999999999999999999", 18));
+        expect(result).toBeLessThanOrEqual(parseUnits("1", 18));
     });
 });

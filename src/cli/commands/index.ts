@@ -3,6 +3,7 @@ import { SweepCmd } from "./sweep";
 import { RainSolverCli } from "..";
 import { DowntimeCmd } from "./downtime";
 import { Command, Option, OptionValues } from "commander";
+import { RaindexRouteCmd } from "./raindex-route";
 
 export { sweepFunds, SweepOptions } from "./sweep";
 export { main as downtimeReport, DowntimeOptions, DowntimeOptionsExtended } from "./downtime";
@@ -15,6 +16,7 @@ export const RainSolverCmd = new Command("node rain-solver")
     .alias("rain-solver")
     .addCommand(SweepCmd) // add sweep subcommand
     .addCommand(DowntimeCmd) // add downtime subcommand
+    .addCommand(RaindexRouteCmd) // add raindex route check cmd
     .addOption(
         new Option(
             "-c, --config <path>",

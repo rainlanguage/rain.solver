@@ -11,6 +11,10 @@ import {
     SimulateInterOrderbookTradeArgs,
     InterOrderbookTradePreparedParams,
 } from "./inter/simulate";
+import {
+    RaindexRouterTradePreparedParams,
+    SimulateRaindexRouterTradeArgs,
+} from "./raindex/simulation";
 
 /** Specifies the reason that simulation failed */
 export enum SimulationHaltReason {
@@ -24,12 +28,14 @@ export enum SimulationHaltReason {
 export type SimulateTradeArgs =
     | SimulateRouterTradeArgs
     | SimulateIntraOrderbookTradeArgs
-    | SimulateInterOrderbookTradeArgs;
+    | SimulateInterOrderbookTradeArgs
+    | SimulateRaindexRouterTradeArgs;
 
 export type PreparedTradeParams =
     | RouterTradePreparedParams
     | IntraOrderbookTradePrepareedParams
-    | InterOrderbookTradePreparedParams;
+    | InterOrderbookTradePreparedParams
+    | RaindexRouterTradePreparedParams;
 
 /**
  * Base class for simulating trades against different platforms.

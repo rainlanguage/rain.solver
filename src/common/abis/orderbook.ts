@@ -121,6 +121,7 @@ export namespace _v6 {
         `(${EvaluableV4} evaluable, ${IOV2}[] validInputs, ${IOV2}[] validOutputs, bytes32 nonce, bytes32 secret, bytes meta)` as const;
     export const ClearConfigV2 =
         "(uint256 aliceInputIOIndex, uint256 aliceOutputIOIndex, uint256 bobInputIOIndex, uint256 bobOutputIOIndex, bytes32 aliceBountyVaultId, bytes32 bobBountyVaultId)" as const;
+    export const RouteLeg = `(uint8 routeLegType, address destination, bytes data)[]`;
 
     // signatures
     export const Orderbook = [
@@ -149,7 +150,7 @@ export namespace _v6 {
     export const Arb = [
         "function iRouteProcessor() external view returns (address)",
         `function arb5(address orderBook, ${TakeOrdersConfigV5} calldata takeOrders, ${TaskV2} calldata task) external payable`,
-        // `function arb4(address orderBook, ${TakeOrdersConfigV5} calldata startTakeOrders, ${TakeOrdersConfigV5} calldata endTakeOrders, bytes calldata exchangeData, ${TaskV2} calldata task) external payable`,
+        `function arb4(address orderBook, ${TakeOrdersConfigV5}[] calldata startTakeOrders, bytes calldata exchangeData, ${TaskV2} calldata task) external payable`,
     ] as const;
 }
 
@@ -257,6 +258,8 @@ export namespace OrderbookAbi {
 
             /** Order v4 (for orderbook v6) struct ABI */
             export const OrderStructAbi = parseAbiParameters(_v6.OrderV4);
+
+            export const RouteLeg = parseAbiParameters(_v6.RouteLeg);
         }
 
         /** Orderbook v4 structs */
@@ -273,6 +276,7 @@ export namespace OrderbookAbi {
             export const TakeOrdersConfig = _v6.TakeOrdersConfigV5;
             export const ClearConfig = _v6.ClearConfigV2;
             export const Quote = _v6.QuoteV2;
+            export const RouteLeg = _v6.RouteLeg;
         }
 
         /** Signature ABI for Orderbook v4 and Arb contracts */
