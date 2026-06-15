@@ -64,6 +64,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
                     }),
                 },
                 router: {
+                    cache: new Map(),
                     sushi: {
                         tryQuote: vi.fn(),
                     },
@@ -128,9 +129,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
         expect(extendObjectWithHeader).not.toHaveBeenCalled();
         expect(isV4OrderbookV6Spy).toHaveBeenCalledWith(orderDetails);
         expect(solver.state.contracts.getAddressesForTrade).not.toHaveBeenCalledWith();
-        expect(
-            solver.orderManager.getCounterpartyOrdersAgainstBaseTokens,
-        ).not.toHaveBeenCalledWith();
+        expect(solver.orderManager.getCounterpartyOrdersAgainstBaseTokens).not.toHaveBeenCalled();
         expect(solver.state.router.sushi!.tryQuote).not.toHaveBeenCalledWith();
         expect(routeProcessor4ParamsSpy).not.toHaveBeenCalled();
         expect(visualizeRouteSpy).not.toHaveBeenCalled();
@@ -315,7 +314,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
             amountIn: expect.any(BigInt),
             gasPrice: solver.state.gasPrice,
             blockNumber,
-            skipFetch: true,
+            skipFetch: false,
             sushiRouteType: solver.state.appOptions.route,
         });
         expect(routeProcessor4ParamsSpy).not.toHaveBeenCalled();
@@ -435,7 +434,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
             amountIn: expect.any(BigInt),
             gasPrice: solver.state.gasPrice,
             blockNumber,
-            skipFetch: true,
+            skipFetch: false,
             sushiRouteType: solver.state.appOptions.route,
         });
         expect(routeProcessor4ParamsSpy).toHaveBeenCalledTimes(1);
@@ -546,7 +545,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
             amountIn: expect.any(BigInt),
             gasPrice: solver.state.gasPrice,
             blockNumber,
-            skipFetch: true,
+            skipFetch: false,
             sushiRouteType: solver.state.appOptions.route,
         });
         expect(routeProcessor4ParamsSpy).toHaveBeenCalledTimes(1);
@@ -700,7 +699,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
             amountIn: expect.any(BigInt),
             gasPrice: solver.state.gasPrice,
             blockNumber,
-            skipFetch: true,
+            skipFetch: false,
             sushiRouteType: solver.state.appOptions.route,
         });
         expect(solver.state.router.sushi!.tryQuote).toHaveBeenNthCalledWith(2, {
@@ -709,7 +708,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
             amountIn: expect.any(BigInt),
             gasPrice: solver.state.gasPrice,
             blockNumber,
-            skipFetch: true,
+            skipFetch: false,
             sushiRouteType: solver.state.appOptions.route,
         });
         expect(routeProcessor4ParamsSpy).toHaveBeenCalledTimes(2);
@@ -861,7 +860,7 @@ describe("Test findBestRaindexRouterTrade function", () => {
             amountIn: expect.any(BigInt),
             gasPrice: solver.state.gasPrice,
             blockNumber,
-            skipFetch: true,
+            skipFetch: false,
             sushiRouteType: solver.state.appOptions.route,
         });
         expect(routeProcessor4ParamsSpy).toHaveBeenCalledTimes(1);

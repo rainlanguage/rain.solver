@@ -79,7 +79,6 @@ export function removeFromPairMap(
  * @param output - The output token address to get pairs from
  * @param input - The input token address to get pairs from
  * @param counterpartySource - Determines the type of counterparty orders source to return
- * @param sortBy - Either by ratio first (default) or by max out first
  */
 export function getSortedPairList<
     counterpartySource extends CounterpartySource = CounterpartySource.IntraOrderbook,

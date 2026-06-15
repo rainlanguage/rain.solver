@@ -24,7 +24,7 @@ export enum RouteLegType {
 /**
  * Tries to find the best raindex routed trade for the given order,
  * it will simultaneously try to find the best trade against other
- * orders routed through a middle base token swaped through sushi RP
+ * orders routed through a middle base token swapped through sushi RP
  * @param this - RainSolver instance
  * @param orderDetails - The details of the order to be processed
  * @param signer - The signer to be used for the trade
@@ -87,13 +87,14 @@ export async function findBestRaindexRouterTrade(
         });
 
         // get route details from sushi dataFetcher
+        const key = `${fromToken.address.toLowerCase()}-${toToken.address.toLowerCase()}`;
         const quoteResult = await this.state.router.sushi?.tryQuote({
             fromToken,
             toToken,
             amountIn: maximumInput,
             gasPrice: this.state.gasPrice,
             blockNumber,
-            skipFetch: true,
+            skipFetch: this.state.router.cache.has(key),
             sushiRouteType: this.state.appOptions.route,
         });
 

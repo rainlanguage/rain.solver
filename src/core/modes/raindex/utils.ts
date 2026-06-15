@@ -20,5 +20,6 @@ export function calcCounterpartyInputToEthPrice(
 ): bigint {
     if (!outputToEthPrice) return 0n;
     const outputEthPrice = parseUnits(outputToEthPrice, 18);
+    if (quote.price === 0n) return 0n; // not reachable, but handled just in case
     return (outputEthPrice * ONE18) / quote.price;
 }

@@ -6,15 +6,24 @@ import { MultiRoute, RouteLeg } from "sushi/tines";
 import { BlackListSet, poolFilter } from "./blacklist";
 import { TakeOrdersConfigType } from "../../order/types";
 import { SushiRouterError, SushiRouterErrorType } from "./error";
-import { calculatePrice18, scaleFrom18, scaleTo18 } from "../../math";
+import { calculatePrice18, ONE18, scaleFrom18, scaleTo18 } from "../../math";
 import { ChainId, LiquidityProviders, PoolCode, RainDataFetcher, Router } from "sushi";
-import { Chain, Account, Transport, formatUnits, PublicClient, encodeAbiParameters } from "viem";
+import {
+    Chain,
+    Account,
+    Transport,
+    parseUnits,
+    formatUnits,
+    PublicClient,
+    encodeAbiParameters,
+} from "viem";
 import {
     RouterType,
     RouteStatus,
     GetTradeParamsArgs,
     RainSolverRouterBase,
     RainSolverRouterQuoteParams,
+    DEFAULT_PRICE_IMPACT_TOLERANCE,
 } from "../types";
 import {
     ROUTE_PROCESSOR_3_ADDRESS,
@@ -153,7 +162,7 @@ export class SushiRouter extends RainSolverRouterBase {
      */
     async getMarketPrice(
         params: SushiQuoteParams,
-    ): Promise<Result<{ price: string }, SushiRouterError>> {
+    ): Promise<Result<{ price: string; route?: MultiRoute }, SushiRouterError>> {
         // return early if from and to tokens are the same
         if (params.fromToken.address.toLowerCase() === params.toToken.address.toLowerCase()) {
             return Result.ok({ price: "1" });
@@ -163,7 +172,10 @@ export class SushiRouter extends RainSolverRouterBase {
         if (quoteResult.isErr()) {
             return Result.err(quoteResult.error);
         }
-        return Result.ok({ price: formatUnits(quoteResult.value.price, 18) });
+        return Result.ok({
+            price: formatUnits(quoteResult.value.price, 18),
+            route: quoteResult.value.route.route,
+        });
     }
 
     /**
@@ -508,17 +520,23 @@ export class SushiRouter extends RainSolverRouterBase {
             if (route.status == "NoWay") {
                 maximumInput = maximumInput - initAmount / 2n ** i;
             } else if (absolute) {
-                result.unshift(maxInput18);
-                maximumInput = maximumInput + initAmount / 2n ** i;
+                if (
+                    typeof route.priceImpact === "undefined" ||
+                    route.priceImpact < DEFAULT_PRICE_IMPACT_TOLERANCE
+                ) {
+                    result.unshift(maxInput18);
+                    maximumInput = maximumInput + initAmount / 2n ** i;
+                } else {
+                    maximumInput = maximumInput - initAmount / 2n ** i;
+                }
             } else {
-                const price = calculatePrice18(
+                const effectivePrice = calculateEffectivePrice(
                     maximumInput,
-                    route.amountOutBI,
-                    fromToken.decimals,
-                    toToken.decimals,
+                    route,
+                    fromToken,
+                    toToken,
                 );
-
-                if (price < ratio) {
+                if (effectivePrice < ratio) {
                     maximumInput = maximumInput - initAmount / 2n ** i;
                 } else {
                     result.unshift(maxInput18);
@@ -533,4 +551,22 @@ export class SushiRouter extends RainSolverRouterBase {
             return undefined;
         }
     }
+}
+
+export function calculateEffectivePrice(
+    maximumInput: bigint,
+    route: MultiRoute,
+    fromToken: Token,
+    toToken: Token,
+): bigint {
+    const price = calculatePrice18(
+        maximumInput,
+        route.amountOutBI,
+        fromToken.decimals,
+        toToken.decimals,
+    );
+    if (typeof route.priceImpact === "undefined") {
+        return price;
+    }
+    return (price * parseUnits((1 - route.priceImpact).toFixed(12), 18)) / ONE18;
 }

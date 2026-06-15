@@ -617,7 +617,7 @@ describe("Test getOptimalSortedList function", () => {
         expect(result[2].takeOrder.quote?.maxOutput).toBe(100n);
     });
 
-    it("should handle edge case where all pairs have same input and output", () => {
+    it("should handle edge case where all pairs have same input but different output", () => {
         const pairs = [
             createPair("hash1", { ratio: 2n, maxOutput: 50n }), // input: 100, output: 50
             createPair("hash2", { ratio: 5n, maxOutput: 20n }), // input: 100, output: 20
