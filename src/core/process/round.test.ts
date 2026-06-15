@@ -2026,10 +2026,9 @@ describe("Test prepareRouter", () => {
     });
 
     it("should build the throttle key from the lowercased buyToken address and skip prefetch when warmed", async () => {
-        // The prefetch-throttle key must include BOTH the lowercased sellToken and the
+        // The prefetch-throttle key includes BOTH the lowercased sellToken and the
         // lowercased buyToken address (RainSolverRouter.getMarketPrice writes the same key).
-        // This guards against the `buyToken.toLowerCase` (missing `()`) bug, where the key
-        // collapsed to `sell-<function source>` and collided across every buyToken for a
+        // The key depends on the buyToken, so it is distinct for each buyToken under a
         // given sellToken.
         const nativeWrappedToken = { address: "0xNativeWrappedToken" };
         const mockOrderDetails = {
@@ -2042,7 +2041,7 @@ describe("Test prepareRouter", () => {
             buyTokenSymbol: "bTKN",
         } as any;
 
-        // pre-warm the counter under the CORRECTLY-keyed entry (both addresses lowercased + invoked)
+        // pre-warm the counter under the keyed entry (both addresses lowercased)
         const correctKey = `${mockOrderDetails.sellToken.toLowerCase()}-${mockOrderDetails.buyToken.toLowerCase()}`;
         const cache = new Map<string, number>([[correctKey, 4]]);
         const mockState = {
@@ -2056,13 +2055,11 @@ describe("Test prepareRouter", () => {
         await prepareRouter.call(mockSolver, mockOrderDetails, 123n);
 
         // counter for this exact pair is already > 3, so prefetch is skipped entirely.
-        // Under the missing-`()` mutation the reader key becomes `sell-<function source>`,
-        // which does NOT match `correctKey`, so prefetch would run and getMarketPrice would
-        // be called 3 times -> this assertion fails, killing the mutant.
+        // The reader key matches `correctKey`, so getMarketPrice is never called.
         expect(mockState.getMarketPrice as Mock).not.toHaveBeenCalled();
 
-        // a different buyToken with the same sellToken is NOT warmed and must still prefetch,
-        // proving the key actually depends on buyToken (and does not collide across buyTokens).
+        // a different buyToken with the same sellToken is NOT warmed and still prefetches,
+        // because the key depends on buyToken and is distinct for each buyToken.
         const otherOrderDetails = { ...mockOrderDetails, buyToken: "0xOtherBuyToken" };
         await prepareRouter.call(mockSolver, otherOrderDetails, 123n);
         expect(mockState.getMarketPrice as Mock).toHaveBeenCalledTimes(3);

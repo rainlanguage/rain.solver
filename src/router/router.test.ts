@@ -994,12 +994,10 @@ describe("RainSolverRouter", () => {
     });
 
     describe("test per-pair cache key", () => {
-        // The throttle cache key must depend on BOTH fromToken and toToken addresses
-        // (lowercased and invoked). This guards against the `toToken.address.toLowerCase`
-        // (missing `()`) bug, where the second segment was the function source string
-        // (a constant for every token), collapsing the key to depend only on fromToken and
-        // colliding across all toTokens. With the bug present, two different toTokens sharing
-        // one fromToken produce ONE cache entry; with the fix they produce two distinct keys.
+        // The throttle cache key depends on BOTH fromToken and toToken addresses, each
+        // lowercased. The second segment is the lowercased toToken address, so the key is
+        // distinct for each toToken. Two different toTokens sharing one fromToken produce
+        // two distinct keys and two cache entries.
         const fromToken = new Token({
             address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as `0x${string}`,
             decimals: 18,
@@ -1044,7 +1042,6 @@ describe("RainSolverRouter", () => {
             } as RainSolverRouterQuoteParams);
 
             // two different toTokens -> two distinct keys -> cache size 2
-            // (missing-`()` mutation collides them into size 1, failing this assertion)
             expect(router.cache.size).toBe(2);
             expect([...router.cache.keys()].sort()).toEqual([expectedKeyA, expectedKeyB].sort());
         });
