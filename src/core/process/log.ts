@@ -67,7 +67,11 @@ export function getActualClearAmount(
     } else {
         try {
             const logs = parseEventLogs({
-                abi: [ABI.Orderbook.V4.Primary.Orderbook[2], ABI.Orderbook.V5.Primary.Orderbook[4]],
+                abi: [
+                    ABI.Orderbook.V4.Primary.Orderbook[2],
+                    ABI.Orderbook.V5.Primary.Orderbook[4],
+                    ABI.Orderbook.V6.Primary.Orderbook[4],
+                ],
                 eventName: ["AfterClear", "AfterClearV2"],
                 logs: receipt.logs,
             });
