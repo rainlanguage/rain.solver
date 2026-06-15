@@ -993,7 +993,7 @@ describe("RainSolverRouter", () => {
         });
     });
 
-    // ---- mutation-hardening: cache mechanism ----
+    // The router caches a per-fromToken call count, capped at 4, shared across quote methods.
     describe("test cache mechanism", () => {
         const mockParams: RainSolverRouterQuoteParams = {
             fromToken: mockTokenIn,
@@ -1116,7 +1116,7 @@ describe("RainSolverRouter", () => {
         });
     });
 
-    // ---- mutation-hardening: getError classification + underlying error propagation ----
+    // getError classifies the combined error type and propagates each underlying router error.
     describe("test getError classification", () => {
         const mockParams: RainSolverRouterQuoteParams = {
             fromToken: mockTokenIn,
