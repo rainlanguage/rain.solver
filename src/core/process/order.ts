@@ -64,6 +64,9 @@ export async function processOrder(
     spanAttributes["details.pair"] = tokenPair;
     spanAttributes["details.orderbook"] = orderDetails.orderbook;
     spanAttributes["details.owner"] = orderDetails.takeOrder.struct.order.owner.toLowerCase();
+    if (orderDetails.oracleUrl) {
+        spanAttributes["details.oracle"] = orderDetails.oracleUrl;
+    }
 
     const quoteOrderTime = performance.now();
     try {

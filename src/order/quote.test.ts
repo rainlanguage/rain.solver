@@ -1,4 +1,5 @@
 import { ChainId } from "sushi";
+import { SharedState } from "../state";
 import { BundledOrders, Order, Pair } from "./types";
 import { decodeFunctionResult, PublicClient } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
@@ -18,9 +19,11 @@ vi.mock("./types", async (importOriginal) => ({
 }));
 
 describe("Test quoteSingleOrder", () => {
-    const client = {
-        call: vi.fn().mockResolvedValue({ data: "0x" }),
-    } as any as PublicClient;
+    const state = {
+        client: {
+            call: vi.fn().mockResolvedValue({ data: "0x" }),
+        } as any as PublicClient,
+    } as any as SharedState;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -35,13 +38,13 @@ describe("Test quoteSingleOrder", () => {
                 },
             },
         } as any;
-        await quoteSingleOrder(orderDetails, client);
+        await quoteSingleOrder(orderDetails, state);
 
         expect(orderDetails.takeOrder.quote).toEqual({
             maxOutput: 100n,
             ratio: 2n,
         });
-        expect(client.call).toHaveBeenCalled();
+        expect(state.client.call).toHaveBeenCalled();
     });
 
     it("should set quote on the takeOrder when data is returned", async () => {
@@ -58,21 +61,23 @@ describe("Test quoteSingleOrder", () => {
                 },
             },
         } as any;
-        await quoteSingleOrder(orderDetails, client);
+        await quoteSingleOrder(orderDetails, state);
 
         expect(orderDetails.takeOrder.quote).toEqual({
             maxOutput: 100n,
             ratio: 2n,
         });
-        expect(client.call).toHaveBeenCalled();
+        expect(state.client.call).toHaveBeenCalled();
     });
 });
 
 describe("Test quoteSingleOrderV3", () => {
     let orderDetails: Pair;
-    const client = {
-        call: vi.fn().mockResolvedValueOnce({ data: "0x" }),
-    } as any as PublicClient;
+    const state = {
+        client: {
+            call: vi.fn().mockResolvedValue({ data: "0x" }),
+        } as any as PublicClient,
+    } as any as SharedState;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -87,18 +92,18 @@ describe("Test quoteSingleOrderV3", () => {
     });
 
     it("should set quote on the takeOrder when data is returned", async () => {
-        await quoteSingleOrderV3(orderDetails, client);
+        await quoteSingleOrderV3(orderDetails, state);
 
         expect(orderDetails.takeOrder.quote).toEqual({
             maxOutput: 100n,
             ratio: 2n,
         });
-        expect(client.call).toHaveBeenCalled();
+        expect(state.client.call).toHaveBeenCalled();
     });
 
     it("should reject if no data is returned", async () => {
-        (client.call as Mock).mockResolvedValueOnce({ data: undefined });
-        await expect(quoteSingleOrderV3(orderDetails, client)).rejects.toMatch(
+        (state.client.call as Mock).mockResolvedValueOnce({ data: undefined });
+        await expect(quoteSingleOrderV3(orderDetails, state)).rejects.toMatch(
             /Failed to quote order/,
         );
     });
@@ -106,9 +111,11 @@ describe("Test quoteSingleOrderV3", () => {
 
 describe("Test quoteSingleOrderV4", () => {
     let orderDetails: Pair;
-    const client = {
-        call: vi.fn().mockResolvedValue({ data: "0x" }),
-    } as any as PublicClient;
+    const state = {
+        client: {
+            call: vi.fn().mockResolvedValue({ data: "0x" }),
+        } as any as PublicClient,
+    } as any as SharedState;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -128,18 +135,18 @@ describe("Test quoteSingleOrderV4", () => {
             "0xffffffee00000000000000000000000000000000000000000000000000000064",
             "0xffffffee00000000000000000000000000000000000000000000000000000002",
         ]);
-        await quoteSingleOrderV4(orderDetails, client);
+        await quoteSingleOrderV4(orderDetails, state);
 
         expect(orderDetails.takeOrder.quote).toEqual({
             maxOutput: 100n,
             ratio: 2n,
         });
-        expect(client.call).toHaveBeenCalled();
+        expect(state.client.call).toHaveBeenCalled();
     });
 
     it("should reject if no data is returned", async () => {
-        (client.call as Mock).mockResolvedValueOnce({ data: undefined });
-        await expect(quoteSingleOrderV4(orderDetails, client)).rejects.toMatch(
+        (state.client.call as Mock).mockResolvedValueOnce({ data: undefined });
+        await expect(quoteSingleOrderV4(orderDetails, state)).rejects.toMatch(
             /Failed to quote order/,
         );
     });
@@ -150,7 +157,7 @@ describe("Test quoteSingleOrderV4", () => {
             "0xinvalid",
             "0x0000000000000000000000000000000000000000000000000000000000000001",
         ]);
-        await expect(quoteSingleOrderV4(orderDetails, client)).rejects.toContain(
+        await expect(quoteSingleOrderV4(orderDetails, state)).rejects.toContain(
             "Invalid hex string",
         );
     });
@@ -161,7 +168,7 @@ describe("Test quoteSingleOrderV4", () => {
             "0x0000000000000000000000000000000000000000000000000000000000000001",
             "0xinvalid",
         ]);
-        await expect(quoteSingleOrderV4(orderDetails, client)).rejects.toContain(
+        await expect(quoteSingleOrderV4(orderDetails, state)).rejects.toContain(
             "Invalid hex string",
         );
     });

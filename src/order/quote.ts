@@ -1,44 +1,47 @@
 import { ChainId } from "sushi";
 import { SharedState } from "../state";
 import { AppOptions } from "../config";
+import { fetchOracleContext } from "../oracle";
 import { ABI, normalizeFloat } from "../common";
 import { BundledOrders, Pair, TakeOrder } from "./types";
-import { decodeFunctionResult, encodeFunctionData, PublicClient } from "viem";
+import { decodeFunctionResult, encodeFunctionData } from "viem";
 
 /**
  * Quotes a single order
  * @param orderDetails - Order details to quote
  * @param viemClient - Viem client
+ * @param state - SharedState for oracle health tracking
  * @param blockNumber - Optional block number
  * @param gas - Optional read gas
  */
 export async function quoteSingleOrder(
     orderDetails: Pair,
-    viemClient: PublicClient,
+    state: SharedState,
     blockNumber?: bigint,
     gas?: bigint,
 ) {
     if (Pair.isV3(orderDetails)) {
-        return quoteSingleOrderV3(orderDetails, viemClient, blockNumber, gas);
+        return quoteSingleOrderV3(orderDetails, state, blockNumber, gas);
     } else {
-        return quoteSingleOrderV4(orderDetails, viemClient, blockNumber, gas);
+        return quoteSingleOrderV4(orderDetails, state, blockNumber, gas);
     }
 }
 
 /**
  * Quotes a single order v3
- * @param orderDetails - Order details to quote
- * @param viemClient - Viem client
- * @param blockNumber - Optional block number
- * @param gas - Optional read gas
  */
 export async function quoteSingleOrderV3(
     orderDetails: Pair,
-    viemClient: PublicClient,
+    state: SharedState,
     blockNumber?: bigint,
     gas?: bigint,
 ) {
-    const { data } = await viemClient
+    const oracleResult = await fetchOracleContext.call(state, orderDetails);
+    if (oracleResult.isErr()) {
+        throw oracleResult.error;
+    }
+
+    const { data } = await state.client
         .call({
             to: orderDetails.orderbook as `0x${string}`,
             data: encodeFunctionData({
@@ -71,18 +74,19 @@ export async function quoteSingleOrderV3(
 
 /**
  * Quotes a single order v4
- * @param orderDetails - Order details to quote
- * @param viemClient - Viem client
- * @param blockNumber - Optional block number
- * @param gas - Optional read gas
  */
 export async function quoteSingleOrderV4(
     orderDetails: Pair,
-    viemClient: PublicClient,
+    state: SharedState,
     blockNumber?: bigint,
     gas?: bigint,
 ) {
-    const { data } = await viemClient
+    const oracleResult = await fetchOracleContext.call(state, orderDetails);
+    if (oracleResult.isErr()) {
+        throw oracleResult.error;
+    }
+
+    const { data } = await state.client
         .call({
             to: orderDetails.orderbook as `0x${string}`,
             data: encodeFunctionData({
