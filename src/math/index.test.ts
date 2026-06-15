@@ -76,13 +76,13 @@ describe("Test math functions", () => {
     });
 
     it("should convert a bigint to its 18-decimal float number", async function () {
-        // exactly one ether -> 1 (pins the 18-decimals divisor: any other decimals shifts the value)
+        // Exactly one ether scales by the 18-decimals divisor to 1.
         assert.strictEqual(toNumber(ONE18), 1);
 
-        // fractional value -> retains the fractional part (rules out integer-only truncation)
+        // A fractional value retains its fractional part.
         assert.strictEqual(toNumber(1_500_000_000_000_000_000n), 1.5);
 
-        // larger whole multiple of one ether (pins exact scaling, not just "non-zero")
+        // A whole multiple of one ether scales to that multiple.
         assert.strictEqual(toNumber(123n * ONE18), 123);
 
         // zero maps to zero
@@ -91,45 +91,44 @@ describe("Test math functions", () => {
 
     describe("Test isBigNumberish", () => {
         it("should accept integer numbers but reject non-integer numbers", async function () {
-            // integer number -> true (kills `value % 1 === 0` -> `!== 0`)
+            // An integer number is numberish.
             assert.strictEqual(isBigNumberish(5), true);
             assert.strictEqual(isBigNumberish(0), true);
-            // non-integer number -> false (kills relaxing the modulo check / dropping it)
+            // A non-integer number is not numberish.
             assert.strictEqual(isBigNumberish(5.5), false);
             assert.strictEqual(isBigNumberish(0.1), false);
         });
 
         it("should accept all-digit strings (optionally signed) but reject other strings", async function () {
-            // all-digit string -> true (kills regex branch removal)
+            // An all-digit string is numberish.
             assert.strictEqual(isBigNumberish("123"), true);
-            // leading-minus all-digit string -> true (pins the `-?` regex prefix)
+            // A leading-minus all-digit string is numberish.
             assert.strictEqual(isBigNumberish("-123"), true);
-            // decimal string -> false (kills an over-broad regex that would allow a dot)
+            // A string containing a decimal point is not numberish.
             assert.strictEqual(isBigNumberish("12.3"), false);
-            // non-numeric string -> false
+            // A non-numeric string is not numberish.
             assert.strictEqual(isBigNumberish("abc"), false);
-            // empty string -> false (no digits to match)
+            // An empty string is not numberish.
             assert.strictEqual(isBigNumberish(""), false);
         });
 
         it("should accept hex strings via the isHex branch", async function () {
-            // hex string with letters -> only the isHex branch can accept it
-            // (the digit regex rejects the `x` and letters, it is not a bigint/bytes)
+            // A hex string is numberish via the isHex branch.
             assert.strictEqual(isBigNumberish("0xabcdef"), true);
         });
 
         it("should accept bigint and byte-array values", async function () {
-            // bigint -> true (kills `typeof value === "bigint"` branch removal)
+            // A bigint is numberish.
             assert.strictEqual(isBigNumberish(7n), true);
-            // byte array -> true (kills isBytes branch removal)
+            // A byte array is numberish via the isBytes branch.
             assert.strictEqual(isBigNumberish(new Uint8Array([1, 2, 3])), true);
         });
 
         it("should reject nullish and non-numberish values", async function () {
-            // null/undefined -> false (kills the `value != null` guard -> `== null`)
+            // null and undefined are not numberish.
             assert.strictEqual(isBigNumberish(null), false);
             assert.strictEqual(isBigNumberish(undefined), false);
-            // plain object -> false (none of the branches match)
+            // A plain object is not numberish.
             assert.strictEqual(isBigNumberish({}), false);
         });
     });
