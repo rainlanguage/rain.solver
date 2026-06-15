@@ -122,8 +122,7 @@ describe("Test downscaleProtection", () => {
  * the 4-segment divide factor, the cuts averaging across tokens, the per-vault
  * balance averaging, and the final `max(round(limit/avgCut), 1)`.
  *
- * Each test builds fresh maps so the in-place mutation of `limit` cannot leak
- * across tests.
+ * Each test builds fresh maps, so each runs against its own isolated `limit`.
  */
 describe("Test downscaleProtection limit-divide arithmetic", () => {
     // builds a fresh owners-profile map with a single owner whose limit is `limit`
@@ -192,7 +191,6 @@ describe("Test downscaleProtection limit-divide arithmetic", () => {
 
     // averages vault balances: two vaults [200n, 400n] -> total 600, avg 300.
     // ob = 1200 => otherOwners = 1200 - 600 = 600 => pct = (300*100)/600 = 50 => factor 2.
-    // If avg used the *sum* (600) instead, pct = (600*100)/600 = 100 => factor 1 => limit 8.
     it("averages multiple vault balances (total/count) before computing the ratio", async () => {
         const ownersProfileMap = makeOwnersProfileMap(8);
         const vaults = makeVaultsMap({ "0xToken1": [200n, 400n] });
@@ -200,7 +198,7 @@ describe("Test downscaleProtection limit-divide arithmetic", () => {
 
         await downscaleProtection(ownersProfileMap, vaults, mockPublicClient);
 
-        // factor 2 => round(8/2) = 4 (sum-instead-of-avg bug would give factor 1 => 8)
+        // factor 2 => round(8/2) = 4
         expect(ownersProfileMap.get("orderbook1")?.get("owner1")?.limit).toBe(4);
     });
 
@@ -208,8 +206,6 @@ describe("Test downscaleProtection limit-divide arithmetic", () => {
     //   token1: ownerBal 100, ob 1000 => pct 11 => factor 4
     //   token2: ownerBal 800, ob 1800 => pct 80 => factor 1
     //   avgCut = (4 + 1) / 2 = 2.5 => round(10 / 2.5) = 4
-    // If cuts were not averaged (e.g. last factor 1 only) limit would be 10;
-    // if summed (5) => round(10/5) = 2.
     it("averages divide factors across an owner's tokens", async () => {
         const ownersProfileMap = makeOwnersProfileMap(10);
         const vaults = makeVaultsMap({
@@ -234,8 +230,7 @@ describe("Test downscaleProtection limit-divide arithmetic", () => {
         expect(ownersProfileMap.get("orderbook1")?.get("owner1")?.limit).toBe(1);
     });
 
-    // rounds (not truncates) the reduced limit: limit 10 / factor 4 = 2.5 => round = 3.
-    // truncation would give 2.
+    // rounds the reduced limit to the nearest integer: limit 10 / factor 4 = 2.5 => round = 3.
     it("rounds the reduced limit to the nearest integer", async () => {
         const ownersProfileMap = makeOwnersProfileMap(10);
         const vaults = makeVaultsMap({ "0xToken1": [100n] }); // factor 4
