@@ -19,6 +19,7 @@ import {
     CounterpartySource,
     OrderbooksOwnersProfileMap,
     OrderbookOwnerTokenVaultsMap,
+    OrderbookVersions,
 } from "./types";
 
 export * from "./types";
@@ -230,6 +231,7 @@ export class OrderManager {
             },
             BigInt(outputVault.vaultId),
             pair.sellTokenVaultBalance,
+            pair.orderbookVersion,
         );
         this.updateVault(
             orderbook,
@@ -241,6 +243,7 @@ export class OrderManager {
             },
             BigInt(inputVault.vaultId),
             pair.buyTokenVaultBalance,
+            pair.orderbookVersion,
         );
     }
 
@@ -251,6 +254,7 @@ export class OrderManager {
      * @param token - The token details
      * @param vaultId - The vault id
      * @param balance - The new vault balance
+     * @param orderbookVersion - Specifies the orderbook version
      */
     updateVault(
         orderbook: string,
@@ -258,14 +262,19 @@ export class OrderManager {
         token: TokenDetails,
         vaultId: bigint,
         balance: string | bigint,
+        orderbookVersion: OrderbookVersions,
     ) {
         // normalize balance based on vault type
         let normalizedBalance: bigint;
         if (typeof balance === "string") {
             if (balance.startsWith("0x")) {
-                const normalized = normalizeFloat(balance, token.decimals);
-                if (normalized.isErr()) return;
-                normalizedBalance = normalized.value;
+                if (orderbookVersion === OrderbookVersions.V6 && vaultId === 0n) {
+                    normalizedBalance = 0n;
+                } else {
+                    const normalized = normalizeFloat(balance, token.decimals);
+                    if (normalized.isErr()) return;
+                    normalizedBalance = normalized.value;
+                }
             } else {
                 normalizedBalance = BigInt(balance);
             }
@@ -414,7 +423,7 @@ export class OrderManager {
                     new OrderManagerError(
                         "Failed to create order pair from args",
                         OrderManagerErrorType.WasmEncodedError,
-                        pairResult.error,
+                        pairResult.error.readableMsg,
                     ),
                 );
             }

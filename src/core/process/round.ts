@@ -1,9 +1,9 @@
 import { RainSolver } from "..";
-import { Pair } from "../../order";
 import { Token } from "sushi/currency";
 import { iterRandom, Result } from "../../common";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { PreAssembledSpan, SpanWithContext } from "../../logger";
+import { OrderbookVersions, Pair, ZERO_BYTES_32 } from "../../order";
 import { ErrorSeverity, errorSnapshot, isTimeout, KnownErrors } from "../../error";
 import {
     ProcessOrderStatus,
@@ -181,8 +181,17 @@ export async function processOrderInit(
                 ),
             )?.balance ?? orderDetails.buyTokenVaultBalance;
 
-    // skip if the output vault is empty
-    if (orderDetails.sellTokenVaultBalance <= 0n) {
+    // skip if the output vault is empty for
+    // non v6 orderbook or non vaultless v6 orderbook
+    if (
+        (orderDetails.orderbookVersion !== OrderbookVersions.V6 &&
+            orderDetails.sellTokenVaultBalance <= 0n) ||
+        (orderDetails.orderbookVersion === OrderbookVersions.V6 &&
+            orderDetails.takeOrder.struct.order.validOutputs[
+                orderDetails.takeOrder.struct.outputIOIndex
+            ].vaultId !== ZERO_BYTES_32 &&
+            orderDetails.sellTokenVaultBalance <= 0n)
+    ) {
         const endTime = performance.now();
         const settlement: Settlement = {
             pair,

@@ -1198,7 +1198,14 @@ describe("Test OrderManager", () => {
         const balance = "0x1234";
         const spy = vi.spyOn(common, "normalizeFloat");
 
-        const result = orderManager.updateVault(orderbook, owner, token, vaultId, balance);
+        const result = orderManager.updateVault(
+            orderbook,
+            owner,
+            token,
+            vaultId,
+            balance,
+            OrderbookVersions.V5,
+        );
         expect(result).toBeUndefined();
         expect(spy).toHaveBeenCalledWith(balance, token.decimals);
 
@@ -1216,7 +1223,7 @@ describe("Test OrderManager", () => {
         const vaultId = 123n;
         const balance = 1000000000000000000n;
 
-        orderManager.updateVault(orderbook, owner, token, vaultId, balance);
+        orderManager.updateVault(orderbook, owner, token, vaultId, balance, OrderbookVersions.V4);
 
         const orderbookMap = orderManager.ownerTokenVaultMap.get(orderbook);
         expect(orderbookMap).toBeDefined();
@@ -1246,7 +1253,7 @@ describe("Test OrderManager", () => {
         const balance = "0xffffffee00000000000000000000000000000000000000000000000000000001";
         const spy = vi.spyOn(common, "normalizeFloat");
 
-        orderManager.updateVault(orderbook, owner, token, vaultId, balance);
+        orderManager.updateVault(orderbook, owner, token, vaultId, balance, OrderbookVersions.V5);
 
         expect(spy).toHaveBeenCalledWith(balance, token.decimals);
 
@@ -1268,6 +1275,40 @@ describe("Test OrderManager", () => {
         spy.mockRestore();
     });
 
+    it("should set 0 vault balance for vaultless orderbook v6", () => {
+        const orderbook = "0xorderbook1";
+        const owner = "0xowner1";
+        const token = {
+            address: "0xtoken1",
+            symbol: "TOKEN1",
+            decimals: 18,
+        };
+        const vaultId = 0n;
+        const balance = "0xffffffee00000000000000000000000000000000000000000000000000000001"; // ignored
+        const spy = vi.spyOn(common, "normalizeFloat");
+
+        orderManager.updateVault(orderbook, owner, token, vaultId, balance, OrderbookVersions.V6);
+
+        expect(spy).not.toHaveBeenCalledWith();
+
+        const orderbookMap = orderManager.ownerTokenVaultMap.get(orderbook);
+        expect(orderbookMap).toBeDefined();
+
+        const ownerMap = orderbookMap?.get(owner);
+        expect(ownerMap).toBeDefined();
+
+        const tokenMap = ownerMap?.get(token.address);
+        expect(tokenMap).toBeDefined();
+
+        const vault = tokenMap?.get(vaultId);
+        expect(vault).toBeDefined();
+        expect(vault?.id).toBe(vaultId);
+        expect(vault?.balance).toBe(0n); // skip tracking, always 0
+        expect(vault?.token).toEqual(token);
+
+        spy.mockRestore();
+    });
+
     it("should update vault correctly when balance is decimal string", () => {
         const orderbook = "0xorderbook1";
         const owner = "0xowner1";
@@ -1280,7 +1321,7 @@ describe("Test OrderManager", () => {
         const balance = "1000000000000000000";
         const spy = vi.spyOn(common, "normalizeFloat");
 
-        orderManager.updateVault(orderbook, owner, token, vaultId, balance);
+        orderManager.updateVault(orderbook, owner, token, vaultId, balance, OrderbookVersions.V4);
 
         expect(spy).not.toHaveBeenCalled();
 
@@ -1315,7 +1356,14 @@ describe("Test OrderManager", () => {
         const newBalance = 2000000000000000000n;
 
         // First update - create vault
-        orderManager.updateVault(orderbook, owner, token, vaultId, initialBalance);
+        orderManager.updateVault(
+            orderbook,
+            owner,
+            token,
+            vaultId,
+            initialBalance,
+            OrderbookVersions.V4,
+        );
 
         // verify initial state
         const vault = orderManager.ownerTokenVaultMap
@@ -1326,7 +1374,14 @@ describe("Test OrderManager", () => {
         expect(vault?.balance).toBe(initialBalance);
 
         // second update - update balance
-        orderManager.updateVault(orderbook, owner, token, vaultId, newBalance);
+        orderManager.updateVault(
+            orderbook,
+            owner,
+            token,
+            vaultId,
+            newBalance,
+            OrderbookVersions.V4,
+        );
 
         // verify updated balance
         const updatedVault = orderManager.ownerTokenVaultMap
@@ -1352,8 +1407,8 @@ describe("Test OrderManager", () => {
         const balance1 = 1000000000000000000n;
         const balance2 = 2000000000000000000n;
 
-        orderManager.updateVault(orderbook, owner, token, vaultId1, balance1);
-        orderManager.updateVault(orderbook, owner, token, vaultId2, balance2);
+        orderManager.updateVault(orderbook, owner, token, vaultId1, balance1, OrderbookVersions.V4);
+        orderManager.updateVault(orderbook, owner, token, vaultId2, balance2, OrderbookVersions.V4);
 
         const tokenMap = orderManager.ownerTokenVaultMap
             .get(orderbook)
@@ -1384,10 +1439,24 @@ describe("Test OrderManager", () => {
         const balance2 = 500000000n;
 
         // Add first vault
-        orderManager.updateVault(orderbook, owner, token1, vaultId1, balance1);
+        orderManager.updateVault(
+            orderbook,
+            owner,
+            token1,
+            vaultId1,
+            balance1,
+            OrderbookVersions.V4,
+        );
 
         // Add second vault with different token
-        orderManager.updateVault(orderbook, owner, token2, vaultId2, balance2);
+        orderManager.updateVault(
+            orderbook,
+            owner,
+            token2,
+            vaultId2,
+            balance2,
+            OrderbookVersions.V4,
+        );
 
         // verify both vaults exist
         const ownerMap = orderManager.ownerTokenVaultMap.get(orderbook)?.get(owner);
@@ -1452,6 +1521,7 @@ describe("Test OrderManager", () => {
             },
             20n, // From validOutputs[1].vaultId
             2000n, // sellTokenVaultBalance
+            OrderbookVersions.V5,
         );
 
         // should use inputIOIndex: 0 (first input)
@@ -1466,6 +1536,7 @@ describe("Test OrderManager", () => {
             },
             30n, // From validInputs[0].vaultId
             1000n, // buyTokenVaultBalance
+            OrderbookVersions.V5,
         );
 
         updateVaultSpy.mockRestore();

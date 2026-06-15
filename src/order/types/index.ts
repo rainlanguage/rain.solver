@@ -20,6 +20,8 @@ import {
     TakeOrdersConfigTypeV5,
 } from "./v4";
 
+export const ZERO_BYTES_32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
 // Re-export types from v3 and v4
 export { OrderV3, OrderProfileV3, PairV3, TakeOrderDetailsV3, TakeOrdersConfigTypeV3, TakeOrderV3 };
 export {
@@ -128,9 +130,9 @@ export type BundledOrders = {
 };
 
 export enum OrderbookVersions {
-    V4,
-    V5,
-    V6,
+    V4 = "v4",
+    V5 = "v5",
+    V6 = "v6",
 }
 
 export type PairBase = {

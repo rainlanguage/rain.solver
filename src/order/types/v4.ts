@@ -1,11 +1,11 @@
-import { Evaluable, OrderbookVersions } from "../types";
+import { Evaluable, OrderbookVersions, ZERO_BYTES_32 } from "../types";
 import { SgOrder, SubgraphVersions } from "../../subgraph";
 import { WasmEncodedError } from "@rainlanguage/float";
 import { Order, PairBase, TakeOrderDetailsBase } from ".";
 import { ABI, normalizeFloat, Result } from "../../common";
 import { decodeAbiParameters, DecodeAbiParametersErrorType } from "viem";
 
-// these types are used in orderbook v5
+// these types are used in orderbook v5 and v6
 
 /** Represents an v4 order */
 export type V4 = {
@@ -118,13 +118,35 @@ export namespace PairV4 {
             balance: outputBalanceHex,
         } = outputVaultDetails;
 
-        const inputBalanceRes = normalizeFloat(inputBalanceHex, inputDecimals);
-        if (inputBalanceRes.isErr()) {
-            return Result.err(inputBalanceRes.error);
-        }
-        const outputBalanceRes = normalizeFloat(outputBalanceHex, outputDecimals);
-        if (outputBalanceRes.isErr()) {
-            return Result.err(outputBalanceRes.error);
+        let inputBalance = 0n;
+        let outputBalance = 0n;
+        if (orderDetails.__version === SubgraphVersions.V6) {
+            if (orderStruct.validInputs[inputIOIndex].vaultId !== ZERO_BYTES_32) {
+                const inputBalanceRes = normalizeFloat(inputBalanceHex, inputDecimals);
+                if (inputBalanceRes.isErr()) {
+                    return Result.err(inputBalanceRes.error);
+                }
+                inputBalance = inputBalanceRes.value;
+            }
+            if (orderStruct.validOutputs[outputIOIndex].vaultId !== ZERO_BYTES_32) {
+                const outputBalanceRes = normalizeFloat(outputBalanceHex, outputDecimals);
+                if (outputBalanceRes.isErr()) {
+                    return Result.err(outputBalanceRes.error);
+                }
+                outputBalance = outputBalanceRes.value;
+            }
+        } else {
+            const inputBalanceRes = normalizeFloat(inputBalanceHex, inputDecimals);
+            if (inputBalanceRes.isErr()) {
+                return Result.err(inputBalanceRes.error);
+            }
+            inputBalance = inputBalanceRes.value;
+
+            const outputBalanceRes = normalizeFloat(outputBalanceHex, outputDecimals);
+            if (outputBalanceRes.isErr()) {
+                return Result.err(outputBalanceRes.error);
+            }
+            outputBalance = outputBalanceRes.value;
         }
         return Result.ok({
             orderbookVersion:
@@ -135,11 +157,11 @@ export namespace PairV4 {
             buyToken: inputToken.toLowerCase(),
             buyTokenSymbol: inputSymbol,
             buyTokenDecimals: inputDecimals,
-            buyTokenVaultBalance: inputBalanceRes.value,
+            buyTokenVaultBalance: inputBalance,
             sellToken: outputToken.toLowerCase(),
             sellTokenSymbol: outputSymbol,
             sellTokenDecimals: outputDecimals,
-            sellTokenVaultBalance: outputBalanceRes.value,
+            sellTokenVaultBalance: outputBalance,
             takeOrder: {
                 id: orderHash,
                 struct: {
