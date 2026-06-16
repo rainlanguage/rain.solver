@@ -39,6 +39,7 @@ export function getQueryPaginated(skip: number, filters?: SgFilter): string {
         owner
         orderHash
         orderBytes
+        meta
         active
         nonce
         orderbook {
@@ -108,6 +109,7 @@ export const getTxsQuery = (startTimestamp: number, skip: number, endTimestamp?:
                 owner
                 orderHash
                 orderBytes
+                meta
                 active
                 nonce
                 orderbook {
@@ -142,6 +144,7 @@ export const getTxsQuery = (startTimestamp: number, skip: number, endTimestamp?:
                 owner
                 orderHash
                 orderBytes
+                meta
                 active
                 nonce
                 orderbook {

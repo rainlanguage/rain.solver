@@ -1112,6 +1112,204 @@ describe("RainSolverRouter", () => {
             expect([...router.cache.keys()].sort()).toEqual([expectedKeyA, expectedKeyB].sort());
         });
     });
+
+    // The router caches a per-pair (fromToken+toToken) call count, capped at 4, shared across
+    // quote methods.
+    describe("test cache mechanism", () => {
+        const mockParams: RainSolverRouterQuoteParams = {
+            fromToken: mockTokenIn,
+            toToken: mockTokenOut,
+            amountIn: mockSwapAmount,
+            gasPrice,
+        };
+
+        function setupSushiOk() {
+            const sushiSpy = vi.spyOn(mockSushiRouter, "getMarketPrice");
+            sushiSpy.mockResolvedValue(Result.ok({ price: "1" }) as any);
+            const tryQuoteSpy = vi.spyOn(mockSushiRouter, "tryQuote");
+            tryQuoteSpy.mockResolvedValue(
+                Result.ok({
+                    type: RouterType.Sushi,
+                    status: RouteStatus.Success,
+                    price: 1n,
+                    amountOut: 1n,
+                }) as any,
+            );
+            const bestSpy = vi.spyOn(mockSushiRouter, "findBestRoute");
+            bestSpy.mockResolvedValue(
+                Result.ok({
+                    type: RouterType.Sushi,
+                    status: RouteStatus.Success,
+                    price: 1n,
+                    amountOut: 1n,
+                }) as any,
+            );
+            const tradeSpy = vi.spyOn(mockSushiRouter, "getTradeParams");
+            tradeSpy.mockResolvedValue(
+                Result.ok({
+                    type: RouterType.Sushi,
+                    quote: {
+                        type: RouterType.Sushi,
+                        status: RouteStatus.Success,
+                        price: 1n,
+                        amountOut: 1n,
+                    },
+                    routeVisual: [],
+                    takeOrdersConfigStruct: {} as any,
+                }) as any,
+            );
+        }
+
+        function cacheCount(): number | undefined {
+            // these tests reuse a single fromToken/toToken pair, so there is exactly one entry
+            return [...router.cache.values()][0];
+        }
+
+        it("getMarketPrice increments cache count per call and caps at 4", async () => {
+            setupSushiOk();
+            const seen: (number | undefined)[] = [];
+            for (let i = 0; i < 6; i++) {
+                await router.getMarketPrice(mockParams);
+                seen.push(cacheCount());
+            }
+            // first call sets 1, then +1 each call, capped at 4
+            expect(seen).toEqual([1, 2, 3, 4, 4, 4]);
+            // exactly one cache entry (single fromToken/toToken pair reused across calls)
+            expect(router.cache.size).toBe(1);
+        });
+
+        it("tryQuote increments cache count per call and caps at 4", async () => {
+            setupSushiOk();
+            const seen: (number | undefined)[] = [];
+            for (let i = 0; i < 6; i++) {
+                await router.tryQuote(mockParams);
+                seen.push(cacheCount());
+            }
+            expect(seen).toEqual([1, 2, 3, 4, 4, 4]);
+            expect(router.cache.size).toBe(1);
+        });
+
+        it("findBestRoute increments cache count per call and caps at 4", async () => {
+            setupSushiOk();
+            const seen: (number | undefined)[] = [];
+            for (let i = 0; i < 6; i++) {
+                await router.findBestRoute(mockParams);
+                seen.push(cacheCount());
+            }
+            expect(seen).toEqual([1, 2, 3, 4, 4, 4]);
+            expect(router.cache.size).toBe(1);
+        });
+
+        it("getTradeParams increments cache count per call and caps at 4", async () => {
+            setupSushiOk();
+            const args = {
+                state: { appOptions: { maxRatio: true }, watchedTokens: new Map() },
+                maximumInput: mockSwapAmount,
+                orderDetails: { takeOrder: { struct: {} } },
+                toToken: mockTokenOut,
+                fromToken: mockTokenIn,
+                signer: { account: { address: "0xsigner" } },
+                isPartial: false,
+            } as any;
+            const seen: (number | undefined)[] = [];
+            for (let i = 0; i < 6; i++) {
+                await router.getTradeParams(args);
+                seen.push(cacheCount());
+            }
+            expect(seen).toEqual([1, 2, 3, 4, 4, 4]);
+            expect(router.cache.size).toBe(1);
+        });
+
+        it("reset clears router, balancer and stabull caches but not sushi cache", () => {
+            // attach real caches to mocks to observe clear behaviour
+            (router.cache as Map<string, number>).set("a", 3);
+            (router.balancer as any).cache = new Map([["b", {} as any]]);
+            (router.stabull as any).cache = new Map([["c", {} as any]]);
+            (router.sushi as any).cache = new Map([["d", {} as any]]);
+
+            router.reset();
+
+            expect(router.cache.size).toBe(0);
+            expect((router.balancer as any).cache.size).toBe(0);
+            expect((router.stabull as any).cache.size).toBe(0);
+            // reset intentionally does NOT clear sushi cache
+            expect((router.sushi as any).cache.size).toBe(1);
+        });
+    });
+
+    // getError classifies the combined error type and propagates each underlying router error.
+    describe("test getError classification", () => {
+        const mockParams: RainSolverRouterQuoteParams = {
+            fromToken: mockTokenIn,
+            toToken: mockTokenOut,
+            amountIn: mockSwapAmount,
+            gasPrice,
+        };
+
+        it("classifies mixed NoRouteFound + FetchFailed as FetchFailed (not NoRouteFound)", async () => {
+            const sushiErr = new SushiRouterError("sushi nrf", SushiRouterErrorType.NoRouteFound);
+            const balancerErr = new BalancerRouterError(
+                "balancer fetch",
+                BalancerRouterErrorType.FetchFailed,
+            );
+            const stabullErr = new StabullRouterError(
+                "stabull nrf",
+                StabullRouterErrorType.NoRouteFound,
+            );
+
+            vi.spyOn(mockSushiRouter, "findBestRoute").mockResolvedValue(
+                Result.err(sushiErr) as any,
+            );
+            vi.spyOn(mockBalancerRouter, "findBestRoute").mockResolvedValue(
+                Result.err(balancerErr) as any,
+            );
+            vi.spyOn(mockStabullRouter, "findBestRoute").mockResolvedValue(
+                Result.err(stabullErr) as any,
+            );
+
+            const result = await router.findBestRoute(mockParams);
+
+            assert(result.isErr());
+            // one of the three is FetchFailed -> overall must be FetchFailed
+            expect(result.error.typ).toBe(RainSolverRouterErrorType.FetchFailed);
+        });
+
+        it("propagates each underlying error and concatenates their messages", async () => {
+            const sushiErr = new SushiRouterError("sushi boom", SushiRouterErrorType.NoRouteFound);
+            const balancerErr = new BalancerRouterError(
+                "balancer boom",
+                BalancerRouterErrorType.NoRouteFound,
+            );
+            const stabullErr = new StabullRouterError(
+                "stabull boom",
+                StabullRouterErrorType.NoRouteFound,
+            );
+
+            vi.spyOn(mockSushiRouter, "findBestRoute").mockResolvedValue(
+                Result.err(sushiErr) as any,
+            );
+            vi.spyOn(mockBalancerRouter, "findBestRoute").mockResolvedValue(
+                Result.err(balancerErr) as any,
+            );
+            vi.spyOn(mockStabullRouter, "findBestRoute").mockResolvedValue(
+                Result.err(stabullErr) as any,
+            );
+
+            const result = await router.findBestRoute(mockParams);
+
+            assert(result.isErr());
+            expect(result.error.typ).toBe(RainSolverRouterErrorType.NoRouteFound);
+            // exact underlying errors are carried through in the correct slots
+            expect(result.error.sushiError).toBe(sushiErr);
+            expect(result.error.balancerError).toBe(balancerErr);
+            expect(result.error.stabullError).toBe(stabullErr);
+            // and their messages are concatenated into the top-level message
+            expect(result.error.message).toContain("Failed to find best route");
+            expect(result.error.message).toContain("SushiRouterError: sushi boom");
+            expect(result.error.message).toContain("BalancerRouterError: balancer boom");
+            expect(result.error.message).toContain("StabullRouterError: stabull boom");
+        });
+    });
 });
 
 // Helper functions to create mock objects
