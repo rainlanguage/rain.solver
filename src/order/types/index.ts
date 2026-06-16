@@ -144,6 +144,8 @@ export type PairBase = {
     sellTokenDecimals: number;
     sellTokenSymbol: string;
     sellTokenVaultBalance: bigint;
+    /** Oracle URL extracted from order meta, if present */
+    oracleUrl: string | undefined;
 };
 export type Pair = PairV3 | PairV4;
 export namespace Pair {

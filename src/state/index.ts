@@ -2,13 +2,14 @@ import { GasManager } from "../gas";
 import { ChainId } from "sushi/chain";
 import { AppOptions } from "../config";
 import { Token } from "sushi/currency";
-import { BalancerRouter } from "../router";
+import { BalancerRouter, DEFAULT_PRICE_IMPACT_TOLERANCE } from "../router";
 import { LiquidityProviders } from "sushi";
 import { SolverContracts } from "./contracts";
 import { SushiRouter } from "../router/sushi";
 import { AddressProvider } from "@balancer/sdk";
 import { WalletConfig } from "../wallet/config";
 import { Result, TokenDetails } from "../common";
+import { OracleHealthMap } from "../oracle/types";
 import { RainSolverRouter } from "../router/router";
 import { SubgraphConfig } from "../subgraph/config";
 import { RainSolverBaseError } from "../error/types";
@@ -224,6 +225,8 @@ export class SharedState {
     writeRpc?: RpcState;
     /** List of latest successful transactions gas costs */
     gasCosts: bigint[] = [];
+    /** Oracle endpoint health tracking for cooloff */
+    oracleHealth: OracleHealthMap = new Map();
 
     constructor(config: SharedStateConfig) {
         this.appOptions = config.appOptions;
@@ -326,7 +329,12 @@ export class SharedState {
             sushiRouteType: this.appOptions.route,
             skipFetch: !!skipFetch,
         });
-        if (result.isOk()) {
+        if (
+            result.isOk() &&
+            (!result.value.route ||
+                typeof result.value.route.priceImpact === "undefined" ||
+                result.value.route.priceImpact <= DEFAULT_PRICE_IMPACT_TOLERANCE)
+        ) {
             return result;
         }
         const partialAmountIn = this.router.findLargestTradeSize(
