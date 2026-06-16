@@ -31,6 +31,7 @@ export enum TradeType {
     Balancer = "balancer",
     Router = "router",
     Stabull = "stabull",
+    Raindex = "raindex",
 }
 
 /** Base type for process order results containing shared fields */

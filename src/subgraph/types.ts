@@ -5,6 +5,7 @@ export type SgOrder = {
     owner: string;
     orderHash: string;
     orderBytes: string;
+    meta?: string;
     active: boolean;
     nonce: string;
     orderbook: {
