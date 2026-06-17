@@ -848,7 +848,7 @@ for (let i = 0; i < testData.length; i++) {
                     testSpan.end();
                 });
 
-                it.only("should clear orders successfully using against v5 orderbook", async function () {
+                it("should clear orders successfully using against v5 orderbook", async function () {
                     if (stabullTrade) return;
                     config.rpc = [rpc];
                     const viemClient = await viem.getPublicClient();
