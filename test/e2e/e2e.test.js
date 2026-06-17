@@ -367,6 +367,7 @@ for (let i = 0; i < testData.length; i++) {
                         router: new Set(),
                         interOrderbook: new Set(),
                         intraOrderbook: new Set(),
+                        raindexRouter: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -723,6 +724,7 @@ for (let i = 0; i < testData.length; i++) {
                         router: new Set(),
                         interOrderbook: new Set(),
                         intraOrderbook: new Set(),
+                        raindexRouter: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -1137,6 +1139,7 @@ for (let i = 0; i < testData.length; i++) {
                         router: new Set(),
                         interOrderbook: new Set(),
                         intraOrderbook: new Set(),
+                        raindexRouter: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -1532,6 +1535,7 @@ for (let i = 0; i < testData.length; i++) {
                         router: new Set(),
                         interOrderbook: new Set(),
                         intraOrderbook: new Set(),
+                        raindexRouter: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -1886,6 +1890,7 @@ for (let i = 0; i < testData.length; i++) {
                         router: new Set(),
                         interOrderbook: new Set(),
                         intraOrderbook: new Set(),
+                        raindexRouter: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -2193,6 +2198,7 @@ for (let i = 0; i < testData.length; i++) {
                         router: new Set(),
                         interOrderbook: new Set(),
                         intraOrderbook: new Set(),
+                        raindexRouter: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -2579,6 +2585,7 @@ for (let i = 0; i < testData.length; i++) {
                         router: new Set(),
                         interOrderbook: new Set(),
                         intraOrderbook: new Set(),
+                        raindexRouter: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -2986,6 +2993,7 @@ for (let i = 0; i < testData.length; i++) {
                         router: new Set(),
                         interOrderbook: new Set(),
                         intraOrderbook: new Set(),
+                        raindexRouter: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -3395,6 +3403,7 @@ for (let i = 0; i < testData.length; i++) {
                         router: new Set(),
                         interOrderbook: new Set(),
                         intraOrderbook: new Set(),
+                        raindexRouter: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -3772,6 +3781,7 @@ for (let i = 0; i < testData.length; i++) {
                         router: new Set(),
                         interOrderbook: new Set(),
                         intraOrderbook: new Set(),
+                        raindexRouter: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
@@ -4102,6 +4112,7 @@ for (let i = 0; i < testData.length; i++) {
                         router: new Set(),
                         interOrderbook: new Set(),
                         intraOrderbook: new Set(),
+                        raindexRouter: new Set(),
                     };
 
                     const orderManager = new OrderManager(state);
