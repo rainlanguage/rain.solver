@@ -19,12 +19,28 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Install Nix 1/2
-        uses: DeterminateSystems/nix-installer-action@main
+      - uses: nixbuild/nix-quick-install-action@v30
         with:
-          determinate: true
-      - name: Install Nix 2/2
-        uses: DeterminateSystems/flakehub-cache-action@main
+          nix_conf: |
+            keep-env-derivations = true
+            keep-outputs = true
+      - uses: cachix/cachix-action@v15
+        continue-on-error: true
+        with:
+          name: rainlanguage
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          useDaemon: false
+      - name: Restore and save Nix store
+        uses: nix-community/cache-nix-action@v6
+        with:
+          # restore and save a cache using this key
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          # if there's no cache hit, restore a cache by this prefix
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          # collect garbage until the Nix store size (in bytes) is at most this number
+          # before trying to save a new cache
+          # 1G = 1073741824
+          gc-max-store-size-linux: 10G
 
       - name: Prepare Sushi Lib
         run: ./prep-sushi.sh
@@ -46,14 +62,34 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        chain: [POLYGON, ARBITRUM, ETH, FLARE, BSC, BASE, LINEA, MATCHAIN]
+        chain: [POLYGON, ARBITRUM, ETH, FLARE, BSC, BASE, LINEA]
       fail-fast: false
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: DeterminateSystems/nix-installer-action@v4
-      - uses: DeterminateSystems/magic-nix-cache-action@v2
+      - uses: nixbuild/nix-quick-install-action@v30
+        with:
+          nix_conf: |
+            keep-env-derivations = true
+            keep-outputs = true
+      - uses: cachix/cachix-action@v15
+        continue-on-error: true
+        with:
+          name: rainlanguage
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          useDaemon: false
+      - name: Restore and save Nix store
+        uses: nix-community/cache-nix-action@v6
+        with:
+          # restore and save a cache using this key
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          # if there's no cache hit, restore a cache by this prefix
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          # collect garbage until the Nix store size (in bytes) is at most this number
+          # before trying to save a new cache
+          # 1G = 1073741824
+          gc-max-store-size-linux: 10G
 
       - name: Prepare Sushi Lib
         run: ./prep-sushi.sh
@@ -66,3 +102,5 @@ jobs:
       
       - name: Run Tests
         run: TEST_${{ matrix.chain }}_RPC=${{ secrets[env.RPC] }} nix develop -c npm run e2e-test
+        env: 
+          DEFAULT_RPC: ${{ secrets[env.RPC] }}

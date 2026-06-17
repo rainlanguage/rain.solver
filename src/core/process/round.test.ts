@@ -2024,4 +2024,44 @@ describe("Test prepareRouter", () => {
             false,
         );
     });
+
+    it("should build the throttle key from the lowercased buyToken address and skip prefetch when warmed", async () => {
+        // The prefetch-throttle key includes BOTH the lowercased sellToken and the
+        // lowercased buyToken address (RainSolverRouter.getMarketPrice writes the same key).
+        // The key depends on the buyToken, so it is distinct for each buyToken under a
+        // given sellToken.
+        const nativeWrappedToken = { address: "0xNativeWrappedToken" };
+        const mockOrderDetails = {
+            id: "0xid",
+            sellTokenDecimals: 18,
+            sellToken: "0xSellToken",
+            sellTokenSymbol: "sTKN",
+            buyTokenDecimals: 18,
+            buyToken: "0xBuyToken",
+            buyTokenSymbol: "bTKN",
+        } as any;
+
+        // pre-warm the counter under the keyed entry (both addresses lowercased)
+        const correctKey = `${mockOrderDetails.sellToken.toLowerCase()}-${mockOrderDetails.buyToken.toLowerCase()}`;
+        const cache = new Map<string, number>([[correctKey, 4]]);
+        const mockState = {
+            client: { name: "client" },
+            chainConfig: { id: 1, nativeWrappedToken },
+            getMarketPrice: vi.fn().mockResolvedValue(null),
+            router: { cache },
+        } as any;
+        const mockSolver = { state: mockState } as any;
+
+        await prepareRouter.call(mockSolver, mockOrderDetails, 123n);
+
+        // counter for this exact pair is already > 3, so prefetch is skipped entirely.
+        // The reader key matches `correctKey`, so getMarketPrice is never called.
+        expect(mockState.getMarketPrice as Mock).not.toHaveBeenCalled();
+
+        // a different buyToken with the same sellToken is NOT warmed and still prefetches,
+        // because the key depends on buyToken and is distinct for each buyToken.
+        const otherOrderDetails = { ...mockOrderDetails, buyToken: "0xOtherBuyToken" };
+        await prepareRouter.call(mockSolver, otherOrderDetails, 123n);
+        expect(mockState.getMarketPrice as Mock).toHaveBeenCalledTimes(3);
+    });
 });
