@@ -993,7 +993,128 @@ describe("RainSolverRouter", () => {
         });
     });
 
-    // The router caches a per-fromToken call count, capped at 4, shared across quote methods.
+    describe("test per-pair cache key", () => {
+        // The throttle cache key depends on BOTH fromToken and toToken addresses, each
+        // lowercased. The second segment is the lowercased toToken address, so the key is
+        // distinct for each toToken. Two different toTokens sharing one fromToken produce
+        // two distinct keys and two cache entries.
+        const fromToken = new Token({
+            address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as `0x${string}`,
+            decimals: 18,
+            chainId: 1,
+            symbol: "FROM",
+        });
+        const toTokenA = new Token({
+            address: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as `0x${string}`,
+            decimals: 18,
+            chainId: 1,
+            symbol: "TOA",
+        });
+        const toTokenB = new Token({
+            address: "0xcccccccccccccccccccccccccccccccccccccccc" as `0x${string}`,
+            decimals: 18,
+            chainId: 1,
+            symbol: "TOB",
+        });
+        const okResult = Result.ok({ price: "1" }) as any;
+        const okQuote = Result.ok({ amountOut: 1n }) as any;
+        const okTradeParams = Result.ok({ quote: { amountOut: 1n } }) as any;
+
+        const expectedKeyA = `${fromToken.address.toLowerCase()}-${toTokenA.address.toLowerCase()}`;
+        const expectedKeyB = `${fromToken.address.toLowerCase()}-${toTokenB.address.toLowerCase()}`;
+
+        it("getMarketPrice keys distinct toTokens distinctly", async () => {
+            vi.spyOn(mockSushiRouter, "getMarketPrice").mockResolvedValue(okResult);
+            vi.spyOn(mockBalancerRouter, "getMarketPrice").mockResolvedValue(okResult);
+            vi.spyOn(mockStabullRouter, "getMarketPrice").mockResolvedValue(okResult);
+
+            await router.getMarketPrice({
+                fromToken,
+                toToken: toTokenA,
+                amountIn: 1n,
+                gasPrice,
+            } as RainSolverRouterQuoteParams);
+            await router.getMarketPrice({
+                fromToken,
+                toToken: toTokenB,
+                amountIn: 1n,
+                gasPrice,
+            } as RainSolverRouterQuoteParams);
+
+            // two different toTokens -> two distinct keys -> cache size 2
+            expect(router.cache.size).toBe(2);
+            expect([...router.cache.keys()].sort()).toEqual([expectedKeyA, expectedKeyB].sort());
+        });
+
+        it("tryQuote keys distinct toTokens distinctly", async () => {
+            vi.spyOn(mockSushiRouter, "tryQuote").mockResolvedValue(okQuote);
+            vi.spyOn(mockBalancerRouter, "tryQuote").mockResolvedValue(okQuote);
+            vi.spyOn(mockStabullRouter, "tryQuote").mockResolvedValue(okQuote);
+
+            await router.tryQuote({
+                fromToken,
+                toToken: toTokenA,
+                amountIn: 1n,
+                gasPrice,
+            } as RainSolverRouterQuoteParams);
+            await router.tryQuote({
+                fromToken,
+                toToken: toTokenB,
+                amountIn: 1n,
+                gasPrice,
+            } as RainSolverRouterQuoteParams);
+
+            expect(router.cache.size).toBe(2);
+            expect([...router.cache.keys()].sort()).toEqual([expectedKeyA, expectedKeyB].sort());
+        });
+
+        it("findBestRoute keys distinct toTokens distinctly", async () => {
+            vi.spyOn(mockSushiRouter, "findBestRoute").mockResolvedValue(okQuote);
+            vi.spyOn(mockBalancerRouter, "findBestRoute").mockResolvedValue(okQuote);
+            vi.spyOn(mockStabullRouter, "findBestRoute").mockResolvedValue(okQuote);
+
+            await router.findBestRoute({
+                fromToken,
+                toToken: toTokenA,
+                amountIn: 1n,
+                gasPrice,
+            } as RainSolverRouterQuoteParams);
+            await router.findBestRoute({
+                fromToken,
+                toToken: toTokenB,
+                amountIn: 1n,
+                gasPrice,
+            } as RainSolverRouterQuoteParams);
+
+            expect(router.cache.size).toBe(2);
+            expect([...router.cache.keys()].sort()).toEqual([expectedKeyA, expectedKeyB].sort());
+        });
+
+        it("getTradeParams keys distinct toTokens distinctly", async () => {
+            vi.spyOn(mockSushiRouter, "getTradeParams").mockResolvedValue(okTradeParams);
+            vi.spyOn(mockBalancerRouter, "getTradeParams").mockResolvedValue(okTradeParams);
+            vi.spyOn(mockStabullRouter, "getTradeParams").mockResolvedValue(okTradeParams);
+
+            await router.getTradeParams({
+                fromToken,
+                toToken: toTokenA,
+                amountIn: 1n,
+                gasPrice,
+            } as unknown as GetTradeParamsArgs);
+            await router.getTradeParams({
+                fromToken,
+                toToken: toTokenB,
+                amountIn: 1n,
+                gasPrice,
+            } as unknown as GetTradeParamsArgs);
+
+            expect(router.cache.size).toBe(2);
+            expect([...router.cache.keys()].sort()).toEqual([expectedKeyA, expectedKeyB].sort());
+        });
+    });
+
+    // The router caches a per-pair (fromToken+toToken) call count, capped at 4, shared across
+    // quote methods.
     describe("test cache mechanism", () => {
         const mockParams: RainSolverRouterQuoteParams = {
             fromToken: mockTokenIn,
@@ -1040,7 +1161,7 @@ describe("RainSolverRouter", () => {
         }
 
         function cacheCount(): number | undefined {
-            // key is stable per fromToken so there is exactly one entry
+            // these tests reuse a single fromToken/toToken pair, so there is exactly one entry
             return [...router.cache.values()][0];
         }
 
@@ -1053,7 +1174,7 @@ describe("RainSolverRouter", () => {
             }
             // first call sets 1, then +1 each call, capped at 4
             expect(seen).toEqual([1, 2, 3, 4, 4, 4]);
-            // exactly one cache entry (key only depends on fromToken)
+            // exactly one cache entry (single fromToken/toToken pair reused across calls)
             expect(router.cache.size).toBe(1);
         });
 
