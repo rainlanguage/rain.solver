@@ -12,7 +12,7 @@ const hhConfig: HardhatUserConfig = {
     networks: {
         hardhat: {
             forking: {
-                url: process?.env?.DEFAULT_POLYGON_RPC ?? "https://polygon.drpc.org",
+                url: process?.env?.CI_DEPLOY_POLYGON_RPC ?? "https://polygon.drpc.org",
                 blockNumber: 56738134,
             },
             mining: {
