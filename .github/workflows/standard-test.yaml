@@ -66,3 +66,5 @@ jobs:
       
       - name: Run Tests
         run: TEST_${{ matrix.chain }}_RPC=${{ secrets[env.RPC] }} nix develop -c npm run e2e-test
+        env: 
+          DEFAULT_RPC: ${{ secrets[env.RPC] }}
