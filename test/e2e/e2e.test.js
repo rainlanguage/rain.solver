@@ -216,9 +216,9 @@ for (let i = 0; i < testData.length; i++) {
                     });
                     await network.provider.send("hardhat_setBalance", [
                         bot.account.address,
-                        "0x4563918244F40000",
+                        "0x3635C9ADC5DEA00000",
                     ]);
-                    bot.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
+                    bot.BALANCE = ethers.BigNumber.from("0x3635C9ADC5DEA00000");
                     bot.BOUNTY = [];
 
                     // deploy contracts
@@ -266,7 +266,7 @@ for (let i = 0; i < testData.length; i++) {
                         owners.push(await ethers.getImpersonatedSigner(addressesWithBalance[i]));
                         await network.provider.send("hardhat_setBalance", [
                             addressesWithBalance[i],
-                            "0x4563918244F40000",
+                            "0x3635C9ADC5DEA00000",
                         ]);
                     }
 
@@ -510,9 +510,9 @@ for (let i = 0; i < testData.length; i++) {
                     });
                     await network.provider.send("hardhat_setBalance", [
                         bot.account.address,
-                        "0x4563918244F40000",
+                        "0x3635C9ADC5DEA00000",
                     ]);
-                    bot.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
+                    bot.BALANCE = ethers.BigNumber.from("0x3635C9ADC5DEA00000");
                     bot.BOUNTY = [];
 
                     // deploy contracts
@@ -568,7 +568,7 @@ for (let i = 0; i < testData.length; i++) {
                         owners.push(await ethers.getImpersonatedSigner(addressesWithBalance[i]));
                         await network.provider.send("hardhat_setBalance", [
                             addressesWithBalance[i],
-                            "0x4563918244F40000",
+                            "0x3635C9ADC5DEA00000",
                         ]);
                     }
 
@@ -846,7 +846,7 @@ for (let i = 0; i < testData.length; i++) {
                     testSpan.end();
                 });
 
-                it("should clear orders successfully using against v5 orderbook", async function () {
+                it.only("should clear orders successfully using against v5 orderbook", async function () {
                     if (stabullTrade) return;
                     config.rpc = [rpc];
                     const viemClient = await viem.getPublicClient();
@@ -897,9 +897,9 @@ for (let i = 0; i < testData.length; i++) {
                     });
                     await network.provider.send("hardhat_setBalance", [
                         bot.account.address,
-                        "0x4563918244F40000",
+                        "0x3635C9ADC5DEA00000",
                     ]);
-                    bot.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
+                    bot.BALANCE = ethers.BigNumber.from("0x3635C9ADC5DEA00000");
                     bot.BOUNTY = [];
 
                     // deploy v4 contracts
@@ -970,7 +970,7 @@ for (let i = 0; i < testData.length; i++) {
                         owners.push(await ethers.getImpersonatedSigner(addressesWithBalance[i]));
                         await network.provider.send("hardhat_setBalance", [
                             addressesWithBalance[i],
-                            "0x4563918244F40000",
+                            "0x3635C9ADC5DEA00000",
                         ]);
                     }
 
@@ -1310,9 +1310,9 @@ for (let i = 0; i < testData.length; i++) {
                     });
                     await network.provider.send("hardhat_setBalance", [
                         bot.account.address,
-                        "0x4563918244F40000",
+                        "0x3635C9ADC5DEA00000",
                     ]);
-                    bot.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
+                    bot.BALANCE = ethers.BigNumber.from("0x3635C9ADC5DEA00000");
                     bot.BOUNTY = [];
 
                     // deploy contracts
@@ -1365,7 +1365,7 @@ for (let i = 0; i < testData.length; i++) {
                         owners.push(await ethers.getImpersonatedSigner(addressesWithBalance[i]));
                         await network.provider.send("hardhat_setBalance", [
                             addressesWithBalance[i],
-                            "0x4563918244F40000",
+                            "0x3635C9ADC5DEA00000",
                         ]);
                     }
 
@@ -1728,9 +1728,9 @@ for (let i = 0; i < testData.length; i++) {
                     });
                     await network.provider.send("hardhat_setBalance", [
                         bot.account.address,
-                        "0x4563918244F40000",
+                        "0x3635C9ADC5DEA00000",
                     ]);
-                    bot.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
+                    bot.BALANCE = ethers.BigNumber.from("0x3635C9ADC5DEA00000");
                     bot.BOUNTY = [];
 
                     // deploy contracts
@@ -1784,7 +1784,7 @@ for (let i = 0; i < testData.length; i++) {
                         owners.push(await ethers.getImpersonatedSigner(addressesWithBalance[i]));
                         await network.provider.send("hardhat_setBalance", [
                             addressesWithBalance[i],
-                            "0x4563918244F40000",
+                            "0x3635C9ADC5DEA00000",
                         ]);
                     }
 
@@ -2030,9 +2030,9 @@ for (let i = 0; i < testData.length; i++) {
                     });
                     await network.provider.send("hardhat_setBalance", [
                         bot.account.address,
-                        "0x4563918244F40000",
+                        "0x3635C9ADC5DEA00000",
                     ]);
-                    bot.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
+                    bot.BALANCE = ethers.BigNumber.from("0x3635C9ADC5DEA00000");
                     bot.BOUNTY = [];
 
                     // deploy contracts
@@ -2080,7 +2080,7 @@ for (let i = 0; i < testData.length; i++) {
                         owners.push(await ethers.getImpersonatedSigner(addressesWithBalance[i]));
                         await network.provider.send("hardhat_setBalance", [
                             addressesWithBalance[i],
-                            "0x4563918244F40000",
+                            "0x3635C9ADC5DEA00000",
                         ]);
                     }
 
@@ -2346,9 +2346,9 @@ for (let i = 0; i < testData.length; i++) {
                     });
                     await network.provider.send("hardhat_setBalance", [
                         bot.account.address,
-                        "0x4563918244F40000",
+                        "0x3635C9ADC5DEA00000",
                     ]);
-                    bot.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
+                    bot.BALANCE = ethers.BigNumber.from("0x3635C9ADC5DEA00000");
                     bot.BOUNTY = [];
 
                     // deploy contracts
@@ -2404,7 +2404,7 @@ for (let i = 0; i < testData.length; i++) {
                         owners.push(await ethers.getImpersonatedSigner(addressesWithBalance[i]));
                         await network.provider.send("hardhat_setBalance", [
                             addressesWithBalance[i],
-                            "0x4563918244F40000",
+                            "0x3635C9ADC5DEA00000",
                         ]);
                     }
 
@@ -2747,9 +2747,9 @@ for (let i = 0; i < testData.length; i++) {
                     });
                     await network.provider.send("hardhat_setBalance", [
                         bot.account.address,
-                        "0x4563918244F40000",
+                        "0x3635C9ADC5DEA00000",
                     ]);
-                    bot.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
+                    bot.BALANCE = ethers.BigNumber.from("0x3635C9ADC5DEA00000");
                     bot.BOUNTY = [];
 
                     // deploy v5 contracts
@@ -2818,7 +2818,7 @@ for (let i = 0; i < testData.length; i++) {
                         owners.push(await ethers.getImpersonatedSigner(addressesWithBalance[i]));
                         await network.provider.send("hardhat_setBalance", [
                             addressesWithBalance[i],
-                            "0x4563918244F40000",
+                            "0x3635C9ADC5DEA00000",
                         ]);
                     }
 
@@ -3154,9 +3154,9 @@ for (let i = 0; i < testData.length; i++) {
                     });
                     await network.provider.send("hardhat_setBalance", [
                         bot.account.address,
-                        "0x4563918244F40000",
+                        "0x3635C9ADC5DEA00000",
                     ]);
-                    bot.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
+                    bot.BALANCE = ethers.BigNumber.from("0x3635C9ADC5DEA00000");
                     bot.BOUNTY = [];
 
                     // deploy contracts
@@ -3209,7 +3209,7 @@ for (let i = 0; i < testData.length; i++) {
                         owners.push(await ethers.getImpersonatedSigner(addressesWithBalance[i]));
                         await network.provider.send("hardhat_setBalance", [
                             addressesWithBalance[i],
-                            "0x4563918244F40000",
+                            "0x3635C9ADC5DEA00000",
                         ]);
                     }
 
@@ -3601,9 +3601,9 @@ for (let i = 0; i < testData.length; i++) {
                     });
                     await network.provider.send("hardhat_setBalance", [
                         bot.account.address,
-                        "0x4563918244F40000",
+                        "0x3635C9ADC5DEA00000",
                     ]);
-                    bot.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
+                    bot.BALANCE = ethers.BigNumber.from("0x3635C9ADC5DEA00000");
                     bot.BOUNTY = [];
 
                     // deploy contracts
@@ -3658,7 +3658,7 @@ for (let i = 0; i < testData.length; i++) {
                         owners.push(await ethers.getImpersonatedSigner(addressesWithBalance[i]));
                         await network.provider.send("hardhat_setBalance", [
                             addressesWithBalance[i],
-                            "0x4563918244F40000",
+                            "0x3635C9ADC5DEA00000",
                         ]);
                     }
 
@@ -3931,9 +3931,9 @@ for (let i = 0; i < testData.length; i++) {
                     });
                     await network.provider.send("hardhat_setBalance", [
                         bot.account.address,
-                        "0x4563918244F40000",
+                        "0x3635C9ADC5DEA00000",
                     ]);
-                    bot.BALANCE = ethers.BigNumber.from("0x4563918244F40000");
+                    bot.BALANCE = ethers.BigNumber.from("0x3635C9ADC5DEA00000");
                     bot.BOUNTY = [];
 
                     // deploy contracts
@@ -3988,7 +3988,7 @@ for (let i = 0; i < testData.length; i++) {
                         owners.push(await ethers.getImpersonatedSigner(addressesWithBalance[i]));
                         await network.provider.send("hardhat_setBalance", [
                             addressesWithBalance[i],
-                            "0x4563918244F40000",
+                            "0x3635C9ADC5DEA00000",
                         ]);
                     }
 

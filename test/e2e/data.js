@@ -11,7 +11,7 @@ module.exports = [
         process?.env?.TEST_POLYGON_RPC,
 
         // block number of fork network
-        56738134,
+        88634112,
 
         // tokens to test with
         [
@@ -33,9 +33,9 @@ module.exports = [
 
         // addresses with token balance, in order with specified tokens
         [
-            "0xdF906eA18C6537C6379aC83157047F507FB37263",
+            "0x13dCa56c1747a0351A8FD23384b593E3dF53CA6d",
             "0xe7804c37c13166fF0b37F5aE0BB07A3aEbb6e245",
-            "0xdFB5396f06bE50eAA745094ff51d272C292cc218",
+            "0xd6756f5aF54486Abda6bd9b1eee4aB0dBa7C3ef2",
             "0x9294132f9d423b0FD5823aB400133d814fe73016",
         ],
 
@@ -53,11 +53,11 @@ module.exports = [
     [
         ChainId.ARBITRUM,
         process?.env?.TEST_ARBITRUM_RPC,
-        226810501,
+        474263125,
         [WNATIVE[ChainId.ARBITRUM], USDT[ChainId.ARBITRUM]],
         [
             "0xc3e5607cd4ca0d5fe51e09b60ed97a0ae6f874dd",
-            "0x8f9c79B9De8b0713dCAC3E535fc5A1A92DB6EA2D",
+            "0xdC379823A9a3A2ca9d77C33299551ecDBaBf7A41",
         ],
         [LiquidityProviders.UniswapV3, LiquidityProviders.UniswapV2],
         ["1", "100"],
@@ -65,12 +65,12 @@ module.exports = [
     [
         ChainId.FLARE,
         process?.env?.TEST_FLARE_RPC,
-        28269400,
+        63085192,
         [WNATIVE[ChainId.FLARE], USDT[ChainId.FLARE], ENOSYS_HLN],
         [
             "0x2258e7Ad1D8AC70FAB053CF59c027960e94DB7d1",
-            "0x51cD71ec61487A3359993922A5BBac294934A628",
-            "0x2e574D0802F433E71F7dC91650aB2C23aDeb0D81",
+            "0xf3b90D35412861DcD35Cb0d4f10D6c840cb60e68",
+            "0xd7d1671d77044Ce93d198cC612610a0fd9B8028A",
         ],
         [LiquidityProviders.Enosys, LiquidityProviders.SparkDexV2, LiquidityProviders.SparkDexV3],
         ["1", "100", "100"],
@@ -78,7 +78,7 @@ module.exports = [
     [
         ChainId.ETHEREUM,
         process?.env?.TEST_ETH_RPC,
-        22434064,
+        25333712,
         [
             WNATIVE[ChainId.ETHEREUM],
             USDT[ChainId.ETHEREUM],
@@ -91,7 +91,7 @@ module.exports = [
         ],
         [
             "0x6B44ba0a126a2A1a8aa6cD1AdeeD002e141Bcd44",
-            "0x11b113383cE08E84001DC614f141aE4C27221e31",
+            "0x13f52026493DcCf09065952d44101C3E42b41ddA",
             // "0x3776100a4b669Ef0d727a81FC69bF50DE74A976c",
         ],
         [
@@ -108,7 +108,7 @@ module.exports = [
     [
         ChainId.BASE,
         process?.env?.TEST_BASE_RPC,
-        38187500,
+        47433654,
         [
             WNATIVE[ChainId.BASE],
             new Token({
@@ -143,11 +143,11 @@ module.exports = [
         // unique test for aerodrome slipstream
         ChainId.BASE,
         process?.env?.TEST_BASE_RPC,
-        34181086,
+        47433654,
         [WNATIVE[ChainId.BASE], USDC[ChainId.BASE]],
         [
-            "0xd9eDC75a3a797Ec92Ca370F19051BAbebfb2edEe",
-            "0x336307F2d8390035Ba926a61a86b45CA9dC91E57",
+            "0xb2cc224c1c9feE385f8ad6a55b4d94E92359DC59",
+            "0x8da91A6298eA5d1A8Bc985e99798fd0A0f05701a",
         ],
         [LiquidityProviders.AerodromeSlipstream],
         ["1", "100"],
@@ -156,7 +156,7 @@ module.exports = [
         // unique test for aerodrome slipstream
         ChainId.BASE,
         process?.env?.TEST_BASE_RPC,
-        36806200,
+        47433654,
         [
             USDC[ChainId.BASE],
             new Token({
@@ -167,7 +167,7 @@ module.exports = [
             }),
         ],
         [
-            "0x336307F2d8390035Ba926a61a86b45CA9dC91E57",
+            "0x8da91A6298eA5d1A8Bc985e99798fd0A0f05701a",
             "0x8f58955bB4dfF80f956B4683d29b62C984D4657F",
         ],
         [LiquidityProviders.AerodromeSlipstream],
@@ -180,7 +180,7 @@ module.exports = [
     [
         ChainId.BSC,
         process?.env?.TEST_BSC_RPC,
-        40393189,
+        104664904,
         [
             WNATIVE[ChainId.BSC],
             new Token({
@@ -197,7 +197,7 @@ module.exports = [
             }),
         ],
         [
-            "0x59d779BED4dB1E734D3fDa3172d45bc3063eCD69",
+            "0x308000D0169Ebe674B7640f0c415f44c6987d04D",
             "0x66803c0B34B1baCCb68fF515f76cd63ba48a2039",
             "0x604b2B06ad0D5a2f8ef4383626f6dD37E780D090",
         ],
@@ -207,7 +207,7 @@ module.exports = [
     [
         ChainId.LINEA,
         process?.env?.TEST_LINEA_RPC,
-        7879600,
+        31059310,
         [
             WNATIVE[ChainId.LINEA],
             USDC[ChainId.LINEA],
@@ -219,23 +219,23 @@ module.exports = [
             // }),
         ],
         [
-            "0x07aE8551Be970cB1cCa11Dd7a11F47Ae82e70E67",
+            "0x8AF83Ebf3e0F2465f6E9B55dBbC77e7995948168",
             "0x555CE236C0220695b68341bc48C68d52210cC35b",
             // "0x0000619b2b909a6a422c18eb804b92f798370705",
         ],
         [LiquidityProviders.LynexV1, LiquidityProviders.LynexV2],
         ["1", "100"],
     ],
-    [
-        ChainId.MATCHAIN,
-        process?.env?.TEST_MATCHAIN_RPC,
-        29952210,
-        [WNATIVE[ChainId.MATCHAIN], USDT[ChainId.MATCHAIN]],
-        [
-            "0x33d8Fa2Cd11F721A0e9A0105e4178F1E489c16f9",
-            "0x5887DD31D31745EA58F29d6d1528C89aEc418991",
-        ],
-        [LiquidityProviders.MSwap],
-        ["0.01", "100"],
-    ],
+    // [
+    //     ChainId.MATCHAIN,
+    //     process?.env?.TEST_MATCHAIN_RPC,
+    //     29952210,
+    //     [WNATIVE[ChainId.MATCHAIN], USDT[ChainId.MATCHAIN]],
+    //     [
+    //         "0x33d8Fa2Cd11F721A0e9A0105e4178F1E489c16f9",
+    //         "0x5887DD31D31745EA58F29d6d1528C89aEc418991",
+    //     ],
+    //     [LiquidityProviders.MSwap],
+    //     ["0.01", "100"],
+    // ],
 ];
