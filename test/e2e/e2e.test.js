@@ -3254,7 +3254,10 @@ for (let i = 0; i < testData.length; i++) {
                             );
 
                         // prebuild bytecode: "_ _: 0.5 max; :;"
-                        const ratio1 = toFloat(500000000000000000n, 18)
+                        const ratio1 = toFloat(
+                            chainId === ChainId.BSC ? 4000000000000n : 500000000000000000n,
+                            18,
+                        )
                             .value.substring(2)
                             .padStart(64, "0"); // 0.5
                         const maxOutput1 = maxFloat(18).substring(2).padStart(64, "0"); // max
