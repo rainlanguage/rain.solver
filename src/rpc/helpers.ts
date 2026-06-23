@@ -112,10 +112,9 @@ export function probablyPicksFrom(ranges: number[], weights: number[]): number {
     // we now match the selection rates against
     // picked random int to get picked index
     for (let i = 0; i < ranges.length; i++) {
-        const weightsSlice = weights.slice(0, i);
         const offset = ranges
             .slice(0, i)
-            .reduce((a, b, j) => a + Math.max(b, Math.ceil(10_000 * weightsSlice[j])), 0);
+            .reduce((a, b, j) => a + Math.max(b, Math.ceil(10_000 * weights[j])), 0);
         const lowerBound = offset + 1;
         const upperBound = offset + ranges[i];
         if (lowerBound <= pick && pick <= upperBound) {

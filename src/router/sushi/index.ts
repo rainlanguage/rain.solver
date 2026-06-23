@@ -101,6 +101,7 @@ export class SushiRouter extends RainSolverRouterBase {
 
     /** The sushi router data fetcher instance for interacting */
     dataFetcher: RainDataFetcher;
+    signalReset = false;
 
     constructor(
         chainId: number,
@@ -235,6 +236,15 @@ export class SushiRouter extends RainSolverRouterBase {
                     ),
                 );
             } else {
+                if (route.amountOutBI < 0n) {
+                    this.signalReset = true;
+                    return Result.err(
+                        new SushiRouterError(
+                            `Sushi router returned negative output for route: amountOut ${route.amountOutBI.toString()}, amountIn: ${amountIn.toString()}, pair: ${toToken.symbol}/${fromToken.symbol}`,
+                            SushiRouterErrorType.NegativeOutput,
+                        ),
+                    );
+                }
                 const price = calculatePrice18(
                     amountIn,
                     route.amountOutBI,
@@ -278,6 +288,7 @@ export class SushiRouter extends RainSolverRouterBase {
                 this.client as any,
                 this.liquidityProviders,
             );
+            this.signalReset = false;
             return true;
         } catch {}
         return false;
