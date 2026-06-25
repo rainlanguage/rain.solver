@@ -10,7 +10,7 @@ env:
   CHANNEL: ${{ github.head_ref || github.ref_name }}
   DOCKER_BUILDKIT: 1
   COMPOSE_DOCKER_CLI_BUILD: 1
-  TAG_BASE: rainprotocol/arb-bot
+  TAG_BASE: rainprotocol/rain.solver
 
 jobs:
   Deploy-Preview:
