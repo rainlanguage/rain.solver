@@ -7,6 +7,7 @@ export enum SushiRouterErrorType {
     FetchFailed,
     WasmEncodedError,
     UndefinedTradeDestinationAddress,
+    NegativeOutput,
 }
 
 /**
