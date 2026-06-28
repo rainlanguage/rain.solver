@@ -277,7 +277,7 @@ export class RainSolverCli {
     /** Resets the DataFetcher (sushi router cached pool data) by the given interval */
     async maybeResetDataFetcher() {
         const now = Date.now();
-        if (this.nextDatafetcherReset <= now) {
+        if (this.nextDatafetcherReset <= now || this.state.router.sushi?.signalReset) {
             this.nextDatafetcherReset = now + this.appOptions.poolUpdateInterval * 60 * 1000;
             // reset only if the data fetcher is initialized successfully
             const res = await this.state.router.sushi?.reset();
