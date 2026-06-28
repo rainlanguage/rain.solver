@@ -118,5 +118,98 @@ describe("Test GasManager", () => {
 
             gasManager.unwatchGasPrice();
         });
+
+        it("should not start a second watcher when already watching", () => {
+            // the active interval handle while watching
+            gasManager.watchGasPrice();
+            expect(gasManager.isWatchingGasPrice).toBe(true);
+            const firstWatcher = (gasManager as any).gasPriceWatcher;
+
+            // calling again while already watching keeps the same interval handle
+            gasManager.watchGasPrice();
+            expect((gasManager as any).gasPriceWatcher).toBe(firstWatcher);
+
+            gasManager.unwatchGasPrice();
+            expect(gasManager.isWatchingGasPrice).toBe(false);
+        });
+    });
+
+    describe("Test constructor default values", () => {
+        it("should apply class defaults when optional config fields are omitted", () => {
+            // only the required fields are provided; optional fields take their defaults
+            const manager = new GasManager({
+                chainConfig: { id: 1, isSpecialL2: false } as any,
+                client: { name: "mockClient" } as any,
+                baseGasPriceMultiplier: 100,
+            } as any);
+
+            // class field defaults
+            expect(manager.gasIncreasePointsPerStep).toBe(3);
+            expect(manager.gasIncreaseStepTime).toBe(60 * 60 * 1000); // 3_600_000 ms
+            expect(manager.txTimeThreshold).toBe(30_000);
+
+            // maxGasPriceMultiplier defaults to base + 50 when not provided
+            expect(manager.maxGasPriceMultiplier).toBe(150);
+
+            // multiplier starts at the base value
+            expect(manager.gasPriceMultiplier).toBe(100);
+        });
+
+        it("should use provided optional config values over the defaults", () => {
+            // optional fields are provided with values distinct from the class defaults
+            const manager = new GasManager({
+                chainConfig: { id: 1, isSpecialL2: false } as any,
+                client: { name: "mockClient" } as any,
+                baseGasPriceMultiplier: 100,
+                maxGasPriceMultiplier: 200,
+                gasIncreasePointsPerStep: 7,
+                gasIncreaseStepTime: 12_345,
+                txTimeThreshold: 9_999,
+            } as any);
+
+            expect(manager.gasIncreasePointsPerStep).toBe(7);
+            expect(manager.gasIncreaseStepTime).toBe(12_345);
+            expect(manager.txTimeThreshold).toBe(9_999);
+            // the provided maxGasPriceMultiplier is used directly
+            expect(manager.maxGasPriceMultiplier).toBe(200);
+        });
+    });
+
+    describe("Test onTransactionMine boundary and arithmetic", () => {
+        it("should increase the multiplier when mine time equals the threshold exactly", () => {
+            // a mine time equal to txTimeThreshold takes the increase branch
+            gasManager.onTransactionMine({
+                didMine: true,
+                length: 30_000, // exactly the threshold
+            });
+            expect(gasManager.deadline).toBeDefined();
+            expect(gasManager.gasPriceMultiplier).toBe(110); // 107 + 3
+        });
+
+        it("should set the deadline to now plus the step time when increasing", () => {
+            const before = Date.now();
+            gasManager.onTransactionMine({
+                didMine: true,
+                length: 40_000, // over threshold
+            });
+            const after = Date.now();
+            // deadline is Date.now() + gasIncreaseStepTime, bracketed tightly
+            expect(gasManager.deadline).toBeGreaterThanOrEqual(before + config.gasIncreaseStepTime);
+            expect(gasManager.deadline).toBeLessThanOrEqual(after + config.gasIncreaseStepTime);
+        });
+
+        it("should not reset the multiplier when the deadline is still in the future", () => {
+            // with the deadline in the future, an under-threshold mine leaves the
+            // elevated multiplier in place because now < deadline
+            gasManager.deadline = Date.now() + 100_000;
+            gasManager.gasPriceMultiplier = 120;
+            const futureDeadline = gasManager.deadline;
+            gasManager.onTransactionMine({
+                didMine: true,
+                length: 20_000, // under threshold
+            });
+            expect(gasManager.gasPriceMultiplier).toBe(120); // unchanged
+            expect(gasManager.deadline).toBe(futureDeadline); // unchanged
+        });
     });
 });
