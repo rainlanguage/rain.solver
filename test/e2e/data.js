@@ -129,29 +129,36 @@ module.exports = [
                 decimals: 18,
                 symbol: "BLOOD",
             }),
+            USDC[ChainId.BASE],
         ],
         [
             "0xb2cc224c1c9feE385f8ad6a55b4d94E92359DC59",
             // "0xe3715B2a3bB826cd9EC5429eE85B651f95879D34",
             "0x4617C0F3e55930fdD72ec6EA92e79D384987C464",
             "0x7731D522011b4ACE5D812C15539321F373d0E964",
-        ],
-        [LiquidityProviders.UniswapV3, LiquidityProviders.UniswapV2, LiquidityProviders.BaseSwap],
-        ["1", "10000", "10000", "10000"],
-    ],
-    [
-        // unique test for aerodrome slipstream
-        ChainId.BASE,
-        process?.env?.TEST_BASE_RPC,
-        47433654,
-        [WNATIVE[ChainId.BASE], USDC[ChainId.BASE]],
-        [
-            "0xb2cc224c1c9feE385f8ad6a55b4d94E92359DC59",
             "0x8da91A6298eA5d1A8Bc985e99798fd0A0f05701a",
         ],
-        [LiquidityProviders.AerodromeSlipstream],
-        ["1", "100"],
+        [
+            LiquidityProviders.UniswapV3,
+            LiquidityProviders.UniswapV2,
+            LiquidityProviders.BaseSwap,
+            LiquidityProviders.AerodromeSlipstream,
+        ],
+        ["1", "10000", "10000", "100"],
     ],
+    // [
+    //     // unique test for aerodrome slipstream
+    //     ChainId.BASE,
+    //     process?.env?.TEST_BASE_RPC,
+    //     47433654,
+    //     [WNATIVE[ChainId.BASE], USDC[ChainId.BASE]],
+    //     [
+    //         "0xb2cc224c1c9feE385f8ad6a55b4d94E92359DC59",
+    //         "0x8da91A6298eA5d1A8Bc985e99798fd0A0f05701a",
+    //     ],
+    //     [LiquidityProviders.AerodromeSlipstream],
+    //     ["1", "100"],
+    // ],
     // [
     //     // unique test for aerodrome slipstream
     //     ChainId.BASE,
