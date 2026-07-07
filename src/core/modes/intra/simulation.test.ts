@@ -608,10 +608,36 @@ describe("Test IntraOrderbookTradeSimulator", () => {
         });
     });
 
+    describe("Test getClearSignedContexts method", () => {
+        it("cross-assigns signed context for clear3", () => {
+            const primaryContext = [
+                {
+                    signer: "0x0000000000000000000000000000000000000001",
+                    context: ["0x01"],
+                    signature: "0xsig1",
+                },
+            ];
+            const counterpartyContext = [
+                {
+                    signer: "0x0000000000000000000000000000000000000002",
+                    context: ["0x02"],
+                    signature: "0xsig2",
+                },
+            ];
+            simulator.tradeArgs.orderDetails.takeOrder.struct.signedContext = primaryContext;
+            simulator.tradeArgs.counterpartyOrderDetails.struct.signedContext = counterpartyContext;
+
+            expect(simulator.getClearSignedContexts()).toEqual([
+                counterpartyContext,
+                primaryContext,
+            ]);
+        });
+    });
+
     describe("Test getCalldataForV4Order method", () => {
         it("should return for pair v4", () => {
             simulator.tradeArgs.orderDetails.takeOrder.struct.order.type = Order.Type.V4;
-            simulator.tradeArgs.orderDetails.takeOrder.struct.signedContext = ["alice"];
+            simulator.tradeArgs.orderDetails.takeOrder.struct.signedContext = ["alice"] as any;
             (maxFloat as Mock).mockReturnValue("0x1234");
             (encodeFunctionData as Mock)
                 .mockReturnValue("default")
@@ -665,8 +691,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                         aliceBountyVaultId: simulator.inputBountyVaultId,
                         bobBountyVaultId: simulator.outputBountyVaultId,
                     },
-                    simulator.tradeArgs.orderDetails.takeOrder.struct.signedContext,
-                    simulator.tradeArgs.counterpartyOrderDetails.struct.signedContext,
+                    ...simulator.getClearSignedContexts(),
                 ],
             });
             expect(encodeFunctionData).toHaveBeenNthCalledWith(4, {

@@ -3,6 +3,7 @@ import { ONE18 } from "../../../math";
 import { errorSnapshot } from "../../../error";
 import { RainSolverSigner } from "../../../signer";
 import { Pair, TakeOrderDetails } from "../../../order";
+import { SignedContextV2 } from "../../../order/types/v4";
 import { TradeType, FailedSimulation, TaskType } from "../../types";
 import { Result, ABI, RawTransaction, maxFloat } from "../../../common";
 import { SimulationHaltReason, TradeSimulatorBase } from "../simulator";
@@ -167,6 +168,17 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
         return Result.ok(void 0);
     }
 
+    /**
+     * Raindex clear2/clear3 cross-assign signed context: alice's eval reads
+     * bobSignedContext and bob's eval reads aliceSignedContext.
+     */
+    getClearSignedContexts(): [SignedContextV2[], SignedContextV2[]] {
+        const aliceSignedContext =
+            this.tradeArgs.counterpartyOrderDetails.struct.signedContext ?? [];
+        const bobSignedContext = this.tradeArgs.orderDetails.takeOrder.struct.signedContext ?? [];
+        return [aliceSignedContext, bobSignedContext];
+    }
+
     estimateProfit(): bigint {
         const orderMaxInput =
             (this.tradeArgs.orderDetails.takeOrder.quote!.maxOutput *
@@ -311,8 +323,7 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                     aliceBountyVaultId: this.inputBountyVaultId,
                     bobBountyVaultId: this.outputBountyVaultId,
                 },
-                this.tradeArgs.orderDetails.takeOrder.struct.signedContext,
-                this.tradeArgs.counterpartyOrderDetails.struct.signedContext,
+                ...this.getClearSignedContexts(),
             ],
         });
         return encodeFunctionData({
@@ -369,8 +380,7 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                     aliceBountyVaultId: this.inputBountyVaultId,
                     bobBountyVaultId: this.outputBountyVaultId,
                 },
-                this.tradeArgs.orderDetails.takeOrder.struct.signedContext,
-                this.tradeArgs.counterpartyOrderDetails.struct.signedContext,
+                ...this.getClearSignedContexts(),
             ],
         });
         return encodeFunctionData({
