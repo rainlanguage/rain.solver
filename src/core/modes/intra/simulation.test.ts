@@ -87,7 +87,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
             client: {},
         } as any as RainSolver;
         mockSigner = { account: { address: "0xsigner" } } as any as RainSolverSigner;
-        const counterpartyPair = makeOrderDetails(2n * ONE18);
+        const counterpartyPair = makeOrderDetails();
         counterpartyPair.takeOrder.id = "0xid";
         counterpartyPair.takeOrder.quote = { maxOutput: 10n * ONE18, ratio: 2n * ONE18 };
         counterpartyPair.takeOrder.struct = {
