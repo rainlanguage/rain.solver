@@ -104,7 +104,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                 struct: {
                     inputIOIndex: 0,
                     outputIOIndex: 1,
-                    signedContext: [],
+                    signedContext: ["bob"],
                 } as any,
             },
             inputBalance: 2n,
@@ -611,7 +611,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
     describe("Test getCalldataForV4Order method", () => {
         it("should return for pair v4", () => {
             simulator.tradeArgs.orderDetails.takeOrder.struct.order.type = Order.Type.V4;
-            simulator.tradeArgs.orderDetails.takeOrder.struct.signedContext = [];
+            simulator.tradeArgs.orderDetails.takeOrder.struct.signedContext = ["alice"];
             (maxFloat as Mock).mockReturnValue("0x1234");
             (encodeFunctionData as Mock)
                 .mockReturnValue("default")
