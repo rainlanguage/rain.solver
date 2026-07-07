@@ -2,7 +2,9 @@ import { RainSolver } from "../..";
 import { ONE18 } from "../../../math";
 import { errorSnapshot } from "../../../error";
 import { RainSolverSigner } from "../../../signer";
+import { fetchOracleContext } from "../../../oracle";
 import { Pair, TakeOrderDetails } from "../../../order";
+import { SignedContextV2 } from "../../../order/types/v4";
 import { TradeType, FailedSimulation, TaskType } from "../../types";
 import { Result, ABI, RawTransaction, maxFloat } from "../../../common";
 import { SimulationHaltReason, TradeSimulatorBase } from "../simulator";
@@ -23,6 +25,8 @@ export type SimulateIntraOrderbookTradeArgs = {
     orderDetails: Pair;
     /** The counterparty order to trade against */
     counterpartyOrderDetails: TakeOrderDetails;
+    /** Full counterparty pair (oracle URL, signed context refresh) */
+    counterpartyPair: Pair;
     /** The RainSolverSigner instance used for signing transactions */
     signer: RainSolverSigner;
     /** The input token to ETH price (in 18 decimals) */
@@ -163,8 +167,68 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
             signedContext: [],
         };
 
+        const oracleRefreshResult = await this.refreshClearOracleContext();
+        if (oracleRefreshResult.isErr()) {
+            return Result.err(oracleRefreshResult.error);
+        }
+
         params.rawtx.data = this.getCalldata(task);
         return Result.ok(void 0);
+    }
+
+    /**
+     * Re-fetch oracle signed context for both clear legs with the opposing
+     * order owner as counterparty (required for clear-time eval).
+     */
+    async refreshClearOracleContext(): Promise<Result<void, FailedSimulation>> {
+        const { orderDetails, counterpartyPair } = this.tradeArgs;
+        const primaryOwner = orderDetails.takeOrder.struct.order.owner;
+        const counterpartyOwner = counterpartyPair.takeOrder.struct.order.owner;
+
+        const primaryOracleResult = await fetchOracleContext.call(
+            this.tradeArgs.solver.state,
+            orderDetails,
+            counterpartyOwner,
+        );
+        if (primaryOracleResult.isErr()) {
+            const errMsg = await errorSnapshot("", primaryOracleResult.error);
+            this.spanAttributes["error"] = errMsg;
+            this.spanAttributes["duration"] = performance.now() - this.startTime;
+            return Result.err({
+                type: TradeType.IntraOrderbook,
+                spanAttributes: this.spanAttributes,
+                reason: SimulationHaltReason.FailedToFetchOracleContext,
+            });
+        }
+
+        const counterpartyOracleResult = await fetchOracleContext.call(
+            this.tradeArgs.solver.state,
+            counterpartyPair,
+            primaryOwner,
+        );
+        if (counterpartyOracleResult.isErr()) {
+            const errMsg = await errorSnapshot("", counterpartyOracleResult.error);
+            this.spanAttributes["error"] = errMsg;
+            this.spanAttributes["duration"] = performance.now() - this.startTime;
+            return Result.err({
+                type: TradeType.IntraOrderbook,
+                spanAttributes: this.spanAttributes,
+                reason: SimulationHaltReason.FailedToFetchOracleContext,
+            });
+        }
+
+        return Result.ok(void 0);
+    }
+
+    /**
+     * Raindex clear2/clear3 cross-assign signed context: alice's eval reads
+     * bobSignedContext and bob's eval reads aliceSignedContext.
+     */
+    getClearSignedContexts(): [SignedContextV2[], SignedContextV2[]] {
+        const aliceSignedContext =
+            this.tradeArgs.counterpartyOrderDetails.struct.signedContext ?? [];
+        const bobSignedContext = this.tradeArgs.orderDetails.takeOrder.struct.signedContext ?? [];
+        return [aliceSignedContext, bobSignedContext];
     }
 
     estimateProfit(): bigint {
@@ -253,8 +317,7 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                     aliceBountyVaultId: BigInt(this.inputBountyVaultId),
                     bobBountyVaultId: BigInt(this.outputBountyVaultId),
                 },
-                [],
-                [],
+                ...this.getClearSignedContexts(),
             ],
         });
         return encodeFunctionData({
@@ -289,6 +352,7 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                 this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0" ? [] : [task],
             ],
         });
+        const [aliceSignedContext, bobSignedContext] = this.getClearSignedContexts();
         const clear3Calldata = encodeFunctionData({
             abi: ABI.Orderbook.V6.Primary.Orderbook,
             functionName: "clear3",
@@ -311,8 +375,8 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                     aliceBountyVaultId: this.inputBountyVaultId,
                     bobBountyVaultId: this.outputBountyVaultId,
                 },
-                [],
-                [],
+                aliceSignedContext,
+                bobSignedContext,
             ],
         });
         return encodeFunctionData({
@@ -369,8 +433,7 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                     aliceBountyVaultId: this.inputBountyVaultId,
                     bobBountyVaultId: this.outputBountyVaultId,
                 },
-                [],
-                [],
+                ...this.getClearSignedContexts(),
             ],
         });
         return encodeFunctionData({

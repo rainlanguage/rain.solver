@@ -123,6 +123,7 @@ export async function findBestIntraOrderbookTrade(
             solver: this,
             orderDetails,
             counterpartyOrderDetails: counterparty.takeOrder,
+            counterpartyPair: counterparty,
             signer,
             inputToEthPrice:
                 inputToEthPrice ||

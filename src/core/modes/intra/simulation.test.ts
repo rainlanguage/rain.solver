@@ -72,6 +72,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                 chainConfig: {
                     isSpecialL2: true,
                 },
+                oracleHealth: new Map(),
                 contracts: {
                     getAddressesForTrade: vi.fn().mockReturnValue({
                         dispair,
@@ -86,6 +87,14 @@ describe("Test IntraOrderbookTradeSimulator", () => {
             client: {},
         } as any as RainSolver;
         mockSigner = { account: { address: "0xsigner" } } as any as RainSolverSigner;
+        const counterpartyPair = makeOrderDetails(2n * ONE18);
+        counterpartyPair.takeOrder.id = "0xid";
+        counterpartyPair.takeOrder.quote = { maxOutput: 10n * ONE18, ratio: 2n * ONE18 };
+        counterpartyPair.takeOrder.struct = {
+            inputIOIndex: 0,
+            outputIOIndex: 1,
+            signedContext: [],
+        } as any;
         tradeArgs = {
             type: TradeType.IntraOrderbook,
             solver: mockSolver,
@@ -94,14 +103,8 @@ describe("Test IntraOrderbookTradeSimulator", () => {
             inputToEthPrice: "1.2",
             outputToEthPrice: "1.3",
             blockNumber: 123n,
-            counterpartyOrderDetails: {
-                id: "0xid",
-                quote: { maxOutput: 10n * ONE18, ratio: 2n * ONE18 },
-                struct: {
-                    inputIOIndex: 0,
-                    outputIOIndex: 1,
-                } as any,
-            },
+            counterpartyOrderDetails: counterpartyPair.takeOrder,
+            counterpartyPair,
             inputBalance: 2n,
             outputBalance: 1n,
         };
@@ -591,8 +594,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                         aliceBountyVaultId: BigInt(simulator.inputBountyVaultId),
                         bobBountyVaultId: BigInt(simulator.outputBountyVaultId),
                     },
-                    [],
-                    [],
+                    ...simulator.getClearSignedContexts(),
                 ],
             });
             expect(encodeFunctionData).toHaveBeenNthCalledWith(4, {
@@ -600,6 +602,32 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                 functionName: "multicall",
                 args: [["0xencodedData3", "0xencodedData1", "0xencodedData2"]],
             });
+        });
+    });
+
+    describe("Test getClearSignedContexts method", () => {
+        it("cross-assigns signed context for clear3", () => {
+            const primaryContext = [
+                {
+                    signer: "0x0000000000000000000000000000000000000001",
+                    context: ["0x01"],
+                    signature: "0xsig1",
+                },
+            ];
+            const counterpartyContext = [
+                {
+                    signer: "0x0000000000000000000000000000000000000002",
+                    context: ["0x02"],
+                    signature: "0xsig2",
+                },
+            ];
+            simulator.tradeArgs.orderDetails.takeOrder.struct.signedContext = primaryContext;
+            simulator.tradeArgs.counterpartyOrderDetails.struct.signedContext = counterpartyContext;
+
+            expect(simulator.getClearSignedContexts()).toEqual([
+                counterpartyContext,
+                primaryContext,
+            ]);
         });
     });
 
@@ -659,8 +687,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                         aliceBountyVaultId: simulator.inputBountyVaultId,
                         bobBountyVaultId: simulator.outputBountyVaultId,
                     },
-                    [],
-                    [],
+                    ...simulator.getClearSignedContexts(),
                 ],
             });
             expect(encodeFunctionData).toHaveBeenNthCalledWith(4, {

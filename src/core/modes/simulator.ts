@@ -22,6 +22,7 @@ export enum SimulationHaltReason {
     NoRoute,
     OrderRatioGreaterThanMarketPrice,
     FailedToGetTaskBytecode,
+    FailedToFetchOracleContext,
     UndefinedTradeDestinationAddress,
 }
 

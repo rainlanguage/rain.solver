@@ -14,6 +14,7 @@ import { fetchSignedContext } from "./fetch";
 export async function fetchOracleContext(
     this: SharedState,
     orderDetails: Pair,
+    counterparty: `0x${string}` = "0x0000000000000000000000000000000000000000",
 ): Promise<Result<void, OracleError>> {
     const oracleUrl = orderDetails.oracleUrl;
     if (!oracleUrl) return Result.ok(undefined);
@@ -28,7 +29,7 @@ export async function fetchOracleContext(
             order: order as Order.V4,
             inputIOIndex: orderDetails.takeOrder.struct.inputIOIndex,
             outputIOIndex: orderDetails.takeOrder.struct.outputIOIndex,
-            counterparty: "0x0000000000000000000000000000000000000000",
+            counterparty,
         },
         this.oracleHealth,
     );

@@ -100,4 +100,24 @@ describe("fetchOracleContext", () => {
         );
         expect(mockOrderDetails.takeOrder.struct.signedContext).toEqual([validSignedContext]);
     });
+
+    it("passes the counterparty address to fetchSignedContext when provided", async () => {
+        const counterparty = "0x00000000000000000000000000000000000000ab" as const;
+        (fetchSignedContext as Mock).mockResolvedValueOnce(
+            Result.ok({
+                signer: "0x000000000000000000000000abcdef1234567890",
+                context: ["0x01"],
+                signature: "0xsignature",
+            }),
+        );
+
+        const result = await fetchOracleContext.call(mockState, mockOrderDetails, counterparty);
+
+        assert(result.isOk());
+        expect(fetchSignedContext as Mock).toHaveBeenCalledWith(
+            mockOrderDetails.oracleUrl,
+            expect.objectContaining({ counterparty }),
+            mockState.oracleHealth,
+        );
+    });
 });
