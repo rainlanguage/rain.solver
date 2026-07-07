@@ -34,7 +34,10 @@ vi.mock("viem", async (importOriginal) => ({
     encodeFunctionData: vi.fn(),
 }));
 
-function makeOrderDetails(ratio = ONE18): Pair {
+function makeOrderDetails(
+    ratio: typeof ONE18 = ONE18,
+    owner: `0x${string}` = "0x0000000000000000000000000000000000000001",
+): Pair {
     return {
         orderbook: "0xorderbook",
         buyToken: "0xbuyToken" as `0x${string}`,
@@ -42,7 +45,12 @@ function makeOrderDetails(ratio = ONE18): Pair {
         sellTokenDecimals: 18,
         buyTokenDecimals: 18,
         takeOrder: {
-            struct: { order: { type: Order.Type.V3 }, inputIOIndex: 1, outputIOIndex: 0 },
+            struct: {
+                order: { type: Order.Type.V3, owner },
+                inputIOIndex: 1,
+                outputIOIndex: 0,
+                signedContext: [],
+            },
             quote: { ratio },
         },
     } as Pair;
@@ -87,14 +95,14 @@ describe("Test IntraOrderbookTradeSimulator", () => {
             client: {},
         } as any as RainSolver;
         mockSigner = { account: { address: "0xsigner" } } as any as RainSolverSigner;
-        const counterpartyPair = makeOrderDetails();
+        const counterpartyPair = makeOrderDetails(
+            ONE18,
+            "0x0000000000000000000000000000000000000002",
+        );
         counterpartyPair.takeOrder.id = "0xid";
         counterpartyPair.takeOrder.quote = { maxOutput: 10n * ONE18, ratio: 2n * ONE18 };
-        counterpartyPair.takeOrder.struct = {
-            inputIOIndex: 0,
-            outputIOIndex: 1,
-            signedContext: [],
-        } as any;
+        counterpartyPair.takeOrder.struct.inputIOIndex = 0;
+        counterpartyPair.takeOrder.struct.outputIOIndex = 1;
         tradeArgs = {
             type: TradeType.IntraOrderbook,
             solver: mockSolver,
