@@ -162,7 +162,7 @@ export async function findBestIntraOrderbookTrade(
         for (let i = 0; i < results.length; i++) {
             const res = results[i];
             assert(res.isErr()); // for type check as we know all results are errors
-            extendObjectWithHeader(spanAttributes, res.error.spanAttributes, "intraOrderbook." + i);
+            extendObjectWithHeader(spanAttributes, res.error.spanAttributes, i.toString());
             allNoneNodeErrors.push(res.error.noneNodeError);
         }
         if (!results.length) {

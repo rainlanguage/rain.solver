@@ -298,12 +298,12 @@ describe("Test findBestIntraOrderbookTrade", () => {
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             { error: "failed1" },
-            "intraOrderbook.0",
+            "0",
         );
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             { error: "failed2" },
-            "intraOrderbook.1",
+            "1",
         );
     });
 

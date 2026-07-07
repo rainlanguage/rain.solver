@@ -42,7 +42,11 @@ function makeOrderDetails(ratio = ONE18): Pair {
         sellTokenDecimals: 18,
         buyTokenDecimals: 18,
         takeOrder: {
-            struct: { order: { type: Order.Type.V3 }, inputIOIndex: 1, outputIOIndex: 0 },
+            struct: {
+                order: { type: Order.Type.V3 },
+                inputIOIndex: 1,
+                outputIOIndex: 0,
+            },
             quote: { ratio },
         },
     } as Pair;
@@ -100,6 +104,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                 struct: {
                     inputIOIndex: 0,
                     outputIOIndex: 1,
+                    signedContext: ["bob"],
                 } as any,
             },
             inputBalance: 2n,
@@ -606,6 +611,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
     describe("Test getCalldataForV4Order method", () => {
         it("should return for pair v4", () => {
             simulator.tradeArgs.orderDetails.takeOrder.struct.order.type = Order.Type.V4;
+            simulator.tradeArgs.orderDetails.takeOrder.struct.signedContext = ["alice"];
             (maxFloat as Mock).mockReturnValue("0x1234");
             (encodeFunctionData as Mock)
                 .mockReturnValue("default")
@@ -659,8 +665,8 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                         aliceBountyVaultId: simulator.inputBountyVaultId,
                         bobBountyVaultId: simulator.outputBountyVaultId,
                     },
-                    [],
-                    [],
+                    simulator.tradeArgs.orderDetails.takeOrder.struct.signedContext,
+                    simulator.tradeArgs.counterpartyOrderDetails.struct.signedContext,
                 ],
             });
             expect(encodeFunctionData).toHaveBeenNthCalledWith(4, {
