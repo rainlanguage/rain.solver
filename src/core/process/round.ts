@@ -94,24 +94,21 @@ export async function initializeRound(
     });
 
     // report zero output order pairs
-    const zeroOutputReport = new PreAssembledSpan(`order_zero_output`, performance.now());
-    zeroOutputReport.setAttr(
-        "details",
-        JSON.stringify(
-            zeroOutputs.map((p) => {
-                const pair = `${p.buyTokenSymbol}/${p.sellTokenSymbol}`;
-                const owner = p.takeOrder.struct.order.owner.toLowerCase();
-                return {
-                    pair,
-                    owner,
-                    orderHash: p.takeOrder.id,
-                    orderbook: p.orderbook,
-                };
-            }),
-        ),
-    );
-    zeroOutputReport.end();
-    this.logger?.exportPreAssembledSpan(zeroOutputReport, roundSpanCtx?.context);
+    for (let i = 0; i <= zeroOutputs.length; i += 25) {
+        const zeroOutputReport = new PreAssembledSpan(`order_zero_output`, performance.now());
+        zeroOutputs.slice(i, i + 25).forEach((p, j) => {
+            const pair = `${p.buyTokenSymbol}/${p.sellTokenSymbol}`;
+            const owner = p.takeOrder.struct.order.owner.toLowerCase();
+            zeroOutputReport.extendAttrs({
+                [`details.${j}.pair`]: pair,
+                [`details.${j}.owner`]: owner,
+                [`details.${j}.orderHash`]: p.takeOrder.id,
+                [`details.${j}.orderbook`]: p.orderbook,
+            });
+        });
+        zeroOutputReport.end();
+        this.logger?.exportPreAssembledSpan(zeroOutputReport, roundSpanCtx?.context);
+    }
 
     return {
         settlements,
