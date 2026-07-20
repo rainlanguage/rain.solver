@@ -16,7 +16,6 @@
       "noUnusedLocals": true,
       "noUnusedParameters": true,
       "skipLibCheck": true,
-      "inlineSourceMap": true,
-      "ignoreDeprecations": "6.0"
+      "inlineSourceMap": true
     }
   }
