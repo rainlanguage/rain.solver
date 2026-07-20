@@ -294,7 +294,7 @@ export class RainSolverCli {
      */
     async processOrdersForRound(roundSpan: Span, roundCtx: Context) {
         // process round and export the reports
-        const { results, checkpointReports } = await this.rainSolver.processNextRound({
+        const { results, totalLength } = await this.rainSolver.processNextRound({
             span: roundSpan,
             context: roundCtx,
         });
@@ -312,15 +312,11 @@ export class RainSolverCli {
         }
         roundSpan.setAttribute("txUrls.success", successTxs);
         roundSpan.setAttribute("txUrls.failed", failedTxs);
-        roundSpan.setAttribute(
-            "ordersMetadata.roundProcessedOrderPairsCount",
-            checkpointReports.length,
-        );
-        const ordersMetadata = this.orderManager.getCurrentMetadata();
-        for (const key in ordersMetadata) {
+        roundSpan.setAttribute("ordersMetadata.roundProcessedOrderPairsCount", totalLength);
+        for (const key in this.orderManager.metadata) {
             roundSpan.setAttribute(
                 `ordersMetadata.${key}`,
-                ordersMetadata[key as keyof typeof ordersMetadata],
+                this.orderManager.metadata[key as keyof typeof this.orderManager.metadata],
             );
         }
     }

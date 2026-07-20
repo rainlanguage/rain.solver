@@ -29,7 +29,10 @@ export async function initializeRound(
     roundSpanCtx?: SpanWithContext,
     shuffle = true,
 ) {
-    const orders = [...this.orderManager.getNextRoundOrders()];
+    const nextRoundOrders = this.orderManager.getNextRoundOrders();
+    const orders = [...nextRoundOrders.noneZeroOutput];
+    const zeroOutputs = [...nextRoundOrders.zeroOutput];
+    const totalLength = orders.length + zeroOutputs.length;
     const settlements: Settlement[] = [];
     const checkpointReports: PreAssembledSpan[] = [];
 
@@ -49,6 +52,7 @@ export async function initializeRound(
         return {
             settlements,
             checkpointReports,
+            totalLength,
         };
     }
     for (const orderDetails of iterOrders(orders, shuffle)) {
@@ -89,9 +93,30 @@ export async function initializeRound(
         checkpointReports.push(checkpointReport);
     });
 
+    // report zero output order pairs
+    const zeroOutputReport = new PreAssembledSpan(`order_zero_output`, performance.now());
+    zeroOutputReport.setAttr(
+        "details",
+        JSON.stringify(
+            zeroOutputs.map((p) => {
+                const pair = `${p.buyTokenSymbol}/${p.sellTokenSymbol}`;
+                const owner = p.takeOrder.struct.order.owner.toLowerCase();
+                return {
+                    pair,
+                    owner,
+                    orderHash: p.takeOrder.id,
+                    orderbook: p.orderbook,
+                };
+            }),
+        ),
+    );
+    zeroOutputReport.end();
+    this.logger?.exportPreAssembledSpan(zeroOutputReport, roundSpanCtx?.context);
+
     return {
         settlements,
         checkpointReports,
+        totalLength,
     };
 }
 
