@@ -189,7 +189,7 @@ export class WalletManager {
                 }
                 const { wait } = await this.mainSigner.sendTx({
                     to: wallet as `0x${string}`,
-                    value: amount,
+                    value: amount - balance,
                 });
                 const receipt = await wait();
                 if (receipt.status === "success") {
