@@ -16,7 +16,7 @@
       let
         pkgs = rainix.pkgs.${system};
       in
-      rec {
+      {
         # For `nix develop`:
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = [

@@ -308,9 +308,10 @@ export class WalletManager {
      * Sweeps the given wallet's erc20 token holdings (from state's watched tokens list) to the main wallet,
      * this function is fully instrumented for opentelemetry and will return a report of the sweep process
      * @param wallet - The wallet to sweep
+     * @param withdrawGas - Whether or not should withdraw the remaining gas - default: true
      * @returns The report of the sweep process
      */
-    async sweepWallet(wallet: RainSolverSigner): Promise<PreAssembledSpan> {
+    async sweepWallet(wallet: RainSolverSigner, withdrawGas = true): Promise<PreAssembledSpan> {
         const report = new PreAssembledSpan("sweep-wallet");
         report.setAttr("details.wallet", wallet.account.address);
         report.setAttr("details.destination", this.mainWallet.address);
@@ -357,32 +358,34 @@ export class WalletManager {
         }
 
         // sweep remaining gas from the wallet
-        try {
-            const { amount, txHash } = await this.transferRemainingGasFrom(wallet);
-            if (txHash) {
-                report.setAttr(
-                    `details.transfers.remainingGas.tx`,
-                    this.state.chainConfig.blockExplorers?.default.url + "/tx/" + txHash,
-                );
-            }
-            report.setAttr(`details.transfers.remainingGas.status`, "Transferred successfully");
-            report.setAttr(`details.transfers.remainingGas.amount`, formatUnits(amount, 18));
-        } catch (error: any) {
-            hadFailures = true;
-            if ("txHash" in error) {
-                report.setAttr(
-                    `details.transfers.remainingGas.tx`,
-                    this.state.chainConfig.blockExplorers?.default.url + "/tx/" + error.txHash,
-                );
-                report.setAttr(
-                    `details.transfers.remainingGas.status`,
-                    await errorSnapshot("", error.error),
-                );
-            } else {
-                report.setAttr(
-                    `details.transfers.remainingGas.status`,
-                    await errorSnapshot("", error),
-                );
+        if (withdrawGas) {
+            try {
+                const { amount, txHash } = await this.transferRemainingGasFrom(wallet);
+                if (txHash) {
+                    report.setAttr(
+                        `details.transfers.remainingGas.tx`,
+                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + txHash,
+                    );
+                }
+                report.setAttr(`details.transfers.remainingGas.status`, "Transferred successfully");
+                report.setAttr(`details.transfers.remainingGas.amount`, formatUnits(amount, 18));
+            } catch (error: any) {
+                hadFailures = true;
+                if ("txHash" in error) {
+                    report.setAttr(
+                        `details.transfers.remainingGas.tx`,
+                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + error.txHash,
+                    );
+                    report.setAttr(
+                        `details.transfers.remainingGas.status`,
+                        await errorSnapshot("", error.error),
+                    );
+                } else {
+                    report.setAttr(
+                        `details.transfers.remainingGas.status`,
+                        await errorSnapshot("", error),
+                    );
+                }
             }
         }
 
@@ -423,7 +426,7 @@ export class WalletManager {
      * @returns The report of the conversion process
      */
     async convertHoldingsToGas(swapCostMultiplier?: bigint): Promise<PreAssembledSpan> {
-        const report = new PreAssembledSpan("sweep-wallet");
+        const report = new PreAssembledSpan("convert-to-gas");
         report.setAttr("details.wallet", this.mainWallet.address);
 
         for (const [, tokenDetails] of this.state.watchedTokens) {
