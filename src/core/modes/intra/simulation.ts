@@ -311,8 +311,8 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                     aliceBountyVaultId: this.inputBountyVaultId,
                     bobBountyVaultId: this.outputBountyVaultId,
                 },
-                this.tradeArgs.orderDetails.takeOrder.struct.signedContext,
-                this.tradeArgs.counterpartyOrderDetails.struct.signedContext,
+                this.tradeArgs.counterpartyOrderDetails.struct.signedContext, // bob's signedContext for alice
+                this.tradeArgs.orderDetails.takeOrder.struct.signedContext, // alice's signedContext for bob
             ],
         });
         return encodeFunctionData({
@@ -369,8 +369,8 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                     aliceBountyVaultId: this.inputBountyVaultId,
                     bobBountyVaultId: this.outputBountyVaultId,
                 },
-                this.tradeArgs.orderDetails.takeOrder.struct.signedContext,
-                this.tradeArgs.counterpartyOrderDetails.struct.signedContext,
+                this.tradeArgs.counterpartyOrderDetails.struct.signedContext, // bob's signedContext for alice
+                this.tradeArgs.orderDetails.takeOrder.struct.signedContext, // alice's signedContext for bob
             ],
         });
         return encodeFunctionData({
