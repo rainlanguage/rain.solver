@@ -182,6 +182,7 @@ describe("Test RainSolverCli", () => {
             sync: vi.fn(),
             downscaleProtection: vi.fn(),
             getCurrentMetadata: vi.fn().mockReturnValue({ key: "value" }),
+            metadata: { key: "value" },
         } as any;
 
         mockWalletManager = {
@@ -724,7 +725,6 @@ describe("Test RainSolverCli", () => {
             expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("txUrls.failed", [
                 "https://etherscan.io/tx/0x789",
             ]);
-            expect(mockOrderManager.getCurrentMetadata).toHaveBeenCalledTimes(1);
             expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("ordersMetadata.key", "value");
         });
 

@@ -585,11 +585,12 @@ describe("Test OrderManager", () => {
         await orderManager.addOrder(mockOrder as any);
 
         const result = orderManager.getNextRoundOrders();
-        expect(Array.isArray(result)).toBe(true);
-        expect(result.length).toBeGreaterThan(0);
+        expect(Array.isArray(result.noneZeroOutput)).toBe(true);
+        expect(Array.isArray(result.zeroOutput)).toBe(true);
+        expect(result.noneZeroOutput.length).toBeGreaterThan(0);
 
         // check the structure of the first orderbook's bundled orders
-        const bundledOrders = result;
+        const bundledOrders = result.noneZeroOutput;
         expect(Array.isArray(bundledOrders)).toBe(true);
         expect(bundledOrders.length).toBeGreaterThan(0);
 
@@ -953,7 +954,7 @@ describe("Test OrderManager", () => {
         // helper to get the order hashes returned in the round
         const getRoundHashes = () => {
             const roundOrders = orderManager.getNextRoundOrders();
-            return roundOrders.map((o) => o.takeOrder.id);
+            return roundOrders.noneZeroOutput.map((o) => o.takeOrder.id);
         };
 
         // first call: should return the first 3 orders
@@ -981,7 +982,7 @@ describe("Test OrderManager", () => {
 
         // get the takeOrder object from getNextRoundOrders
         const roundOrders = orderManager.getNextRoundOrders();
-        const orderDetails = roundOrders[0];
+        const orderDetails = roundOrders.noneZeroOutput[0];
 
         // update the quote field via the object from getNextRoundOrders
         orderDetails.takeOrder.quote = { maxOutput: 999n, ratio: 888n };
@@ -1048,7 +1049,7 @@ describe("Test OrderManager", () => {
 
         // should find orderB as opposing order for orderA in the same orderbook
         const opposing = orderManager.getCounterpartyOrders(
-            roundOrders[0],
+            roundOrders.noneZeroOutput[0],
             CounterpartySource.IntraOrderbook,
         );
         expect(Array.isArray(opposing)).toBe(true);
@@ -1124,7 +1125,7 @@ describe("Test OrderManager", () => {
 
         // should find orderB as opposing order for orderA across orderbooks
         const opposing = orderManager.getCounterpartyOrders(
-            roundOrders[0],
+            roundOrders.noneZeroOutput[0],
             CounterpartySource.InterOrderbook,
         );
         for (const counteryparties of opposing) {
