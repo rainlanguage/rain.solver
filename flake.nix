@@ -4,14 +4,21 @@
     rainix.url = "github:rainprotocol/rainix";
   };
 
-  outputs = { self, flake-utils, rainix }:
+  outputs =
+    {
+      self,
+      flake-utils,
+      rainix,
+    }:
 
-  flake-utils.lib.eachDefaultSystem (system:
-    let
-      pkgs = rainix.pkgs.${system};
-    in rec {
-      # For `nix develop`:
-      devShells.default = pkgs.mkShell {
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = rainix.pkgs.${system};
+      in
+      {
+        # For `nix develop`:
+        devShells.default = pkgs.mkShell {
           nativeBuildInputs = [
             rainix.node-build-inputs.${system}
             rainix.sol-build-inputs.${system}
@@ -22,6 +29,6 @@
             curl -sS -o ./chains.json "https://chainlist.org/rpcs.json"
           '';
         };
-    }
-  );
+      }
+    );
 }

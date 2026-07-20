@@ -624,7 +624,7 @@ describe("Test WalletManager", () => {
             const report = await walletManager.convertHoldingsToGas(2n);
 
             // verify report structure
-            expect(report.name).toBe("sweep-wallet");
+            expect(report.name).toBe("convert-to-gas");
             expect(report.attributes["details.wallet"]).toBe(walletManager.mainWallet.address);
 
             // verify TEST1 conversion details

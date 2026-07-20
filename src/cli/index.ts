@@ -62,6 +62,8 @@ export class RainSolverCli {
 
     private nextGasReset = Date.now() + DAY;
     private nextDatafetcherReset: number;
+    /** Wallet sweeper timer (once every 5 days) */
+    private lastSweepTime = Date.now() + 5 * DAY;
 
     private constructor(
         state: SharedState,
@@ -357,6 +359,17 @@ export class RainSolverCli {
 
             // re-evaluate owner limits
             await this.orderManager.downscaleProtection();
+        }
+
+        const now = Date.now();
+        if (this.lastSweepTime <= now) {
+            this.lastSweepTime = now + 5 * DAY;
+            // sweep worker wallet bounties
+            for (const [, worker] of this.walletManager.workers.signers) {
+                await this.walletManager.sweepWallet(worker, false).then((report) => {
+                    this.logger.exportPreAssembledSpan(report, roundCtx);
+                });
+            }
         }
     }
 
