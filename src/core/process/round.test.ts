@@ -112,7 +112,10 @@ describe("Test initializeRound", () => {
             ];
 
             const mockSettleFn = vi.fn();
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                noneZeroOutput: mockOrders,
+                zeroOutput: [],
+            });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
             (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
 
@@ -166,7 +169,10 @@ describe("Test initializeRound", () => {
                 },
             ];
 
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                noneZeroOutput: mockOrders,
+                zeroOutput: [],
+            });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
                 account: { address: "0xSigner" },
             });
@@ -208,7 +214,10 @@ describe("Test initializeRound", () => {
 
     describe("empty orders handling", () => {
         it("should return empty settlements and checkpointReports for empty orders", async () => {
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue([]);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                noneZeroOutput: [],
+                zeroOutput: [],
+            });
 
             const result: initializeRoundType = await initializeRound.call(mockSolver);
 
@@ -221,7 +230,10 @@ describe("Test initializeRound", () => {
 
     describe("method call verification", () => {
         it("should call getNextRoundOrders with correct parameter", async () => {
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue([]);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                noneZeroOutput: [],
+                zeroOutput: [],
+            });
 
             await initializeRound.call(mockSolver, undefined, false);
 
@@ -248,7 +260,10 @@ describe("Test initializeRound", () => {
                 },
             ];
 
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                noneZeroOutput: mockOrders,
+                zeroOutput: [],
+            });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
 
             await initializeRound.call(mockSolver);
@@ -270,7 +285,10 @@ describe("Test initializeRound", () => {
             };
             const mockOrders = [orderDetails];
 
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                noneZeroOutput: mockOrders,
+                zeroOutput: [],
+            });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
 
             await initializeRound.call(mockSolver);
@@ -297,7 +315,10 @@ describe("Test initializeRound", () => {
                 },
             ];
 
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                noneZeroOutput: mockOrders,
+                zeroOutput: [],
+            });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
                 account: { address: "0xSignerDEF" },
             });
@@ -341,7 +362,10 @@ describe("Test initializeRound", () => {
                 },
             ];
 
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                noneZeroOutput: mockOrders,
+                zeroOutput: [],
+            });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
 
             const result: initializeRoundType = await initializeRound.call(
@@ -383,7 +407,10 @@ describe("Test initializeRound", () => {
                 },
             ];
 
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                noneZeroOutput: mockOrders,
+                zeroOutput: [],
+            });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
 
             const result: initializeRoundType = await initializeRound.call(mockSolver);
@@ -406,7 +433,10 @@ describe("Test initializeRound", () => {
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
             ];
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                noneZeroOutput: mockOrders,
+                zeroOutput: [],
+            });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
             (mockSolver as any).logger = {
                 exportPreAssembledSpan: vi.fn(),
@@ -414,7 +444,7 @@ describe("Test initializeRound", () => {
             const mockCtx = { fields: {} } as any;
             await initializeRound.call(mockSolver, { span: {} as any, context: mockCtx });
 
-            expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledTimes(1);
+            expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledTimes(2);
             expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledWith(
                 expect.anything(),
                 mockCtx,
@@ -434,7 +464,10 @@ describe("Test initializeRound", () => {
                     takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
                 },
             ];
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                noneZeroOutput: mockOrders,
+                zeroOutput: [],
+            });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
             const loggerExportReport = vi.spyOn(
                 RainSolverLogger.prototype,
@@ -449,13 +482,17 @@ describe("Test initializeRound", () => {
 
     describe("return value structure", () => {
         it("should always return object with settlements and checkpointReports arrays", async () => {
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue([]);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                noneZeroOutput: [],
+                zeroOutput: [],
+            });
 
             const result: initializeRoundType = await initializeRound.call(mockSolver);
 
             expect(result).toEqual({
                 settlements: expect.any(Array),
                 checkpointReports: expect.any(Array),
+                totalLength: 0,
             });
             expect(Array.isArray(result.settlements)).toBe(true);
             expect(Array.isArray(result.checkpointReports)).toBe(true);
@@ -473,7 +510,10 @@ describe("Test initializeRound", () => {
                 },
             ];
 
-            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                noneZeroOutput: mockOrders,
+                zeroOutput: [],
+            });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
                 account: { address: "0xSigner" },
             });
@@ -506,7 +546,10 @@ describe("Test initializeRound", () => {
             },
         ];
         const mockSettleFn = vi.fn();
-        (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+        (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+            noneZeroOutput: mockOrders,
+            zeroOutput: [],
+        });
         (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
         (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
 
@@ -601,7 +644,10 @@ describe("Test initializeRound", () => {
             },
         ];
         const mockSettleFn = vi.fn();
-        (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue(mockOrders);
+        (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+            noneZeroOutput: mockOrders,
+            zeroOutput: [],
+        });
         (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
         (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
         (mockState.contracts.getAddressesForTrade as Mock).mockReturnValue(undefined); // simulate missing trade addresses

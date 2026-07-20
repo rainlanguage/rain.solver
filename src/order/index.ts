@@ -71,6 +71,14 @@ export class OrderManager {
      */
     ownerTokenVaultMap: OrderbookOwnerTokenVaultsMap;
 
+    /** Metadata details about orders currently being processed */
+    metadata = {
+        totalCount: 0,
+        totalOwnersCount: 0,
+        totalPairsCount: 0,
+        totalDistinctPairsCount: 0,
+    };
+
     /**
      * Creates a new OrderManager instance
      * @param state - SharedState instance
@@ -121,6 +129,7 @@ export class OrderManager {
                 );
             }
         }
+        this.getCurrentMetadata?.();
         return Result.ok(report);
     }
 
@@ -188,6 +197,8 @@ export class OrderManager {
             this.addToPairMaps(pairs[j]);
             this.addToTokenVaultsMap(pairs[j]);
         }
+
+        this.getCurrentMetadata?.();
 
         return Result.ok(undefined);
     }
@@ -339,6 +350,7 @@ export class OrderManager {
                 }
             }
         }
+        this.getCurrentMetadata?.();
     }
 
     /**
@@ -428,10 +440,19 @@ export class OrderManager {
      * Prepares orders for the next round
      * @returns Array of bundled orders grouped by orderbook
      */
-    getNextRoundOrders(): Pair[] {
-        const result: Pair[] = [];
+    getNextRoundOrders(): {
+        noneZeroOutput: Pair[];
+        zeroOutput: Pair[];
+    } {
+        const result: {
+            noneZeroOutput: Pair[];
+            zeroOutput: Pair[];
+        } = {
+            noneZeroOutput: [],
+            zeroOutput: [],
+        };
         this.ownersMap.forEach((ownersProfileMap) => {
-            ownersProfileMap.forEach((ownerProfile) => {
+            ownersProfileMap.forEach((ownerProfile, owner) => {
                 let remainingLimit = ownerProfile.limit;
 
                 // consume orders limits
@@ -447,7 +468,40 @@ export class OrderManager {
                     ownerProfile.lastIndex += remainingConsumingOrders.length;
                     consumingOrders.push(...remainingConsumingOrders);
                 }
-                result.push(...consumingOrders);
+
+                // get updated balance for the pairs from owner vaults map
+                for (const pair of consumingOrders) {
+                    pair.sellTokenVaultBalance =
+                        this.ownerTokenVaultMap
+                            .get(pair.orderbook)
+                            ?.get(owner)
+                            ?.get(pair.sellToken)
+                            ?.get(
+                                BigInt(
+                                    pair.takeOrder.struct.order.validOutputs[
+                                        pair.takeOrder.struct.outputIOIndex
+                                    ].vaultId,
+                                ),
+                            )?.balance ?? pair.sellTokenVaultBalance;
+                    pair.buyTokenVaultBalance =
+                        this.ownerTokenVaultMap
+                            .get(pair.orderbook)
+                            ?.get(owner)
+                            ?.get(pair.buyToken)
+                            ?.get(
+                                BigInt(
+                                    pair.takeOrder.struct.order.validInputs[
+                                        pair.takeOrder.struct.inputIOIndex
+                                    ].vaultId,
+                                ),
+                            )?.balance ?? pair.buyTokenVaultBalance;
+
+                    if (pair.sellTokenVaultBalance <= 0n) {
+                        result.zeroOutput.push(pair);
+                    } else {
+                        result.noneZeroOutput.push(pair);
+                    }
+                }
             });
         });
         return result;
@@ -578,12 +632,13 @@ export class OrderManager {
             totalPairsCount += obPairs;
             totalDistinctPairsCount = distinctPairsSet.size;
         });
-        return {
+        this.metadata = {
             totalCount,
             totalOwnersCount,
             totalPairsCount,
             totalDistinctPairsCount,
         };
+        return this.metadata;
     }
 }
 

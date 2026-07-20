@@ -735,7 +735,7 @@ for (let i = 0; i < testData.length; i++) {
                     orders = orderManager.getNextRoundOrders(false);
 
                     // mock init quotes
-                    orders.forEach((pair) => {
+                    orders.noneZeroOutput.forEach((pair) => {
                         pair.takeOrder.quote = {
                             ratio: ethers.constants.Zero.toBigInt(),
                             maxOutput: tokens
@@ -1150,7 +1150,7 @@ for (let i = 0; i < testData.length; i++) {
                     orders = orderManager.getNextRoundOrders(false);
 
                     // mock init quotes
-                    orders.forEach((pair) => {
+                    orders.noneZeroOutput.forEach((pair) => {
                         pair.takeOrder.quote = {
                             ratio: ethers.constants.Zero.toBigInt(),
                             maxOutput: tokens
@@ -1546,7 +1546,7 @@ for (let i = 0; i < testData.length; i++) {
                     orders = orderManager.getNextRoundOrders(false);
 
                     // mock init quotes
-                    orders.forEach((pair) => {
+                    orders.noneZeroOutput.forEach((pair) => {
                         pair.takeOrder.quote = {
                             ratio: ethers.constants.Zero.toBigInt(),
                             maxOutput: tokens
@@ -2596,7 +2596,7 @@ for (let i = 0; i < testData.length; i++) {
                     orders = orderManager.getNextRoundOrders(false);
 
                     // mock init quotes
-                    orders.forEach((pair) => {
+                    orders.noneZeroOutput.forEach((pair) => {
                         pair.takeOrder.quote = {
                             ratio: ethers.constants.Zero.toBigInt(),
                             maxOutput: tokens
@@ -3004,7 +3004,7 @@ for (let i = 0; i < testData.length; i++) {
                     orders = orderManager.getNextRoundOrders(false);
 
                     // mock init quotes
-                    orders.forEach((pair) => {
+                    orders.noneZeroOutput.forEach((pair) => {
                         pair.takeOrder.quote = {
                             ratio: ethers.constants.Zero.toBigInt(),
                             maxOutput: tokens
@@ -3417,7 +3417,7 @@ for (let i = 0; i < testData.length; i++) {
                     orders = orderManager.getNextRoundOrders(false);
 
                     // mock init quotes
-                    orders.forEach((pair) => {
+                    orders.noneZeroOutput.forEach((pair) => {
                         pair.takeOrder.quote = {
                             ratio: ethers.constants.Zero.toBigInt(),
                             maxOutput: tokens
