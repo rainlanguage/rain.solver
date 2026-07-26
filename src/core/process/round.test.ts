@@ -435,7 +435,7 @@ describe("Test initializeRound", () => {
             ];
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
                 nonZeroOutput: mockOrders,
-                zeroOutput: [],
+                zeroOutput: mockOrders,
             });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
             (mockSolver as any).logger = {
