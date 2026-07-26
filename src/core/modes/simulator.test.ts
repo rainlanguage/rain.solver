@@ -49,6 +49,7 @@ describe("Test TradeSimulatorBase", () => {
             appOptions: {
                 gasLimitMultiplier: 1.5,
                 gasCoveragePercentage: "100",
+                headroom: 3.5,
             },
         } as any as RainSolver;
         mockSigner = { name: "signer" } as RainSolverSigner;
@@ -257,7 +258,10 @@ describe("Test TradeSimulatorBase", () => {
                 Result.err(setTransactionDataError),
             );
             const headroom = BigInt(
-                (Number(mockSolver.appOptions.gasCoveragePercentage) * 102.5).toFixed(),
+                (
+                    Number(mockSolver.appOptions.gasCoveragePercentage) *
+                    mockSolver.appOptions.headroom
+                ).toFixed(),
             );
 
             const result = await mockSimulator.trySimulateTrade();
@@ -326,7 +330,10 @@ describe("Test TradeSimulatorBase", () => {
             };
             (dryrun as Mock).mockResolvedValueOnce(Result.err(dryrunError));
             const headroom = BigInt(
-                (Number(mockSolver.appOptions.gasCoveragePercentage) * 102.5).toFixed(),
+                (
+                    Number(mockSolver.appOptions.gasCoveragePercentage) *
+                    mockSolver.appOptions.headroom
+                ).toFixed(),
             );
 
             const result = await mockSimulator.trySimulateTrade();
@@ -410,7 +417,10 @@ describe("Test TradeSimulatorBase", () => {
                 .mockResolvedValueOnce(Result.ok(dryrunResult))
                 .mockResolvedValueOnce(Result.ok(dryrunResult2));
             const headroom = BigInt(
-                (Number(mockSolver.appOptions.gasCoveragePercentage) * 102.5).toFixed(),
+                (
+                    Number(mockSolver.appOptions.gasCoveragePercentage) *
+                    mockSolver.appOptions.headroom
+                ).toFixed(),
             );
             // last call to setTransactionData fails
             const setTransactionDataError = {
@@ -525,7 +535,10 @@ describe("Test TradeSimulatorBase", () => {
                 .mockResolvedValueOnce(Result.ok(dryrunResult))
                 .mockResolvedValueOnce(Result.ok(dryrunResult2));
             const headroom = BigInt(
-                (Number(mockSolver.appOptions.gasCoveragePercentage) * 102.5).toFixed(),
+                (
+                    Number(mockSolver.appOptions.gasCoveragePercentage) *
+                    mockSolver.appOptions.headroom
+                ).toFixed(),
             );
             const profitEstimate = 1234n;
             (mockSimulator.estimateProfit as Mock).mockReturnValueOnce(profitEstimate);

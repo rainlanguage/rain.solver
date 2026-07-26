@@ -120,6 +120,7 @@ export async function sweepFunds(opts: SweepOptions) {
         orderbookTradeTypes: {} as any,
         maxConcurrency: 0,
         skipSweep: new Set(),
+        headroom: 0,
     };
 
     // prepare state config fields
