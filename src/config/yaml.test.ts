@@ -31,6 +31,7 @@ route: multi
 sleep: 20
 poolUpdateInterval: 30
 gasCoveragePercentage: 110
+headroom: 2.5
 txGas: 15000
 quoteGas: 2000000
 botMinBalance: 50.5
@@ -151,6 +152,7 @@ orderbookTradeTypes:
             },
             maxConcurrency: 15,
             skipSweep: new Set([`0x${"8".repeat(40)}`, `0x${"9".repeat(40)}`]),
+            headroom: 102.5,
         };
 
         // AppOptions returned from fromYaml() should match expected
@@ -278,6 +280,7 @@ orderbookTradeTypes:
         assert.deepEqual(result.timeout, 20000);
         assert.equal(result.maxRatio, true);
         assert.equal(result.maxConcurrency, 1);
+        assert.equal(result.headroom, 101.5);
 
         // ownerProfile
         const expectedOwnerProfile = {
