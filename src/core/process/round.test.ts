@@ -113,7 +113,7 @@ describe("Test initializeRound", () => {
 
             const mockSettleFn = vi.fn();
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-                noneZeroOutput: mockOrders,
+                nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
@@ -170,7 +170,7 @@ describe("Test initializeRound", () => {
             ];
 
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-                noneZeroOutput: mockOrders,
+                nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
@@ -215,7 +215,7 @@ describe("Test initializeRound", () => {
     describe("empty orders handling", () => {
         it("should return empty settlements and checkpointReports for empty orders", async () => {
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-                noneZeroOutput: [],
+                nonZeroOutput: [],
                 zeroOutput: [],
             });
 
@@ -231,7 +231,7 @@ describe("Test initializeRound", () => {
     describe("method call verification", () => {
         it("should call getNextRoundOrders with correct parameter", async () => {
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-                noneZeroOutput: [],
+                nonZeroOutput: [],
                 zeroOutput: [],
             });
 
@@ -261,7 +261,7 @@ describe("Test initializeRound", () => {
             ];
 
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-                noneZeroOutput: mockOrders,
+                nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
@@ -286,7 +286,7 @@ describe("Test initializeRound", () => {
             const mockOrders = [orderDetails];
 
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-                noneZeroOutput: mockOrders,
+                nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
@@ -316,7 +316,7 @@ describe("Test initializeRound", () => {
             ];
 
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-                noneZeroOutput: mockOrders,
+                nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
@@ -363,7 +363,7 @@ describe("Test initializeRound", () => {
             ];
 
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-                noneZeroOutput: mockOrders,
+                nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
@@ -408,7 +408,7 @@ describe("Test initializeRound", () => {
             ];
 
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-                noneZeroOutput: mockOrders,
+                nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
@@ -434,7 +434,7 @@ describe("Test initializeRound", () => {
                 },
             ];
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-                noneZeroOutput: mockOrders,
+                nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
@@ -465,7 +465,7 @@ describe("Test initializeRound", () => {
                 },
             ];
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-                noneZeroOutput: mockOrders,
+                nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
@@ -483,7 +483,7 @@ describe("Test initializeRound", () => {
     describe("return value structure", () => {
         it("should always return object with settlements and checkpointReports arrays", async () => {
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-                noneZeroOutput: [],
+                nonZeroOutput: [],
                 zeroOutput: [],
             });
 
@@ -511,7 +511,7 @@ describe("Test initializeRound", () => {
             ];
 
             (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-                noneZeroOutput: mockOrders,
+                nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
             (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
@@ -547,7 +547,7 @@ describe("Test initializeRound", () => {
         ];
         const mockSettleFn = vi.fn();
         (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-            noneZeroOutput: mockOrders,
+            nonZeroOutput: mockOrders,
             zeroOutput: [],
         });
         (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
@@ -645,7 +645,7 @@ describe("Test initializeRound", () => {
         ];
         const mockSettleFn = vi.fn();
         (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-            noneZeroOutput: mockOrders,
+            nonZeroOutput: mockOrders,
             zeroOutput: [],
         });
         (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);

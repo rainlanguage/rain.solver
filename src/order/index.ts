@@ -441,14 +441,14 @@ export class OrderManager {
      * @returns Array of bundled orders grouped by orderbook
      */
     getNextRoundOrders(): {
-        noneZeroOutput: Pair[];
+        nonZeroOutput: Pair[];
         zeroOutput: Pair[];
     } {
         const result: {
-            noneZeroOutput: Pair[];
+            nonZeroOutput: Pair[];
             zeroOutput: Pair[];
         } = {
-            noneZeroOutput: [],
+            nonZeroOutput: [],
             zeroOutput: [],
         };
         this.ownersMap.forEach((ownersProfileMap) => {
@@ -499,7 +499,7 @@ export class OrderManager {
                     if (pair.sellTokenVaultBalance <= 0n) {
                         result.zeroOutput.push(pair);
                     } else {
-                        result.noneZeroOutput.push(pair);
+                        result.nonZeroOutput.push(pair);
                     }
                 }
             });

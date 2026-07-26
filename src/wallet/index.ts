@@ -316,77 +316,58 @@ export class WalletManager {
         report.setAttr("details.wallet", wallet.account.address);
         report.setAttr("details.destination", this.mainWallet.address);
 
+        const transfers: any[] = [];
         let hadFailures = false;
 
         // sweep erc20 tokens from the wallet
         for (const [, tokenDetails] of this.state.watchedTokens) {
-            report.setAttr(`details.transfers.${tokenDetails.symbol}.token`, tokenDetails.address);
+            const transfer: any = {};
+            transfer.symbol = tokenDetails.symbol;
+            transfer.token = tokenDetails.address;
             try {
                 const { amount, txHash } = await this.transferTokenFrom(wallet, tokenDetails);
                 if (txHash) {
-                    report.setAttr(
-                        `details.transfers.${tokenDetails.symbol}.tx`,
-                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + txHash,
-                    );
+                    transfer.tx =
+                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + txHash;
                 }
-                report.setAttr(
-                    `details.transfers.${tokenDetails.symbol}.status`,
-                    "Transferred successfully",
-                );
-                report.setAttr(
-                    `details.transfers.${tokenDetails.symbol}.amount`,
-                    formatUnits(amount, tokenDetails.decimals),
-                );
+                transfer.status = "Transferred successfully";
+                transfer.amount = formatUnits(amount, tokenDetails.decimals);
             } catch (error: any) {
                 hadFailures = true;
                 if ("txHash" in error) {
-                    report.setAttr(
-                        `details.transfers.${tokenDetails.symbol}.tx`,
-                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + error.txHash,
-                    );
-                    report.setAttr(
-                        `details.transfers.${tokenDetails.symbol}.status`,
-                        await errorSnapshot("", error.error),
-                    );
+                    transfer.tx =
+                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + error.txHash;
+                    transfer.status = await errorSnapshot("", error.error);
                 } else {
-                    report.setAttr(
-                        `details.transfers.${tokenDetails.symbol}.status`,
-                        await errorSnapshot("Failed to transfer", error),
-                    );
+                    transfer.status = await errorSnapshot("Failed to transfer", error);
                 }
             }
+            transfers.push(transfer);
         }
 
         // sweep remaining gas from the wallet
         if (withdrawGas) {
+            const remainingGas: any = {};
             try {
                 const { amount, txHash } = await this.transferRemainingGasFrom(wallet);
                 if (txHash) {
-                    report.setAttr(
-                        `details.transfers.remainingGas.tx`,
-                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + txHash,
-                    );
+                    remainingGas.tx =
+                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + txHash;
                 }
-                report.setAttr(`details.transfers.remainingGas.status`, "Transferred successfully");
-                report.setAttr(`details.transfers.remainingGas.amount`, formatUnits(amount, 18));
+                remainingGas.status = "Transferred successfully";
+                remainingGas.amount = formatUnits(amount, 18);
             } catch (error: any) {
                 hadFailures = true;
                 if ("txHash" in error) {
-                    report.setAttr(
-                        `details.transfers.remainingGas.tx`,
-                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + error.txHash,
-                    );
-                    report.setAttr(
-                        `details.transfers.remainingGas.status`,
-                        await errorSnapshot("", error.error),
-                    );
+                    remainingGas.tx =
+                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + error.txHash;
+                    remainingGas.status = await errorSnapshot("", error.error);
                 } else {
-                    report.setAttr(
-                        `details.transfers.remainingGas.status`,
-                        await errorSnapshot("", error),
-                    );
+                    remainingGas.status = await errorSnapshot("", error);
                 }
             }
+
+            transfers.push(remainingGas);
         }
 
         // if there were failures, set the severity to low and set the status to error
@@ -402,6 +383,7 @@ export class WalletManager {
                 message: "Successfully swept wallet tokens",
             });
         }
+        report.setAttr("transfers", JSON.stringify(transfers));
 
         report.end();
         return report;
@@ -429,11 +411,14 @@ export class WalletManager {
         const report = new PreAssembledSpan("convert-to-gas");
         report.setAttr("details.wallet", this.mainWallet.address);
 
+        const swaps: any[] = [];
         for (const [, tokenDetails] of this.state.watchedTokens) {
-            report.setAttr(`details.swaps.${tokenDetails.symbol}.token`, tokenDetails.address);
+            const swap: any = {};
+            swap.symbol = tokenDetails.symbol;
+            swap.token = tokenDetails.address;
 
             if (this.state.appOptions.skipSweep.has(tokenDetails.address.toLowerCase())) {
-                report.setAttr(`details.swaps.${tokenDetails.symbol}.status`, "skipped");
+                swap.status = "skipped";
                 continue;
             }
 
@@ -450,59 +435,39 @@ export class WalletManager {
 
                 // handle the result as report attributes
                 if (txHash) {
-                    report.setAttr(
-                        `details.swaps.${tokenDetails.symbol}.tx`,
-                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + txHash,
-                    );
+                    swap.tx = this.state.chainConfig.blockExplorers?.default.url + "/tx/" + txHash;
                 }
                 if (typeof status === "string") {
-                    report.setAttr(`details.swaps.${tokenDetails.symbol}.status`, status);
+                    swap.status = status;
                 }
                 if (typeof amount === "bigint") {
-                    report.setAttr(
-                        `details.swaps.${tokenDetails.symbol}.amount`,
-                        formatUnits(amount, tokenDetails.decimals),
-                    );
+                    swap.amount = formatUnits(amount, tokenDetails.decimals);
                 }
                 if (typeof receivedAmount === "bigint") {
-                    report.setAttr(
-                        `details.swaps.${tokenDetails.symbol}.receivedAmount`,
-                        formatUnits(receivedAmount, 18),
-                    );
+                    swap.receivedAmount = formatUnits(receivedAmount, 18);
                 }
                 if (typeof receivedAmountMin === "bigint") {
-                    report.setAttr(
-                        `details.swaps.${tokenDetails.symbol}.receivedAmountMin`,
-                        formatUnits(receivedAmountMin, 18),
-                    );
+                    swap.receivedAmountMin = formatUnits(receivedAmountMin, 18);
                 }
                 if (typeof expectedGasCost === "bigint") {
-                    report.setAttr(
-                        `details.swaps.${tokenDetails.symbol}.expectedGasCost`,
-                        formatUnits(expectedGasCost, 18),
-                    );
+                    swap.expectedGasCost = formatUnits(expectedGasCost, 18);
                 }
                 if (typeof route === "string") {
-                    report.setAttr(`details.swaps.${tokenDetails.symbol}.route`, route);
+                    swap.route = route;
                 }
             } catch (error: any) {
                 if ("txHash" in error) {
-                    report.setAttr(
-                        `details.swaps.${tokenDetails.symbol}.tx`,
-                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + error.txHash,
-                    );
-                    report.setAttr(
-                        `details.swaps.${tokenDetails.symbol}.status`,
-                        await errorSnapshot("", error.error),
-                    );
+                    swap.tx =
+                        this.state.chainConfig.blockExplorers?.default.url + "/tx/" + error.txHash;
+                    swap.status = await errorSnapshot("", error.error);
                 } else {
-                    report.setAttr(
-                        `details.swaps.${tokenDetails.symbol}.status`,
-                        await errorSnapshot("Failed to convert token to gas", error),
-                    );
+                    swap.status = await errorSnapshot("Failed to convert token to gas", error);
                 }
             }
+
+            swaps.push(swap);
         }
+        report.setAttr("swaps", JSON.stringify(swaps));
 
         report.end();
         return report;

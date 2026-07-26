@@ -153,9 +153,9 @@ export abstract class TradeSimulatorBase {
         // delete gas to let signer estimate gas again with updated tx data
         delete prepareParamsResult.value.rawtx.gas;
 
-        // determine the success of the trade with 0.25% headroom
+        // examine the success of the trade with 1.5% headroom
         const headroom = BigInt(
-            (Number(this.tradeArgs.solver.appOptions.gasCoveragePercentage) * 102.5).toFixed(),
+            (Number(this.tradeArgs.solver.appOptions.gasCoveragePercentage) * 101.5).toFixed(),
         );
         let minimumExpected = (estimatedGasCost * headroom) / 10000n;
         this.spanAttributes["gasEst.initial.minBountyExpected"] = minimumExpected.toString();

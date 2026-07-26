@@ -358,23 +358,17 @@ describe("Test WalletManager", () => {
             expect(report.attributes["details.destination"]).toBe(walletManager.mainWallet.address);
 
             // verify token transfer details
-            expect(report.attributes["details.transfers.TEST.token"]).toBe(mockToken.address);
-            expect(report.attributes["details.transfers.TEST.tx"]).toBe(
+            expect(report.attributes["transfers"]).toContain(mockToken.address);
+            expect(report.attributes["transfers"]).toContain(
                 "https://explorer.test/tx/0xtoken_hash",
             );
-            expect(report.attributes["details.transfers.TEST.status"]).toBe(
-                "Transferred successfully",
-            );
-            expect(report.attributes["details.transfers.TEST.amount"]).toBe("1");
+            expect(report.attributes["transfers"]).toContain("Transferred successfully");
+            expect(report.attributes["transfers"]).toContain("1");
 
             // verify gas transfer details
-            expect(report.attributes["details.transfers.remainingGas.tx"]).toBe(
-                "https://explorer.test/tx/0xgas_hash",
-            );
-            expect(report.attributes["details.transfers.remainingGas.status"]).toBe(
-                "Transferred successfully",
-            );
-            expect(report.attributes["details.transfers.remainingGas.amount"]).toBe("0.1");
+            expect(report.attributes["transfers"]).toContain("https://explorer.test/tx/0xgas_hash");
+            expect(report.attributes["transfers"]).toContain("Transferred successfully");
+            expect(report.attributes["transfers"]).toContain("0.1");
 
             // verify successfully swept
             expect(report.status?.code).toBe(SpanStatusCode.OK);
@@ -413,12 +407,10 @@ describe("Test WalletManager", () => {
             );
 
             // verify token failure details
-            expect(report.attributes["details.transfers.TEST.tx"]).toBe(
+            expect(report.attributes["transfers"]).toContain(
                 "https://explorer.test/tx/0xfailed_token",
             );
-            expect(report.attributes["details.transfers.TEST.status"]).toContain(
-                "Token transfer failed",
-            );
+            expect(report.attributes["transfers"]).toContain("Token transfer failed");
 
             transferTokenFromSpy.mockRestore();
             transferRemainingGasFromSpy.mockRestore();
@@ -447,9 +439,7 @@ describe("Test WalletManager", () => {
             expect(report.attributes["severity"]).toBe(ErrorSeverity.LOW);
 
             // verify gas failure details
-            expect(report.attributes["details.transfers.remainingGas.status"]).toContain(
-                "Gas transfer failed",
-            );
+            expect(report.attributes["transfers"]).toContain("Gas transfer failed");
 
             transferTokenFromSpy.mockRestore();
             transferRemainingGasFromSpy.mockRestore();
@@ -481,17 +471,13 @@ describe("Test WalletManager", () => {
             );
 
             // verify token failure details
-            expect(report.attributes["details.transfers.TEST.status"]).toContain(
-                "Failed to transfer",
-            );
+            expect(report.attributes["transfers"]).toContain("Failed to transfer");
 
             // verify gas failure details
-            expect(report.attributes["details.transfers.remainingGas.tx"]).toBe(
+            expect(report.attributes["transfers"]).toContain(
                 "https://explorer.test/tx/0xfailed_gas",
             );
-            expect(report.attributes["details.transfers.remainingGas.status"]).toContain(
-                "Gas transfer failed",
-            );
+            expect(report.attributes["transfers"]).toContain("Gas transfer failed");
 
             transferTokenFromSpy.mockRestore();
             transferRemainingGasFromSpy.mockRestore();
@@ -523,9 +509,7 @@ describe("Test WalletManager", () => {
             expect(transferTokenFromSpy).not.toHaveBeenCalled();
 
             // verify gas transfer was still attempted and successful
-            expect(report.attributes["details.transfers.remainingGas.status"]).toBe(
-                "Transferred successfully",
-            );
+            expect(report.attributes["transfers"]).toContain("Transferred successfully");
 
             transferRemainingGasFromSpy.mockRestore();
             transferTokenFromSpy.mockRestore();
@@ -628,28 +612,24 @@ describe("Test WalletManager", () => {
             expect(report.attributes["details.wallet"]).toBe(walletManager.mainWallet.address);
 
             // verify TEST1 conversion details
-            expect(report.attributes["details.swaps.TEST1.token"]).toBe("0xtoken1");
-            expect(report.attributes["details.swaps.TEST1.tx"]).toBe(
-                "https://explorer.test/tx/0xhash1",
-            );
-            expect(report.attributes["details.swaps.TEST1.status"]).toBe("Successfully swapped");
-            expect(report.attributes["details.swaps.TEST1.amount"]).toBe("100");
-            expect(report.attributes["details.swaps.TEST1.receivedAmount"]).toBe("0.1");
-            expect(report.attributes["details.swaps.TEST1.receivedAmountMin"]).toBe("0.095");
-            expect(report.attributes["details.swaps.TEST1.expectedGasCost"]).toBe("0.01");
-            expect(report.attributes["details.swaps.TEST1.route"]).toBe("TEST1 -> WETH");
+            expect(report.attributes["swaps"]).toContain("0xtoken1");
+            expect(report.attributes["swaps"]).toContain("https://explorer.test/tx/0xhash1");
+            expect(report.attributes["swaps"]).toContain("Successfully swapped");
+            expect(report.attributes["swaps"]).toContain("100");
+            expect(report.attributes["swaps"]).toContain("0.1");
+            expect(report.attributes["swaps"]).toContain("0.095");
+            expect(report.attributes["swaps"]).toContain("0.01");
+            expect(report.attributes["swaps"]).toContain("TEST1 -> WETH");
 
             // verify TEST2 conversion details
-            expect(report.attributes["details.swaps.TEST2.token"]).toBe("0xtoken2");
-            expect(report.attributes["details.swaps.TEST2.tx"]).toBe(
-                "https://explorer.test/tx/0xhash2",
-            );
-            expect(report.attributes["details.swaps.TEST2.status"]).toBe("Successfully swapped");
-            expect(report.attributes["details.swaps.TEST2.amount"]).toBe("50");
-            expect(report.attributes["details.swaps.TEST2.receivedAmount"]).toBe("0.05");
-            expect(report.attributes["details.swaps.TEST2.receivedAmountMin"]).toBe("0.0475");
-            expect(report.attributes["details.swaps.TEST2.expectedGasCost"]).toBe("0.01");
-            expect(report.attributes["details.swaps.TEST2.route"]).toBe("TEST2 -> WETH");
+            expect(report.attributes["swaps"]).toContain("0xtoken2");
+            expect(report.attributes["swaps"]).toContain("https://explorer.test/tx/0xhash2");
+            expect(report.attributes["swaps"]).toContain("Successfully swapped");
+            expect(report.attributes["swaps"]).toContain("50");
+            expect(report.attributes["swaps"]).toContain("0.05");
+            expect(report.attributes["swaps"]).toContain("0.0475");
+            expect(report.attributes["swaps"]).toContain("0.01");
+            expect(report.attributes["swaps"]).toContain("TEST2 -> WETH");
 
             // verify spy calls
             expect(convertToGasSpy).toHaveBeenCalledTimes(2);
@@ -679,20 +659,12 @@ describe("Test WalletManager", () => {
             const report = await walletManager.convertHoldingsToGas(2n);
 
             // verify TEST1 failure details
-            expect(report.attributes["details.swaps.TEST1.tx"]).toBe(
-                "https://explorer.test/tx/0xfailed",
-            );
-            expect(report.attributes["details.swaps.TEST1.status"]).toContain(
-                "Swap failed due to slippage",
-            );
+            expect(report.attributes["swaps"]).toContain("https://explorer.test/tx/0xfailed");
+            expect(report.attributes["swaps"]).toContain("Swap failed due to slippage");
 
             // verify TEST2 failure details
-            expect(report.attributes["details.swaps.TEST2.tx"]).toBe(
-                "https://explorer.test/tx/0xfailed",
-            );
-            expect(report.attributes["details.swaps.TEST2.status"]).toContain(
-                "Swap failed due to slippage",
-            );
+            expect(report.attributes["swaps"]).toContain("https://explorer.test/tx/0xfailed");
+            expect(report.attributes["swaps"]).toContain("Swap failed due to slippage");
 
             convertToGasSpy.mockRestore();
         });
@@ -708,16 +680,12 @@ describe("Test WalletManager", () => {
             const report = await walletManager.convertHoldingsToGas(2n);
 
             // verify TEST1 failure details
-            expect(report.attributes["details.swaps.TEST1.status"]).toContain(
-                "Failed to convert token to gas",
-            );
-            expect(report.attributes["details.swaps.TEST1.status"]).toContain("No route found");
+            expect(report.attributes["swaps"]).toContain("Failed to convert token to gas");
+            expect(report.attributes["swaps"]).toContain("No route found");
 
             // verify TEST2 failure details
-            expect(report.attributes["details.swaps.TEST2.status"]).toContain(
-                "Failed to convert token to gas",
-            );
-            expect(report.attributes["details.swaps.TEST2.status"]).toContain("No route found");
+            expect(report.attributes["swaps"]).toContain("Failed to convert token to gas");
+            expect(report.attributes["swaps"]).toContain("No route found");
 
             convertToGasSpy.mockRestore();
         });
@@ -742,16 +710,12 @@ describe("Test WalletManager", () => {
             const report = await walletManager.convertHoldingsToGas(2n);
 
             // verify TEST1 success details
-            expect(report.attributes["details.swaps.TEST1.tx"]).toBe(
-                "https://explorer.test/tx/0xsuccess",
-            );
-            expect(report.attributes["details.swaps.TEST1.status"]).toBe("Successfully swapped");
+            expect(report.attributes["swaps"]).toContain("https://explorer.test/tx/0xsuccess");
+            expect(report.attributes["swaps"]).toContain("Successfully swapped");
 
             // verify TEST2 failure details
-            expect(report.attributes["details.swaps.TEST2.status"]).toContain(
-                "Failed to convert token to gas",
-            );
-            expect(report.attributes["details.swaps.TEST2.status"]).toContain("No route found");
+            expect(report.attributes["swaps"]).toContain("Failed to convert token to gas");
+            expect(report.attributes["swaps"]).toContain("No route found");
 
             convertToGasSpy.mockRestore();
         });

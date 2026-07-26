@@ -1,7 +1,7 @@
 import { AppOptions } from "../config";
 import { RainSolver } from "../core";
 import { OrderManager } from "../order";
-import { RainSolverCli } from "./index";
+import { DAY, RainSolverCli } from "./index";
 import { RainSolverLogger } from "../logger";
 import { WalletManager, WalletType } from "../wallet";
 import { SharedState, SharedStateConfig } from "../state";
@@ -199,7 +199,9 @@ describe("Test RainSolverCli", () => {
             retryPendingRemoveWorkers: vi.fn(),
             convertHoldingsToGas: vi.fn(),
             getWorkerWalletsBalance: vi.fn(),
+            sweepWallet: vi.fn(),
             workers: {
+                signers: new Map([["signer", { name: "worker1" }]]),
                 lastUsedDerivationIndex: 5,
             },
         } as any;
@@ -656,11 +658,24 @@ describe("Test RainSolverCli", () => {
             );
         });
 
-        it("should call additional operations on round 250", async () => {
+        it("should call downscale operation on round 250", async () => {
             rainSolverCli.roundCount = 250;
+            const mockRoundCtx = { test: "context" };
+
+            (mockWalletManager.retryPendingAddWorkers as Mock).mockResolvedValue([]);
+            (mockWalletManager.assessWorkers as Mock).mockResolvedValue([]);
+            (mockOrderManager.downscaleProtection as Mock).mockResolvedValue(undefined);
+
+            await rainSolverCli.runWalletOpsForRound(mockRoundCtx as any);
+
+            expect(mockOrderManager.downscaleProtection).toHaveBeenCalledOnce();
+        });
+
+        it("should sweep every 5 days and convert to gas evey day", async () => {
             const mockRoundCtx = { test: "context" };
             const mockPendingRemoveReports = [{ name: "pending-remove-1" }];
             const mockConvertHoldingsReport = { name: "convert-holdings" };
+            const mockSweepReport = { name: "sweep" };
 
             (mockWalletManager.retryPendingAddWorkers as Mock).mockResolvedValue([]);
             (mockWalletManager.assessWorkers as Mock).mockResolvedValue([]);
@@ -670,13 +685,15 @@ describe("Test RainSolverCli", () => {
             (mockWalletManager.convertHoldingsToGas as Mock).mockResolvedValue(
                 mockConvertHoldingsReport,
             );
-            (mockOrderManager.downscaleProtection as Mock).mockResolvedValue(undefined);
+            (mockWalletManager.sweepWallet as Mock).mockResolvedValue(mockSweepReport);
+            (rainSolverCli as any).nextSweepTime = Date.now() - 6 * DAY;
+            (rainSolverCli as any).nextGasConversionTime = Date.now() - 2 * DAY;
 
             await rainSolverCli.runWalletOpsForRound(mockRoundCtx as any);
 
             expect(mockWalletManager.retryPendingRemoveWorkers).toHaveBeenCalledTimes(1);
             expect(mockWalletManager.convertHoldingsToGas).toHaveBeenCalledTimes(1);
-            expect(mockOrderManager.downscaleProtection).toHaveBeenCalledOnce();
+            expect(mockWalletManager.sweepWallet).toHaveBeenCalledTimes(1);
 
             expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
                 { name: "pending-remove-1" },
@@ -686,6 +703,25 @@ describe("Test RainSolverCli", () => {
                 mockConvertHoldingsReport,
                 mockRoundCtx,
             );
+            expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
+                mockSweepReport,
+                mockRoundCtx,
+            );
+
+            // next time should not call these when time has not reached
+            await rainSolverCli.runWalletOpsForRound(mockRoundCtx as any);
+            expect(mockWalletManager.retryPendingRemoveWorkers).toHaveBeenCalledTimes(1);
+            expect(mockWalletManager.convertHoldingsToGas).toHaveBeenCalledTimes(1);
+            expect(mockWalletManager.sweepWallet).toHaveBeenCalledTimes(1);
+
+            // set timers to simulate some days passed by
+            (rainSolverCli as any).nextSweepTime = Date.now() - 6 * DAY;
+            (rainSolverCli as any).nextGasConversionTime = Date.now() - 2 * DAY;
+
+            await rainSolverCli.runWalletOpsForRound(mockRoundCtx as any);
+            expect(mockWalletManager.retryPendingRemoveWorkers).toHaveBeenCalledTimes(2);
+            expect(mockWalletManager.convertHoldingsToGas).toHaveBeenCalledTimes(2);
+            expect(mockWalletManager.sweepWallet).toHaveBeenCalledTimes(2);
         });
     });
 

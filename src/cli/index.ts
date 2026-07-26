@@ -63,7 +63,9 @@ export class RainSolverCli {
     private nextGasReset = Date.now() + DAY;
     private nextDatafetcherReset: number;
     /** Wallet sweeper timer (once every 5 days) */
-    private lastSweepTime = Date.now() + 5 * DAY;
+    private nextSweepTime = Date.now() + 5 * DAY;
+    /** Convert bounties to gas timer (once every day) */
+    private nextGasConversionTime = Date.now() + DAY;
 
     private constructor(
         state: SharedState,
@@ -341,8 +343,17 @@ export class RainSolverCli {
             this.logger.exportPreAssembledSpan(report.addWorkerReport, roundCtx);
         });
 
-        // retry wallet removals and sweep funds once every 250 rounds
+        // rescale once every 250 rounds
         if (this.roundCount % 250 === 0) {
+            // re-evaluate owner limits
+            await this.orderManager.downscaleProtection();
+        }
+
+        const now = Date.now();
+
+        if (this.nextGasConversionTime <= now) {
+            this.nextGasConversionTime = now + DAY;
+
             // retry pending remove workers
             const pendingRemoveReports = await this.walletManager.retryPendingRemoveWorkers();
             pendingRemoveReports.forEach((report) => {
@@ -350,16 +361,13 @@ export class RainSolverCli {
             });
 
             // try to sweep main wallet's tokens back to gas
-            const convertHoldingsToGasReport = await this.walletManager.convertHoldingsToGas();
-            this.logger.exportPreAssembledSpan(convertHoldingsToGasReport, roundCtx);
-
-            // re-evaluate owner limits
-            await this.orderManager.downscaleProtection();
+            await this.walletManager.convertHoldingsToGas().then((convertHoldingsToGasReport) => {
+                this.logger.exportPreAssembledSpan(convertHoldingsToGasReport, roundCtx);
+            });
         }
 
-        const now = Date.now();
-        if (this.lastSweepTime <= now) {
-            this.lastSweepTime = now + 5 * DAY;
+        if (this.nextSweepTime <= now) {
+            this.nextSweepTime = now + 5 * DAY;
             // sweep worker wallet bounties
             for (const [, worker] of this.walletManager.workers.signers) {
                 await this.walletManager.sweepWallet(worker, false).then((report) => {
