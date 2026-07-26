@@ -352,6 +352,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.testBlockNumber = BigInt(blockNumber);
                     config.testBlockNumberInc = BigInt(blockNumber); // increments during test updating to new block height
                     config.gasCoveragePercentage = "1";
+                    config.headroom = 1.5;
                     config.viemClient = viemClient;
                     config.accounts = [];
                     config.mainAccount = bot;
@@ -709,6 +710,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.orderbookAddress = orderbook1.address;
                     config.testBlockNumber = BigInt(blockNumber);
                     config.gasCoveragePercentage = "1";
+                    config.headroom = 1.5;
                     config.viemClient = viemClient;
                     config.accounts = [];
                     config.mainAccount = bot;
@@ -735,7 +737,7 @@ for (let i = 0; i < testData.length; i++) {
                     orders = orderManager.getNextRoundOrders(false);
 
                     // mock init quotes
-                    orders.forEach((pair) => {
+                    orders.nonZeroOutput.forEach((pair) => {
                         pair.takeOrder.quote = {
                             ratio: ethers.constants.Zero.toBigInt(),
                             maxOutput: tokens
@@ -1124,6 +1126,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.orderbookAddress = orderbook1.address;
                     config.testBlockNumber = BigInt(blockNumber);
                     config.gasCoveragePercentage = "0";
+                    config.headroom = 1.5;
                     config.viemClient = viemClient;
                     config.accounts = [];
                     config.mainAccount = bot;
@@ -1150,7 +1153,7 @@ for (let i = 0; i < testData.length; i++) {
                     orders = orderManager.getNextRoundOrders(false);
 
                     // mock init quotes
-                    orders.forEach((pair) => {
+                    orders.nonZeroOutput.forEach((pair) => {
                         pair.takeOrder.quote = {
                             ratio: ethers.constants.Zero.toBigInt(),
                             maxOutput: tokens
@@ -1520,6 +1523,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.orderbookAddress = orderbook.address;
                     config.testBlockNumber = BigInt(blockNumber);
                     config.gasCoveragePercentage = "1";
+                    config.headroom = 1.5;
                     config.viemClient = viemClient;
                     config.accounts = [];
                     config.mainAccount = bot;
@@ -1546,7 +1550,7 @@ for (let i = 0; i < testData.length; i++) {
                     orders = orderManager.getNextRoundOrders(false);
 
                     // mock init quotes
-                    orders.forEach((pair) => {
+                    orders.nonZeroOutput.forEach((pair) => {
                         pair.takeOrder.quote = {
                             ratio: ethers.constants.Zero.toBigInt(),
                             maxOutput: tokens
@@ -1875,6 +1879,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.testBlockNumber = BigInt(blockNumber);
                     config.testBlockNumberInc = BigInt(blockNumber); // increments during test updating to new block height
                     config.gasCoveragePercentage = "1";
+                    config.headroom = 1.5;
                     config.viemClient = viemClient;
                     config.accounts = [];
                     config.mainAccount = bot;
@@ -2183,6 +2188,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.testBlockNumber = BigInt(blockNumber);
                     config.testBlockNumberInc = BigInt(blockNumber); // increments during test updating to new block height
                     config.gasCoveragePercentage = "1";
+                    config.headroom = 1.5;
                     config.viemClient = viemClient;
                     config.accounts = [];
                     config.mainAccount = bot;
@@ -2570,6 +2576,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.orderbookAddress = orderbook1.address;
                     config.testBlockNumber = BigInt(blockNumber);
                     config.gasCoveragePercentage = "1";
+                    config.headroom = 1.5;
                     config.viemClient = viemClient;
                     config.accounts = [];
                     config.mainAccount = bot;
@@ -2596,7 +2603,7 @@ for (let i = 0; i < testData.length; i++) {
                     orders = orderManager.getNextRoundOrders(false);
 
                     // mock init quotes
-                    orders.forEach((pair) => {
+                    orders.nonZeroOutput.forEach((pair) => {
                         pair.takeOrder.quote = {
                             ratio: ethers.constants.Zero.toBigInt(),
                             maxOutput: tokens
@@ -2978,6 +2985,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.orderbookAddress = orderbook1.address;
                     config.testBlockNumber = BigInt(blockNumber);
                     config.gasCoveragePercentage = "1";
+                    config.headroom = 1.5;
                     config.viemClient = viemClient;
                     config.accounts = [];
                     config.mainAccount = bot;
@@ -3004,7 +3012,7 @@ for (let i = 0; i < testData.length; i++) {
                     orders = orderManager.getNextRoundOrders(false);
 
                     // mock init quotes
-                    orders.forEach((pair) => {
+                    orders.nonZeroOutput.forEach((pair) => {
                         pair.takeOrder.quote = {
                             ratio: ethers.constants.Zero.toBigInt(),
                             maxOutput: tokens
@@ -3391,6 +3399,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.testBlockNumber = BigInt(blockNumber);
                     config.gasCoveragePercentage =
                         chainId === ChainId.BASE || chainId == ChainId.MATCHAIN ? "0" : "1";
+                    config.headroom = 101.5;
                     config.viemClient = viemClient;
                     config.accounts = [];
                     config.mainAccount = bot;
@@ -3417,7 +3426,7 @@ for (let i = 0; i < testData.length; i++) {
                     orders = orderManager.getNextRoundOrders(false);
 
                     // mock init quotes
-                    orders.forEach((pair) => {
+                    orders.nonZeroOutput.forEach((pair) => {
                         pair.takeOrder.quote = {
                             ratio: ethers.constants.Zero.toBigInt(),
                             maxOutput: tokens
@@ -3769,6 +3778,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.testBlockNumber = BigInt(blockNumber);
                     config.testBlockNumberInc = BigInt(blockNumber); // increments during test updating to new block height
                     config.gasCoveragePercentage = "1";
+                    config.headroom = 1.5;
                     config.viemClient = viemClient;
                     config.accounts = [];
                     config.mainAccount = bot;
@@ -4100,6 +4110,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.testBlockNumber = BigInt(blockNumber);
                     config.testBlockNumberInc = BigInt(blockNumber); // increments during test updating to new block height
                     config.gasCoveragePercentage = "1";
+                    config.headroom = 1.5;
                     config.viemClient = viemClient;
                     config.accounts = [];
                     config.mainAccount = bot;

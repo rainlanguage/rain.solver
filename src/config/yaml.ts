@@ -108,6 +108,8 @@ export type AppOptions = {
     maxConcurrency: number;
     /** List of tokens to skip when sweeping bounty tokens */
     skipSweep: Set<string>;
+    /** Trade simulation profitablity headroom, default: 2.5 */
+    headroom: number;
 };
 
 /** Provides methods to instantiate and validate AppOptions */
@@ -294,6 +296,13 @@ export namespace AppOptions {
                     input.skipSweep,
                     "invalid skip sweep list, expected an array of token addresses",
                 ),
+                headroom:
+                    Validator.resolveNumericValue(
+                        input.headroom,
+                        FLOAT_PATTERN,
+                        "invalid headroom value, must be a number greater than equal to 0",
+                        "2.5",
+                    ) + 100,
             } as AppOptions);
         } catch (error: any) {
             if (error instanceof AppOptionsError) {
