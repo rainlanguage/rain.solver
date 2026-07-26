@@ -280,7 +280,7 @@ orderbookTradeTypes:
         assert.deepEqual(result.timeout, 20000);
         assert.equal(result.maxRatio, true);
         assert.equal(result.maxConcurrency, 1);
-        assert.equal(result.headroom, 101.5);
+        assert.equal(result.headroom, 102.5);
 
         // ownerProfile
         const expectedOwnerProfile = {

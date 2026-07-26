@@ -99,8 +99,8 @@ poolUpdateInterval: 10
 gasCoveragePercentage: 250
 
 # Percentage (number) that accumulates on top of actual profitablity index (gasCoveragePercentage) that assures trade success during
-# simulation with that higher profit so to give leeway for price fluctuation between simulation time mining time, default: %1.5
-headroom: 1.5
+# simulation with that higher profit so to give leeway for price fluctuation between simulation time mining time, default: %2.5
+headroom: 2.5
 
 # Option to set a gas limit for all submitting txs optionally with appended percentage sign to apply as percentage to original gas
 txGas: 110%

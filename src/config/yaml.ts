@@ -108,7 +108,7 @@ export type AppOptions = {
     maxConcurrency: number;
     /** List of tokens to skip when sweeping bounty tokens */
     skipSweep: Set<string>;
-    /** Trade simulation profitablity headroom, default: 1.5 */
+    /** Trade simulation profitablity headroom, default: 2.5 */
     headroom: number;
 };
 
@@ -301,7 +301,7 @@ export namespace AppOptions {
                         input.headroom,
                         FLOAT_PATTERN,
                         "invalid headroom value, must be a number greater than equal to 0",
-                        "1.5",
+                        "2.5",
                     ) + 100,
             } as AppOptions);
         } catch (error: any) {
