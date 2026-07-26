@@ -94,7 +94,7 @@ export async function initializeRound(
     });
 
     // report zero output order pairs
-    for (let i = 0; i <= zeroOutputs.length; i += 25) {
+    for (let i = 0; i < zeroOutputs.length; i += 25) {
         const zeroOutputReport = new PreAssembledSpan(`order_zero_output`, performance.now());
         zeroOutputs.slice(i, i + 25).forEach((p, j) => {
             const pair = `${p.buyTokenSymbol}/${p.sellTokenSymbol}`;
