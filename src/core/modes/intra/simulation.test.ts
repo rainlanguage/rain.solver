@@ -665,8 +665,8 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                         aliceBountyVaultId: simulator.inputBountyVaultId,
                         bobBountyVaultId: simulator.outputBountyVaultId,
                     },
-                    simulator.tradeArgs.orderDetails.takeOrder.struct.signedContext,
                     simulator.tradeArgs.counterpartyOrderDetails.struct.signedContext,
+                    simulator.tradeArgs.orderDetails.takeOrder.struct.signedContext,
                 ],
             });
             expect(encodeFunctionData).toHaveBeenNthCalledWith(4, {
