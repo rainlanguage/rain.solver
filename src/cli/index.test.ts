@@ -452,6 +452,7 @@ describe("Test RainSolverCli", () => {
                 "meta.sgs": ["subgraph1", "subgraph2"],
                 "meta.contracts.v4": JSON.stringify(contracts.v4),
                 "meta.contracts.v5": "N/A",
+                "meta.contracts.v6": "N/A",
                 "meta.orderbooks": ["orderbook1", "orderbook2"],
                 "meta.mainAccount": "0xMainWallet",
                 "meta.gitCommitHash": "N/A",
