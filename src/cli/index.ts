@@ -441,6 +441,9 @@ export class RainSolverCli {
             "meta.contracts.v5": this.state.contracts.v5
                 ? JSON.stringify(this.state.contracts.v5)
                 : "N/A",
+            "meta.contracts.v6": this.state.contracts.v6
+                ? JSON.stringify(this.state.contracts.v6)
+                : "N/A",
             "meta.orderbooks": Array.from(await this.subgraphManager.getOrderbooks()),
             "meta.mainAccount": this.walletManager.mainWallet.address,
             "meta.gitCommitHash": process?.env?.GIT_COMMIT ?? "N/A",
