@@ -67,7 +67,7 @@ export class GasManager {
     /** The time to stay in increased the gas price multiplier before reseting to base */
     readonly gasIncreaseStepTime: number = 60 * 60 * 1000; // default 60 minutes in milliseconds
     /** The threshold for transaction time before considering it as a trigger for gas price multiplierincrease */
-    readonly txTimeThreshold: number = 30_000; // default 30 seconds threshold
+    readonly txTimeThreshold: number = 15_000; // default 15 seconds threshold
 
     /** Current gas price of the operating chain */
     gasPrice = 0n;
@@ -151,8 +151,13 @@ export class GasManager {
             );
         } else {
             if (this.deadline && Date.now() >= this.deadline) {
-                this.gasPriceMultiplier = this.baseGasPriceMultiplier;
-                this.deadline = undefined;
+                this.gasPriceMultiplier = Math.max(
+                    this.baseGasPriceMultiplier,
+                    this.gasPriceMultiplier - this.gasIncreasePointsPerStep,
+                );
+                if (this.gasPriceMultiplier <= this.baseGasPriceMultiplier) {
+                    this.deadline = undefined;
+                }
             }
         }
     }
