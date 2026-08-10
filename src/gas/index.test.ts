@@ -65,7 +65,28 @@ describe("Test GasManager", () => {
 
         it("should record new tx mining record when its under threshold and reset", () => {
             gasManager.deadline = Date.now() - 1000; // set deadline in the past to trigger reset
-            gasManager.gasPriceMultiplier = 120; // set a higher multiplier to see if it resets
+            gasManager.gasPriceMultiplier = 117; // set a higher multiplier to see if it resets
+            gasManager.onTransactionMine({
+                didMine: true,
+                length: 20_000,
+            });
+            expect(gasManager.deadline).toBeDefined();
+            expect(gasManager.gasPriceMultiplier).toBe(114);
+
+            gasManager.onTransactionMine({
+                didMine: true,
+                length: 20_000,
+            });
+            expect(gasManager.deadline).toBeDefined();
+            expect(gasManager.gasPriceMultiplier).toBe(111);
+
+            gasManager.onTransactionMine({
+                didMine: true,
+                length: 20_000,
+            });
+            expect(gasManager.deadline).toBeDefined();
+            expect(gasManager.gasPriceMultiplier).toBe(108);
+
             gasManager.onTransactionMine({
                 didMine: true,
                 length: 20_000,
@@ -146,7 +167,7 @@ describe("Test GasManager", () => {
             // class field defaults
             expect(manager.gasIncreasePointsPerStep).toBe(3);
             expect(manager.gasIncreaseStepTime).toBe(60 * 60 * 1000); // 3_600_000 ms
-            expect(manager.txTimeThreshold).toBe(30_000);
+            expect(manager.txTimeThreshold).toBe(15_000);
 
             // maxGasPriceMultiplier defaults to base + 50 when not provided
             expect(manager.maxGasPriceMultiplier).toBe(150);
