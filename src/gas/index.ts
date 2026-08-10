@@ -139,7 +139,7 @@ export class GasManager {
      *   multiplier by a set number of points, up to a maximum value, and set a deadline for
      *   when the multiplier can be reset.
      * - If the transaction mined successfully and the current time is past the deadline,
-     *   reset the gas price multiplier to its base value.
+     *   reduces it step by step until back to base.
      * @param txMineRecord - The transaction mining record
      */
     onTransactionMine(txMineRecord: TxMineRecord) {
