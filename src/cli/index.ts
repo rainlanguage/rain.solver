@@ -247,8 +247,6 @@ export class RainSolverCli {
             console.log(`Starting next round in ${this.appOptions.sleep / 1000} seconds...`, "\n");
             roundSpan.end();
             await sleep(this.appOptions.sleep);
-            // give otel some time to export
-            await sleep(3000);
 
             // increment round count
             this.roundCount++;

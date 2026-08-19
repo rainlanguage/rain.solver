@@ -841,7 +841,6 @@ describe("Test RainSolverCli", () => {
             expect(mockOrderManager.sync).toHaveBeenCalledTimes(1);
             expect(mockLogger.shutdown).toHaveBeenCalledTimes(1);
             expect(sleep).toHaveBeenCalledWith(1000);
-            expect(sleep).toHaveBeenCalledWith(3000);
 
             // Restore process.env
             process.env = originalEnv;
