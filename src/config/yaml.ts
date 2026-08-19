@@ -181,13 +181,14 @@ export namespace AppOptions {
                     "expected a boolean value for maxRatio",
                     true,
                 ),
-                sleep:
+                sleep: Math.floor(
                     Validator.resolveNumericValue(
                         input.sleep,
-                        INT_PATTERN,
-                        "invalid sleep value, must be an integer greater than equal to 0",
+                        FLOAT_PATTERN,
+                        "invalid sleep value, must be an float greater than equal to 0",
                         "10",
                     ) * 1000,
+                ),
                 poolUpdateInterval: Validator.resolveNumericValue(
                     input.poolUpdateInterval,
                     INT_PATTERN,
