@@ -89,7 +89,10 @@ describe("Test RainSolverLogger", async function () {
                 .replaceAll(/(,\s*}\s*,)/g, "},"),
         );
 
-        const nowSeconds = Math.floor(now / 1000);
+        // converts an epoch ms timestamp to otel hrtime format, [seconds, nanoseconds],
+        // same as millisToHrTime of @opentelemetry/core, so event times that cross a
+        // second boundary carry into the seconds part instead of overflowing nanoseconds
+        const toHrTime = (t: number) => [Math.trunc(t / 1000), Math.round((t % 1000) * 1e6)];
         const expected = {
             name: preAssembledSpan.name,
             timestamp: (preAssembledSpan.startTime as number) * 1000,
@@ -102,17 +105,17 @@ describe("Test RainSolverLogger", async function () {
                 {
                     name: "event1",
                     attributes: preAssembledSpan.events?.[0].attributes,
-                    time: [nowSeconds, Number(((now + 25) / 1000 - nowSeconds).toFixed(9)) * 1e9],
+                    time: toHrTime(now + 25),
                 },
                 {
                     name: "event2",
                     attributes: preAssembledSpan.events?.[1].attributes,
-                    time: [nowSeconds, Number(((now + 50) / 1000 - nowSeconds).toFixed(9)) * 1e9],
+                    time: toHrTime(now + 50),
                 },
                 {
                     name: "exception",
                     attributes: { "exception.message": preAssembledSpan.exception?.exception },
-                    time: [nowSeconds, Number(((now + 100) / 1000 - nowSeconds).toFixed(9)) * 1e9],
+                    time: toHrTime(now + 100),
                 },
             ],
         };
@@ -124,8 +127,8 @@ describe("Test RainSolverLogger", async function () {
         for (let i = 0; i < expected.events.length; i++) {
             assert.equal(result.events[i].name, expected.events[i].name);
             assert.deepEqual(result.events[i].attributes, expected.events[i].attributes);
-            assert.closeTo(result.events[i].time[0], expected.events[i].time[0], 1); // assert closeTo due to js precision loss with number operations
-            assert.closeTo(result.events[i].time[1], expected.events[i].time[1], 1000); // assert closeTo due to js precision loss with number operations
+            assert.equal(result.events[i].time[0], expected.events[i].time[0]);
+            assert.equal(result.events[i].time[1], expected.events[i].time[1]);
         }
 
         // set original stdout write fn back
