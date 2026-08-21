@@ -70,6 +70,13 @@ export const KnownErrors = [
     "MinimalOutputBalanceViolation",
     "Min trade amount",
     "NegativeBounty",
+    "Cooldown",
+    "cooldown",
+    "Past oracle expiry",
+    "MinimumIO",
+    "ClearZeroAmount",
+    "StalePrice",
+    "MinimumInput",
 ] as const;
 
 /** Represents a decoded solidity error type */
