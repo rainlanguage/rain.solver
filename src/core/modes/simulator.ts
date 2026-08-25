@@ -23,6 +23,17 @@ export enum SimulationHaltReason {
     OrderRatioGreaterThanMarketPrice,
     FailedToGetTaskBytecode,
     UndefinedTradeDestinationAddress,
+    MinimalOutputBalanceViolation,
+}
+export namespace SimulationHaltReason {
+    /**
+     * Returns true if the given input contains the sushi RouteProcessor
+     * contract MinimalOutputBalanceViolation error selector name
+     * @param text - The text to search in
+     */
+    export function isMinimalOutputBalanceViolation(text: unknown): boolean {
+        return typeof text === "string" && text.includes("MinimalOutputBalanceViolation");
+    }
 }
 
 export type SimulateTradeArgs =

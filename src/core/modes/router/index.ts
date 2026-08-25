@@ -227,6 +227,54 @@ export async function tryFindBestRouterTrade(
         partialTradeSizeSimResult.error.spanAttributes,
         "partial",
     );
+
+    // if the partial trade size sim got rejected onchain with MinimalOutputBalanceViolation,
+    // it means the offchain pool data overestimated the output for the found partial trade
+    // size, so backoff by halving the trade size at each step (max 10 steps) validated
+    // against onchain dryrun and accept the first size that passes, the backoff stops
+    // early if a step fails with any other error
+    let reason = partialTradeSizeSimResult.error.reason;
+    if (
+        SimulationHaltReason.isMinimalOutputBalanceViolation(
+            partialTradeSizeSimResult.error.spanAttributes["error"],
+        )
+    ) {
+        reason = SimulationHaltReason.MinimalOutputBalanceViolation;
+        let fallbackTradeSize = partialTradeSize;
+        for (let i = 1; i <= 10; i++) {
+            fallbackTradeSize /= 2n;
+            if (fallbackTradeSize <= 0n) break;
+            const partialFallbackSimulator = RouterTradeSimulator.withArgs({
+                type: TradeType.Router,
+                solver: this,
+                orderDetails,
+                fromToken,
+                toToken,
+                signer,
+                maximumInputFixed: fallbackTradeSize,
+                ethPrice,
+                isPartial: true,
+                blockNumber,
+                excludeDexes,
+            });
+            const partialFallbackSimResult = await partialFallbackSimulator.trySimulateTrade();
+            if (partialFallbackSimResult.isOk()) {
+                return { result: partialFallbackSimResult, quote };
+            }
+            extendObjectWithHeader(
+                spanAttributes,
+                partialFallbackSimResult.error.spanAttributes,
+                `partialFallback${i}`,
+            );
+            if (
+                !SimulationHaltReason.isMinimalOutputBalanceViolation(
+                    partialFallbackSimResult.error.spanAttributes["error"],
+                )
+            ) {
+                break;
+            }
+        }
+    }
     return {
         result: Result.err({
             type: fullTradeSizeSimResult.error.type,
@@ -234,6 +282,7 @@ export async function tryFindBestRouterTrade(
             noneNodeError:
                 fullTradeSizeSimResult.error.noneNodeError ??
                 partialTradeSizeSimResult.error.noneNodeError,
+            reason,
         }),
         quote,
     };

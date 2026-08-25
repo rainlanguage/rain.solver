@@ -620,3 +620,18 @@ describe("Test TradeSimulatorBase", () => {
         });
     });
 });
+
+describe("Test SimulationHaltReason namespace", () => {
+    it("should detect MinimalOutputBalanceViolation in the given text", () => {
+        expect(
+            SimulationHaltReason.isMinimalOutputBalanceViolation(
+                'execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)"',
+            ),
+        ).toBe(true);
+        expect(SimulationHaltReason.isMinimalOutputBalanceViolation("some other error")).toBe(
+            false,
+        );
+        expect(SimulationHaltReason.isMinimalOutputBalanceViolation(undefined)).toBe(false);
+        expect(SimulationHaltReason.isMinimalOutputBalanceViolation(123)).toBe(false);
+    });
+});
