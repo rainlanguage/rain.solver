@@ -79,7 +79,7 @@ export async function findBestRouterTrade(
         extendObjectWithHeader(
             primary.result.error.spanAttributes,
             secondary.result.error.spanAttributes,
-            "retry",
+            "secondary",
         );
         primary.result.error.noneNodeError ??= secondary.result.error.noneNodeError;
     }

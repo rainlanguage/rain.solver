@@ -8,10 +8,15 @@ import { SimulationResult, TradeType } from "../../types";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
 // Mocks
-vi.mock("../../../common", async (importOriginal) => ({
-    ...(await importOriginal()),
-    extendObjectWithHeader: vi.fn(),
-}));
+// extendObjectWithHeader is wrapped with its real implementation so call
+// assertions work while span attributes still get merged for assertions
+vi.mock("../../../common", async (importOriginal) => {
+    const original = await importOriginal<typeof import("../../../common")>();
+    return {
+        ...original,
+        extendObjectWithHeader: vi.fn(original.extendObjectWithHeader),
+    };
+});
 
 vi.mock("sushi/currency", async (importOriginal) => {
     return {
@@ -99,7 +104,7 @@ describe("Test findBestRouterTrade", () => {
         );
 
         assert(result.isOk());
-        expect(result.value.spanAttributes.foundOpp).toBe(true);
+        expect(result.value.spanAttributes).toEqual({ foundOpp: true });
         expect(result.value.estimatedProfit).toBe(100n);
         expect(result.value.oppBlockNumber).toBe(123);
         expect(result.value.type).toBe("balancer");
@@ -139,6 +144,10 @@ describe("Test findBestRouterTrade", () => {
         assert(result.isErr());
         expect(result.error.noneNodeError).toBe("no route available");
         expect(result.error.type).toBe("router");
+        expect(result.error.spanAttributes).toEqual({
+            "full.route": "no-way",
+            "partial.error": "no viable partial trade size found",
+        });
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             { route: "no-way" },
@@ -175,7 +184,7 @@ describe("Test findBestRouterTrade", () => {
         );
 
         assert(result.isOk());
-        expect(result.value.spanAttributes.foundOpp).toBe(true);
+        expect(result.value.spanAttributes).toEqual({ foundOpp: true });
         expect(result.value.estimatedProfit).toBe(50n);
         expect(result.value.type).toBe("routeProcessor");
         expect(mockRainSolver.state.router.findLargestTradeSize).toHaveBeenCalledWith(
@@ -232,7 +241,7 @@ describe("Test findBestRouterTrade", () => {
         );
 
         assert(result.isOk());
-        expect(result.value.spanAttributes.foundOpp).toBe(true);
+        expect(result.value.spanAttributes).toEqual({ foundOpp: true });
         expect(result.value.estimatedProfit).toBe(50n);
         expect(result.value.type).toBe("routeProcessor");
         expect(mockRainSolver.state.router.findLargestTradeSize).toHaveBeenCalledWith(
@@ -284,9 +293,10 @@ describe("Test findBestRouterTrade", () => {
         assert(result.isErr());
         expect(result.error.noneNodeError).toBe("order ratio issue");
         expect(result.error.type).toBe("router");
-        expect(result.error.spanAttributes["partial.error"]).toBe(
-            "no viable partial trade size found",
-        );
+        expect(result.error.spanAttributes).toEqual({
+            "full.error": "ratio too high",
+            "partial.error": "no viable partial trade size found",
+        });
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             { error: "ratio too high" },
@@ -326,6 +336,10 @@ describe("Test findBestRouterTrade", () => {
         assert(result.isErr());
         expect(result.error.noneNodeError).toBe("order ratio issue"); // from full trade error
         expect(result.error.type).toBe("balancer");
+        expect(result.error.spanAttributes).toEqual({
+            "full.error": "ratio too high",
+            "partial.error": "no opportunity",
+        });
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             { error: "ratio too high" },
@@ -367,7 +381,7 @@ describe("Test findBestRouterTrade", () => {
         );
 
         assert(result.isOk());
-        expect(result.value.spanAttributes.foundOpp).toBe(true);
+        expect(result.value.spanAttributes).toEqual({ foundOpp: true });
         expect(result.value.estimatedProfit).toBe(75n);
         expect(result.value.oppBlockNumber).toBe(123);
         expect(result.value.type).toBe("routeProcessor");
@@ -440,7 +454,7 @@ describe("Test findBestRouterTrade", () => {
         );
 
         assert(result.isOk());
-        expect(result.value.spanAttributes.foundOpp).toBe(true);
+        expect(result.value.spanAttributes).toEqual({ foundOpp: true });
         expect(result.value.estimatedProfit).toBe(50n);
         expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(2);
         expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith({
@@ -501,6 +515,10 @@ describe("Test findBestRouterTrade", () => {
         assert(result.isErr());
         expect(result.error.noneNodeError).toBe("full failed");
         expect(result.error.type).toBe(TradeType.RouteProcessor);
+        expect(result.error.spanAttributes).toEqual({
+            "full.error": "dryrun failed",
+            "secondary.full.error": "retry dryrun failed",
+        });
         expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(2);
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
@@ -515,7 +533,7 @@ describe("Test findBestRouterTrade", () => {
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             expect.any(Object),
-            "retry",
+            "secondary",
         );
         expect(mockRainSolver.state.router.findLargestTradeSize).not.toHaveBeenCalled();
     });
