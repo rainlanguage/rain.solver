@@ -185,6 +185,8 @@ describe("Test findBestRouterTrade", () => {
             1000n,
             100n,
             undefined,
+            false,
+            undefined,
         );
         expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
         expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith({
@@ -239,6 +241,8 @@ describe("Test findBestRouterTrade", () => {
             fromToken,
             1000n,
             100n,
+            undefined,
+            false,
             undefined,
         );
         expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
@@ -374,6 +378,8 @@ describe("Test findBestRouterTrade", () => {
             1000n,
             100n,
             undefined,
+            false,
+            undefined,
         );
         expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
         expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith({
@@ -393,6 +399,125 @@ describe("Test findBestRouterTrade", () => {
             { error: "ratio too high" },
             "full",
         );
+    });
+
+    it("should retry with the failing route dexes excluded when full trade dryrun fails", async () => {
+        const sushiQuote = {
+            route: {
+                pcMap: new Map([["pool1", { liquidityProvider: "Hydrex" }]]),
+                route: { legs: [{ uniqueId: "pool1" }] },
+            },
+        } as any;
+        const mockFullTradeError = Result.err({
+            type: TradeType.RouteProcessor,
+            reason: SimulationHaltReason.NoOpportunity,
+            spanAttributes: { error: "dryrun failed" },
+        });
+        const mockRetrySuccess = Result.ok({
+            type: TradeType.RouteProcessor,
+            spanAttributes: { foundOpp: true },
+            estimatedProfit: 50n,
+            oppBlockNumber: 123,
+        });
+        (simulatorWithArgsSpy as Mock)
+            .mockReturnValueOnce({
+                quote: sushiQuote,
+                trySimulateTrade: vi.fn().mockResolvedValue(mockFullTradeError),
+            })
+            .mockReturnValueOnce({
+                quote: sushiQuote,
+                trySimulateTrade: vi.fn().mockResolvedValue(mockRetrySuccess),
+            });
+
+        const result: SimulationResult = await findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+        );
+
+        assert(result.isOk());
+        expect(result.value.spanAttributes.foundOpp).toBe(true);
+        expect(result.value.estimatedProfit).toBe(50n);
+        expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(2);
+        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith({
+            type: TradeType.Router,
+            solver: mockRainSolver,
+            orderDetails,
+            fromToken,
+            toToken,
+            signer,
+            maximumInputFixed: 1000n,
+            ethPrice,
+            isPartial: false,
+            blockNumber: 123n,
+            excludeDexes: new Set(["Hydrex"]),
+        });
+        expect(mockRainSolver.state.router.findLargestTradeSize).not.toHaveBeenCalled();
+    });
+
+    it("should return error when retry attempt also fails", async () => {
+        const sushiQuote = {
+            route: {
+                pcMap: new Map([["pool1", { liquidityProvider: "Hydrex" }]]),
+                route: { legs: [{ uniqueId: "pool1" }] },
+            },
+        } as any;
+        const mockFullTradeError = Result.err({
+            type: TradeType.RouteProcessor,
+            reason: SimulationHaltReason.NoOpportunity,
+            spanAttributes: { error: "dryrun failed" },
+            noneNodeError: "full failed",
+        });
+        const mockRetryError = Result.err({
+            type: TradeType.RouteProcessor,
+            reason: SimulationHaltReason.NoOpportunity,
+            spanAttributes: { error: "retry dryrun failed" },
+            noneNodeError: "retry failed",
+        });
+        (simulatorWithArgsSpy as Mock)
+            .mockReturnValueOnce({
+                quote: sushiQuote,
+                trySimulateTrade: vi.fn().mockResolvedValue(mockFullTradeError),
+            })
+            .mockReturnValueOnce({
+                quote: undefined,
+                trySimulateTrade: vi.fn().mockResolvedValue(mockRetryError),
+            });
+
+        const result: SimulationResult = await findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+        );
+
+        assert(result.isErr());
+        expect(result.error.noneNodeError).toBe("full failed");
+        expect(result.error.type).toBe(TradeType.RouteProcessor);
+        expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(2);
+        expect(extendObjectWithHeader).toHaveBeenCalledWith(
+            expect.any(Object),
+            { error: "dryrun failed" },
+            "full",
+        );
+        expect(extendObjectWithHeader).toHaveBeenCalledWith(
+            expect.any(Object),
+            { error: "retry dryrun failed" },
+            "full",
+        );
+        expect(extendObjectWithHeader).toHaveBeenCalledWith(
+            expect.any(Object),
+            expect.any(Object),
+            "retry",
+        );
+        expect(mockRainSolver.state.router.findLargestTradeSize).not.toHaveBeenCalled();
     });
 
     it("should return early if ethPrice is unknown", async () => {

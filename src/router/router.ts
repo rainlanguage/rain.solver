@@ -292,6 +292,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
         gasPriceBI: bigint,
         routeType: "single" | "multi" = "single",
         absolute = false,
+        excludeDexes?: Set<string>,
     ): bigint | undefined {
         return this.sushi?.findLargestTradeSize(
             orderDetails,
@@ -301,6 +302,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
             gasPriceBI,
             routeType,
             absolute,
+            excludeDexes,
         );
     }
 

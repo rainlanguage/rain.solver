@@ -930,6 +930,7 @@ describe("RainSolverRouter", () => {
                 mockGasPrice,
                 "single",
                 false,
+                undefined,
             );
 
             sushiSpy.mockRestore();
