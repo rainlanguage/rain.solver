@@ -62,7 +62,12 @@ export async function findBestRouterTrade(
     const excludeDexes = SushiRouterQuote.is(primary.quote)
         ? SushiRouterQuote.getRouteDexes(primary.quote)
         : new Set<LiquidityProviders>();
-    if (excludeDexes.size == 1) {
+    if (
+        (primary.result.error.reason === SimulationHaltReason.NoOpportunity ||
+            primary.result.error.reason ===
+                SimulationHaltReason.OrderRatioGreaterThanMarketPrice) &&
+        excludeDexes.size == 1
+    ) {
         const secondary = await tryFindBestRouterTrade.call(
             this,
             orderDetails,
