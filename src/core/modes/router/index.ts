@@ -230,9 +230,9 @@ export async function tryFindBestRouterTrade(
 
     // if the partial trade size sim got rejected onchain with MinimalOutputBalanceViolation,
     // it means the offchain pool data overestimated the output for the found partial trade
-    // size, so backoff by halving the trade size at each step (max 10 steps) validated
-    // against onchain dryrun and accept the first size that passes, the backoff stops
-    // early if a step fails with any other error
+    // size, so backoff by halving the trade size at each step validated against onchain
+    // dryrun and accept the first size that passes, the backoff stops early if a step fails
+    // with any other error
     let reason = partialTradeSizeSimResult.error.reason;
     if (
         SimulationHaltReason.isMinimalOutputBalanceViolation(
@@ -241,7 +241,7 @@ export async function tryFindBestRouterTrade(
     ) {
         reason = SimulationHaltReason.MinimalOutputBalanceViolation;
         let fallbackTradeSize = partialTradeSize;
-        for (let i = 1; i <= 10; i++) {
+        for (let i = 1; i <= 5; i++) {
             fallbackTradeSize /= 2n;
             if (fallbackTradeSize <= 0n) break;
             const partialFallbackSimulator = RouterTradeSimulator.withArgs({
