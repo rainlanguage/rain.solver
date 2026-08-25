@@ -206,13 +206,17 @@ export abstract class TradeSimulatorBase {
             "gasEst.final",
         );
 
-        // update the tx data again with the new min sender output
+        // update the tx data again, this time with an empty task, as the
+        // profitability of the trade was already validated by the dryrun
+        // above with headroom, so the actual submitting tx doesnt need to
+        // carry the ensure bounty task anymore
         minimumExpected =
             (estimatedGasCost * BigInt(this.tradeArgs.solver.appOptions.gasCoveragePercentage)) /
             100n;
         setTransactionDataResult = await this.setTransactionData({
             ...prepareParamsResult.value,
             minimumExpected,
+            noTask: true,
         });
         if (setTransactionDataResult.isErr()) {
             return Result.err(setTransactionDataResult.error);

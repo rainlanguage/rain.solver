@@ -6,17 +6,9 @@ import { MultiRoute, RouteLeg } from "sushi/tines";
 import { BlackListSet, poolFilter } from "./blacklist";
 import { TakeOrdersConfigType } from "../../order/types";
 import { SushiRouterError, SushiRouterErrorType } from "./error";
-import { calculatePrice18, ONE18, scaleFrom18, scaleTo18 } from "../../math";
+import { calculatePrice18, scaleFrom18, scaleTo18 } from "../../math";
 import { ChainId, LiquidityProviders, PoolCode, RainDataFetcher, Router } from "sushi";
-import {
-    Chain,
-    Account,
-    Transport,
-    parseUnits,
-    formatUnits,
-    PublicClient,
-    encodeAbiParameters,
-} from "viem";
+import { Chain, Account, Transport, formatUnits, PublicClient, encodeAbiParameters } from "viem";
 import {
     RouterType,
     RouteStatus,
@@ -541,11 +533,13 @@ export class SushiRouter extends RainSolverRouterBase {
                     maximumInput = maximumInput - initAmount / 2n ** i;
                 }
             } else {
-                const effectivePrice = calculateEffectivePrice(
+                // realized average execution price of the simulated swap, this already
+                // includes the route's price impact, same as the trade simulation gate
+                const effectivePrice = calculatePrice18(
                     maximumInput,
-                    route,
-                    fromToken,
-                    toToken,
+                    route.amountOutBI,
+                    fromToken.decimals,
+                    toToken.decimals,
                 );
                 if (effectivePrice < ratio) {
                     maximumInput = maximumInput - initAmount / 2n ** i;
@@ -562,22 +556,4 @@ export class SushiRouter extends RainSolverRouterBase {
             return undefined;
         }
     }
-}
-
-export function calculateEffectivePrice(
-    maximumInput: bigint,
-    route: MultiRoute,
-    fromToken: Token,
-    toToken: Token,
-): bigint {
-    const price = calculatePrice18(
-        maximumInput,
-        route.amountOutBI,
-        fromToken.decimals,
-        toToken.decimals,
-    );
-    if (typeof route.priceImpact === "undefined") {
-        return price;
-    }
-    return (price * parseUnits((1 - route.priceImpact).toFixed(12), 18)) / ONE18;
 }

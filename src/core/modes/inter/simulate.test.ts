@@ -7,7 +7,14 @@ import { RainSolverSigner } from "../../../signer";
 import { SimulationHaltReason } from "../simulator";
 import { ABI, Dispair, Result } from "../../../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
+import {
+    maxUint256,
+    parseUnits,
+    formatUnits,
+    zeroAddress,
+    encodeFunctionData,
+    encodeAbiParameters,
+} from "viem";
 import {
     InterOrderbookTradeSimulator,
     SimulateInterOrderbookTradeArgs,
@@ -323,6 +330,29 @@ describe("Test InterOrderbookTradeSimulator", () => {
                 tradeArgs.orderDetails,
                 TradeType.InterOrderbook,
             );
+
+            getCalldataSpy.mockRestore();
+        });
+
+        it("should use empty task when noTask is set", async () => {
+            const getCalldataSpy = vi.spyOn(simulator, "getCalldata");
+            getCalldataSpy.mockReturnValue("0xencodedData");
+
+            const result = await simulator.setTransactionData({
+                ...preparedParams,
+                noTask: true,
+            });
+            assert(result.isOk());
+            expect(preparedParams.rawtx.data).toBe("0xencodedData");
+            expect(getEnsureBountyTaskBytecode).not.toHaveBeenCalled();
+            expect(getCalldataSpy).toHaveBeenCalledWith(preparedParams.takeOrdersConfigStruct, {
+                evaluable: {
+                    interpreter: zeroAddress,
+                    store: zeroAddress,
+                    bytecode: "0x",
+                },
+                signedContext: [],
+            });
 
             getCalldataSpy.mockRestore();
         });

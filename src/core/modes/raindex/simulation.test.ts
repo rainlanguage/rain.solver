@@ -5,7 +5,13 @@ import { RainSolverSigner } from "../../../signer";
 import { SimulationHaltReason } from "../simulator";
 import { ABI, Dispair, maxFloat, minFloat, Result } from "../../../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import { encodeAbiParameters, encodeFunctionData, formatUnits, parseUnits } from "viem";
+import {
+    encodeAbiParameters,
+    encodeFunctionData,
+    formatUnits,
+    parseUnits,
+    zeroAddress,
+} from "viem";
 import {
     RaindexRouterTradeSimulator,
     SimulateRaindexRouterTradeArgs,
@@ -364,21 +370,47 @@ describe("Test RaindexRouterTradeSimulator", () => {
             getCalldataSpy.mockRestore();
         });
 
-        it("should use empty bytecode when gasCoveragePercentage is zero", async () => {
-            (getEnsureBountyTaskBytecode as Mock).mockResolvedValueOnce(Result.ok("0xtaskdata"));
+        it("should use empty task when gasCoveragePercentage is zero", async () => {
             tradeArgs.solver.appOptions.gasCoveragePercentage = "0";
             const getCalldataSpy = vi.spyOn(simulator, "getCalldata");
             getCalldataSpy.mockReturnValue("0xencodedCalldata");
 
             const result = await simulator.setTransactionData(preparedParams);
             assert(result.isOk());
+            expect(getEnsureBountyTaskBytecode).not.toHaveBeenCalled();
             expect(getCalldataSpy).toHaveBeenCalledWith(
                 preparedParams.takeOrders,
                 preparedParams.exchangeData,
                 {
                     evaluable: {
-                        interpreter: dispair.interpreter as `0x${string}`,
-                        store: dispair.store as `0x${string}`,
+                        interpreter: zeroAddress,
+                        store: zeroAddress,
+                        bytecode: "0x",
+                    },
+                    signedContext: [],
+                },
+            );
+
+            getCalldataSpy.mockRestore();
+        });
+
+        it("should use empty task when noTask is set", async () => {
+            const getCalldataSpy = vi.spyOn(simulator, "getCalldata");
+            getCalldataSpy.mockReturnValue("0xencodedCalldata");
+
+            const result = await simulator.setTransactionData({
+                ...preparedParams,
+                noTask: true,
+            });
+            assert(result.isOk());
+            expect(getEnsureBountyTaskBytecode).not.toHaveBeenCalled();
+            expect(getCalldataSpy).toHaveBeenCalledWith(
+                preparedParams.takeOrders,
+                preparedParams.exchangeData,
+                {
+                    evaluable: {
+                        interpreter: zeroAddress,
+                        store: zeroAddress,
                         bytecode: "0x",
                     },
                     signedContext: [],

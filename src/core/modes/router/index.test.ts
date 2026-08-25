@@ -280,6 +280,9 @@ describe("Test findBestRouterTrade", () => {
         assert(result.isErr());
         expect(result.error.noneNodeError).toBe("order ratio issue");
         expect(result.error.type).toBe("router");
+        expect(result.error.spanAttributes["partial.error"]).toBe(
+            "no viable partial trade size found",
+        );
         expect(extendObjectWithHeader).toHaveBeenCalledWith(
             expect.any(Object),
             { error: "ratio too high" },

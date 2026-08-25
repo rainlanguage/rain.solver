@@ -6,7 +6,7 @@ import { Pair, TakeOrderDetails } from "../../../order";
 import { TradeType, FailedSimulation, TaskType } from "../../types";
 import { Result, ABI, RawTransaction, maxFloat } from "../../../common";
 import { SimulationHaltReason, TradeSimulatorBase } from "../simulator";
-import { encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
+import { encodeFunctionData, formatUnits, maxUint256, parseUnits, zeroAddress } from "viem";
 import {
     EnsureBountyTaskType,
     EnsureBountyTaskErrorType,
@@ -43,6 +43,8 @@ export type IntraOrderbookTradePrepareedParams = {
     rawtx: RawTransaction;
     minimumExpected: bigint;
     price?: bigint;
+    /** If set, builds the tx data with an empty task */
+    noTask?: boolean;
 };
 
 /**
@@ -124,41 +126,51 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
             params.type,
         )!;
 
-        // build clear function call data and withdraw tasks
-        const taskBytecodeResult = await getEnsureBountyTaskBytecode(
-            {
-                type: EnsureBountyTaskType.Internal,
-                botAddress: this.tradeArgs.signer.account.address,
-                inputToken: this.tradeArgs.orderDetails.buyToken,
-                outputToken: this.tradeArgs.orderDetails.sellToken,
-                orgInputBalance: this.tradeArgs.inputBalance,
-                orgOutputBalance: this.tradeArgs.outputBalance,
-                inputToEthPrice: parseUnits(this.tradeArgs.inputToEthPrice, 18),
-                outputToEthPrice: parseUnits(this.tradeArgs.outputToEthPrice, 18),
-                minimumExpected: params.minimumExpected,
-                sender: this.tradeArgs.signer.account.address,
-            },
-            this.tradeArgs.solver.state.client,
-            addresses.dispair,
-        );
-        if (taskBytecodeResult.isErr()) {
-            const errMsg = await errorSnapshot("", taskBytecodeResult.error);
-            this.spanAttributes["isNodeError"] =
-                taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
-            this.spanAttributes["error"] = errMsg;
-            const result = {
-                type: TradeType.IntraOrderbook,
-                spanAttributes: this.spanAttributes,
-                reason: SimulationHaltReason.FailedToGetTaskBytecode,
-            };
-            this.spanAttributes["duration"] = performance.now() - this.startTime;
-            return Result.err(result);
+        // build the ensure bounty task bytecode for the withdraw tasks, unless
+        // an empty task is explicitly requested or gas coverage is 0, in which
+        // cases the tx wont need onchain bounty assurance
+        let bytecode: `0x${string}` = "0x";
+        let interpreter: `0x${string}` = zeroAddress;
+        let store: `0x${string}` = zeroAddress;
+        if (!params.noTask && this.tradeArgs.solver.appOptions.gasCoveragePercentage !== "0") {
+            const taskBytecodeResult = await getEnsureBountyTaskBytecode(
+                {
+                    type: EnsureBountyTaskType.Internal,
+                    botAddress: this.tradeArgs.signer.account.address,
+                    inputToken: this.tradeArgs.orderDetails.buyToken,
+                    outputToken: this.tradeArgs.orderDetails.sellToken,
+                    orgInputBalance: this.tradeArgs.inputBalance,
+                    orgOutputBalance: this.tradeArgs.outputBalance,
+                    inputToEthPrice: parseUnits(this.tradeArgs.inputToEthPrice, 18),
+                    outputToEthPrice: parseUnits(this.tradeArgs.outputToEthPrice, 18),
+                    minimumExpected: params.minimumExpected,
+                    sender: this.tradeArgs.signer.account.address,
+                },
+                this.tradeArgs.solver.state.client,
+                addresses.dispair,
+            );
+            if (taskBytecodeResult.isErr()) {
+                const errMsg = await errorSnapshot("", taskBytecodeResult.error);
+                this.spanAttributes["isNodeError"] =
+                    taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
+                this.spanAttributes["error"] = errMsg;
+                const result = {
+                    type: TradeType.IntraOrderbook,
+                    spanAttributes: this.spanAttributes,
+                    reason: SimulationHaltReason.FailedToGetTaskBytecode,
+                };
+                this.spanAttributes["duration"] = performance.now() - this.startTime;
+                return Result.err(result);
+            }
+            bytecode = taskBytecodeResult.value;
+            interpreter = addresses.dispair.interpreter as `0x${string}`;
+            store = addresses.dispair.store as `0x${string}`;
         }
         const task = {
             evaluable: {
-                interpreter: addresses.dispair.interpreter as `0x${string}`,
-                store: addresses.dispair.store as `0x${string}`,
-                bytecode: taskBytecodeResult.value,
+                interpreter,
+                store,
+                bytecode,
             },
             signedContext: [],
         };
@@ -228,7 +240,7 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                 this.tradeArgs.orderDetails.sellToken,
                 BigInt(this.outputBountyVaultId),
                 maxUint256,
-                this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0" ? [] : [task],
+                task.evaluable.bytecode === "0x" ? [] : [task],
             ],
         });
         const clear2Calldata = encodeFunctionData({
@@ -286,7 +298,7 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                 this.tradeArgs.orderDetails.sellToken,
                 this.outputBountyVaultId,
                 maxFloat(this.tradeArgs.orderDetails.sellTokenDecimals),
-                this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0" ? [] : [task],
+                task.evaluable.bytecode === "0x" ? [] : [task],
             ],
         });
         const clear3Calldata = encodeFunctionData({
@@ -344,7 +356,7 @@ export class IntraOrderbookTradeSimulator extends TradeSimulatorBase {
                 this.tradeArgs.orderDetails.sellToken,
                 this.outputBountyVaultId,
                 maxFloat(this.tradeArgs.orderDetails.sellTokenDecimals),
-                this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0" ? [] : [task],
+                task.evaluable.bytecode === "0x" ? [] : [task],
             ],
         });
         const clear2Calldata = encodeFunctionData({
