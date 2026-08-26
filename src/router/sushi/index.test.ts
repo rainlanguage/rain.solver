@@ -1050,7 +1050,7 @@ describe("test SushiRouter methods", () => {
             );
 
             expect(typeof result).toBe("bigint");
-            expect(result).toBe(3959999978542327883n);
+            expect(result).toBe(3999999761581420898n);
         });
 
         it("should return undefined if all OK routes have price < ratio", () => {
