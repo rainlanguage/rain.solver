@@ -248,18 +248,18 @@ export class SushiRouter extends RainSolverRouterBase {
                     ),
                 );
             } else {
-                if (route.totalAmountOutBI < 0n) {
+                if (route.amountOutBI < 0n) {
                     this.signalReset = true;
                     return Result.err(
                         new SushiRouterError(
-                            `Sushi router returned negative output for route: amountOut ${route.totalAmountOutBI.toString()}, amountIn: ${amountIn.toString()}, pair: ${toToken.symbol}/${fromToken.symbol}`,
+                            `Sushi router returned negative output for route: amountOut ${route.amountOutBI.toString()}, amountIn: ${amountIn.toString()}, pair: ${toToken.symbol}/${fromToken.symbol}`,
                             SushiRouterErrorType.NegativeOutput,
                         ),
                     );
                 }
                 const price = calculatePrice18(
                     amountIn,
-                    route.totalAmountOutBI,
+                    route.amountOutBI,
                     fromToken.decimals,
                     toToken.decimals,
                 );
@@ -268,7 +268,7 @@ export class SushiRouter extends RainSolverRouterBase {
                     status: RouteStatus.Success,
                     price,
                     route: { route, pcMap },
-                    amountOut: route.totalAmountOutBI,
+                    amountOut: route.amountOutBI,
                 });
             }
         } catch (error) {
@@ -561,7 +561,7 @@ export class SushiRouter extends RainSolverRouterBase {
                 const effectivePrice =
                     (calculatePrice18(
                         maximumInput,
-                        route.totalAmountOutBI,
+                        route.amountOutBI,
                         fromToken.decimals,
                         toToken.decimals,
                     ) *

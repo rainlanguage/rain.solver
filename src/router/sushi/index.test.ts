@@ -278,7 +278,6 @@ describe("test SushiRouter methods", () => {
             const mockRoute = {
                 status: "Success",
                 amountOutBI: 2000000000n,
-                totalAmountOutBI: 2000000000n,
             };
             const mockPcMap = new Map();
 
@@ -313,7 +312,6 @@ describe("test SushiRouter methods", () => {
             const mockRoute = {
                 status: "Success",
                 amountOutBI: 2000000000n,
-                totalAmountOutBI: 2000000000n,
             };
             const mockPcMap = new Map();
 
@@ -370,7 +368,6 @@ describe("test SushiRouter methods", () => {
             const mockRoute = {
                 status: "Success",
                 amountOutBI: 2000000000n,
-                totalAmountOutBI: 2000000000n,
             };
             const mockPcMap = new Map();
 
@@ -406,7 +403,6 @@ describe("test SushiRouter methods", () => {
             const mockRoute = {
                 status: "Success",
                 amountOutBI: 2000000000n,
-                totalAmountOutBI: 2000000000n,
             };
             const mockPcMap = new Map();
 
@@ -491,7 +487,6 @@ describe("test SushiRouter methods", () => {
             const mockRoute = {
                 status: "Success",
                 amountOutBI: 3000000000n,
-                totalAmountOutBI: 2000000000n,
             };
 
             (mockDataFetcher.fetchPoolsForToken as Mock).mockResolvedValue(undefined);
@@ -1041,7 +1036,7 @@ describe("test SushiRouter methods", () => {
 
         it("should return the largest valid trade size when some routes are valid", () => {
             (Router.findBestRoute as Mock).mockImplementation(() => {
-                return { status: "OK", totalAmountOutBI: 4n * ONE18 };
+                return { status: "OK", amountOutBI: 4n * ONE18 };
             });
 
             const orderDetails = makeOrderDetails(1n * ONE18);
@@ -1061,7 +1056,7 @@ describe("test SushiRouter methods", () => {
         it("should return undefined if all OK routes have price < ratio", () => {
             (Router.findBestRoute as Mock).mockImplementation(() => ({
                 status: "OK",
-                totalAmountOutBI: 1n, // price = 1
+                amountOutBI: 1n, // price = 1
             }));
             const orderDetails = makeOrderDetails(2n * ONE18); // ratio = 2
 
@@ -1080,7 +1075,7 @@ describe("test SushiRouter methods", () => {
             fromToken = { address: "0xFrom", decimals: 6 } as any;
             (Router.findBestRoute as Mock).mockReturnValue({
                 status: "OK",
-                totalAmountOutBI: 2n * ONE18,
+                amountOutBI: 2n * ONE18,
             });
             const orderDetails = makeOrderDetails(1n * ONE18);
 
