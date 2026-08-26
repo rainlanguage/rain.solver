@@ -558,15 +558,12 @@ export class SushiRouter extends RainSolverRouterBase {
             } else {
                 // realized average execution price of the simulated swap, this already
                 // includes the route's price impact, same as the trade simulation gate
-                const effectivePrice =
-                    (calculatePrice18(
-                        maximumInput,
-                        route.amountOutBI,
-                        fromToken.decimals,
-                        toToken.decimals,
-                    ) *
-                        99n) /
-                    100n;
+                const effectivePrice = calculatePrice18(
+                    maximumInput,
+                    route.amountOutBI,
+                    fromToken.decimals,
+                    toToken.decimals,
+                );
                 if (effectivePrice < ratio) {
                     maximumInput = maximumInput - initAmount / 2n ** i;
                 } else {
