@@ -241,7 +241,7 @@ export async function tryFindBestRouterTrade(
     ) {
         reason = SimulationHaltReason.MinimalOutputBalanceViolation;
         let fallbackTradeSize = partialTradeSize;
-        for (let i = 1; i <= 6; i++) {
+        for (let i = 1; i <= 3; i++) {
             fallbackTradeSize /= 2n;
             if (fallbackTradeSize <= 0n) break;
             const partialFallbackSimulator = RouterTradeSimulator.withArgs({

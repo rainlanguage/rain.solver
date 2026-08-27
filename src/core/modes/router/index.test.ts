@@ -500,10 +500,10 @@ describe("Test findBestRouterTrade", () => {
         assert(result.isErr());
         expect(result.error.reason).toBe(SimulationHaltReason.MinimalOutputBalanceViolation);
         expect(result.error.noneNodeError).toBe("order ratio issue");
-        // 1 full + 1 partial + 6 fallbacks
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(8);
+        // 1 full + 1 partial + 5 fallbacks
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(5);
         expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith(
-            expect.objectContaining({ maximumInputFixed: 16000n, isPartial: true }),
+            expect.objectContaining({ maximumInputFixed: 128000n, isPartial: true }),
         );
         expect(result.error.spanAttributes["full.error"]).toBe("ratio too high");
         expect(result.error.spanAttributes["partial.error"]).toContain(
@@ -512,10 +512,10 @@ describe("Test findBestRouterTrade", () => {
         expect(result.error.spanAttributes["partialFallback1.error"]).toContain(
             "MinimalOutputBalanceViolation",
         );
-        expect(result.error.spanAttributes["partialFallback6.error"]).toContain(
+        expect(result.error.spanAttributes["partialFallback3.error"]).toContain(
             "MinimalOutputBalanceViolation",
         );
-        expect(result.error.spanAttributes["partialFallback7.error"]).toBeUndefined();
+        expect(result.error.spanAttributes["partialFallback4.error"]).toBeUndefined();
     });
 
     it("should stop backoff when a step fails with an error other than MinimalOutputBalanceViolation", async () => {
