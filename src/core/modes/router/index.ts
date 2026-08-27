@@ -233,15 +233,10 @@ export async function tryFindBestRouterTrade(
     // size, so backoff by halving the trade size at each step validated against onchain
     // dryrun and accept the first size that passes, the backoff stops early if a step fails
     // with any other error
-    let reason = partialTradeSizeSimResult.error.reason;
-    if (
-        SimulationHaltReason.isMinimalOutputBalanceViolation(
-            partialTradeSizeSimResult.error.spanAttributes["error"],
-        )
-    ) {
-        reason = SimulationHaltReason.MinimalOutputBalanceViolation;
+    const reason = partialTradeSizeSimResult.error.reason;
+    if (SimulationHaltReason.needsRetry(partialTradeSizeSimResult.error.spanAttributes["error"])) {
         let fallbackTradeSize = partialTradeSize;
-        for (let i = 1; i <= 3; i++) {
+        for (let i = 1; i <= 4; i++) {
             fallbackTradeSize /= 2n;
             if (fallbackTradeSize <= 0n) break;
             const partialFallbackSimulator = RouterTradeSimulator.withArgs({
@@ -267,7 +262,7 @@ export async function tryFindBestRouterTrade(
                 `partialFallback${i}`,
             );
             if (
-                !SimulationHaltReason.isMinimalOutputBalanceViolation(
+                !SimulationHaltReason.needsRetry(
                     partialFallbackSimResult.error.spanAttributes["error"],
                 )
             ) {

@@ -498,12 +498,11 @@ describe("Test findBestRouterTrade", () => {
         );
 
         assert(result.isErr());
-        expect(result.error.reason).toBe(SimulationHaltReason.MinimalOutputBalanceViolation);
         expect(result.error.noneNodeError).toBe("order ratio issue");
-        // 1 full + 1 partial + 5 fallbacks
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(5);
+        // 1 full + 1 partial + 4 fallbacks
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(6);
         expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith(
-            expect.objectContaining({ maximumInputFixed: 128000n, isPartial: true }),
+            expect.objectContaining({ maximumInputFixed: 64000n, isPartial: true }),
         );
         expect(result.error.spanAttributes["full.error"]).toBe("ratio too high");
         expect(result.error.spanAttributes["partial.error"]).toContain(
@@ -512,10 +511,10 @@ describe("Test findBestRouterTrade", () => {
         expect(result.error.spanAttributes["partialFallback1.error"]).toContain(
             "MinimalOutputBalanceViolation",
         );
-        expect(result.error.spanAttributes["partialFallback3.error"]).toContain(
+        expect(result.error.spanAttributes["partialFallback4.error"]).toContain(
             "MinimalOutputBalanceViolation",
         );
-        expect(result.error.spanAttributes["partialFallback4.error"]).toBeUndefined();
+        expect(result.error.spanAttributes["partialFallback5.error"]).toBeUndefined();
     });
 
     it("should stop backoff when a step fails with an error other than MinimalOutputBalanceViolation", async () => {
@@ -555,7 +554,6 @@ describe("Test findBestRouterTrade", () => {
         );
 
         assert(result.isErr());
-        expect(result.error.reason).toBe(SimulationHaltReason.MinimalOutputBalanceViolation);
         // 1 full + 1 partial + 1 fallback, stopped early
         expect(trySimulateTradeSpy).toHaveBeenCalledTimes(3);
         expect(result.error.spanAttributes["partialFallback1.error"]).toBe("some other revert");

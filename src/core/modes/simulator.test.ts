@@ -624,14 +624,18 @@ describe("Test TradeSimulatorBase", () => {
 describe("Test SimulationHaltReason namespace", () => {
     it("should detect MinimalOutputBalanceViolation in the given text", () => {
         expect(
-            SimulationHaltReason.isMinimalOutputBalanceViolation(
+            SimulationHaltReason.needsRetry(
                 'execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)"',
             ),
         ).toBe(true);
-        expect(SimulationHaltReason.isMinimalOutputBalanceViolation("some other error")).toBe(
-            false,
+        expect(SimulationHaltReason.needsRetry('execution reverted: minimumSenderOutput"')).toBe(
+            true,
         );
-        expect(SimulationHaltReason.isMinimalOutputBalanceViolation(undefined)).toBe(false);
-        expect(SimulationHaltReason.isMinimalOutputBalanceViolation(123)).toBe(false);
+        expect(SimulationHaltReason.needsRetry('execution reverted: minimum sender output"')).toBe(
+            true,
+        );
+        expect(SimulationHaltReason.needsRetry("some other error")).toBe(false);
+        expect(SimulationHaltReason.needsRetry(undefined)).toBe(false);
+        expect(SimulationHaltReason.needsRetry(123)).toBe(false);
     });
 });
