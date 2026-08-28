@@ -319,4 +319,12 @@ export namespace AppOptions {
             }
         }
     }
+
+    export function isMaxOwnerProfile(
+        owner: string,
+        ownerProfile?: Record<string, number>,
+    ): boolean {
+        const o = owner.toLowerCase();
+        return !!ownerProfile && !!ownerProfile[o] && ownerProfile[o] === Number.MAX_SAFE_INTEGER;
+    }
 }

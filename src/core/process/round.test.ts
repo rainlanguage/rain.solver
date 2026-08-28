@@ -525,108 +525,108 @@ describe("Test initializeRound", () => {
         });
     });
 
-    it("should skip orders with zero vault balance and create settlement with ZeroOutput status", async () => {
-        const mockOrders = [
-            {
-                orderbook: "0x3333333333333333333333333333333333333333",
-                buyTokenSymbol: "ETH",
-                buyToken: "0xBuyToken1",
-                sellTokenSymbol: "USDC",
-                sellToken: "0xSellToken1",
-                sellTokenVaultBalance: 0n, // zero balance - should be skipped
-                takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
-            },
-            {
-                orderbook: "0x4444444444444444444444444444444444444444",
-                buyTokenSymbol: "BTC",
-                buyToken: "0xBuyToken2",
-                sellTokenSymbol: "USDT",
-                sellToken: "0xSellToken2",
-                takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
-            },
-        ];
-        const mockSettleFn = vi.fn();
-        (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
-            nonZeroOutput: mockOrders,
-            zeroOutput: [],
-        });
-        (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
-        (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
+    // it("should skip orders with zero vault balance and create settlement with ZeroOutput status", async () => {
+    //     const mockOrders = [
+    //         {
+    //             orderbook: "0x3333333333333333333333333333333333333333",
+    //             buyTokenSymbol: "ETH",
+    //             buyToken: "0xBuyToken1",
+    //             sellTokenSymbol: "USDC",
+    //             sellToken: "0xSellToken1",
+    //             sellTokenVaultBalance: 0n, // zero balance - should be skipped
+    //             takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
+    //         },
+    //         {
+    //             orderbook: "0x4444444444444444444444444444444444444444",
+    //             buyTokenSymbol: "BTC",
+    //             buyToken: "0xBuyToken2",
+    //             sellTokenSymbol: "USDT",
+    //             sellToken: "0xSellToken2",
+    //             takeOrder: { id: "0xOrder2", struct: { order: { owner: "0xOwner2" } } },
+    //         },
+    //     ];
+    //     const mockSettleFn = vi.fn();
+    //     (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+    //         nonZeroOutput: mockOrders,
+    //         zeroOutput: [],
+    //     });
+    //     (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+    //     (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
 
-        const result: initializeRoundType = await initializeRound.call(
-            mockSolver,
-            undefined,
-            false,
-        );
+    //     const result: initializeRoundType = await initializeRound.call(
+    //         mockSolver,
+    //         undefined,
+    //         false,
+    //     );
 
-        // should have 2 settlements total
-        expect(result.settlements).toHaveLength(2);
-        expect(result.checkpointReports).toHaveLength(2);
+    //     // should have 2 settlements total
+    //     expect(result.settlements).toHaveLength(2);
+    //     expect(result.checkpointReports).toHaveLength(2);
 
-        // first settlement (zero balance) - should be skipped and have ZeroOutput status
-        const zeroBalanceSettlement = result.settlements[0];
-        expect(zeroBalanceSettlement.pair).toBe("ETH/USDC");
-        expect(zeroBalanceSettlement.owner).toBe("0xowner1");
-        expect(zeroBalanceSettlement.orderHash).toBe("0xOrder1");
+    //     // first settlement (zero balance) - should be skipped and have ZeroOutput status
+    //     const zeroBalanceSettlement = result.settlements[0];
+    //     expect(zeroBalanceSettlement.pair).toBe("ETH/USDC");
+    //     expect(zeroBalanceSettlement.owner).toBe("0xowner1");
+    //     expect(zeroBalanceSettlement.orderHash).toBe("0xOrder1");
 
-        // test the settle function for zero balance order
-        const zeroBalanceResult = await zeroBalanceSettlement.settle();
-        expect(zeroBalanceResult.isOk()).toBe(true);
-        if (zeroBalanceResult.isOk()) {
-            expect(zeroBalanceResult.value.status).toBe(ProcessOrderStatus.ZeroOutput);
-            expect(zeroBalanceResult.value.tokenPair).toBe("ETH/USDC");
-            expect(zeroBalanceResult.value.buyToken).toBe("0xBuyToken1");
-            expect(zeroBalanceResult.value.sellToken).toBe("0xSellToken1");
-            expect(zeroBalanceResult.value.spanAttributes).toEqual({
-                "details.pair": "ETH/USDC",
-                "details.orders": "0xOrder1",
-            });
-        }
+    //     // test the settle function for zero balance order
+    //     const zeroBalanceResult = await zeroBalanceSettlement.settle();
+    //     expect(zeroBalanceResult.isOk()).toBe(true);
+    //     if (zeroBalanceResult.isOk()) {
+    //         expect(zeroBalanceResult.value.status).toBe(ProcessOrderStatus.ZeroOutput);
+    //         expect(zeroBalanceResult.value.tokenPair).toBe("ETH/USDC");
+    //         expect(zeroBalanceResult.value.buyToken).toBe("0xBuyToken1");
+    //         expect(zeroBalanceResult.value.sellToken).toBe("0xSellToken1");
+    //         expect(zeroBalanceResult.value.spanAttributes).toEqual({
+    //             "details.pair": "ETH/USDC",
+    //             "details.orders": "0xOrder1",
+    //         });
+    //     }
 
-        // second settlement (non-zero balance) - should be processed normally
-        const normalSettlement = result.settlements[1];
-        expect(normalSettlement.pair).toBe("BTC/USDT");
-        expect(normalSettlement.owner).toBe("0xowner2");
-        expect(normalSettlement.orderHash).toBe("0xOrder2");
-        expect(normalSettlement.settle).toBe(mockSettleFn);
+    //     // second settlement (non-zero balance) - should be processed normally
+    //     const normalSettlement = result.settlements[1];
+    //     expect(normalSettlement.pair).toBe("BTC/USDT");
+    //     expect(normalSettlement.owner).toBe("0xowner2");
+    //     expect(normalSettlement.orderHash).toBe("0xOrder2");
+    //     expect(normalSettlement.settle).toBe(mockSettleFn);
 
-        // verify processOrder was called only once (for the non-zero balance order)
-        expect(mockSolver.processOrder).toHaveBeenCalledTimes(1);
-        expect(mockSolver.processOrder).toHaveBeenCalledWith({
-            orderDetails: mockOrders[1], // second order with non-zero balance
-            signer: mockSigner,
-            blockNumber: 123n,
-            startTime: expect.any(Number),
-        });
+    //     // verify processOrder was called only once (for the non-zero balance order)
+    //     expect(mockSolver.processOrder).toHaveBeenCalledTimes(1);
+    //     expect(mockSolver.processOrder).toHaveBeenCalledWith({
+    //         orderDetails: mockOrders[1], // second order with non-zero balance
+    //         signer: mockSigner,
+    //         blockNumber: 123n,
+    //         startTime: expect.any(Number),
+    //     });
 
-        // verify getRandomSigner was called only once (for the non-zero balance order)
-        expect(mockWalletManager.getRandomSigner).toHaveBeenCalledTimes(1);
-        expect(mockWalletManager.getRandomSigner).toHaveBeenCalledWith(true);
+    //     // verify getRandomSigner was called only once (for the non-zero balance order)
+    //     expect(mockWalletManager.getRandomSigner).toHaveBeenCalledTimes(1);
+    //     expect(mockWalletManager.getRandomSigner).toHaveBeenCalledWith(true);
 
-        // verify checkpoint reports
-        const zeroBalanceReport = result.checkpointReports[0];
-        expect(zeroBalanceReport.name).toBe("checkpoint_ETH/USDC");
-        expect(zeroBalanceReport.attributes["details.pair"]).toBe("ETH/USDC");
-        expect(zeroBalanceReport.attributes["details.orderHash"]).toBe("0xOrder1");
-        expect(zeroBalanceReport.attributes["details.owner"]).toBe("0xowner1");
-        expect(zeroBalanceReport.attributes["details.orderbook"]).toBe(
-            "0x3333333333333333333333333333333333333333",
-        );
-        expect(zeroBalanceReport.endTime).toBeTypeOf("number");
-        // should NOT have sender attribute since it was skipped
-        expect(zeroBalanceReport.attributes["details.sender"]).toBeUndefined();
+    //     // verify checkpoint reports
+    //     const zeroBalanceReport = result.checkpointReports[0];
+    //     expect(zeroBalanceReport.name).toBe("checkpoint_ETH/USDC");
+    //     expect(zeroBalanceReport.attributes["details.pair"]).toBe("ETH/USDC");
+    //     expect(zeroBalanceReport.attributes["details.orderHash"]).toBe("0xOrder1");
+    //     expect(zeroBalanceReport.attributes["details.owner"]).toBe("0xowner1");
+    //     expect(zeroBalanceReport.attributes["details.orderbook"]).toBe(
+    //         "0x3333333333333333333333333333333333333333",
+    //     );
+    //     expect(zeroBalanceReport.endTime).toBeTypeOf("number");
+    //     // should NOT have sender attribute since it was skipped
+    //     expect(zeroBalanceReport.attributes["details.sender"]).toBeUndefined();
 
-        const normalReport = result.checkpointReports[1];
-        expect(normalReport.name).toBe("checkpoint_BTC/USDT");
-        expect(normalReport.attributes["details.pair"]).toBe("BTC/USDT");
-        expect(normalReport.attributes["details.orderHash"]).toBe("0xOrder2");
-        expect(normalReport.attributes["details.owner"]).toBe("0xowner2");
-        expect(normalReport.attributes["details.orderbook"]).toBe(
-            "0x4444444444444444444444444444444444444444",
-        );
-        expect(normalReport.attributes["details.sender"]).toBe("0xSigner123");
-        expect(normalReport.endTime).toBeTypeOf("number");
-    });
+    //     const normalReport = result.checkpointReports[1];
+    //     expect(normalReport.name).toBe("checkpoint_BTC/USDT");
+    //     expect(normalReport.attributes["details.pair"]).toBe("BTC/USDT");
+    //     expect(normalReport.attributes["details.orderHash"]).toBe("0xOrder2");
+    //     expect(normalReport.attributes["details.owner"]).toBe("0xowner2");
+    //     expect(normalReport.attributes["details.orderbook"]).toBe(
+    //         "0x4444444444444444444444444444444444444444",
+    //     );
+    //     expect(normalReport.attributes["details.sender"]).toBe("0xSigner123");
+    //     expect(normalReport.endTime).toBeTypeOf("number");
+    // });
 
     it("should skip orders when trade addresses are not configured", async () => {
         const mockOrders = [

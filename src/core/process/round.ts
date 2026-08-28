@@ -177,65 +177,6 @@ export async function processOrderInit(
         "details.owner": owner,
     });
 
-    // get updated balance for the orderDetails from owner vaults map
-    orderDetails.sellTokenVaultBalance =
-        this.orderManager.ownerTokenVaultMap
-            .get(orderDetails.orderbook)
-            ?.get(owner)
-            ?.get(orderDetails.sellToken)
-            ?.get(
-                BigInt(
-                    orderDetails.takeOrder.struct.order.validOutputs[
-                        orderDetails.takeOrder.struct.outputIOIndex
-                    ].vaultId,
-                ),
-            )?.balance ?? orderDetails.sellTokenVaultBalance;
-    orderDetails.buyTokenVaultBalance =
-        this.orderManager.ownerTokenVaultMap
-            .get(orderDetails.orderbook)
-            ?.get(owner)
-            ?.get(orderDetails.buyToken)
-            ?.get(
-                BigInt(
-                    orderDetails.takeOrder.struct.order.validInputs[
-                        orderDetails.takeOrder.struct.inputIOIndex
-                    ].vaultId,
-                ),
-            )?.balance ?? orderDetails.buyTokenVaultBalance;
-
-    // skip if the output vault is empty
-    if (orderDetails.sellTokenVaultBalance <= 0n) {
-        const endTime = performance.now();
-        const settlement: Settlement = {
-            pair,
-            owner,
-            startTime,
-            orderHash: orderDetails.takeOrder.id,
-            settle: async () => {
-                return Result.ok({
-                    endTime,
-                    tokenPair: pair,
-                    buyToken: orderDetails.buyToken,
-                    sellToken: orderDetails.sellToken,
-                    status: ProcessOrderStatus.ZeroOutput,
-                    spanAttributes: {
-                        "details.pair": pair,
-                        "details.orders": orderDetails.takeOrder.id,
-                    },
-                    spanEvents: {},
-                });
-            },
-        };
-        report.end();
-
-        // export the report to logger if logger is available
-        this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
-        return {
-            settlement,
-            checkpointReport: report,
-        };
-    }
-
     // skip if the required addresses for trading are not configured
     if (!this.state.contracts.getAddressesForTrade(orderDetails)) {
         const endTime = performance.now();

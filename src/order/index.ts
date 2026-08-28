@@ -20,6 +20,7 @@ import {
     OrderbooksOwnersProfileMap,
     OrderbookOwnerTokenVaultsMap,
 } from "./types";
+import { AppOptions } from "../config";
 
 export * from "./types";
 export * from "./quote";
@@ -496,7 +497,10 @@ export class OrderManager {
                                 ),
                             )?.balance ?? pair.buyTokenVaultBalance;
 
-                    if (pair.sellTokenVaultBalance <= 0n) {
+                    if (
+                        pair.sellTokenVaultBalance <= 0n &&
+                        !AppOptions.isMaxOwnerProfile(owner, this.state.appOptions.ownerProfile)
+                    ) {
                         result.zeroOutput.push(pair);
                     } else {
                         result.nonZeroOutput.push(pair);
