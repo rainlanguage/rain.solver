@@ -86,6 +86,7 @@ describe("Test WalletManager", () => {
             },
             appOptions: {
                 skipSweep: new Set(),
+                rotateMultiWallet: true,
             },
         } as any);
 
@@ -1110,9 +1111,66 @@ describe("Test WalletManager", () => {
             expect(reports).toHaveLength(1);
             expect(reports[0]).toHaveProperty("removeWorkerReport");
             expect(reports[0]).toHaveProperty("addWorkerReport");
+            expect(reports[0]).not.toHaveProperty("topupWorkerReport");
             expect(tryRemoveWorkerSpy).toHaveBeenCalledWith(lowBalanceWorker);
             expect(tryAddWorkerSpy).toHaveBeenCalled();
             expect(walletManager.workers.lastUsedDerivationIndex).toBeGreaterThan(3);
+
+            tryRemoveWorkerSpy.mockRestore();
+            tryAddWorkerSpy.mockRestore();
+        });
+
+        it("should identify and topup low balance workers", async () => {
+            multiWalletState.appOptions.rotateMultiWallet = false;
+            const { walletManager } = await WalletManager.init(multiWalletState);
+
+            // setup state with average gas cost
+            (multiWalletState as any).gasCosts = [parseUnits("0.01", 18)];
+
+            // mock a worker with low balance
+            const workers = Array.from(walletManager.workers.signers.values());
+            const lowBalanceWorker = workers[0];
+            vi.spyOn(lowBalanceWorker, "getSelfBalance").mockResolvedValue(parseUnits("0.01", 18));
+
+            // mock a worker with sufficient balance
+            vi.spyOn(workers[1], "getSelfBalance").mockResolvedValue(parseUnits("100", 18));
+            vi.spyOn(workers[2], "getSelfBalance").mockResolvedValue(parseUnits("100", 18));
+
+            // mock the worker management methods
+            const tryRemoveWorkerSpy = vi
+                .spyOn(walletManager, "tryRemoveWorker")
+                .mockResolvedValue({
+                    name: "remove-wallet",
+                    status: { code: SpanStatusCode.OK },
+                    attributes: {},
+                    end: vi.fn(),
+                } as any);
+
+            const tryAddWorkerSpy = vi.spyOn(walletManager, "tryAddWorker").mockResolvedValue({
+                name: "add-wallet",
+                status: { code: SpanStatusCode.OK },
+                attributes: {},
+                end: vi.fn(),
+            } as any);
+            const fundWalletSpy = vi.spyOn(walletManager, "fundWallet").mockResolvedValue(
+                common.Result.ok({
+                    name: "fund-wallet",
+                    status: { code: SpanStatusCode.OK },
+                    attributes: {},
+                    end: vi.fn(),
+                }) as any,
+            );
+
+            const reports = await walletManager.assessWorkers();
+
+            expect(reports).toHaveLength(1);
+            expect(reports[0]).toHaveProperty("topupWorkerReport");
+            expect(reports[0]).not.toHaveProperty("removeWorkerReport");
+            expect(reports[0]).not.toHaveProperty("addWorkerReport");
+            expect(tryRemoveWorkerSpy).not.toHaveBeenCalledWith(lowBalanceWorker);
+            expect(tryAddWorkerSpy).not.toHaveBeenCalled();
+            expect(fundWalletSpy).toHaveBeenNthCalledWith(1, lowBalanceWorker.account.address);
+            expect(walletManager.workers.lastUsedDerivationIndex).toBe(3);
 
             tryRemoveWorkerSpy.mockRestore();
             tryAddWorkerSpy.mockRestore();

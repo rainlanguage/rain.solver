@@ -153,6 +153,9 @@ orderbookTradeTypes:
             maxConcurrency: 15,
             skipSweep: new Set([`0x${"8".repeat(40)}`, `0x${"9".repeat(40)}`]),
             headroom: 102.5,
+            sweepWalletTime: 0,
+            convertToGasTime: 0,
+            rotateMultiWallet: false,
         };
 
         // AppOptions returned from fromYaml() should match expected
@@ -193,6 +196,9 @@ orderbookTradeTypes:
             maxRatio: true,
             maxConcurrency: undefined,
             skipSweep: undefined,
+            sweepWalletTime: "10",
+            convertToGasTime: "2",
+            rotateMultiWallet: true,
             ownerProfile: [
                 { "0x4444444444444444444444444444444444444444": "100" },
                 { "0x5555555555555555555555555555555555555555": "max" },
@@ -332,5 +338,8 @@ orderbookTradeTypes:
         });
 
         assert.deepEqual(result.skipSweep, new Set());
+        assert.equal(result.sweepWalletTime, 10);
+        assert.equal(result.convertToGasTime, 2);
+        assert.equal(result.rotateMultiWallet, true);
     });
 });

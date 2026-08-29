@@ -126,6 +126,15 @@ maxRatio: true
 # The number of orders that will be processed concurrently, default is 1, i.e. no concurrency
 maxConcurrency: 10
 
+# Time (in days) to sweep multi wallet holdings back into main wallet, default is 0 meaning no sweep
+sweepWalletTime: 0
+
+# Time (in days) to convert main wallet holdings into gas token, default is 0 meaning no conversion
+convertToGasTime: 10
+
+# Determines if multi wallets should be rotated at runtime, meaning new ones to replace older ones once they runs out of gas, default is false
+rotateMultiWallet: false
+
 # list of tokens to skip sweeping
 skipSweep:
   - "0x123...456"

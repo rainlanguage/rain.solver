@@ -19,8 +19,11 @@ config();
 export * from "./commands";
 export { main } from "./main";
 
+/** Represents the duration of a minute in milliseconds */
+export const MINUTE = 60 * 1000;
+
 /** Represents the duration of a day in milliseconds */
-export const DAY = 24 * 60 * 60 * 1000;
+export const DAY = 24 * 60 * MINUTE;
 
 /**
  * The `RainSolverCli` class serves as the main entry point and orchestrator for the
@@ -62,10 +65,13 @@ export class RainSolverCli {
 
     private nextGasReset = Date.now() + DAY;
     private nextDatafetcherReset: number;
+
     /** Wallet sweeper timer (once every 5 days) */
-    private nextSweepTime = Date.now() + 5 * DAY;
+    private nextSweepTime: number;
     /** Convert bounties to gas timer (once every day) */
-    private nextGasConversionTime = Date.now() + DAY;
+    private nextGasConversionTime: number;
+    /** Time for next worker wallet assessment */
+    private nextAssesWorkerWalletTime = Date.now() + 15 * MINUTE;
 
     private constructor(
         state: SharedState,
@@ -85,6 +91,10 @@ export class RainSolverCli {
         this.rainSolver = rainSolver;
         this.logger = logger;
         this.nextDatafetcherReset = nextDatafetcherReset;
+        this.nextSweepTime =
+            appOptions.sweepWalletTime === 0 ? 0 : Date.now() + appOptions.sweepWalletTime * DAY;
+        this.nextGasConversionTime =
+            appOptions.convertToGasTime === 0 ? 0 : Date.now() + appOptions.convertToGasTime * DAY;
     }
 
     /**
@@ -161,6 +171,8 @@ export class RainSolverCli {
         }
         const { orderManager, report } = orderManagerResult.value;
         logger.exportPreAssembledSpan(report);
+
+        await orderManager.downscaleProtection();
 
         // init wallet manager
         const { walletManager, reports } = await WalletManager.init(state);
@@ -328,35 +340,41 @@ export class RainSolverCli {
      * @param roundCtx - The otel context for the current round
      */
     async runWalletOpsForRound(roundCtx: Context) {
-        // retry pending add workers
-        const retryPendingAddReports = await this.walletManager.retryPendingAddWorkers();
-        retryPendingAddReports.forEach((report) => {
-            this.logger.exportPreAssembledSpan(report, roundCtx);
-        });
-
-        // assess workers
-        const assessReports = await this.walletManager.assessWorkers();
-        assessReports.forEach((report) => {
-            this.logger.exportPreAssembledSpan(report.removeWorkerReport, roundCtx);
-            this.logger.exportPreAssembledSpan(report.addWorkerReport, roundCtx);
-        });
-
-        // rescale once every 250 rounds
-        if (this.roundCount % 250 === 0) {
-            // re-evaluate owner limits
-            await this.orderManager.downscaleProtection();
-        }
-
-        const now = Date.now();
-
-        if (this.nextGasConversionTime <= now) {
-            this.nextGasConversionTime = now + DAY;
+        if (this.appOptions.rotateMultiWallet) {
+            // retry pending add workers
+            const retryPendingAddReports = await this.walletManager.retryPendingAddWorkers();
+            retryPendingAddReports.forEach((report) => {
+                this.logger.exportPreAssembledSpan(report, roundCtx);
+            });
 
             // retry pending remove workers
             const pendingRemoveReports = await this.walletManager.retryPendingRemoveWorkers();
             pendingRemoveReports.forEach((report) => {
                 this.logger.exportPreAssembledSpan(report, roundCtx);
             });
+        }
+
+        const now = Date.now();
+
+        // assess workers
+        if (this.nextAssesWorkerWalletTime <= now) {
+            this.nextAssesWorkerWalletTime = now + 15 * MINUTE;
+            const assessReports = await this.walletManager.assessWorkers();
+            assessReports.forEach((report) => {
+                if (report.removeWorkerReport)
+                    this.logger.exportPreAssembledSpan(report.removeWorkerReport, roundCtx);
+                if (report.addWorkerReport)
+                    this.logger.exportPreAssembledSpan(report.addWorkerReport, roundCtx);
+                if (report.topupWorkerReport)
+                    this.logger.exportPreAssembledSpan(report.topupWorkerReport, roundCtx);
+            });
+
+            // re-evaluate owner limits
+            await this.orderManager.downscaleProtection();
+        }
+
+        if (this.nextGasConversionTime !== 0 && this.nextGasConversionTime <= now) {
+            this.nextGasConversionTime = now + this.appOptions.convertToGasTime * DAY;
 
             // try to sweep main wallet's tokens back to gas
             await this.walletManager.convertHoldingsToGas().then((convertHoldingsToGasReport) => {
@@ -364,8 +382,8 @@ export class RainSolverCli {
             });
         }
 
-        if (this.nextSweepTime <= now) {
-            this.nextSweepTime = now + 5 * DAY;
+        if (this.nextSweepTime !== 0 && this.nextSweepTime <= now) {
+            this.nextSweepTime = now + this.appOptions.sweepWalletTime * DAY;
             // sweep worker wallet bounties
             for (const [, worker] of this.walletManager.workers.signers) {
                 await this.walletManager.sweepWallet(worker, false).then((report) => {

@@ -110,6 +110,12 @@ export type AppOptions = {
     skipSweep: Set<string>;
     /** Trade simulation profitablity headroom, default: 2.5 */
     headroom: number;
+    /** Time (in days) to sweep multi wallet holdings back into main wallet, default is 0 meaning no sweep */
+    sweepWalletTime: number;
+    /** Time (in days) to convert main wallet holdings into gas token, default is 0 meaning no conversion */
+    convertToGasTime: number;
+    /** Determines if multi wallets should be rotated at runtime, meaning new ones to replace older ones once they runs out of gas, default is false */
+    rotateMultiWallet: boolean;
 };
 
 /** Provides methods to instantiate and validate AppOptions */
@@ -304,6 +310,35 @@ export namespace AppOptions {
                         "invalid headroom value, must be a number greater than equal to 0",
                         "2.5",
                     ) + 100,
+                sweepWalletTime: Validator.resolveNumericValue(
+                    input.sweepWalletTime,
+                    INT_PATTERN,
+                    "invalid sweepWalletTime, must be an integer greater than equal to 0",
+                    "0",
+                    undefined,
+                    (sweepWalletTime) =>
+                        assert(
+                            sweepWalletTime >= 0,
+                            "invalid sweepWalletTime, must be an integer greater than equal to 0",
+                        ),
+                ),
+                convertToGasTime: Validator.resolveNumericValue(
+                    input.convertToGasTime,
+                    INT_PATTERN,
+                    "invalid convertToGasTime, must be an integer greater than equal to 0",
+                    "0",
+                    undefined,
+                    (convertToGasTime) =>
+                        assert(
+                            convertToGasTime >= 0,
+                            "invalid convertToGasTime, must be an integer greater than equal to 0",
+                        ),
+                ),
+                rotateMultiWallet: Validator.resolveBool(
+                    input.rotateMultiWallet,
+                    "expected a boolean value for rotateMultiWallet",
+                    false,
+                ),
             } as AppOptions);
         } catch (error: any) {
             if (error instanceof AppOptionsError) {
