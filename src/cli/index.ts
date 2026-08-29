@@ -373,15 +373,6 @@ export class RainSolverCli {
             await this.orderManager.downscaleProtection();
         }
 
-        if (this.nextGasConversionTime !== 0 && this.nextGasConversionTime <= now) {
-            this.nextGasConversionTime = now + this.appOptions.convertToGasTime * DAY;
-
-            // try to sweep main wallet's tokens back to gas
-            await this.walletManager.convertHoldingsToGas().then((convertHoldingsToGasReport) => {
-                this.logger.exportPreAssembledSpan(convertHoldingsToGasReport, roundCtx);
-            });
-        }
-
         if (this.nextSweepTime !== 0 && this.nextSweepTime <= now) {
             this.nextSweepTime = now + this.appOptions.sweepWalletTime * DAY;
             // sweep worker wallet bounties
@@ -390,6 +381,15 @@ export class RainSolverCli {
                     this.logger.exportPreAssembledSpan(report, roundCtx);
                 });
             }
+        }
+
+        if (this.nextGasConversionTime !== 0 && this.nextGasConversionTime <= now) {
+            this.nextGasConversionTime = now + this.appOptions.convertToGasTime * DAY;
+
+            // try to sweep main wallet's tokens back to gas
+            await this.walletManager.convertHoldingsToGas().then((convertHoldingsToGasReport) => {
+                this.logger.exportPreAssembledSpan(convertHoldingsToGasReport, roundCtx);
+            });
         }
     }
 
