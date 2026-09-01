@@ -10,7 +10,9 @@ export namespace OracleConstants {
     /** Per-request timeout */
     export const ORACLE_TIMEOUT_MS = 5_000 as const;
     /** How long to skip a failing oracle (ms) */
-    export const COOLOFF_DURATION_MS = 15 * 1_000;
+    export const COOLOFF_DURATION_MS = 3 * 60 * 1_000;
+    /** How long to skip a failing oracle (ms) for an owner with max profile */
+    export const COOLOFF_MAX_PROFILE_OWNER = 0;
 
     /** List of known oracle URLs */
     export const KnownUrls = [

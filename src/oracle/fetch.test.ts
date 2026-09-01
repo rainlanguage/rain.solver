@@ -27,6 +27,8 @@ vi.mock("axios", async () => {
 describe("fetchSignedContext", () => {
     let healthMap: OracleHealthMap;
     const testUrl = "https://oracle.example.com";
+    const testOwner = "0x1234567890123456789012345678901234567890";
+    const testKey = `${testUrl}-${testOwner}`;
 
     const mockOrderRequest: OracleOrderRequest = {
         order: {
@@ -84,7 +86,7 @@ describe("fetchSignedContext", () => {
     });
 
     it("returns error when URL is in cooloff", async () => {
-        healthMap.set(testUrl, {
+        healthMap.set(testKey, {
             consecutiveFailures: 5,
             cooloffUntil: Date.now() + 60000,
         });
@@ -112,7 +114,7 @@ describe("fetchSignedContext", () => {
     });
 
     it("records success in health map on valid response", async () => {
-        healthMap.set(testUrl, { consecutiveFailures: 3, cooloffUntil: 0 });
+        healthMap.set(testKey, { consecutiveFailures: 3, cooloffUntil: 0 });
         (axios.post as Mock).mockResolvedValueOnce({
             data: [validSignedContext],
             status: 200,
@@ -123,7 +125,7 @@ describe("fetchSignedContext", () => {
 
         await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(0);
         expect(state?.cooloffUntil).toBe(0);
     });
@@ -174,7 +176,7 @@ describe("fetchSignedContext", () => {
 
         await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(1);
     });
 
@@ -201,7 +203,7 @@ describe("fetchSignedContext", () => {
 
         await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(1);
     });
 
@@ -231,7 +233,7 @@ describe("fetchSignedContext", () => {
 
         await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(1);
     });
 
@@ -396,7 +398,7 @@ describe("fetchSignedContext", () => {
 
     it("processes expired cooloff correctly", async () => {
         // Set expired cooloff
-        healthMap.set(testUrl, {
+        healthMap.set(testKey, {
             consecutiveFailures: 5,
             cooloffUntil: Date.now() - 1000,
         });
@@ -605,6 +607,8 @@ describe("extractOracleUrl", () => {
 describe("isInCooloff", () => {
     let healthMap: OracleHealthMap;
     const testUrl = "https://oracle.example.com";
+    const testOwner = "0x1234567890123456789012345678901234567890";
+    const testKey = `${testUrl}-${testOwner}`;
 
     beforeEach(() => {
         healthMap = new Map();
@@ -617,111 +621,116 @@ describe("isInCooloff", () => {
     });
 
     it("returns false for unknown URL", () => {
-        expect(isInCooloff(healthMap, testUrl)).toBe(false);
+        expect(isInCooloff(healthMap, testUrl, testOwner)).toBe(false);
     });
 
     it("returns false when cooloffUntil is 0", () => {
-        healthMap.set(testUrl, { consecutiveFailures: 5, cooloffUntil: 0 });
+        healthMap.set(testKey, { consecutiveFailures: 5, cooloffUntil: 0 });
 
-        expect(isInCooloff(healthMap, testUrl)).toBe(false);
+        expect(isInCooloff(healthMap, testUrl, testOwner)).toBe(false);
     });
 
     it("returns true when in active cooloff period", () => {
         const futureTime = Date.now() + 60000; // 1 minute in the future
-        healthMap.set(testUrl, { consecutiveFailures: 5, cooloffUntil: futureTime });
+        healthMap.set(testKey, { consecutiveFailures: 5, cooloffUntil: futureTime });
 
-        expect(isInCooloff(healthMap, testUrl)).toBe(true);
+        expect(isInCooloff(healthMap, testUrl, testOwner)).toBe(true);
     });
 
     it("returns false and resets cooloff when cooloff period has expired", () => {
         const pastTime = Date.now() - 1000; // 1 second in the past
-        healthMap.set(testUrl, { consecutiveFailures: 5, cooloffUntil: pastTime });
+        healthMap.set(testKey, { consecutiveFailures: 5, cooloffUntil: pastTime });
 
-        expect(isInCooloff(healthMap, testUrl)).toBe(false);
-        expect(healthMap.get(testUrl)?.cooloffUntil).toBe(0);
+        expect(isInCooloff(healthMap, testUrl, testOwner)).toBe(false);
+        expect(healthMap.get(testKey)?.cooloffUntil).toBe(0);
     });
 
     it("returns false and resets cooloff when cooloff period equals current time", () => {
         const currentTime = Date.now();
-        healthMap.set(testUrl, { consecutiveFailures: 5, cooloffUntil: currentTime });
+        healthMap.set(testKey, { consecutiveFailures: 5, cooloffUntil: currentTime });
 
-        expect(isInCooloff(healthMap, testUrl)).toBe(false);
-        expect(healthMap.get(testUrl)?.cooloffUntil).toBe(0);
+        expect(isInCooloff(healthMap, testUrl, testOwner)).toBe(false);
+        expect(healthMap.get(testKey)?.cooloffUntil).toBe(0);
     });
 
     it("preserves consecutiveFailures when resetting expired cooloff", () => {
         const pastTime = Date.now() - 1000;
-        healthMap.set(testUrl, { consecutiveFailures: 10, cooloffUntil: pastTime });
+        healthMap.set(testKey, { consecutiveFailures: 10, cooloffUntil: pastTime });
 
-        isInCooloff(healthMap, testUrl);
+        isInCooloff(healthMap, testUrl, testOwner);
 
-        expect(healthMap.get(testUrl)?.consecutiveFailures).toBe(10);
+        expect(healthMap.get(testKey)?.consecutiveFailures).toBe(10);
     });
 
     it("handles multiple URLs independently", () => {
         const url1 = "https://oracle1.example.com";
         const url2 = "https://oracle2.example.com";
 
-        healthMap.set(url1, { consecutiveFailures: 3, cooloffUntil: Date.now() + 60000 });
-        healthMap.set(url2, { consecutiveFailures: 3, cooloffUntil: 0 });
+        healthMap.set(`${url1}-${testOwner}`, {
+            consecutiveFailures: 3,
+            cooloffUntil: Date.now() + 60000,
+        });
+        healthMap.set(`${url2}-${testOwner}`, { consecutiveFailures: 3, cooloffUntil: 0 });
 
-        expect(isInCooloff(healthMap, url1)).toBe(true);
-        expect(isInCooloff(healthMap, url2)).toBe(false);
+        expect(isInCooloff(healthMap, url1, testOwner)).toBe(true);
+        expect(isInCooloff(healthMap, url2, testOwner)).toBe(false);
     });
 
     it("does not modify state when in active cooloff", () => {
         const futureTime = Date.now() + 60000;
-        healthMap.set(testUrl, { consecutiveFailures: 5, cooloffUntil: futureTime });
+        healthMap.set(testKey, { consecutiveFailures: 5, cooloffUntil: futureTime });
 
-        isInCooloff(healthMap, testUrl);
+        isInCooloff(healthMap, testUrl, testOwner);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(5);
         expect(state?.cooloffUntil).toBe(futureTime);
     });
 
     it("returns false for state with undefined values treated as fresh", () => {
-        healthMap.set(testUrl, { consecutiveFailures: 0, cooloffUntil: 0 });
+        healthMap.set(testKey, { consecutiveFailures: 0, cooloffUntil: 0 });
 
-        expect(isInCooloff(healthMap, testUrl)).toBe(false);
+        expect(isInCooloff(healthMap, testUrl, testOwner)).toBe(false);
     });
 });
 
 describe("recordOracleSuccess", () => {
     let healthMap: OracleHealthMap;
     const testUrl = "https://oracle.example.com";
+    const testOwner = "0x1234567890123456789012345678901234567890";
+    const testKey = `${testUrl}-${testOwner}`;
 
     beforeEach(() => {
         healthMap = new Map();
     });
 
     it("creates new state entry for unknown URL", () => {
-        recordOracleSuccess(healthMap, testUrl);
+        recordOracleSuccess(healthMap, testUrl, testOwner);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state).toBeDefined();
         expect(state?.consecutiveFailures).toBe(0);
         expect(state?.cooloffUntil).toBe(0);
     });
 
     it("resets consecutive failures to zero", () => {
-        healthMap.set(testUrl, { consecutiveFailures: 5, cooloffUntil: 0 });
+        healthMap.set(testKey, { consecutiveFailures: 5, cooloffUntil: 0 });
 
-        recordOracleSuccess(healthMap, testUrl);
+        recordOracleSuccess(healthMap, testUrl, testOwner);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(0);
     });
 
     it("clears cooloff period", () => {
-        healthMap.set(testUrl, {
+        healthMap.set(testKey, {
             consecutiveFailures: 10,
             cooloffUntil: Date.now() + 60000,
         });
 
-        recordOracleSuccess(healthMap, testUrl);
+        recordOracleSuccess(healthMap, testUrl, testOwner);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(0);
         expect(state?.cooloffUntil).toBe(0);
     });
@@ -730,35 +739,35 @@ describe("recordOracleSuccess", () => {
         const url1 = "https://oracle1.example.com";
         const url2 = "https://oracle2.example.com";
 
-        healthMap.set(url1, { consecutiveFailures: 3, cooloffUntil: 1000 });
-        healthMap.set(url2, { consecutiveFailures: 5, cooloffUntil: 2000 });
+        healthMap.set(`${url1}-${testOwner}`, { consecutiveFailures: 3, cooloffUntil: 1000 });
+        healthMap.set(`${url2}-${testOwner}`, { consecutiveFailures: 5, cooloffUntil: 2000 });
 
-        recordOracleSuccess(healthMap, url1);
+        recordOracleSuccess(healthMap, url1, testOwner);
 
-        expect(healthMap.get(url1)?.consecutiveFailures).toBe(0);
-        expect(healthMap.get(url1)?.cooloffUntil).toBe(0);
-        expect(healthMap.get(url2)?.consecutiveFailures).toBe(5);
-        expect(healthMap.get(url2)?.cooloffUntil).toBe(2000);
+        expect(healthMap.get(`${url1}-${testOwner}`)?.consecutiveFailures).toBe(0);
+        expect(healthMap.get(`${url1}-${testOwner}`)?.cooloffUntil).toBe(0);
+        expect(healthMap.get(`${url2}-${testOwner}`)?.consecutiveFailures).toBe(5);
+        expect(healthMap.get(`${url2}-${testOwner}`)?.cooloffUntil).toBe(2000);
     });
 
     it("overwrites existing state completely", () => {
-        healthMap.set(testUrl, {
+        healthMap.set(testKey, {
             consecutiveFailures: 100,
             cooloffUntil: 999999,
         });
 
-        recordOracleSuccess(healthMap, testUrl);
+        recordOracleSuccess(healthMap, testUrl, testOwner);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state).toEqual({ consecutiveFailures: 0, cooloffUntil: 0 });
     });
 
     it("can be called multiple times without side effects", () => {
-        recordOracleSuccess(healthMap, testUrl);
-        recordOracleSuccess(healthMap, testUrl);
-        recordOracleSuccess(healthMap, testUrl);
+        recordOracleSuccess(healthMap, testUrl, testOwner);
+        recordOracleSuccess(healthMap, testUrl, testOwner);
+        recordOracleSuccess(healthMap, testUrl, testOwner);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(0);
         expect(state?.cooloffUntil).toBe(0);
     });
@@ -767,6 +776,8 @@ describe("recordOracleSuccess", () => {
 describe("recordOracleFailure", () => {
     let healthMap: OracleHealthMap;
     const testUrl = "https://oracle.example.com";
+    const testOwner = "0x1234567890123456789012345678901234567890";
+    const testKey = `${testUrl}-${testOwner}`;
 
     beforeEach(() => {
         healthMap = new Map();
@@ -779,54 +790,54 @@ describe("recordOracleFailure", () => {
     });
 
     it("creates new state entry for unknown URL", () => {
-        recordOracleFailure(healthMap, testUrl);
+        recordOracleFailure(healthMap, testUrl, testOwner);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state).toBeDefined();
         expect(state?.consecutiveFailures).toBe(1);
         expect(state?.cooloffUntil).toBe(0);
     });
 
     it("increments consecutive failures for existing URL", () => {
-        healthMap.set(testUrl, { consecutiveFailures: 2, cooloffUntil: 0 });
+        healthMap.set(testKey, { consecutiveFailures: 2, cooloffUntil: 0 });
 
-        recordOracleFailure(healthMap, testUrl);
+        recordOracleFailure(healthMap, testUrl, testOwner);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(3);
     });
 
     it("enters cooloff when reaching threshold", () => {
-        healthMap.set(testUrl, {
+        healthMap.set(testKey, {
             consecutiveFailures: OracleConstants.COOLOFF_THRESHOLD - 1,
             cooloffUntil: 0,
         });
 
-        recordOracleFailure(healthMap, testUrl);
+        recordOracleFailure(healthMap, testUrl, testOwner);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(OracleConstants.COOLOFF_THRESHOLD);
         expect(state?.cooloffUntil).toBe(Date.now() + OracleConstants.COOLOFF_DURATION_MS);
     });
 
     it("updates cooloff time when exceeding threshold", () => {
-        healthMap.set(testUrl, {
+        healthMap.set(testKey, {
             consecutiveFailures: OracleConstants.COOLOFF_THRESHOLD,
             cooloffUntil: 0,
         });
 
-        recordOracleFailure(healthMap, testUrl);
+        recordOracleFailure(healthMap, testUrl, testOwner);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(OracleConstants.COOLOFF_THRESHOLD + 1);
         expect(state?.cooloffUntil).toBe(Date.now() + OracleConstants.COOLOFF_DURATION_MS);
     });
 
     it("does not set cooloff before reaching threshold", () => {
-        recordOracleFailure(healthMap, testUrl);
-        recordOracleFailure(healthMap, testUrl);
+        recordOracleFailure(healthMap, testUrl, testOwner);
+        recordOracleFailure(healthMap, testUrl, testOwner);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(2);
         expect(state?.cooloffUntil).toBe(0);
     });
@@ -835,25 +846,51 @@ describe("recordOracleFailure", () => {
         const url1 = "https://oracle1.example.com";
         const url2 = "https://oracle2.example.com";
 
-        recordOracleFailure(healthMap, url1);
-        recordOracleFailure(healthMap, url1);
-        recordOracleFailure(healthMap, url2);
+        recordOracleFailure(healthMap, url1, testOwner);
+        recordOracleFailure(healthMap, url1, testOwner);
+        recordOracleFailure(healthMap, url2, testOwner);
 
-        expect(healthMap.get(url1)?.consecutiveFailures).toBe(2);
-        expect(healthMap.get(url2)?.consecutiveFailures).toBe(1);
+        expect(healthMap.get(`${url1}-${testOwner}`)?.consecutiveFailures).toBe(2);
+        expect(healthMap.get(`${url2}-${testOwner}`)?.consecutiveFailures).toBe(1);
     });
 
     it("preserves existing cooloff time when below threshold after reset", () => {
         const existingCooloff = Date.now() + 5000;
-        healthMap.set(testUrl, {
+        healthMap.set(testKey, {
             consecutiveFailures: 1,
             cooloffUntil: existingCooloff,
         });
 
-        recordOracleFailure(healthMap, testUrl);
+        recordOracleFailure(healthMap, testUrl, testOwner);
 
-        const state = healthMap.get(testUrl);
+        const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(2);
         expect(state?.cooloffUntil).toBe(existingCooloff);
+    });
+
+    it("does not enter cooloff for max owner profile", () => {
+        healthMap.set(testKey, {
+            consecutiveFailures: OracleConstants.COOLOFF_THRESHOLD - 1,
+            cooloffUntil: 0,
+        });
+
+        recordOracleFailure(healthMap, testUrl, testOwner, true);
+
+        // cooloff duration is 0 for max owner profiles, so cooloffUntil
+        // is set to now which immediately counts as expired
+        const state = healthMap.get(testKey);
+        expect(state?.consecutiveFailures).toBe(OracleConstants.COOLOFF_THRESHOLD);
+        expect(state?.cooloffUntil).toBe(Date.now() + OracleConstants.COOLOFF_MAX_PROFILE_OWNER);
+        expect(isInCooloff(healthMap, testUrl, testOwner)).toBe(false);
+    });
+
+    it("keys cooloff state per owner independently", () => {
+        const otherOwner = "0x9999999999999999999999999999999999999999";
+        for (let i = 0; i < OracleConstants.COOLOFF_THRESHOLD; i++) {
+            recordOracleFailure(healthMap, testUrl, testOwner);
+        }
+
+        expect(isInCooloff(healthMap, testUrl, testOwner)).toBe(true);
+        expect(isInCooloff(healthMap, testUrl, otherOwner)).toBe(false);
     });
 });

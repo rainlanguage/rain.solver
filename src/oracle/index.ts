@@ -3,6 +3,7 @@ import { OracleError } from "./error";
 import { SharedState } from "../state";
 import { Order, Pair } from "../order/types";
 import { fetchSignedContext } from "./fetch";
+import { AppOptions } from "../config";
 
 /**
  * If the order has an oracle URL, fetch signed context and inject it
@@ -22,6 +23,10 @@ export async function fetchOracleContext(
     const order = orderDetails.takeOrder.struct.order;
     if (order.type !== Order.Type.V4) return Result.ok(undefined);
 
+    const isMaxOwnerProfile = AppOptions.isMaxOwnerProfile(
+        orderDetails.takeOrder.struct.order.owner,
+        this.appOptions.ownerProfile,
+    );
     const result = await fetchSignedContext(
         oracleUrl,
         {
@@ -31,6 +36,7 @@ export async function fetchOracleContext(
             counterparty: "0x0000000000000000000000000000000000000000",
         },
         this.oracleHealth,
+        isMaxOwnerProfile,
     );
 
     if (result.isErr()) {

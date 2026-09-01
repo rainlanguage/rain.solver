@@ -15,9 +15,13 @@ describe("fetchOracleContext", () => {
     let mockState: SharedState;
     let mockOrderDetails: Pair;
 
+    const testOwner = "0x1234567890123456789012345678901234567890";
+
     beforeEach(() => {
+        vi.clearAllMocks();
         mockState = {
             oracleHealth: new Map(),
+            appOptions: {},
         } as SharedState;
 
         mockOrderDetails = {
@@ -26,6 +30,7 @@ describe("fetchOracleContext", () => {
                 struct: {
                     order: {
                         type: Order.Type.V4,
+                        owner: testOwner,
                     },
                     inputIOIndex: 0,
                     outputIOIndex: 0,
@@ -70,6 +75,7 @@ describe("fetchOracleContext", () => {
                 counterparty: "0x0000000000000000000000000000000000000000",
             },
             mockState.oracleHealth,
+            false,
         );
     });
 
@@ -97,7 +103,26 @@ describe("fetchOracleContext", () => {
                 counterparty: "0x0000000000000000000000000000000000000000",
             },
             mockState.oracleHealth,
+            false,
         );
         expect(mockOrderDetails.takeOrder.struct.signedContext).toEqual([validSignedContext]);
+    });
+
+    it("passes max owner profile flag to fetchSignedContext", async () => {
+        (mockState as any).appOptions = {
+            ownerProfile: { [testOwner]: Number.MAX_SAFE_INTEGER },
+        };
+        (fetchSignedContext as Mock).mockResolvedValueOnce(
+            Result.err(new OracleError("some error", OracleErrorType.FetchError)),
+        );
+
+        await fetchOracleContext.call(mockState, mockOrderDetails);
+
+        expect(fetchSignedContext as Mock).toHaveBeenLastCalledWith(
+            mockOrderDetails.oracleUrl,
+            expect.any(Object),
+            mockState.oracleHealth,
+            true,
+        );
     });
 });
