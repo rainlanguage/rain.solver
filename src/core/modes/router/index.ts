@@ -99,6 +99,7 @@ export async function findBestRouterTrade(
         this.appOptions.route,
     );
     if (!partialTradeSize) {
+        spanAttributes["partial.error"] = "no viable partial trade size found";
         return Result.err({
             type: fullTradeSizeSimResult.error.type,
             spanAttributes,

@@ -5,7 +5,7 @@ import { ONE18, scaleFrom18 } from "../../../math";
 import { RainSolverSigner } from "../../../signer";
 import { SimulationHaltReason } from "../simulator";
 import { ABI, Dispair, Result } from "../../../common";
-import { encodeFunctionData, formatUnits, parseUnits } from "viem";
+import { encodeFunctionData, formatUnits, parseUnits, zeroAddress } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { RainSolverRouterError, RainSolverRouterErrorType, RouterType } from "../../../router";
 import {
@@ -440,6 +440,29 @@ describe("Test RouterTradeSimulator", () => {
                     interpreter: dispair.interpreter as `0x${string}`,
                     store: dispair.store as `0x${string}`,
                     bytecode: "0xdata",
+                },
+                signedContext: [],
+            });
+
+            getCalldataSpy.mockRestore();
+        });
+
+        it("should use empty task when noTask is set", async () => {
+            const getCalldataSpy = vi.spyOn(simulator, "getCalldata");
+            getCalldataSpy.mockReturnValue("0xencodedData");
+
+            const result = await simulator.setTransactionData({
+                ...preparedParams,
+                noTask: true,
+            });
+            assert(result.isOk());
+            expect(preparedParams.rawtx.data).toBe("0xencodedData");
+            expect(getEnsureBountyTaskBytecode).not.toHaveBeenCalled();
+            expect(getCalldataSpy).toHaveBeenCalledWith(preparedParams.takeOrdersConfigStruct, {
+                evaluable: {
+                    interpreter: zeroAddress,
+                    store: zeroAddress,
+                    bytecode: "0x",
                 },
                 signedContext: [],
             });

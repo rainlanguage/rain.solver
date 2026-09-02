@@ -6,7 +6,14 @@ import { WasmEncodedError } from "@rainlanguage/float";
 import { TradeType, FailedSimulation, TaskType } from "../../types";
 import { SimulationHaltReason, TradeSimulatorBase } from "../simulator";
 import { Result, ABI, RawTransaction, maxFloat, toFloat, minFloat } from "../../../common";
-import { encodeAbiParameters, encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
+import {
+    maxUint256,
+    parseUnits,
+    formatUnits,
+    zeroAddress,
+    encodeFunctionData,
+    encodeAbiParameters,
+} from "viem";
 import {
     EnsureBountyTaskType,
     EnsureBountyTaskErrorType,
@@ -51,6 +58,8 @@ export type InterOrderbookTradePreparedParams = {
     takeOrdersConfigStruct: TakeOrdersConfigType;
     minimumExpected: bigint;
     price?: bigint;
+    /** If set, builds the tx data with an empty task */
+    noTask?: boolean;
 };
 
 /**
@@ -166,39 +175,46 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
             params.type,
         )!;
 
-        // try to get task bytecode for ensure bounty task
-        const taskBytecodeResult = await getEnsureBountyTaskBytecode(
-            {
-                type: EnsureBountyTaskType.External,
-                inputToEthPrice: parseUnits(this.tradeArgs.inputToEthPrice, 18),
-                outputToEthPrice: parseUnits(this.tradeArgs.outputToEthPrice, 18),
-                minimumExpected: params.minimumExpected,
-                sender: this.tradeArgs.signer.account.address,
-            },
-            this.tradeArgs.solver.state.client,
-            addresses.dispair,
-        );
-        if (taskBytecodeResult.isErr()) {
-            const errMsg = await errorSnapshot("", taskBytecodeResult.error);
-            this.spanAttributes["isNodeError"] =
-                taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
-            this.spanAttributes["error"] = errMsg;
-            const result = {
-                type: TradeType.InterOrderbook,
-                spanAttributes: this.spanAttributes,
-                reason: SimulationHaltReason.FailedToGetTaskBytecode,
-            };
-            this.spanAttributes["duration"] = performance.now() - this.startTime;
-            return Result.err(result);
+        // build the ensure bounty task bytecode, unless an empty task is
+        // explicitly requested or gas coverage is 0, in which cases the tx
+        // wont need onchain bounty assurance
+        let bytecode: `0x${string}` = "0x";
+        let interpreter: `0x${string}` = zeroAddress;
+        let store: `0x${string}` = zeroAddress;
+        if (!params.noTask && this.tradeArgs.solver.appOptions.gasCoveragePercentage !== "0") {
+            const taskBytecodeResult = await getEnsureBountyTaskBytecode(
+                {
+                    type: EnsureBountyTaskType.External,
+                    inputToEthPrice: parseUnits(this.tradeArgs.inputToEthPrice, 18),
+                    outputToEthPrice: parseUnits(this.tradeArgs.outputToEthPrice, 18),
+                    minimumExpected: params.minimumExpected,
+                    sender: this.tradeArgs.signer.account.address,
+                },
+                this.tradeArgs.solver.state.client,
+                addresses.dispair,
+            );
+            if (taskBytecodeResult.isErr()) {
+                const errMsg = await errorSnapshot("", taskBytecodeResult.error);
+                this.spanAttributes["isNodeError"] =
+                    taskBytecodeResult.error.type === EnsureBountyTaskErrorType.ParseError;
+                this.spanAttributes["error"] = errMsg;
+                const result = {
+                    type: TradeType.InterOrderbook,
+                    spanAttributes: this.spanAttributes,
+                    reason: SimulationHaltReason.FailedToGetTaskBytecode,
+                };
+                this.spanAttributes["duration"] = performance.now() - this.startTime;
+                return Result.err(result);
+            }
+            bytecode = taskBytecodeResult.value;
+            interpreter = addresses.dispair.interpreter as `0x${string}`;
+            store = addresses.dispair.store as `0x${string}`;
         }
         const task = {
             evaluable: {
-                interpreter: addresses.dispair.interpreter as `0x${string}`,
-                store: addresses.dispair.store as `0x${string}`,
-                bytecode:
-                    this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0"
-                        ? "0x"
-                        : taskBytecodeResult.value,
+                interpreter,
+                store,
+                bytecode,
             },
             signedContext: [],
         };

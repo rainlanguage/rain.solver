@@ -454,6 +454,7 @@ describe("Test TradeSimulatorBase", () => {
                     (dryrunResult2.estimatedGasCost *
                         BigInt(mockSolver.appOptions.gasCoveragePercentage)) /
                     100n,
+                noTask: true,
             });
             expect(dryrun).toHaveBeenCalledTimes(2);
             expect(dryrun).toHaveBeenCalledWith(
@@ -568,6 +569,7 @@ describe("Test TradeSimulatorBase", () => {
                     (dryrunResult2.estimatedGasCost *
                         BigInt(mockSolver.appOptions.gasCoveragePercentage)) /
                     100n,
+                noTask: true,
             });
             expect(dryrun).toHaveBeenCalledTimes(2);
             expect(dryrun).toHaveBeenCalledWith(

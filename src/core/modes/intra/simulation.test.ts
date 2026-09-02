@@ -5,7 +5,7 @@ import { RainSolverSigner } from "../../../signer";
 import { SimulationHaltReason } from "../simulator";
 import { Order, Pair, TakeOrderDetails } from "../../../order";
 import { ABI, Dispair, maxFloat, Result } from "../../../common";
-import { encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
+import { encodeFunctionData, formatUnits, maxUint256, parseUnits, zeroAddress } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
     IntraOrderbookTradeSimulator,
@@ -263,6 +263,29 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                 tradeArgs.orderDetails,
                 TradeType.IntraOrderbook,
             );
+        });
+
+        it("should use empty task when noTask is set", async () => {
+            const getCalldataSpy = vi.spyOn(simulator, "getCalldata");
+            getCalldataSpy.mockReturnValue("0xencodedData");
+
+            const result = await simulator.setTransactionData({
+                ...preparedParams,
+                noTask: true,
+            });
+            assert(result.isOk());
+            expect(preparedParams.rawtx.data).toBe("0xencodedData");
+            expect(getEnsureBountyTaskBytecode).not.toHaveBeenCalled();
+            expect(getCalldataSpy).toHaveBeenCalledWith({
+                evaluable: {
+                    interpreter: zeroAddress,
+                    store: zeroAddress,
+                    bytecode: "0x",
+                },
+                signedContext: [],
+            });
+
+            getCalldataSpy.mockRestore();
         });
     });
 
@@ -550,7 +573,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                 .mockReturnValueOnce("0xencodedData2")
                 .mockReturnValueOnce("0xencodedData3")
                 .mockReturnValueOnce("0xmulticallData");
-            const task = { task: "task-value" } as any;
+            const task = { task: "task-value", evaluable: { bytecode: "0xbytecode" } } as any;
             const result = simulator.getCalldataForV3Order(task);
             expect(result).toBe("0xmulticallData");
             expect(encodeFunctionData).toHaveBeenCalledTimes(4);
@@ -619,7 +642,7 @@ describe("Test IntraOrderbookTradeSimulator", () => {
                 .mockReturnValueOnce("0xencodedData2")
                 .mockReturnValueOnce("0xencodedData3")
                 .mockReturnValueOnce("0xmulticallData");
-            const task = { task: "task-value" } as any;
+            const task = { task: "task-value", evaluable: { bytecode: "0xbytecode" } } as any;
             const result = simulator.getCalldataForV4Order(task);
             expect(result).toBe("0xmulticallData");
             expect(encodeFunctionData).toHaveBeenCalledTimes(4);
