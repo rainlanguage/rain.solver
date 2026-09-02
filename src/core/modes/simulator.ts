@@ -23,6 +23,25 @@ export enum SimulationHaltReason {
     OrderRatioGreaterThanMarketPrice,
     FailedToGetTaskBytecode,
     UndefinedTradeDestinationAddress,
+    MinimalOutputBalanceViolation,
+}
+export namespace SimulationHaltReason {
+    /**
+     * Returns true if the given input contains errors that justify a retry
+     * Errors include:
+     * - the sushi RouteProcessor contract "MinimalOutputBalanceViolation" error selector name
+     * - Raindex task": "minimum sender output"
+     * - Raindex task: "minimumSenderOutput"
+     * @param text - The text to search in
+     */
+    export function needsRetry(text: unknown): boolean {
+        return (
+            typeof text === "string" &&
+            (text.includes("MinimalOutputBalanceViolation") ||
+                text.includes("minimum sender output") ||
+                text.includes("minimumSenderOutput"))
+        );
+    }
 }
 
 export type SimulateTradeArgs =
