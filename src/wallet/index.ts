@@ -324,6 +324,13 @@ export class WalletManager {
             const transfer: any = {};
             transfer.symbol = tokenDetails.symbol;
             transfer.token = tokenDetails.address;
+
+            if (this.state.appOptions.skipSweep.has(tokenDetails.address.toLowerCase())) {
+                transfer.status = "skipped";
+                transfers.push(transfer);
+                continue;
+            }
+
             try {
                 const { amount, txHash } = await this.transferTokenFrom(wallet, tokenDetails);
                 if (txHash) {
@@ -419,6 +426,7 @@ export class WalletManager {
 
             if (this.state.appOptions.skipSweep.has(tokenDetails.address.toLowerCase())) {
                 swap.status = "skipped";
+                swaps.push(swap);
                 continue;
             }
 
@@ -544,24 +552,25 @@ export class WalletManager {
     }
 
     /**
-     * Identifies wallets that need to be removed from circulation and replaces them with new ones
-     * @returns The reports of the removal and addition processes
+     * Identifies wallets that need to be removed from circulation and replaces them with new ones or topped up
+     * @returns The reports of the removal and addition or topup processes
      */
     async assessWorkers(): Promise<
         {
-            removeWorkerReport: PreAssembledSpan;
-            addWorkerReport: PreAssembledSpan;
+            removeWorkerReport?: PreAssembledSpan;
+            addWorkerReport?: PreAssembledSpan;
+            topupWorkerReport?: PreAssembledSpan;
         }[]
     > {
-        // identify wallets that need to be removed from cisrculation
+        // identify wallets that need to be removed from circulation or be topped up
         // thie criteria is if their current gas balance is below avg tx gas cost
-        const removeList: RainSolverSigner[] = [];
+        const walletAttentionList: RainSolverSigner[] = [];
         for (const [, worker] of this.workers.signers) {
             await worker
                 .getSelfBalance()
                 .then((balance) => {
                     if (balance < this.state.avgGasCost * 4n) {
-                        removeList.push(worker);
+                        walletAttentionList.push(worker);
                     }
                 })
                 .catch(() => {});
@@ -569,7 +578,18 @@ export class WalletManager {
 
         // remove the identified wallet and replace them with new ones
         const reports = [];
-        for (const worker of removeList) {
+        for (const worker of walletAttentionList) {
+            if (!this.state.appOptions.rotateMultiWallet) {
+                const fundWalletResult = await this.fundWallet(worker.account.address);
+
+                const topupWorkerReport = fundWalletResult.isOk()
+                    ? fundWalletResult.value
+                    : fundWalletResult.error;
+                topupWorkerReport.name = "topup-wallet";
+                reports.push({ topupWorkerReport });
+
+                continue;
+            }
             this.workers.signers.delete(worker.account.address.toLowerCase());
 
             // handle the worker removal

@@ -121,6 +121,9 @@ export async function sweepFunds(opts: SweepOptions) {
         maxConcurrency: 0,
         skipSweep: new Set(),
         headroom: 0,
+        sweepWalletTime: 0,
+        convertToGasTime: 0,
+        rotateMultiWallet: false,
     };
 
     // prepare state config fields
