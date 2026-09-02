@@ -155,7 +155,7 @@ export async function tryFindBestRouterTrade(
         excludeDexes,
     });
     const fullTradeSizeSimResult = await fullTradeSimulator.trySimulateTrade();
-    const quote = fullTradeSimulator.quote;
+    let quote = fullTradeSimulator.quote;
     if (fullTradeSizeSimResult.isOk()) {
         return { result: fullTradeSizeSimResult, quote };
     }
@@ -219,6 +219,7 @@ export async function tryFindBestRouterTrade(
         excludeDexes,
     });
     const partialTradeSizeSimResult = await partialTradeSimulator.trySimulateTrade();
+    quote = partialTradeSimulator.quote ?? quote;
     if (partialTradeSizeSimResult.isOk()) {
         return { result: partialTradeSizeSimResult, quote };
     }
