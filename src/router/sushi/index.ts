@@ -66,6 +66,25 @@ export type SushiRouterQuote = {
     /** The amount out for the given amount in of the route */
     amountOut: bigint;
 };
+export namespace SushiRouterQuote {
+    export function is(value: any): value is SushiRouterQuote {
+        return !!value?.route?.pcMap;
+    }
+
+    /**
+     * Gets the list of dexes (liquidity providers) that make
+     * up the given quote's route legs
+     * @param quote - The quote to get the route dexes for
+     */
+    export function getRouteDexes(quote: SushiRouterQuote): Set<LiquidityProviders> {
+        const dexes = new Set<LiquidityProviders>();
+        quote.route.route.legs?.forEach((leg) => {
+            const dex = quote.route.pcMap.get(leg.uniqueId)?.liquidityProvider;
+            if (dex) dexes.add(dex);
+        });
+        return dexes;
+    }
+}
 
 /** Represents the trade params for a Sushi route */
 export type SushiTradeParams = {
@@ -199,6 +218,7 @@ export class SushiRouter extends RainSolverRouterBase {
             ignoreCache = undefined,
             skipFetch = false,
             sushiRouteType,
+            excludeDexes,
         } = params;
         try {
             if (!skipFetch) {
@@ -215,7 +235,7 @@ export class SushiRouter extends RainSolverRouterBase {
                 amountIn,
                 toToken,
                 Number(gasPrice),
-                undefined,
+                this.getFilteredLiquidityProviders(excludeDexes),
                 poolFilter,
                 undefined,
                 sushiRouteType,
@@ -422,6 +442,7 @@ export class SushiRouter extends RainSolverRouterBase {
             blockNumber,
             skipFetch: true,
             sushiRouteType: state.appOptions.route,
+            excludeDexes: args.excludeDexes,
         });
 
         // exit early if no route found
@@ -498,10 +519,12 @@ export class SushiRouter extends RainSolverRouterBase {
         gasPriceBI: bigint,
         routeType: "single" | "multi" = "single",
         absolute = false,
+        excludeDexes?: Set<string>,
     ): bigint | undefined {
         const result: bigint[] = [];
         const gasPrice = Number(gasPriceBI);
         const ratio = orderDetails.takeOrder.quote!.ratio;
+        const liquidityProviders = this.getFilteredLiquidityProviders(excludeDexes);
         const pcMap = this.dataFetcher.getCurrentPoolCodeMap(fromToken, toToken);
         const initAmount = scaleFrom18(maximumInputFixed, fromToken.decimals) / 2n;
         let maximumInput = initAmount;
@@ -514,7 +537,7 @@ export class SushiRouter extends RainSolverRouterBase {
                 maximumInput,
                 toToken,
                 gasPrice,
-                undefined,
+                liquidityProviders,
                 poolFilter,
                 undefined,
                 routeType,
@@ -555,5 +578,17 @@ export class SushiRouter extends RainSolverRouterBase {
         } else {
             return undefined;
         }
+    }
+
+    /**
+     * Returns the list of enabled liquidity providers (dexes) with the given
+     * ones excluded, or undefined (meaning all) if there is nothing to exclude
+     * @param excludeDexes - The liquidity providers (dexes) to exclude
+     */
+    getFilteredLiquidityProviders(excludeDexes?: Set<string>): LiquidityProviders[] | undefined {
+        if (!excludeDexes?.size) return undefined;
+        const enabledLps =
+            this.liquidityProviders ?? this.dataFetcher.providers.map((p) => p.getType());
+        return enabledLps.filter((lp) => !excludeDexes.has(lp));
     }
 }

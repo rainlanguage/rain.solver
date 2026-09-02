@@ -364,6 +364,77 @@ describe("test SushiRouter methods", () => {
             );
         });
 
+        it("should exclude the given dexes from route finding", async () => {
+            const mockRoute = {
+                status: "Success",
+                amountOutBI: 2000000000n,
+            };
+            const mockPcMap = new Map();
+
+            (mockDataFetcher.getCurrentPoolCodeMap as Mock).mockReturnValue(mockPcMap);
+            (Router.findBestRoute as Mock).mockReturnValue(mockRoute);
+
+            const routerWithLps = new SushiRouter(
+                chainId,
+                mockClient,
+                mockDataFetcher,
+                routerAddress,
+                [LiquidityProviders.UniswapV2, LiquidityProviders.UniswapV3],
+            );
+            const params: SushiQuoteParams = {
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
+                skipFetch: true,
+                gasPrice,
+                excludeDexes: new Set([LiquidityProviders.UniswapV3]),
+            };
+
+            const result = await routerWithLps.findBestRoute(params);
+            assert(result.isOk());
+
+            // the liquidity providers passed to Router.findBestRoute should
+            // exclude the given dexes and keep others
+            const passedLps = (Router.findBestRoute as Mock).mock.calls[0][6];
+            expect(passedLps).toEqual([LiquidityProviders.UniswapV2]);
+        });
+
+        it("should fall back to dataFetcher providers for exclusion when no lps configured", async () => {
+            const mockRoute = {
+                status: "Success",
+                amountOutBI: 2000000000n,
+            };
+            const mockPcMap = new Map();
+
+            (mockDataFetcher.getCurrentPoolCodeMap as Mock).mockReturnValue(mockPcMap);
+            (Router.findBestRoute as Mock).mockReturnValue(mockRoute);
+            (mockDataFetcher as any).providers = [
+                { getType: () => LiquidityProviders.UniswapV2 },
+                { getType: () => LiquidityProviders.UniswapV3 },
+            ];
+
+            const routerWithoutLps = new SushiRouter(
+                chainId,
+                mockClient,
+                mockDataFetcher,
+                routerAddress,
+            );
+            const params: SushiQuoteParams = {
+                fromToken: mockTokenIn,
+                toToken: mockTokenOut,
+                amountIn: mockSwapAmount,
+                skipFetch: true,
+                gasPrice,
+                excludeDexes: new Set([LiquidityProviders.UniswapV2]),
+            };
+
+            const result = await routerWithoutLps.findBestRoute(params);
+            assert(result.isOk());
+
+            const passedLps = (Router.findBestRoute as Mock).mock.calls[0][6];
+            expect(passedLps).toEqual([LiquidityProviders.UniswapV3]);
+        });
+
         it("should return NoRouteFound error when router finds no way", async () => {
             const mockRoute = {
                 status: "NoWay",

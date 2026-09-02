@@ -17,6 +17,7 @@ import {
     TakeOrdersConfigTypeV4,
     TakeOrdersConfigTypeV5,
 } from "../order";
+import { LiquidityProviders } from "sushi";
 
 /*
  * Default price imapct tolerance used for getting unit market price.
@@ -53,6 +54,8 @@ export type RainSolverRouterQuoteParams = {
     senderAddress?: `0x${string}`;
     sushiRouteType?: "single" | "multi";
     sushiRouter?: SushiRouter;
+    /** Liquidity providers (dexes) to exclude from route finding */
+    excludeDexes?: Set<LiquidityProviders>;
 };
 
 /** Arguments for simulating a trade against routers */
@@ -73,6 +76,8 @@ export type GetTradeParamsArgs = {
     blockNumber: bigint;
     /** Whether should set partial max input for take order */
     isPartial: boolean;
+    /** Liquidity providers (dexes) to exclude from route finding */
+    excludeDexes?: Set<LiquidityProviders>;
 };
 
 /** Represents the trade params for a RainSolverRouter route */

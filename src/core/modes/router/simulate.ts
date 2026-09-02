@@ -8,7 +8,8 @@ import { Result, ABI, RawTransaction } from "../../../common";
 import { encodeFunctionData, formatUnits, parseUnits, zeroAddress } from "viem";
 import { TradeType, FailedSimulation, TaskType } from "../../types";
 import { SimulationHaltReason, TradeSimulatorBase } from "../simulator";
-import { RainSolverRouterErrorType, RouterType } from "../../../router";
+import { LiquidityProviders } from "sushi";
+import { RainSolverRouterErrorType, RouterType, RainSolverRouterQuote } from "../../../router";
 import {
     EnsureBountyTaskType,
     EnsureBountyTaskErrorType,
@@ -37,6 +38,8 @@ export type SimulateRouterTradeArgs = {
     blockNumber: bigint;
     /** Whether should set partial max input for take order */
     isPartial: boolean;
+    /** Liquidity providers (dexes) to exclude from route finding */
+    excludeDexes?: Set<LiquidityProviders>;
 };
 
 /** Arguments for preparing router trade type parameters required for simulation and building tx object */
@@ -67,6 +70,8 @@ export type RouterTradePreparedParams = {
  */
 export class RouterTradeSimulator extends TradeSimulatorBase {
     declare tradeArgs: SimulateRouterTradeArgs;
+    /** The quote of the route that this simulation was tried with, set during prepareTradeParams */
+    quote?: RainSolverRouterQuote;
 
     static withArgs(tradeArgs: SimulateRouterTradeArgs): RouterTradeSimulator {
         return new RouterTradeSimulator(tradeArgs);
@@ -87,6 +92,9 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
         const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
         this.spanAttributes["amountIn"] = formatUnits(maximumInputFixed, 18);
         this.spanAttributes["oppBlockNumber"] = Number(blockNumber);
+        if (this.tradeArgs.excludeDexes?.size) {
+            this.spanAttributes["excludedDexes"] = Array.from(this.tradeArgs.excludeDexes);
+        }
 
         const tradeParamsResult = await this.tradeArgs.solver.state.router.getTradeParams({
             state: this.tradeArgs.solver.state,
@@ -97,6 +105,7 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
             signer,
             blockNumber,
             isPartial,
+            excludeDexes: this.tradeArgs.excludeDexes,
         });
         if (tradeParamsResult.isErr()) {
             const result = {
@@ -119,6 +128,10 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
             routeVisual,
             takeOrdersConfigStruct,
         } = tradeParamsResult.value;
+
+        // keep the quote to make the route that this simulation was
+        // tried with identifiable by the caller in case it fails
+        this.quote = quote;
 
         // determine trade type based on route type
         let type = TradeType.Router;
