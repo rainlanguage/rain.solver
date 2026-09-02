@@ -225,7 +225,7 @@ export class SharedState {
     writeRpc?: RpcState;
     /** List of latest successful transactions gas costs */
     gasCosts: bigint[] = [];
-    /** Oracle endpoint health tracking for cooloff */
+    /** Oracle endpoint health tracking for cooloff and fetch results caching */
     oracleHealth: OracleHealthMap = new Map();
 
     constructor(config: SharedStateConfig) {

@@ -36,7 +36,7 @@ export async function quoteSingleOrderV3(
     blockNumber?: bigint,
     gas?: bigint,
 ) {
-    const oracleResult = await fetchOracleContext.call(state, orderDetails);
+    const oracleResult = await fetchOracleContext.call(state, orderDetails, blockNumber);
     if (oracleResult.isErr()) {
         throw oracleResult.error;
     }
@@ -49,7 +49,6 @@ export async function quoteSingleOrderV3(
                 functionName: "quote",
                 args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.struct)],
             }),
-            blockNumber,
             gas,
         })
         .catch((error) => {
@@ -81,7 +80,7 @@ export async function quoteSingleOrderV4(
     blockNumber?: bigint,
     gas?: bigint,
 ) {
-    const oracleResult = await fetchOracleContext.call(state, orderDetails);
+    const oracleResult = await fetchOracleContext.call(state, orderDetails, blockNumber);
     if (oracleResult.isErr()) {
         throw oracleResult.error;
     }
@@ -94,7 +93,6 @@ export async function quoteSingleOrderV4(
                 functionName: "quote2",
                 args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.struct)],
             }),
-            blockNumber,
             gas,
         })
         .catch((error) => {

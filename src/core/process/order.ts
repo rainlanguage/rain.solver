@@ -70,7 +70,7 @@ export async function processOrder(
 
     const quoteOrderTime = performance.now();
     try {
-        await this.orderManager.quoteOrder(orderDetails);
+        await this.orderManager.quoteOrder(orderDetails, dataFetcherBlockNumber);
         if (orderDetails.takeOrder.quote?.maxOutput === 0n) {
             // remove from pair maps if quote fails, to keep the pair map list free
             // of orders with 0 maxoutput this will make counterparty lookups faster

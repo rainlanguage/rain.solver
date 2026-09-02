@@ -771,6 +771,18 @@ describe("recordOracleSuccess", () => {
         expect(state?.consecutiveFailures).toBe(0);
         expect(state?.cooloffUntil).toBe(0);
     });
+
+    it("preserves cached fetch results when resetting state", () => {
+        const cache = new Map([["0xhash", { blockNumber: 1n, result: {} as any }]]);
+        healthMap.set(testKey, { consecutiveFailures: 3, cooloffUntil: 123, cache });
+
+        recordOracleSuccess(healthMap, testUrl, testOwner);
+
+        const state = healthMap.get(testKey);
+        expect(state?.consecutiveFailures).toBe(0);
+        expect(state?.cooloffUntil).toBe(0);
+        expect(state?.cache).toBe(cache);
+    });
 });
 
 describe("recordOracleFailure", () => {
