@@ -27,6 +27,7 @@ export async function fetchSignedContext(
     url: string,
     request: OracleOrderRequest,
     healthMap: OracleHealthMap,
+    isMaxOwnerProfile?: boolean,
 ): Promise<Result<SignedContextV2, OracleError>> {
     if (!OracleConstants.isKnown(url)) {
         return Result.err(
@@ -34,7 +35,8 @@ export async function fetchSignedContext(
         );
     }
 
-    if (isInCooloff(healthMap, url)) {
+    const owner = request.order.owner.toLowerCase();
+    if (isInCooloff(healthMap, url, owner)) {
         return Result.err(
             new OracleError(`Oracle ${url} is in cooloff, skipping`, OracleErrorType.Cooloff),
         );
@@ -63,10 +65,10 @@ export async function fetchSignedContext(
 
         // Validate shape of response
         if (SignedContextV2.isValidList(response.data)) {
-            recordOracleSuccess(healthMap, url);
+            recordOracleSuccess(healthMap, url, owner);
             return Result.ok(response.data[0]);
         } else {
-            recordOracleFailure(healthMap, url);
+            recordOracleFailure(healthMap, url, owner, isMaxOwnerProfile);
             return Result.err(
                 new OracleError(
                     "Oracle response is not a valid SignedContextV2 list",
@@ -76,7 +78,7 @@ export async function fetchSignedContext(
             );
         }
     } catch (err) {
-        recordOracleFailure(healthMap, url);
+        recordOracleFailure(healthMap, url, owner, isMaxOwnerProfile);
 
         // default error if not AxiosError type
         let error = new OracleError(
@@ -140,8 +142,8 @@ export function extractOracleUrl(metaHex: string): string | undefined {
 }
 
 /** Checks if the given oracle URL is in cooloff period or not */
-export function isInCooloff(healthMap: OracleHealthMap, url: string): boolean {
-    const state = healthMap.get(url);
+export function isInCooloff(healthMap: OracleHealthMap, url: string, owner: string): boolean {
+    const state = healthMap.get(OracleHealthMap.key(url, owner));
     if (!state || state.cooloffUntil === 0) return false;
     if (Date.now() >= state.cooloffUntil) {
         state.cooloffUntil = 0;
@@ -151,20 +153,25 @@ export function isInCooloff(healthMap: OracleHealthMap, url: string): boolean {
 }
 
 /** Records the sucess in orcale health map */
-export function recordOracleSuccess(healthMap: OracleHealthMap, url: string) {
-    healthMap.set(url, { consecutiveFailures: 0, cooloffUntil: 0 });
+export function recordOracleSuccess(healthMap: OracleHealthMap, url: string, owner: string) {
+    const state = OracleHealthMap.getOrCreate(healthMap, url, owner);
+    state.consecutiveFailures = 0;
+    state.cooloffUntil = 0;
 }
 
 /** Records the failure in orcale health map */
-export function recordOracleFailure(healthMap: OracleHealthMap, url: string) {
-    const state = healthMap.get(url) ?? { consecutiveFailures: 0, cooloffUntil: 0 };
+export function recordOracleFailure(
+    healthMap: OracleHealthMap,
+    url: string,
+    owner: string,
+    isMaxOwnerProfile?: boolean,
+) {
+    const cooloffDuration = isMaxOwnerProfile
+        ? OracleConstants.COOLOFF_MAX_PROFILE_OWNER
+        : OracleConstants.COOLOFF_DURATION_MS;
+    const state = OracleHealthMap.getOrCreate(healthMap, url, owner);
     state.consecutiveFailures++;
     if (state.consecutiveFailures >= OracleConstants.COOLOFF_THRESHOLD) {
-        state.cooloffUntil = Date.now() + OracleConstants.COOLOFF_DURATION_MS;
-        // console.warn(
-        //     `Oracle ${url} entered cooloff for ${COOLOFF_DURATION_MS / 1000}s ` +
-        //         `after ${state.consecutiveFailures} consecutive failures`,
-        // );
+        state.cooloffUntil = Date.now() + cooloffDuration;
     }
-    healthMap.set(url, state);
 }
