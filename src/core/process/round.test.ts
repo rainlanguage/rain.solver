@@ -65,6 +65,7 @@ describe("Test initializeRound", () => {
         // mock state
         mockState = {
             chainConfig: { id: 1 },
+            updateGasTokenUsdPrice: vi.fn().mockResolvedValue(undefined),
             client: {
                 name: "viem-client",
                 getBlockNumber: vi.fn().mockResolvedValue(123n),
@@ -238,6 +239,18 @@ describe("Test initializeRound", () => {
             await initializeRound.call(mockSolver, undefined, false);
 
             expect(mockOrderManager.getNextRoundOrders).toHaveBeenCalledOnce();
+        });
+
+        it("should update gas token usd price once for the round", async () => {
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                nonZeroOutput: [],
+                zeroOutput: [],
+            });
+
+            await initializeRound.call(mockSolver, undefined, false);
+
+            expect(mockState.updateGasTokenUsdPrice).toHaveBeenCalledTimes(1);
+            expect(mockState.updateGasTokenUsdPrice).toHaveBeenCalledWith(123n);
         });
 
         it("should call getRandomSigner for each order", async () => {

@@ -5,6 +5,7 @@ import { TradeType } from "../types";
 import { Result } from "../../common";
 import { RainSolverSigner } from "../../signer";
 import { extendObjectWithHeader } from "../../common";
+import { formatUnits } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
     SimulateTradeArgs,
@@ -617,6 +618,317 @@ describe("Test TradeSimulatorBase", () => {
             );
             expect(mockSimulator.estimateProfit).toHaveBeenCalledTimes(1);
             expect(mockSimulator.estimateProfit).toHaveBeenCalledWith(preparedParams.price);
+        });
+
+        it("should boost tx gas price when estimated profit exceeds the min bounty threshold", async () => {
+            (mockSolver.appOptions as any).gasBoostProfitThreshold = 10;
+            (mockSolver.appOptions as any).gasBoostMultiplier = 2.5;
+            preparedParams.rawtx.gasPrice = 1000n;
+            (mockSimulator.prepareTradeParams as Mock).mockResolvedValueOnce(
+                Result.ok(preparedParams),
+            );
+            (mockSimulator.setTransactionData as Mock)
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0));
+            const dryrunResult = {
+                estimation: {
+                    gas: 21000n,
+                    gasPrice: 1000000000000000000n,
+                    l1GasPrice: 50000000000n,
+                    l1Cost: 15000n * 50000000000n,
+                    totalGasCost: 21000n * 1000000000000000000n,
+                },
+                estimatedGasCost: 21000n * 1000000000000000000n + 15000n * 50000000000n,
+                spanAttributes: {},
+            };
+            (dryrun as Mock)
+                .mockResolvedValueOnce(Result.ok(dryrunResult))
+                .mockResolvedValueOnce(Result.ok(dryrunResult));
+            const minimumExpected =
+                (dryrunResult.estimatedGasCost *
+                    BigInt(mockSolver.appOptions.gasCoveragePercentage)) /
+                100n;
+            (mockSimulator.estimateProfit as Mock).mockReturnValueOnce(minimumExpected * 10n + 1n);
+
+            const result = await mockSimulator.trySimulateTrade();
+            assert(result.isOk());
+            expect(result.value.rawtx.gasPrice).toBe(2500n);
+            expect(result.value.spanAttributes["gasPriceBoosted"]).toBe(true);
+        });
+
+        it("should not boost tx gas price when estimated profit is at or below the min bounty threshold", async () => {
+            (mockSolver.appOptions as any).gasBoostProfitThreshold = 10;
+            (mockSolver.appOptions as any).gasBoostMultiplier = 2;
+            preparedParams.rawtx.gasPrice = 1000n;
+            (mockSimulator.prepareTradeParams as Mock).mockResolvedValueOnce(
+                Result.ok(preparedParams),
+            );
+            (mockSimulator.setTransactionData as Mock)
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0));
+            const dryrunResult = {
+                estimation: {
+                    gas: 21000n,
+                    gasPrice: 1000000000000000000n,
+                    l1GasPrice: 50000000000n,
+                    l1Cost: 15000n * 50000000000n,
+                    totalGasCost: 21000n * 1000000000000000000n,
+                },
+                estimatedGasCost: 21000n * 1000000000000000000n + 15000n * 50000000000n,
+                spanAttributes: {},
+            };
+            (dryrun as Mock)
+                .mockResolvedValueOnce(Result.ok(dryrunResult))
+                .mockResolvedValueOnce(Result.ok(dryrunResult));
+            const minimumExpected =
+                (dryrunResult.estimatedGasCost *
+                    BigInt(mockSolver.appOptions.gasCoveragePercentage)) /
+                100n;
+            (mockSimulator.estimateProfit as Mock).mockReturnValueOnce(minimumExpected * 10n);
+
+            const result = await mockSimulator.trySimulateTrade();
+            assert(result.isOk());
+            expect(result.value.rawtx.gasPrice).toBe(1000n);
+            expect(result.value.spanAttributes["gasPriceBoosted"]).toBeUndefined();
+        });
+
+        it("should record USD values in span attributes when gas token USD price is set", async () => {
+            (mockSolver.state as any).gasTokenUsdPrice = "2";
+            (mockSimulator.prepareTradeParams as Mock).mockResolvedValueOnce(
+                Result.ok(preparedParams),
+            );
+            (mockSimulator.setTransactionData as Mock)
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0));
+            const dryrunResult = {
+                estimation: {
+                    gas: 21000n,
+                    gasPrice: 1000000000000000000n,
+                    l1GasPrice: 50000000000n,
+                    l1Cost: 15000n * 50000000000n,
+                    totalGasCost: 21000n * 1000000000000000000n,
+                },
+                estimatedGasCost: 21000n * 1000000000000000000n + 15000n * 50000000000n,
+                spanAttributes: {},
+            };
+            (dryrun as Mock)
+                .mockResolvedValueOnce(Result.ok(dryrunResult))
+                .mockResolvedValueOnce(Result.ok(dryrunResult));
+            (mockSimulator.estimateProfit as Mock).mockReturnValueOnce(123n);
+
+            const result = await mockSimulator.trySimulateTrade();
+            assert(result.isOk());
+            const minimumExpected =
+                (dryrunResult.estimatedGasCost *
+                    BigInt(mockSolver.appOptions.gasCoveragePercentage)) /
+                100n;
+            // price is 2 dollars per gas token, so usd values are 2x the eth values
+            expect(result.value.spanAttributes["gasEst.final.minBountyExpectedUsd"]).toBe(
+                formatUnits(minimumExpected * 2n, 18),
+            );
+            const headroom = BigInt(
+                (
+                    Number(mockSolver.appOptions.gasCoveragePercentage) *
+                    mockSolver.appOptions.headroom
+                ).toFixed(),
+            );
+            const initialMinimumExpected = (dryrunResult.estimatedGasCost * headroom) / 10000n;
+            expect(result.value.spanAttributes["gasEst.initial.minBountyExpectedUsd"]).toBe(
+                formatUnits(initialMinimumExpected * 2n, 18),
+            );
+            expect(extendObjectWithHeader).toHaveBeenCalledWith(
+                mockSimulator.spanAttributes,
+                expect.objectContaining({
+                    totalCostUsd: formatUnits(dryrunResult.estimatedGasCost * 2n, 18),
+                }),
+                "gasEst.initial",
+            );
+            expect(extendObjectWithHeader).toHaveBeenCalledWith(
+                mockSimulator.spanAttributes,
+                expect.objectContaining({
+                    totalCostUsd: formatUnits(dryrunResult.estimatedGasCost * 2n, 18),
+                }),
+                "gasEst.final",
+            );
+        });
+
+        it("should not boost tx gas price when multiplier is unset even if criteria is met", async () => {
+            // criteria threshold is set but multiplier is not, so boost stays inactive
+            (mockSolver.appOptions as any).gasBoostProfitThreshold = 10;
+            preparedParams.rawtx.gasPrice = 1000n;
+            (mockSimulator.prepareTradeParams as Mock).mockResolvedValueOnce(
+                Result.ok(preparedParams),
+            );
+            (mockSimulator.setTransactionData as Mock)
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0));
+            const dryrunResult = {
+                estimation: {
+                    gas: 21000n,
+                    gasPrice: 1000000000000000000n,
+                    l1GasPrice: 50000000000n,
+                    l1Cost: 15000n * 50000000000n,
+                    totalGasCost: 21000n * 1000000000000000000n,
+                },
+                estimatedGasCost: 21000n * 1000000000000000000n + 15000n * 50000000000n,
+                spanAttributes: {},
+            };
+            (dryrun as Mock)
+                .mockResolvedValueOnce(Result.ok(dryrunResult))
+                .mockResolvedValueOnce(Result.ok(dryrunResult));
+            (mockSimulator.estimateProfit as Mock).mockReturnValueOnce(
+                dryrunResult.estimatedGasCost * 1000n,
+            );
+
+            const result = await mockSimulator.trySimulateTrade();
+            assert(result.isOk());
+            expect(result.value.rawtx.gasPrice).toBe(1000n);
+            expect(result.value.spanAttributes["gasPriceBoosted"]).toBeUndefined();
+        });
+
+        it("should not boost tx gas price when profit usd value is at or below the usd threshold", async () => {
+            (mockSolver.appOptions as any).gasBoostMultiplier = 2;
+            (mockSolver.appOptions as any).gasBoostUsdThreshold = 100n * ONE18;
+            (mockSolver.state as any).gasTokenUsdPrice = "2000";
+            preparedParams.rawtx.gasPrice = 1000n;
+            (mockSimulator.prepareTradeParams as Mock).mockResolvedValueOnce(
+                Result.ok(preparedParams),
+            );
+            (mockSimulator.setTransactionData as Mock)
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0));
+            const dryrunResult = {
+                estimation: {
+                    gas: 21000n,
+                    gasPrice: 1000000000000000000n,
+                    l1GasPrice: 50000000000n,
+                    l1Cost: 15000n * 50000000000n,
+                    totalGasCost: 21000n * 1000000000000000000n,
+                },
+                estimatedGasCost: 21000n * 1000000000000000000n + 15000n * 50000000000n,
+                spanAttributes: {},
+            };
+            (dryrun as Mock)
+                .mockResolvedValueOnce(Result.ok(dryrunResult))
+                .mockResolvedValueOnce(Result.ok(dryrunResult));
+            // 0.05 gas token profit at 2000 dollars each equals exactly
+            // 100 dollars which is not above the threshold
+            (mockSimulator.estimateProfit as Mock).mockReturnValueOnce(ONE18 / 20n);
+
+            const result = await mockSimulator.trySimulateTrade();
+            assert(result.isOk());
+            expect(result.value.rawtx.gasPrice).toBe(1000n);
+            expect(result.value.spanAttributes["gasPriceBoosted"]).toBeUndefined();
+        });
+
+        it("should boost tx gas price when estimated profit usd value exceeds the usd threshold", async () => {
+            // only the usd threshold criteria is configured, at 100 dollars
+            (mockSolver.appOptions as any).gasBoostMultiplier = 2;
+            (mockSolver.appOptions as any).gasBoostUsdThreshold = 100n * ONE18;
+            (mockSolver.state as any).gasTokenUsdPrice = "2000";
+            preparedParams.rawtx.gasPrice = 1000n;
+            (mockSimulator.prepareTradeParams as Mock).mockResolvedValueOnce(
+                Result.ok(preparedParams),
+            );
+            (mockSimulator.setTransactionData as Mock)
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0));
+            const dryrunResult = {
+                estimation: {
+                    gas: 21000n,
+                    gasPrice: 1000000000000000000n,
+                    l1GasPrice: 50000000000n,
+                    l1Cost: 15000n * 50000000000n,
+                    totalGasCost: 21000n * 1000000000000000000n,
+                },
+                estimatedGasCost: 21000n * 1000000000000000000n + 15000n * 50000000000n,
+                spanAttributes: {},
+            };
+            (dryrun as Mock)
+                .mockResolvedValueOnce(Result.ok(dryrunResult))
+                .mockResolvedValueOnce(Result.ok(dryrunResult));
+            // 0.1 gas token profit at 2000 dollars each equals 200 dollars, above the threshold
+            (mockSimulator.estimateProfit as Mock).mockReturnValueOnce(ONE18 / 10n);
+
+            const result = await mockSimulator.trySimulateTrade();
+            assert(result.isOk());
+            expect(result.value.rawtx.gasPrice).toBe(2000n);
+            expect(result.value.spanAttributes["gasPriceBoosted"]).toBe(true);
+        });
+
+        it("should not boost tx gas price by usd threshold when gas token usd price is unknown", async () => {
+            (mockSolver.appOptions as any).gasBoostMultiplier = 2;
+            (mockSolver.appOptions as any).gasBoostUsdThreshold = 100n * ONE18;
+            // gasTokenUsdPrice is not set on state
+            preparedParams.rawtx.gasPrice = 1000n;
+            (mockSimulator.prepareTradeParams as Mock).mockResolvedValueOnce(
+                Result.ok(preparedParams),
+            );
+            (mockSimulator.setTransactionData as Mock)
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0));
+            const dryrunResult = {
+                estimation: {
+                    gas: 21000n,
+                    gasPrice: 1000000000000000000n,
+                    l1GasPrice: 50000000000n,
+                    l1Cost: 15000n * 50000000000n,
+                    totalGasCost: 21000n * 1000000000000000000n,
+                },
+                estimatedGasCost: 21000n * 1000000000000000000n + 15000n * 50000000000n,
+                spanAttributes: {},
+            };
+            (dryrun as Mock)
+                .mockResolvedValueOnce(Result.ok(dryrunResult))
+                .mockResolvedValueOnce(Result.ok(dryrunResult));
+            (mockSimulator.estimateProfit as Mock).mockReturnValueOnce(1000000n * ONE18);
+
+            const result = await mockSimulator.trySimulateTrade();
+            assert(result.isOk());
+            expect(result.value.rawtx.gasPrice).toBe(1000n);
+            expect(result.value.spanAttributes["gasPriceBoosted"]).toBeUndefined();
+        });
+
+        it("should not boost tx gas price when gas boost config fields are unset", async () => {
+            // gasBoostProfitThreshold and gasBoostMultiplier are not set on appOptions
+            preparedParams.rawtx.gasPrice = 1000n;
+            (mockSimulator.prepareTradeParams as Mock).mockResolvedValueOnce(
+                Result.ok(preparedParams),
+            );
+            (mockSimulator.setTransactionData as Mock)
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0))
+                .mockResolvedValueOnce(Result.ok(void 0));
+            const dryrunResult = {
+                estimation: {
+                    gas: 21000n,
+                    gasPrice: 1000000000000000000n,
+                    l1GasPrice: 50000000000n,
+                    l1Cost: 15000n * 50000000000n,
+                    totalGasCost: 21000n * 1000000000000000000n,
+                },
+                estimatedGasCost: 21000n * 1000000000000000000n + 15000n * 50000000000n,
+                spanAttributes: {},
+            };
+            (dryrun as Mock)
+                .mockResolvedValueOnce(Result.ok(dryrunResult))
+                .mockResolvedValueOnce(Result.ok(dryrunResult));
+            // huge profit, but boost is inactive without the config fields
+            (mockSimulator.estimateProfit as Mock).mockReturnValueOnce(
+                dryrunResult.estimatedGasCost * 1000n,
+            );
+
+            const result = await mockSimulator.trySimulateTrade();
+            assert(result.isOk());
+            expect(result.value.rawtx.gasPrice).toBe(1000n);
+            expect(result.value.spanAttributes["gasPriceBoosted"]).toBeUndefined();
         });
     });
 });

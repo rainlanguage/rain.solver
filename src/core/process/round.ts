@@ -55,6 +55,11 @@ export async function initializeRound(
             totalLength,
         };
     }
+
+    // update the native gas token dollar price once for this round,
+    // used for reporting dollar values in span attributes
+    await this.state.updateGasTokenUsdPrice(blockNumber);
+
     for (const orderDetails of iterOrders(orders, shuffle)) {
         // update pools data on each batch start
         let newPoolCreated = false;

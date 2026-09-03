@@ -2,6 +2,7 @@ import assert from "assert";
 import { parse } from "yaml";
 import { readFileSync } from "fs";
 import { RpcConfig } from "../rpc";
+import { parseUnits } from "viem";
 import { Result } from "../common";
 import { SgFilter } from "../subgraph/filter";
 import { AppOptionsError, AppOptionsErrorType } from "./error";
@@ -120,6 +121,12 @@ export type AppOptions = {
     txTimeThreshold: number;
     /** Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins */
     checkWalletBalanceTime: number;
+    /** Optional threshold as the min expected bounty multiple that the estimated profit must exceed to boost the tx gas price, no boost applies if unset */
+    gasBoostProfitThreshold?: number;
+    /** Optional multiplier applied to the tx gas price when the gas boost profit threshold is exceeded, no boost applies if unset */
+    gasBoostMultiplier?: number;
+    /** Optional threshold for the estimated profit USD value that if exceeded boosts the tx gas price, kept as 18 point decimals, no boost applies if unset */
+    gasBoostUsdThreshold?: bigint;
 };
 
 /** Provides methods to instantiate and validate AppOptions */
@@ -367,6 +374,48 @@ export namespace AppOptions {
                             "invalid checkWalletBalanceTime, must be an integer greater than equal to  0",
                         ),
                 ),
+                gasBoostProfitThreshold: Validator.resolveNumericValue(
+                    input.gasBoostProfitThreshold,
+                    INT_PATTERN,
+                    "invalid gasBoostProfitThreshold value, must be an integer greater than 0",
+                    undefined,
+                    undefined,
+                    (gasBoostProfitThreshold) =>
+                        assert(
+                            gasBoostProfitThreshold === undefined || gasBoostProfitThreshold > 0,
+                            "invalid gasBoostProfitThreshold value, must be an integer greater than 0",
+                        ),
+                ),
+                gasBoostMultiplier: Validator.resolveNumericValue(
+                    input.gasBoostMultiplier,
+                    FLOAT_PATTERN,
+                    "invalid gasBoostMultiplier value, must be an number greater than 1",
+                    undefined,
+                    undefined,
+                    (gasBoostMultiplier) =>
+                        assert(
+                            gasBoostMultiplier === undefined || gasBoostMultiplier > 1,
+                            "invalid gasBoostMultiplier value, must be an number greater than 1",
+                        ),
+                ),
+                gasBoostUsdThreshold: (() => {
+                    const gasBoostUsdThreshold = Validator.resolveNumericValue(
+                        input.gasBoostUsdThreshold,
+                        FLOAT_PATTERN,
+                        "invalid gasBoostUsdThreshold value, must be a number greater than 0",
+                        undefined,
+                        true,
+                        (value) =>
+                            assert(
+                                value === undefined || Number(value) > 0,
+                                "invalid gasBoostUsdThreshold value, must be a number greater than 0",
+                            ),
+                    );
+                    // convert to 18 point decimals
+                    return gasBoostUsdThreshold === undefined
+                        ? undefined
+                        : parseUnits(gasBoostUsdThreshold, 18);
+                })(),
             } as AppOptions);
         } catch (error: any) {
             if (error instanceof AppOptionsError) {

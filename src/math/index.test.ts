@@ -1,5 +1,13 @@
 import { describe, it, assert } from "vitest";
-import { scaleTo18, scaleFrom18, calculatePrice18, toNumber, isBigNumberish, ONE18 } from ".";
+import {
+    scaleTo18,
+    scaleFrom18,
+    calculatePrice18,
+    toNumber,
+    isBigNumberish,
+    toUsdValue,
+    ONE18,
+} from ".";
 import { maxUint256 } from "viem";
 
 describe("Test math functions", () => {
@@ -130,6 +138,17 @@ describe("Test math functions", () => {
             assert.strictEqual(isBigNumberish(undefined), false);
             // A plain object is not numberish.
             assert.strictEqual(isBigNumberish({}), false);
+        });
+    });
+
+    describe("toUsdValue", () => {
+        it("should calculate the dollar value", async function () {
+            // 2 gas tokens at price of 3000.5 dollars each equals 6001 dollars
+            assert.deepEqual(toUsdValue(2n * ONE18, "3000.5"), 6001n * ONE18);
+            // half a gas token at price of 3000.5 dollars equals 1500.25 dollars
+            assert.deepEqual(toUsdValue(ONE18 / 2n, "3000.5"), (150025n * ONE18) / 100n);
+            // zero value equals zero dollars
+            assert.deepEqual(toUsdValue(0n, "3000.5"), 0n);
         });
     });
 });
