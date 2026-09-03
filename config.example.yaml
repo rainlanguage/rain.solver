@@ -114,6 +114,12 @@ botMinBalance: 0.5
 # Option to multiply the gas price fetched from the rpc as percentage, default is 107, ie +7%
 gasPriceMultiplier: 107
 
+# Time threshold (in ms) for a transaction mine time before it counts as a trigger to increase gas price multiplier for future transactions, default is 15000ms (15 seconds)
+txTimeThreshold: 15000
+
+# Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins
+checkWalletBalanceTime: 15
+
 # Option to multiply the gas limit estimation from the rpc as percentage, default is 100, ie no change
 gasLimitMultiplier: 100
 

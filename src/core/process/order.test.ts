@@ -79,6 +79,7 @@ describe("Test processOrder", () => {
                 },
             },
             signer: {},
+            blockNumber: 123n,
         } as any;
         mockRainSolver = {
             state: mockState,
