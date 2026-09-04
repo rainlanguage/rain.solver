@@ -2,6 +2,7 @@ import { RainSolver } from "../..";
 import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
 import { LiquidityProviders } from "sushi";
+import { AppOptions } from "../../../config";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { RouterTradeSimulator } from "./simulate";
@@ -16,16 +17,19 @@ export type RouterTradeAttempt = {
     result: SimulationResult;
     /** The quote of the attempt's full trade size simulation */
     quote?: RouterTradeSimulator["quote"];
+    /** The trade size (in 18 decimals) that the attempt succeeded with */
+    tradeSize?: bigint;
 };
 
 /**
  * Tries to find the best trade against rain router (balancer and sushi) for the
- * given order, it will first try normally with all enabled dexes, and if the best
- * route got rejected onchain during dryrun, it will try once more with the failing
- * route's dexes excluded, so the next best route is tried, this is because the
- * sushi router lib pool models can be inaccurate for some dexes leading to false
- * positive quotes that dont hold up onchain and also shadow other good routes as
- * long as they wrongly quote the best amount out
+ * given order, it will first try normally with all enabled dexes, then only for
+ * orders of owners with max profile, it also tries a secondary route with the
+ * primary route's dexes excluded regardless of the primary outcome, and picks
+ * the result that yields the higher estimated profit and clears the most input,
+ * this is because the sushi router lib pool models can be inaccurate for some
+ * dexes leading to false positive quotes that dont hold up onchain and also
+ * shadow other good routes as long as they wrongly quote the best amount out
  * @param this - RainSolver instance
  * @param orderDetails - The details of the order to be processed
  * @param signer - The signer to be used for the trade
@@ -53,39 +57,65 @@ export async function findBestRouterTrade(
         fromToken,
         blockNumber,
     );
-    if (primary.result.isOk()) {
+
+    // secondary route is only tried for orders of owners with max profile
+    const isMaxOwnerProfile = AppOptions.isMaxOwnerProfile(
+        orderDetails.takeOrder.struct.order.owner,
+        this.appOptions.ownerProfile,
+    );
+    if (!isMaxOwnerProfile) {
         return primary.result;
     }
 
-    // retry once more with the primary attempt's failing route dexes
-    // excluded if it was rejected onchain during dryrun
+    // exit with the primary result if the primary route's dexes cannot be
+    // identified, as the secondary attempt would just repeat the primary
     const excludeDexes = SushiRouterQuote.is(primary.quote)
         ? SushiRouterQuote.getRouteDexes(primary.quote)
         : new Set<LiquidityProviders>();
-    if (
-        primary.result.error.reason === SimulationHaltReason.NoOpportunity &&
-        excludeDexes.size == 1
-    ) {
-        const secondary = await tryFindBestRouterTrade.call(
-            this,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-            excludeDexes,
-        );
-        if (secondary.result.isOk()) {
-            return secondary.result;
-        }
-        extendObjectWithHeader(
-            primary.result.error.spanAttributes,
-            secondary.result.error.spanAttributes,
-            "secondary",
-        );
-        primary.result.error.noneNodeError ??= secondary.result.error.noneNodeError;
+    if (excludeDexes.size !== 1) {
+        return primary.result;
     }
+
+    // try the secondary route with the primary route's dexes excluded
+    // regardless of the primary outcome
+    const secondary = await tryFindBestRouterTrade.call(
+        this,
+        orderDetails,
+        signer,
+        ethPrice,
+        toToken,
+        fromToken,
+        blockNumber,
+        excludeDexes,
+    );
+
+    // when both succeed, pick the one that yields the higher estimated profit
+    // and clears the most input, ie the secondary replaces the primary only if
+    // it is better in one criteria while not being worse in the other
+    if (primary.result.isOk() && secondary.result.isOk()) {
+        const primaryProfit = primary.result.value.estimatedProfit;
+        const secondaryProfit = secondary.result.value.estimatedProfit;
+        const secondaryDominates = secondaryProfit > primaryProfit;
+        const pickedResult = secondaryDominates ? secondary.result : primary.result;
+        pickedResult.value.spanAttributes["pickedRoute"] = secondaryDominates
+            ? "secondary"
+            : "primary";
+        return pickedResult;
+    }
+    if (primary.result.isOk()) {
+        return primary.result;
+    }
+    if (secondary.result.isOk()) {
+        return secondary.result;
+    }
+
+    // both failed, report the secondary failure details under its own header
+    extendObjectWithHeader(
+        primary.result.error.spanAttributes,
+        secondary.result.error.spanAttributes,
+        "secondary",
+    );
+    primary.result.error.noneNodeError ??= secondary.result.error.noneNodeError;
     return primary.result;
 }
 
@@ -157,7 +187,7 @@ export async function tryFindBestRouterTrade(
     const fullTradeSizeSimResult = await fullTradeSimulator.trySimulateTrade();
     let quote = fullTradeSimulator.quote;
     if (fullTradeSizeSimResult.isOk()) {
-        return { result: fullTradeSizeSimResult, quote };
+        return { result: fullTradeSizeSimResult, quote, tradeSize: maximumInput };
     }
     extendObjectWithHeader(spanAttributes, fullTradeSizeSimResult.error.spanAttributes, "full");
 
@@ -221,7 +251,7 @@ export async function tryFindBestRouterTrade(
     const partialTradeSizeSimResult = await partialTradeSimulator.trySimulateTrade();
     quote = partialTradeSimulator.quote ?? quote;
     if (partialTradeSizeSimResult.isOk()) {
-        return { result: partialTradeSizeSimResult, quote };
+        return { result: partialTradeSizeSimResult, quote, tradeSize: partialTradeSize };
     }
     extendObjectWithHeader(
         spanAttributes,
@@ -255,7 +285,7 @@ export async function tryFindBestRouterTrade(
             });
             const partialFallbackSimResult = await partialFallbackSimulator.trySimulateTrade();
             if (partialFallbackSimResult.isOk()) {
-                return { result: partialFallbackSimResult, quote };
+                return { result: partialFallbackSimResult, quote, tradeSize: fallbackTradeSize };
             }
             extendObjectWithHeader(
                 spanAttributes,

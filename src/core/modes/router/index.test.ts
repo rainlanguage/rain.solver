@@ -71,7 +71,10 @@ describe("Test findBestRouterTrade", () => {
         };
 
         orderDetails = {
-            takeOrder: { quote: { maxOutput: 1000n }, struct: { order: { type: Order.Type.V4 } } },
+            takeOrder: {
+                quote: { maxOutput: 1000n },
+                struct: { order: { type: Order.Type.V4, owner: "0xOwner" } },
+            },
         };
 
         signer = { account: { address: "0xsigner" } };
@@ -561,6 +564,7 @@ describe("Test findBestRouterTrade", () => {
     });
 
     it("should retry with the failing route dexes excluded when full trade dryrun fails", async () => {
+        mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
         const sushiQuote = {
             route: {
                 pcMap: new Map([["pool1", { liquidityProvider: "Hydrex" }]]),
@@ -619,6 +623,7 @@ describe("Test findBestRouterTrade", () => {
     });
 
     it("should return error when retry attempt also fails", async () => {
+        mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
         const sushiQuote = {
             route: {
                 pcMap: new Map([["pool1", { liquidityProvider: "Hydrex" }]]),
@@ -681,6 +686,154 @@ describe("Test findBestRouterTrade", () => {
             "secondary",
         );
         expect(mockRainSolver.state.router.findLargestTradeSize).not.toHaveBeenCalled();
+    });
+
+    it("should not try secondary route for non max owner profile orders", async () => {
+        // no ownerProfile is set, so the order owner is not max profile
+        const sushiQuote = {
+            route: {
+                pcMap: new Map([["pool1", { liquidityProvider: "Hydrex" }]]),
+                route: { legs: [{ uniqueId: "pool1" }] },
+            },
+        } as any;
+        const mockFullTradeError = Result.err({
+            type: TradeType.RouteProcessor,
+            reason: SimulationHaltReason.NoOpportunity,
+            spanAttributes: { error: "dryrun failed" },
+            noneNodeError: "full failed",
+        });
+        (simulatorWithArgsSpy as Mock).mockReturnValueOnce({
+            quote: sushiQuote,
+            trySimulateTrade: vi.fn().mockResolvedValue(mockFullTradeError),
+        });
+
+        const result: SimulationResult = await findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+        );
+
+        assert(result.isErr());
+        expect(result.error.noneNodeError).toBe("full failed");
+        // only the primary attempt should have run
+        expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("should try secondary route for max owner when primary succeeds and pick the higher profit result", async () => {
+        mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
+        const sushiQuote = {
+            route: {
+                pcMap: new Map([["pool1", { liquidityProvider: "Hydrex" }]]),
+                route: { legs: [{ uniqueId: "pool1" }] },
+            },
+        } as any;
+        // both attempts succeed, secondary with the higher profit wins
+        (simulatorWithArgsSpy as Mock)
+            .mockReturnValueOnce({
+                quote: sushiQuote,
+                trySimulateTrade: vi.fn().mockResolvedValue(
+                    Result.ok({
+                        type: TradeType.RouteProcessor,
+                        spanAttributes: { foundOpp: true },
+                        estimatedProfit: 100n,
+                        oppBlockNumber: 123,
+                    }),
+                ),
+            })
+            .mockReturnValueOnce({
+                quote: undefined,
+                trySimulateTrade: vi.fn().mockResolvedValue(
+                    Result.ok({
+                        type: TradeType.RouteProcessor,
+                        spanAttributes: { foundOpp: true },
+                        estimatedProfit: 150n,
+                        oppBlockNumber: 123,
+                    }),
+                ),
+            });
+
+        const result: SimulationResult = await findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+        );
+
+        assert(result.isOk());
+        expect(result.value.estimatedProfit).toBe(150n);
+        expect(result.value.spanAttributes["pickedRoute"]).toBe("secondary");
+        expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(2);
+        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith(
+            expect.objectContaining({ excludeDexes: new Set(["Hydrex"]) }),
+        );
+    });
+
+    it("should keep primary result when secondary profit is not higher", async () => {
+        mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
+        const sushiQuote = {
+            route: {
+                pcMap: new Map([["pool1", { liquidityProvider: "Hydrex" }]]),
+                route: { legs: [{ uniqueId: "pool1" }] },
+            },
+        } as any;
+        // primary succeeds at full size with the higher profit, secondary
+        // succeeds at partial size with a lower profit, so primary is kept
+        (simulatorWithArgsSpy as Mock)
+            .mockReturnValueOnce({
+                quote: sushiQuote,
+                trySimulateTrade: vi.fn().mockResolvedValue(
+                    Result.ok({
+                        type: TradeType.RouteProcessor,
+                        spanAttributes: { foundOpp: true },
+                        estimatedProfit: 100n,
+                        oppBlockNumber: 123,
+                    }),
+                ),
+            })
+            .mockReturnValueOnce({
+                quote: undefined,
+                trySimulateTrade: vi.fn().mockResolvedValue(
+                    Result.err({
+                        type: TradeType.RouteProcessor,
+                        reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
+                        spanAttributes: { error: "ratio too high" },
+                    }),
+                ),
+            })
+            .mockReturnValueOnce({
+                quote: undefined,
+                trySimulateTrade: vi.fn().mockResolvedValue(
+                    Result.ok({
+                        type: TradeType.RouteProcessor,
+                        spanAttributes: { foundOpp: true },
+                        estimatedProfit: 50n,
+                        oppBlockNumber: 123,
+                    }),
+                ),
+            });
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue(500n);
+
+        const result: SimulationResult = await findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+        );
+
+        assert(result.isOk());
+        expect(result.value.estimatedProfit).toBe(100n);
+        expect(result.value.spanAttributes["pickedRoute"]).toBe("primary");
+        expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(3);
     });
 
     it("should return early if ethPrice is unknown", async () => {
