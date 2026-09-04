@@ -106,6 +106,7 @@ export async function sweepFunds(opts: SweepOptions) {
         gasLimitMultiplier: 100,
         gasPriceMultiplier: 107,
         txTimeThreshold: 2_500,
+        blockTime: 5_000,
         timeout: 15_000,
 
         // unused fields but need to be defined

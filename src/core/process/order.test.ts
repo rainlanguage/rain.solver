@@ -46,9 +46,8 @@ describe("Test processOrder", () => {
                 id: 1,
                 nativeWrappedToken: "0xWETH",
             },
-            client: {
-                getBlockNumber: vi.fn().mockResolvedValue(123),
-            },
+            blockNumber: 123n,
+            client: {},
             router: {
                 sushi: {
                     update: vi.fn().mockResolvedValue(undefined),

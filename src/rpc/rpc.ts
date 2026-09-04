@@ -1,18 +1,18 @@
+import { isTimeout } from "../error";
 import { promiseTimeout, sleep } from "../common";
-import { onFetchRequest, onFetchResponse } from "./hooks";
-import { http, Transport, HttpTransportConfig } from "viem";
-import { normalizeUrl, probablyPicksFrom } from "./helpers";
 import { RainSolverTransportTimeoutError } from "./transport";
+import { http, webSocket, Transport, HttpTransportConfig } from "viem";
+import { normalizeUrl, probablyPicksFrom, isWebSocketUrl, shouldThrow } from "./helpers";
 
 /** The rpc configurations */
 export type RpcConfig = {
-    /** The rpc url */
+    /** The rpc url, either http(s) or ws(s) */
     url: string;
     /** The number of latest requests to keep track of, default is 100 */
     trackSize?: number;
     /** The selection weight for this rpc, default is 1 */
     selectionWeight?: number;
-    /** Viem transport configuration */
+    /** Viem transport configuration, batch and fetchOptions only apply to http rpcs */
     transportConfig?: Pick<HttpTransportConfig, "key" | "name" | "batch" | "fetchOptions">;
 };
 
@@ -45,12 +45,20 @@ export class RpcState {
         this.metrics = {};
         this.transports = {};
         configs.forEach((conf, i) => {
-            this.metrics[this.urls[i]] = new RpcMetrics(conf);
-            this.transports[this.urls[i]] = http(conf.url, {
-                ...conf.transportConfig,
-                onFetchRequest: onFetchRequest.bind(this),
-                onFetchResponse: onFetchResponse.bind(this),
-            });
+            const url = this.urls[i];
+            const record = (this.metrics[url] = new RpcMetrics(conf));
+            // pick the underlying viem transport by the url scheme and wrap
+            // it with the metrics recorder, so the rpc consumption details
+            // are tracked the same way regardless of the transport kind
+            const transport = isWebSocketUrl(conf.url)
+                ? webSocket(conf.url, {
+                      key: conf.transportConfig?.key,
+                      name: conf.transportConfig?.name,
+                      keepAlive: true,
+                      reconnect: true,
+                  })
+                : http(conf.url, conf.transportConfig);
+            this.transports[url] = withRpcMetrics(transport, record);
         });
     }
 
@@ -68,7 +76,9 @@ export class RpcState {
     }
 
     /**
-     * Get next rpc to use which is picked based on past performance
+     * Get next rpc to use which is picked based on past performance, returns
+     * the picked transport atomically paired with its url, since reading the
+     * shared lastUsedUrl after the call can race with concurrent callers
      */
     async nextRpc({
         timeout = 10_000,
@@ -76,7 +86,7 @@ export class RpcState {
     }: {
         timeout?: number;
         pollingInterval?: number;
-    }): Promise<Transport> {
+    }): Promise<{ transport: Transport; url: string }> {
         // rpcs selection rate, each rate determines the probability of selecting that
         // rpc which is just a percentage of that rpc's latest success rate in 2 fixed
         // point decimals relative to other rpcs sucess rates, so the bigger the rate,
@@ -92,7 +102,8 @@ export class RpcState {
                         await sleep(pollingInterval);
                     } else {
                         this.lastUsedRpcIndex = index;
-                        return this.transports[this.urls[index]];
+                        const url = this.urls[index];
+                        return { transport: this.transports[url], url };
                     }
                 }
             })(),
@@ -100,6 +111,43 @@ export class RpcState {
             new RainSolverTransportTimeoutError(timeout),
         );
     }
+}
+
+/**
+ * Wraps the given viem transport with the given rpc metrics recorder, the
+ * request outcome determines the records the same way regardless of the
+ * underlying transport kind (http or websocket):
+ * - a resolved request records a success
+ * - a rejection with a node level error (shouldThrow) records a success,
+ *   since the rpc itself responded fine and the call semantically failed
+ * - a rejection with a timeout error records neither, it is derived as a
+ *   timeout from the count of requests without a success/failure record
+ * - any other rejection records a failure
+ * @param transport - The transport to wrap
+ * @param record - The rpc metrics recorder of the wrapped transport's rpc
+ */
+export function withRpcMetrics(transport: Transport, record: RpcMetrics): Transport {
+    return ((opts) => {
+        const instance = transport(opts);
+        return {
+            ...instance,
+            request: async (args: any, options?: any) => {
+                record.recordRequest();
+                try {
+                    const result = await instance.request(args, options);
+                    record.recordSuccess();
+                    return result;
+                } catch (error: any) {
+                    if (shouldThrow(error)) {
+                        record.recordSuccess();
+                    } else if (!isTimeout(error)) {
+                        record.recordFailure();
+                    }
+                    throw error;
+                }
+            },
+        };
+    }) as Transport;
 }
 
 /**

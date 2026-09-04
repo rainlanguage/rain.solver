@@ -17,7 +17,16 @@ import { OrderManagerConfig } from "../order/config";
 import { RainSolverRouterError } from "../router/error";
 import { ChainConfig, ChainConfigError, getChainConfig } from "./chain";
 import { RpcState, rainSolverTransport, RainSolverTransportConfig } from "../rpc";
-import { createPublicClient, parseUnits, PublicClient, ReadContractErrorType } from "viem";
+import {
+    webSocket,
+    parseUnits,
+    PublicClient,
+    createPublicClient,
+    ReadContractErrorType,
+} from "viem";
+
+/** Delay (in ms) before an errored ws new heads subscription is re-established */
+export const WS_RESUBSCRIBE_DELAY = 15_000;
 
 /** Enumerates the possible error types that can occur within the chain config */
 export enum SharedStateErrorType {
@@ -230,6 +239,12 @@ export class SharedState {
     oracleHealth: OracleHealthMap = new Map();
     /** The current native gas token to USD price (18 decimals fixed point number as decimal string), updated once per round */
     gasTokenUsdPrice?: string;
+    /** The latest observed block number of the operating chain, kept up-to-date by the block number watcher */
+    blockNumber = 0n;
+
+    private blockNumberWatcher: ReturnType<typeof setInterval> | undefined;
+    private wsBlockNumberUnwatcher: (() => void) | undefined;
+    private wsResubscribeTimer: ReturnType<typeof setTimeout> | undefined;
 
     constructor(config: SharedStateConfig) {
         this.appOptions = config.appOptions;
@@ -299,6 +314,110 @@ export class SharedState {
     /** Unwatches gas price if the watcher has been already active */
     unwatchGasPrice() {
         this.gasManager.unwatchGasPrice();
+    }
+
+    /** Whether the block number watcher is active */
+    get isWatchingBlockNumber(): boolean {
+        return this.blockNumberWatcher !== undefined || this.wsBlockNumberUnwatcher !== undefined;
+    }
+
+    /**
+     * Updates the block number by reading it from the rpc once,
+     * keeps the previous value if the call fails
+     */
+    async updateBlockNumber() {
+        const blockNumber = await this.client.getBlockNumber().catch(() => undefined);
+        if (typeof blockNumber === "bigint" && blockNumber > this.blockNumber) {
+            this.blockNumber = blockNumber;
+        }
+    }
+
+    /**
+     * Watches the chain's block number during runtime, an immediate update is
+     * fired on start so the value becomes available asap, if a websocket rpc is
+     * configured, the block number is kept up-to-date by a new heads subscription
+     * for the earliest possible updates, with polling acting as a fallback while
+     * the subscription errors, otherwise it is polled periodically over http
+     * @param interval - Interval to poll block number in milliseconds, default is 5 seconds
+     */
+    watchBlockNumber(interval = 5_000) {
+        if (this.isWatchingBlockNumber) return;
+        this.updateBlockNumber();
+        if (this.appOptions.wsRpc) {
+            const wsClient = createPublicClient({
+                chain: this.chainConfig,
+                transport: webSocket(this.appOptions.wsRpc, {
+                    keepAlive: true,
+                    reconnect: true,
+                }),
+            });
+            this.subscribeToBlockNumber(wsClient, interval);
+        } else {
+            this.startPollingBlockNumber(interval);
+        }
+    }
+
+    /** Unwatches block number if the watcher has been already active */
+    unwatchBlockNumber() {
+        this.stopPollingBlockNumber();
+        this.clearWsResubscribeTimer();
+        this.wsBlockNumberUnwatcher?.();
+        this.wsBlockNumberUnwatcher = undefined;
+    }
+
+    /**
+     * Establishes the ws new heads subscription for block number updates,
+     * an errored subscription degrades to polling and schedules a fresh
+     * subscription after a delay, since viem reconnects the dropped socket
+     * but does not replay its subscriptions, when the ws endpoint is still
+     * down, the fresh subscription errors again and re-enters this path,
+     * which forms a retry loop paced by the delay, with polling covering
+     * the block number updates for the whole outage
+     */
+    private subscribeToBlockNumber(wsClient: PublicClient, interval: number) {
+        this.wsBlockNumberUnwatcher = wsClient.watchBlockNumber({
+            onBlockNumber: (blockNumber) => {
+                if (blockNumber > this.blockNumber) {
+                    this.blockNumber = blockNumber;
+                }
+                // subscription is healthy, so stop the polling fallback
+                // and cancel any pending resubscribe if active
+                this.stopPollingBlockNumber();
+                this.clearWsResubscribeTimer();
+            },
+            onError: () => {
+                this.startPollingBlockNumber(interval);
+                if (this.wsResubscribeTimer === undefined) {
+                    this.wsResubscribeTimer = setTimeout(() => {
+                        this.wsResubscribeTimer = undefined;
+                        this.wsBlockNumberUnwatcher?.();
+                        this.subscribeToBlockNumber(wsClient, interval);
+                    }, WS_RESUBSCRIBE_DELAY);
+                }
+            },
+        });
+    }
+
+    /** Cancels the pending ws resubscribe if there is one scheduled */
+    private clearWsResubscribeTimer() {
+        if (this.wsResubscribeTimer !== undefined) {
+            clearTimeout(this.wsResubscribeTimer);
+            this.wsResubscribeTimer = undefined;
+        }
+    }
+
+    /** Starts polling block number periodically, no-op if already polling */
+    private startPollingBlockNumber(interval: number) {
+        if (this.blockNumberWatcher !== undefined) return;
+        this.blockNumberWatcher = setInterval(() => this.updateBlockNumber(), interval);
+    }
+
+    /** Stops polling block number if the poller is active */
+    private stopPollingBlockNumber() {
+        if (this.blockNumberWatcher !== undefined) {
+            clearInterval(this.blockNumberWatcher);
+            this.blockNumberWatcher = undefined;
+        }
     }
 
     /** Watches the given token by putting on the watchedToken map */

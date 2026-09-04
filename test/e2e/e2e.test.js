@@ -171,6 +171,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.rpc = [rpc];
                     const viemClient = await viem.getPublicClient();
                     state.client = viemClient;
+                    await state.updateBlockNumber();
                     const sushiRouterResult = await sushiRouterPromise;
                     assert(sushiRouterResult.isOk());
                     state.router = new RainSolverRouter(
@@ -466,6 +467,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.rpc = [rpc];
                     const viemClient = await viem.getPublicClient();
                     state.client = viemClient;
+                    await state.updateBlockNumber();
                     const sushiRouterResult = await sushiRouterPromise;
                     assert(sushiRouterResult.isOk());
                     state.router = new RainSolverRouter(
@@ -855,6 +857,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.rpc = [rpc];
                     const viemClient = await viem.getPublicClient();
                     state.client = viemClient;
+                    await state.updateBlockNumber();
                     const sushiRouterResult = await sushiRouterPromise;
                     assert(sushiRouterResult.isOk());
                     state.router = new RainSolverRouter(
@@ -1661,6 +1664,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.rpc = [rpc];
                     const viemClient = await viem.getPublicClient();
                     state.client = viemClient;
+                    await state.updateBlockNumber();
                     state.client.simulateContract = client.simulateContract;
                     const sushiRouterResult = await sushiRouterPromise;
                     assert(sushiRouterResult.isOk());
@@ -1995,6 +1999,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.rpc = [rpc];
                     const viemClient = await viem.getPublicClient();
                     state.client = viemClient;
+                    await state.updateBlockNumber();
                     const sushiRouterResult = await sushiRouterPromise;
                     assert(sushiRouterResult.isOk());
                     state.router = new RainSolverRouter(
@@ -2312,6 +2317,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.rpc = [rpc];
                     const viemClient = await viem.getPublicClient();
                     state.client = viemClient;
+                    await state.updateBlockNumber();
                     const sushiRouterResult = await sushiRouterPromise;
                     assert(sushiRouterResult.isOk());
                     state.router = new RainSolverRouter(
@@ -2715,6 +2721,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.rpc = [rpc];
                     const viemClient = await viem.getPublicClient();
                     state.client = viemClient;
+                    await state.updateBlockNumber();
                     const sushiRouterResult = await sushiRouterPromise;
                     assert(sushiRouterResult.isOk());
                     state.router = new RainSolverRouter(
@@ -3124,6 +3131,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.rpc = [rpc];
                     const viemClient = await viem.getPublicClient();
                     state.client = viemClient;
+                    await state.updateBlockNumber();
                     const sushiRouterResult = await sushiRouterPromise;
                     assert(sushiRouterResult.isOk());
                     state.router = new RainSolverRouter(
@@ -3548,6 +3556,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.rpc = [rpc];
                     const viemClient = await viem.getPublicClient();
                     state.client = viemClient;
+                    await state.updateBlockNumber();
                     state.client.simulateContract = client.simulateContract;
                     const sushiRouterResult = await sushiRouterPromise;
                     assert(sushiRouterResult.isOk());
@@ -3902,6 +3911,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.rpc = [rpc];
                     const viemClient = await viem.getPublicClient();
                     state.client = viemClient;
+                    await state.updateBlockNumber();
                     state.client.simulateContract = client.simulateContract;
                     const sushiRouterResult = await sushiRouterPromise;
                     assert(sushiRouterResult.isOk());
