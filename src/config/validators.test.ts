@@ -721,6 +721,35 @@ describe("Test yaml Validator methods", async function () {
         );
     });
 
+    it("test Validator resolveWsRpc", async function () {
+        // happy: wss and ws urls
+        assert.equal(
+            Validator.resolveWsRpc("wss://ws-rpc.example.com"),
+            "wss://ws-rpc.example.com",
+        );
+        assert.equal(Validator.resolveWsRpc("ws://ws-rpc.example.com"), "ws://ws-rpc.example.com");
+
+        // happy: unset returns undefined
+        assert.equal(Validator.resolveWsRpc(undefined), undefined);
+
+        // happy: env variable
+        process.env.TEST_WS_RPC = "wss://ws-rpc.example.com";
+        assert.equal(Validator.resolveWsRpc("$TEST_WS_RPC"), "wss://ws-rpc.example.com");
+        delete process.env.TEST_WS_RPC;
+
+        // unhappy: non websocket url
+        assert.throws(
+            () => Validator.resolveWsRpc("https://rpc.example.com"),
+            /invalid wsRpc value, expected a websocket url starting with ws:\/\/ or wss:\/\//,
+        );
+
+        // unhappy: non string value
+        assert.throws(
+            () => Validator.resolveWsRpc(123),
+            /invalid wsRpc value, expected a websocket url starting with ws:\/\/ or wss:\/\//,
+        );
+    });
+
     it("test Validator resolveAddressSet", async function () {
         // happy
         let input: any = [`0x${"1".repeat(40)}`, `0x${"2".repeat(40)}`];

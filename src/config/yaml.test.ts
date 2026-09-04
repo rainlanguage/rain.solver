@@ -17,6 +17,7 @@ walletCount: 10
 topupAmount: 0.5
 writeRpc:
     - url: http://write-rpc.example.com
+wsRpc: wss://ws-rpc.example.com
 subgraph: ["http://subgraph.example.com"]
 contracts:
   v4:
@@ -37,6 +38,7 @@ quoteGas: 2000000
 botMinBalance: 50.5
 gasPriceMultiplier: 150
 txTimeThreshold: 4000
+blockTime: 3000
 checkWalletBalanceTime: 30
 gasBoostProfitThreshold: 7
 gasBoostMultiplier: 3.5
@@ -96,6 +98,7 @@ orderbookTradeTypes:
             walletCount: 10,
             topupAmount: "0.5",
             writeRpc: [{ url: "http://write-rpc.example.com" }],
+            wsRpc: "wss://ws-rpc.example.com",
             subgraph: ["http://subgraph.example.com"],
             contracts: {
                 v4: {
@@ -116,6 +119,7 @@ orderbookTradeTypes:
             botMinBalance: "50.5",
             gasPriceMultiplier: 150,
             txTimeThreshold: 4000,
+            blockTime: 3000,
             gasLimitMultiplier: 90,
             timeout: 20000,
             maxRatio: true,
@@ -294,6 +298,7 @@ orderbookTradeTypes:
         assert.deepEqual(result.botMinBalance, "50.5");
         assert.deepEqual(result.gasPriceMultiplier, 150);
         assert.deepEqual(result.txTimeThreshold, 4000);
+        assert.deepEqual(result.blockTime, 5000); // should be default 5000
         assert.deepEqual(result.gasLimitMultiplier, 90);
         assert.deepEqual(result.timeout, 20000);
         assert.equal(result.maxRatio, true);
@@ -354,6 +359,7 @@ orderbookTradeTypes:
         assert.equal(result.convertToGasTime, 2);
         assert.equal(result.rotateMultiWallet, true);
         assert.equal(result.checkWalletBalanceTime, 15); // should be default 15
+        assert.equal(result.wsRpc, undefined); // no ws rpc when unset
         assert.equal(result.gasBoostProfitThreshold, undefined); // no boost when unset
         assert.equal(result.gasBoostMultiplier, undefined); // no boost when unset
         assert.equal(result.gasBoostUsdThreshold, undefined); // no boost when unset

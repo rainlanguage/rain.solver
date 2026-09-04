@@ -3,7 +3,6 @@ import { Pair } from "../../order";
 import { Result } from "../../common";
 import { toUsdValue, toNumber } from "../../math";
 import { Token } from "sushi/currency";
-import { errorSnapshot } from "../../error";
 import { SpanWithContext } from "../../logger";
 import { formatUnits, parseUnits } from "viem";
 import { Attributes } from "@opentelemetry/api";
@@ -252,19 +251,9 @@ export async function processOrder(
     spanEvents["findBestTrade"] = { startTime: findBestTradeTime, duration: findBestTradeDuration };
 
     // get block number
-    let blockNumber: number;
-    try {
-        blockNumber = Number(await this.state.client.getBlockNumber());
-        spanAttributes["details.blockNumber"] = blockNumber;
-        spanAttributes["details.blockNumberDiff"] = blockNumber - oppBlockNumber;
-    } catch (e) {
-        // dont reject if getting block number fails but just record it,
-        // since an opp is found and can ultimately be cleared
-        spanAttributes["details.blockNumberError"] = await errorSnapshot(
-            "failed to get block number",
-            e,
-        );
-    }
+    const blockNumber = Number(this.state.blockNumber);
+    spanAttributes["details.blockNumber"] = blockNumber;
+    spanAttributes["details.blockNumberDiff"] = blockNumber - oppBlockNumber;
 
     // process the found transaction opportunity
     return processTransaction.call(this, {

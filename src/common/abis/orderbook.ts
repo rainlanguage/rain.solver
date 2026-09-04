@@ -39,6 +39,8 @@ namespace _v4 {
         `event TakeOrderV2(address sender, ${TakeOrderConfigV3} config, uint256 input, uint256 output)`,
         `function quote(${Quote} calldata quoteConfig) external view returns (bool, uint256, uint256)`,
         `event ClearV2(address sender, ${OrderV3} alice, ${OrderV3} bob, ${ClearConfig} clearConfig)`,
+        `event Deposit(address sender, address token, uint256 vaultId, uint256 amount)`,
+        `event Withdraw(address sender, address token, uint256 vaultId, uint256 targetAmount, uint256 amount)`,
     ] as const;
     export const Arb = [
         `function arb2(${TakeOrdersConfigV3} calldata takeOrders, uint256 minimumSenderOutput, ${EvaluableV3} calldata evaluable) external payable`,

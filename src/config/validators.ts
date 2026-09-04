@@ -78,6 +78,19 @@ export namespace Validator {
         return Array.from(new Set(urls.value)) as any;
     }
 
+    /** Resolves config's optional websocket rpc url */
+    export function resolveWsRpc(input: any): string | undefined {
+        const url = readValue(input);
+        if (url.value === undefined) return undefined;
+        assert(
+            typeof url.value === "string" && /^wss?:\/\//.test(url.value),
+            validationError(
+                "invalid wsRpc value, expected a websocket url starting with ws:// or wss://",
+            ),
+        );
+        return url.value;
+    }
+
     /** Resolves config's list of liquidity providers */
     export function resolveLiquidityProviders(input: any) {
         const lps = readValue(input);
