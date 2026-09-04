@@ -95,7 +95,12 @@ export async function findBestRouterTrade(
     if (primary.result.isOk() && secondary.result.isOk()) {
         const primaryProfit = primary.result.value.estimatedProfit;
         const secondaryProfit = secondary.result.value.estimatedProfit;
-        const secondaryDominates = secondaryProfit > primaryProfit;
+        const primaryTradeSize = primary.tradeSize ?? 0n;
+        const secondaryTradeSize = secondary.tradeSize ?? 0n;
+        const secondaryDominates =
+            secondaryProfit === primaryProfit
+                ? secondaryTradeSize > primaryTradeSize
+                : secondaryProfit > primaryProfit;
         const pickedResult = secondaryDominates ? secondary.result : primary.result;
         pickedResult.value.spanAttributes["pickedRoute"] = secondaryDominates
             ? "secondary"
