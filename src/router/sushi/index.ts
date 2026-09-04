@@ -6,7 +6,7 @@ import { MultiRoute, RouteLeg } from "sushi/tines";
 import { BlackListSet, poolFilter } from "./blacklist";
 import { TakeOrdersConfigType } from "../../order/types";
 import { SushiRouterError, SushiRouterErrorType } from "./error";
-import { calculatePrice18, scaleFrom18, scaleTo18 } from "../../math";
+import { calculatePrice18, scaleFrom18, scaleTo18, ONE18 } from "../../math";
 import { ChainId, LiquidityProviders, PoolCode, RainDataFetcher, Router } from "sushi";
 import { Chain, Account, Transport, formatUnits, PublicClient, encodeAbiParameters } from "viem";
 import {
@@ -501,9 +501,14 @@ export class SushiRouter extends RainSolverRouterBase {
     }
 
     /**
-     * Calculates the largest possible partial trade size for rp clear, returns undefined if
-     * it cannot be determined due to the fact that order's ratio being higher than market
-     * price
+     * Finds the most profitable partial trade size for rp clear, that is the trade
+     * size that yields the highest estimated profit at quoted prices rather than
+     * simply the largest size that clears the order ratio, since a smaller size
+     * with a bigger price difference can yield more profit than a bigger size
+     * with a smaller price difference, returns undefined if no trade size with
+     * any profit can be found, ie when order's ratio is above the market price,
+     * in absolute mode, it instead finds the largest trade size that stays below
+     * the default price impact tolerance
      * @param orderDetails - The order details
      * @param toToken - The token to trade to
      * @param fromToken - The token to trade from
@@ -521,20 +526,15 @@ export class SushiRouter extends RainSolverRouterBase {
         absolute = false,
         excludeDexes?: Set<string>,
     ): bigint | undefined {
-        const result: bigint[] = [];
         const gasPrice = Number(gasPriceBI);
-        const ratio = orderDetails.takeOrder.quote!.ratio;
         const liquidityProviders = this.getFilteredLiquidityProviders(excludeDexes);
         const pcMap = this.dataFetcher.getCurrentPoolCodeMap(fromToken, toToken);
-        const initAmount = scaleFrom18(maximumInputFixed, fromToken.decimals) / 2n;
-        let maximumInput = initAmount;
-        for (let i = 1n; i < 26n; i++) {
-            const maxInput18 = scaleTo18(maximumInput, fromToken.decimals);
-            const route = Router.findBestRoute(
+        const findRoute = (amountIn: bigint) =>
+            Router.findBestRoute(
                 pcMap,
                 this.chainId as ChainId,
                 fromToken,
-                maximumInput,
+                amountIn,
                 toToken,
                 gasPrice,
                 liquidityProviders,
@@ -543,41 +543,85 @@ export class SushiRouter extends RainSolverRouterBase {
                 routeType,
             );
 
-            if (route.status == "NoWay") {
-                maximumInput = maximumInput - initAmount / 2n ** i;
-            } else if (absolute) {
+        // absolute mode keeps the bisection for the largest trade
+        // size that stays below the price impact tolerance
+        if (absolute) {
+            const result: bigint[] = [];
+            const initAmount = scaleFrom18(maximumInputFixed, fromToken.decimals) / 2n;
+            let maximumInput = initAmount;
+            for (let i = 1n; i < 26n; i++) {
+                const maxInput18 = scaleTo18(maximumInput, fromToken.decimals);
+                const route = findRoute(maximumInput);
                 if (
-                    typeof route.priceImpact === "undefined" ||
-                    route.priceImpact < DEFAULT_PRICE_IMPACT_TOLERANCE
+                    route.status !== "NoWay" &&
+                    (typeof route.priceImpact === "undefined" ||
+                        route.priceImpact < DEFAULT_PRICE_IMPACT_TOLERANCE)
                 ) {
                     result.unshift(maxInput18);
                     maximumInput = maximumInput + initAmount / 2n ** i;
                 } else {
                     maximumInput = maximumInput - initAmount / 2n ** i;
                 }
-            } else {
-                // realized average execution price of the simulated swap, this already
-                // includes the route's price impact, same as the trade simulation gate
-                const effectivePrice = calculatePrice18(
-                    maximumInput,
-                    route.amountOutBI,
-                    fromToken.decimals,
-                    toToken.decimals,
-                );
-                if (effectivePrice < ratio) {
-                    maximumInput = maximumInput - initAmount / 2n ** i;
-                } else {
-                    result.unshift(maxInput18);
-                    maximumInput = maximumInput + initAmount / 2n ** i;
-                }
             }
+            return result.length ? result[0] : undefined;
         }
 
-        if (result.length) {
-            return result[0];
-        } else {
-            return undefined;
+        // estimated profit at quoted prices for the given trade size, that is the
+        // route output minus what the order takes for that size, undefined if the
+        // route has no way
+        const ratio = orderDetails.takeOrder.quote!.ratio;
+        const estimateProfit = (amountIn: bigint): bigint | undefined => {
+            if (amountIn <= 0n) return undefined;
+            const route = findRoute(amountIn);
+            if (route.status == "NoWay") return undefined;
+            const amountIn18 = scaleTo18(amountIn, fromToken.decimals);
+            const amountOut18 = scaleTo18(route.amountOutBI, toToken.decimals);
+            return amountOut18 - (amountIn18 * ratio) / ONE18;
+        };
+
+        // the estimated profit as a function of trade size is concave, it rises
+        // while the route marginal price beats the order ratio and falls after,
+        // so a ternary search over the size range converges on the trade size
+        // with the highest estimated profit, unlike a simple bisection for the
+        // largest viable size which by definition converges on the size where
+        // the profit approaches zero, NoWay routes count as lowest profit
+        const NO_WAY_PROFIT = -(1n << 255n);
+        const fullSize = scaleFrom18(maximumInputFixed, fromToken.decimals);
+        let low = 0n;
+        let high = fullSize;
+        let best: { size: bigint; profit: bigint } | undefined = undefined;
+        // evaluate the exact full trade size as the first candidate so that
+        // it competes with the interior sizes probed by the ternary search,
+        // as the search itself never probes the range boundaries
+        const fullSizeProfit = estimateProfit(fullSize);
+        if (typeof fullSizeProfit === "bigint" && fullSizeProfit > 0n) {
+            best = { size: fullSize, profit: fullSizeProfit };
         }
+        for (let i = 0; i < 12; i++) {
+            const third = (high - low) / 3n;
+            if (third <= 0n) break;
+            const mid1 = low + third;
+            const mid2 = high - third;
+            const profit1 = estimateProfit(mid1);
+            const profit2 = estimateProfit(mid2);
+            if (typeof profit1 === "bigint" && profit1 > 0n && (!best || profit1 > best.profit)) {
+                best = { size: mid1, profit: profit1 };
+            }
+            if (typeof profit2 === "bigint" && profit2 > 0n && (!best || profit2 > best.profit)) {
+                best = { size: mid2, profit: profit2 };
+            }
+            if ((profit1 ?? NO_WAY_PROFIT) < (profit2 ?? NO_WAY_PROFIT)) {
+                low = mid1;
+            } else {
+                high = mid2;
+            }
+        }
+        if (!best) return undefined;
+        // return the given full size as is when it won, since scaling it down
+        // to token units truncates sub-precision dust for tokens with fewer
+        // than 18 decimals and the result would wrongly read as a partial size
+        if (best.size === fullSize) return maximumInputFixed;
+        return scaleTo18(best.size, fromToken.decimals);
     }
 
     /**
