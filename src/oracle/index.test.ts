@@ -156,6 +156,135 @@ describe("fetchOracleContext", () => {
         expect(fetchSignedContext as Mock).toHaveBeenCalledTimes(2);
     });
 
+    it("caches independently per oracle url for the same order pair", async () => {
+        const validSignedContext = {
+            signer: "0x000000000000000000000000abcdef1234567890",
+            context: ["0x01"],
+            signature: "0xsignature",
+        };
+        (fetchSignedContext as Mock).mockResolvedValue(Result.ok(validSignedContext));
+
+        // first call for the pair on the first oracle fetches and caches
+        await fetchOracleContext.call(mockState, mockOrderDetails, 100n);
+        expect(fetchSignedContext as Mock).toHaveBeenCalledTimes(1);
+
+        // same order pair and block number on another oracle url fetches again
+        mockOrderDetails.oracleUrl = "https://other-oracle.example.com";
+        await fetchOracleContext.call(mockState, mockOrderDetails, 100n);
+        expect(fetchSignedContext as Mock).toHaveBeenCalledTimes(2);
+
+        // both oracle urls now have their own cached entry at the same block
+        await fetchOracleContext.call(mockState, mockOrderDetails, 100n);
+        mockOrderDetails.oracleUrl = "https://example.com";
+        await fetchOracleContext.call(mockState, mockOrderDetails, 100n);
+        expect(fetchSignedContext as Mock).toHaveBeenCalledTimes(2);
+    });
+
+    it("caches error results independently per IO indexes of the same order", async () => {
+        const validSignedContext = {
+            signer: "0x000000000000000000000000abcdef1234567890",
+            context: ["0x01"],
+            signature: "0xsignature",
+        };
+        const error = new OracleError("some error", OracleErrorType.FetchError);
+        (fetchSignedContext as Mock)
+            .mockResolvedValueOnce(Result.err(error))
+            .mockResolvedValueOnce(Result.ok(validSignedContext));
+
+        // pair with IO indexes 0/0 fails and the error gets cached
+        const result1 = await fetchOracleContext.call(mockState, mockOrderDetails, 100n);
+        assert(result1.isErr());
+
+        // pair with IO indexes 1/2 at the same block is not affected
+        // by the cached error of the 0/0 pair and fetches successfully
+        mockOrderDetails.takeOrder.struct.inputIOIndex = 1;
+        mockOrderDetails.takeOrder.struct.outputIOIndex = 2;
+        const result2 = await fetchOracleContext.call(mockState, mockOrderDetails, 100n);
+        assert(result2.isOk());
+        expect(mockOrderDetails.takeOrder.struct.signedContext).toEqual([validSignedContext]);
+        expect(fetchSignedContext as Mock).toHaveBeenCalledTimes(2);
+
+        // both pairs keep their own cached outcome at the same block
+        const result3 = await fetchOracleContext.call(mockState, mockOrderDetails, 100n);
+        assert(result3.isOk());
+        mockOrderDetails.takeOrder.struct.inputIOIndex = 0;
+        mockOrderDetails.takeOrder.struct.outputIOIndex = 0;
+        const result4 = await fetchOracleContext.call(mockState, mockOrderDetails, 100n);
+        assert(result4.isErr());
+        expect(result4.error).toEqual(error);
+        expect(fetchSignedContext as Mock).toHaveBeenCalledTimes(2);
+    });
+
+    it("uses the same cache entry regardless of order hash and owner casing", async () => {
+        const validSignedContext = {
+            signer: "0x000000000000000000000000abcdef1234567890",
+            context: ["0x01"],
+            signature: "0xsignature",
+        };
+        (fetchSignedContext as Mock).mockResolvedValue(Result.ok(validSignedContext));
+
+        await fetchOracleContext.call(mockState, mockOrderDetails, 100n);
+        expect(fetchSignedContext as Mock).toHaveBeenCalledTimes(1);
+
+        // same order pair with different hash and owner casing hits the same cache entry
+        mockOrderDetails.takeOrder.id = mockOrderDetails.takeOrder.id.toUpperCase();
+        mockOrderDetails.takeOrder.struct.order.owner = testOwner.toUpperCase() as any;
+        await fetchOracleContext.call(mockState, mockOrderDetails, 100n);
+        expect(fetchSignedContext as Mock).toHaveBeenCalledTimes(1);
+        expect(mockOrderDetails.takeOrder.struct.signedContext).toEqual([validSignedContext]);
+    });
+
+    it("overwrites the cached entry when block number changes", async () => {
+        const oldSignedContext = {
+            signer: "0x000000000000000000000000abcdef1234567890",
+            context: ["0x01"],
+            signature: "0xoldsignature",
+        };
+        const newSignedContext = {
+            signer: "0x000000000000000000000000abcdef1234567890",
+            context: ["0x02"],
+            signature: "0xnewsignature",
+        };
+        (fetchSignedContext as Mock)
+            .mockResolvedValueOnce(Result.ok(oldSignedContext))
+            .mockResolvedValueOnce(Result.ok(newSignedContext));
+
+        await fetchOracleContext.call(mockState, mockOrderDetails, 100n);
+        await fetchOracleContext.call(mockState, mockOrderDetails, 101n);
+        expect(fetchSignedContext as Mock).toHaveBeenCalledTimes(2);
+
+        // repeated call at the new block hits the overwritten cache entry
+        // holding the new result, and the old block entry is gone entirely,
+        // so calling with the old block number again fetches anew
+        mockOrderDetails.takeOrder.struct.signedContext = [];
+        await fetchOracleContext.call(mockState, mockOrderDetails, 101n);
+        expect(fetchSignedContext as Mock).toHaveBeenCalledTimes(2);
+        expect(mockOrderDetails.takeOrder.struct.signedContext).toEqual([newSignedContext]);
+        await fetchOracleContext.call(mockState, mockOrderDetails, 100n);
+        expect(fetchSignedContext as Mock).toHaveBeenCalledTimes(3);
+    });
+
+    it("refetches at a new block after a cached error", async () => {
+        const validSignedContext = {
+            signer: "0x000000000000000000000000abcdef1234567890",
+            context: ["0x01"],
+            signature: "0xsignature",
+        };
+        const error = new OracleError("some error", OracleErrorType.FetchError);
+        (fetchSignedContext as Mock)
+            .mockResolvedValueOnce(Result.err(error))
+            .mockResolvedValueOnce(Result.ok(validSignedContext));
+
+        const result1 = await fetchOracleContext.call(mockState, mockOrderDetails, 100n);
+        assert(result1.isErr());
+
+        // the cached error does not stick across blocks
+        const result2 = await fetchOracleContext.call(mockState, mockOrderDetails, 101n);
+        assert(result2.isOk());
+        expect(fetchSignedContext as Mock).toHaveBeenCalledTimes(2);
+        expect(mockOrderDetails.takeOrder.struct.signedContext).toEqual([validSignedContext]);
+    });
+
     it("fetches again when block number changes", async () => {
         const validSignedContext = {
             signer: "0x000000000000000000000000abcdef1234567890",
