@@ -39,6 +39,7 @@ botMinBalance: 50.5
 gasPriceMultiplier: 150
 txTimeThreshold: 4000
 blockTime: 3000
+routerPartialFallback: false
 checkWalletBalanceTime: 30
 gasBoostProfitThreshold: 7
 gasBoostMultiplier: 3.5
@@ -166,6 +167,7 @@ orderbookTradeTypes:
             sweepWalletTime: 0,
             convertToGasTime: 0,
             rotateMultiWallet: false,
+            routerPartialFallback: false,
             checkWalletBalanceTime: 30,
             gasBoostProfitThreshold: 7,
             gasBoostMultiplier: 3.5,
@@ -358,6 +360,7 @@ orderbookTradeTypes:
         assert.equal(result.sweepWalletTime, 10);
         assert.equal(result.convertToGasTime, 2);
         assert.equal(result.rotateMultiWallet, true);
+        assert.equal(result.routerPartialFallback, true); // should be default true
         assert.equal(result.checkWalletBalanceTime, 15); // should be default 15
         assert.equal(result.wsRpc, undefined); // no ws rpc when unset
         assert.equal(result.gasBoostProfitThreshold, undefined); // no boost when unset
