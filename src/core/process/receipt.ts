@@ -1,4 +1,4 @@
-import { toNumber } from "../../math";
+import { toUsdValue, toNumber } from "../../math";
 import { Token } from "sushi/currency";
 import { handleRevert } from "../../error";
 import { RainSolverSigner } from "../../signer";
@@ -79,12 +79,25 @@ export async function processReceipt({
         const netProfit = income ? income - gasCost : undefined;
 
         baseResult.spanAttributes["details.actualGasCost"] = toNumber(gasCost);
+        if (signer.state.gasTokenUsdPrice) {
+            baseResult.spanAttributes["details.actualGasCostUsd"] = toNumber(
+                toUsdValue(gasCost, signer.state.gasTokenUsdPrice),
+            );
+        }
         if (l1Fee) {
             baseResult.spanAttributes["details.gasCostL1"] = toNumber(l1Fee);
         }
         if (income) {
             baseResult.spanAttributes["details.income"] = toNumber(income);
             baseResult.spanAttributes["details.netProfit"] = toNumber(netProfit!);
+            if (signer.state.gasTokenUsdPrice) {
+                baseResult.spanAttributes["details.incomeUsd"] = toNumber(
+                    toUsdValue(income, signer.state.gasTokenUsdPrice),
+                );
+                baseResult.spanAttributes["details.netProfitUsd"] = toNumber(
+                    toUsdValue(netProfit!, signer.state.gasTokenUsdPrice),
+                );
+            }
         }
         if (inputTokenIncome) {
             baseResult.spanAttributes["details.inputTokenIncome"] = formatUnits(

@@ -1,7 +1,7 @@
 import { ChainId } from "sushi/chain";
 import { WNATIVE } from "sushi/currency";
 import { describe, it, expect, vi, assert } from "vitest";
-import { ChainConfigErrorType, getChainConfig, SpecialL2Chains } from "./chain";
+import { ChainConfigErrorType, findUsdToken, getChainConfig, SpecialL2Chains } from "./chain";
 import {
     STABLES,
     publicClientConfig,
@@ -46,6 +46,7 @@ describe("Test getChainConfig", () => {
         expect(config.routeProcessors["3.2"]).toBe(ROUTE_PROCESSOR_3_2_ADDRESS[chainId]);
         expect(config.routeProcessors["4"]).toBe(ROUTE_PROCESSOR_4_ADDRESS[chainId]);
         expect(config.stableTokens).toEqual(STABLES[chainId]);
+        expect(config.usdToken?.symbol).toBe("USDC");
         expect(config.isSpecialL2).toBe(SpecialL2Chains.is(config.id));
         for (const key in publicClientConfig[chainId].chain) {
             expect(config[key as keyof typeof config]).toEqual(
@@ -96,5 +97,35 @@ describe("Test getChainConfig", () => {
         expect(SpecialL2Chains.is(SpecialL2Chains.BASE)).toBe(true);
         expect(SpecialL2Chains.is(SpecialL2Chains.OPTIMISM)).toBe(true);
         expect(SpecialL2Chains.is(ChainId.ETHEREUM)).toBe(false);
+    });
+});
+
+describe("Test findUsdToken", () => {
+    const usdc = { symbol: "USDC" } as any;
+    const usdt = { symbol: "USDT" } as any;
+    const usdcVariant = { symbol: "USDC.e" } as any;
+    const usdtVariant = { symbol: "USDT0" } as any;
+    const dai = { symbol: "DAI" } as any;
+
+    it("should prefer exact USDC over all others", () => {
+        expect(findUsdToken([dai, usdtVariant, usdt, usdcVariant, usdc])).toBe(usdc);
+    });
+
+    it("should pick exact USDT when there is no exact USDC", () => {
+        expect(findUsdToken([dai, usdcVariant, usdt])).toBe(usdt);
+    });
+
+    it("should fall back to a USDC variant when there is no exact match", () => {
+        expect(findUsdToken([dai, usdtVariant, usdcVariant])).toBe(usdcVariant);
+    });
+
+    it("should fall back to a USDT variant as the last option", () => {
+        expect(findUsdToken([dai, usdtVariant])).toBe(usdtVariant);
+    });
+
+    it("should return undefined when no usd token exists", () => {
+        expect(findUsdToken([dai])).toBeUndefined();
+        expect(findUsdToken([])).toBeUndefined();
+        expect(findUsdToken(undefined)).toBeUndefined();
     });
 });

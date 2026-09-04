@@ -115,4 +115,6 @@ export type EstimateGasCostResult = {
     l1Cost: bigint;
     /** The total estimated gas cost (L1 + L2 costs combined) */
     totalGasCost: bigint;
+    /** total gas cost in USD */
+    totalGasCostUsd?: bigint;
 };

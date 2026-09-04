@@ -11,6 +11,7 @@ import {
     TransactionReceipt,
     WaitForTransactionReceiptTimeoutError,
 } from "viem";
+import { toUsdValue } from "../math";
 
 /** Represents a sent transaction with hash and wait for receipt method */
 export type SentTransaction = {
@@ -199,7 +200,7 @@ export async function estimateGasCost(
 ): Promise<EstimateGasCostResult> {
     const gasPrice = signer.state.gasPrice;
     const gas = await signer.estimateGas(tx);
-    const result = {
+    const result: EstimateGasCostResult = {
         gas,
         gasPrice,
         l1GasPrice: 0n,
@@ -221,6 +222,9 @@ export async function estimateGasCost(
             result.l1Cost = l1Cost;
             result.totalGasCost += l1Cost;
         } catch {}
+    }
+    if (signer.state.gasTokenUsdPrice) {
+        result.totalGasCostUsd = toUsdValue(result.totalGasCost, signer.state.gasTokenUsdPrice);
     }
     return result;
 }

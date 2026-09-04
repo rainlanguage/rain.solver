@@ -120,6 +120,15 @@ txTimeThreshold: 15000
 # Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins
 checkWalletBalanceTime: 15
 
+# Optional threshold as the min expected bounty multiple that the estimated profit must exceed to boost the tx gas price, no boost applies if unset
+gasBoostProfitThreshold: 10
+
+# Optional multiplier applied to the tx gas price when the gas boost profit threshold is exceeded, no boost applies if unset
+gasBoostMultiplier: 2.5
+
+# Optional threshold (in dollars) for the estimated profit USD value that if exceeded boosts the tx gas price, no boost applies if unset
+gasBoostUsdThreshold: 5.5
+
 # Option to multiply the gas limit estimation from the rpc as percentage, default is 100, ie no change
 gasLimitMultiplier: 100
 
