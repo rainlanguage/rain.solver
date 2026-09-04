@@ -36,6 +36,8 @@ txGas: 15000
 quoteGas: 2000000
 botMinBalance: 50.5
 gasPriceMultiplier: 150
+txTimeThreshold: 4000
+checkWalletBalanceTime: 30
 gasLimitMultiplier: 90
 timeout: 20000
 maxRatio: true
@@ -110,6 +112,7 @@ orderbookTradeTypes:
             quoteGas: BigInt(2000000),
             botMinBalance: "50.5",
             gasPriceMultiplier: 150,
+            txTimeThreshold: 4000,
             gasLimitMultiplier: 90,
             timeout: 20000,
             maxRatio: true,
@@ -156,6 +159,7 @@ orderbookTradeTypes:
             sweepWalletTime: 0,
             convertToGasTime: 0,
             rotateMultiWallet: false,
+            checkWalletBalanceTime: 30,
         };
 
         // AppOptions returned from fromYaml() should match expected
@@ -191,6 +195,7 @@ orderbookTradeTypes:
             quoteGas: "2000000",
             botMinBalance: "50.5",
             gasPriceMultiplier: "150",
+            txTimeThreshold: "4000",
             gasLimitMultiplier: "90",
             timeout: "20000",
             maxRatio: true,
@@ -282,6 +287,7 @@ orderbookTradeTypes:
         // botMinBalance is resolved as string ("50.5")
         assert.deepEqual(result.botMinBalance, "50.5");
         assert.deepEqual(result.gasPriceMultiplier, 150);
+        assert.deepEqual(result.txTimeThreshold, 4000);
         assert.deepEqual(result.gasLimitMultiplier, 90);
         assert.deepEqual(result.timeout, 20000);
         assert.equal(result.maxRatio, true);
@@ -341,5 +347,6 @@ orderbookTradeTypes:
         assert.equal(result.sweepWalletTime, 10);
         assert.equal(result.convertToGasTime, 2);
         assert.equal(result.rotateMultiWallet, true);
+        assert.equal(result.checkWalletBalanceTime, 15); // should be default 15
     });
 });

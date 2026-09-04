@@ -177,6 +177,7 @@ export namespace SharedStateConfig {
                 client,
                 chainConfig,
                 baseGasPriceMultiplier: options.gasPriceMultiplier,
+                txTimeThreshold: options.txTimeThreshold,
             }),
         };
 

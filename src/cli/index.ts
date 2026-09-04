@@ -72,6 +72,8 @@ export class RainSolverCli {
     private nextGasConversionTime: number;
     /** Time for next worker wallet assessment */
     private nextAssesWorkerWalletTime = Date.now() + 15 * MINUTE;
+    /** Time for next wallet balance check */
+    private nextCheckWalletBalanceTime: number;
 
     private constructor(
         state: SharedState,
@@ -83,6 +85,7 @@ export class RainSolverCli {
         logger: RainSolverLogger,
         nextDatafetcherReset: number,
     ) {
+        const now = Date.now();
         this.state = state;
         this.appOptions = appOptions;
         this.orderManager = orderManager;
@@ -92,9 +95,13 @@ export class RainSolverCli {
         this.logger = logger;
         this.nextDatafetcherReset = nextDatafetcherReset;
         this.nextSweepTime =
-            appOptions.sweepWalletTime === 0 ? 0 : Date.now() + appOptions.sweepWalletTime * DAY;
+            appOptions.sweepWalletTime === 0 ? 0 : now + appOptions.sweepWalletTime * DAY;
         this.nextGasConversionTime =
-            appOptions.convertToGasTime === 0 ? 0 : Date.now() + appOptions.convertToGasTime * DAY;
+            appOptions.convertToGasTime === 0 ? 0 : now + appOptions.convertToGasTime * DAY;
+        this.nextCheckWalletBalanceTime =
+            appOptions.checkWalletBalanceTime === 0
+                ? 0
+                : now + appOptions.checkWalletBalanceTime * MINUTE;
     }
 
     /**
@@ -202,6 +209,8 @@ export class RainSolverCli {
      * reports and executes wallet ops.
      */
     async run() {
+        let prevMainWalletBalanceReport: PreAssembledSpan | undefined;
+        let prevMultiWalletBalanceReports;
         // eslint-disable-next-line no-constant-condition
         while (true) {
             // start round span and get round ctx
@@ -209,11 +218,51 @@ export class RainSolverCli {
             const roundCtx = trace.setSpan(context.active(), roundSpan);
 
             // report meta info
-            await this.reportMetaInfoForRound(roundSpan);
+            this.reportMetaInfoForRound(roundSpan).catch(() => {});
 
-            // check main wallet balance
-            const checkBalanceReport = await this.walletManager.checkMainWalletBalance();
-            this.logger.exportPreAssembledSpan(checkBalanceReport, roundCtx);
+            const now = Date.now();
+
+            // check wallet balances upon configured intervals
+            let checkMainWalletBalancePromise = undefined;
+            let getWorkerWalletsBalancePromise = undefined;
+            if (
+                this.roundCount === 1 ||
+                (this.nextCheckWalletBalanceTime !== 0 && this.nextCheckWalletBalanceTime <= now)
+            ) {
+                // update interval
+                if (this.roundCount > 1) {
+                    this.nextCheckWalletBalanceTime =
+                        now + this.appOptions.checkWalletBalanceTime * MINUTE;
+                }
+
+                // check main wallet balance
+                checkMainWalletBalancePromise = this.walletManager.checkMainWalletBalance();
+
+                // report worker wallet balances
+                if (this.walletManager.config.type === WalletType.Mnemonic) {
+                    getWorkerWalletsBalancePromise = this.walletManager.getWorkerWalletsBalance();
+                    roundSpan.setAttribute(
+                        "lastAccountIndex",
+                        this.walletManager.workers.lastUsedDerivationIndex,
+                    );
+                }
+            } else {
+                if (prevMainWalletBalanceReport) {
+                    prevMainWalletBalanceReport.startTime = now;
+                    prevMainWalletBalanceReport.endTime = performance.now();
+                    this.logger.exportPreAssembledSpan(prevMainWalletBalanceReport, roundCtx);
+                }
+                if (prevMultiWalletBalanceReports) {
+                    roundSpan.setAttribute(
+                        "circulatingAccounts",
+                        JSON.stringify(prevMultiWalletBalanceReports, withBigintSerializer),
+                    );
+                    roundSpan.setAttribute(
+                        "lastAccountIndex",
+                        this.walletManager.workers.lastUsedDerivationIndex,
+                    );
+                }
+            }
 
             try {
                 // try funding owned vaults and report
@@ -254,6 +303,27 @@ export class RainSolverCli {
 
             // report rpcs performance for round
             await this.reportRpcMetricsForRound(roundCtx);
+
+            if (checkMainWalletBalancePromise !== undefined) {
+                await checkMainWalletBalancePromise
+                    .then((checkBalanceReport) => {
+                        this.logger.exportPreAssembledSpan(checkBalanceReport, roundCtx);
+                        prevMainWalletBalanceReport = checkBalanceReport;
+                    })
+                    .catch(() => {});
+            }
+
+            if (getWorkerWalletsBalancePromise !== undefined) {
+                await getWorkerWalletsBalancePromise
+                    .then((v) => {
+                        roundSpan.setAttribute(
+                            "circulatingAccounts",
+                            JSON.stringify(v, withBigintSerializer),
+                        );
+                        prevMultiWalletBalanceReports = v;
+                    })
+                    .catch(() => {});
+            }
 
             // eslint-disable-next-line no-console
             console.log(`Starting next round in ${this.appOptions.sleep / 1000} seconds...`, "\n");
@@ -475,21 +545,6 @@ export class RainSolverCli {
             ),
             "meta.liquidityProviders": this.state.router.getLiquidityProvidersList(),
         });
-
-        // report worker wallet balances
-        if (this.walletManager.config.type === WalletType.Mnemonic) {
-            roundSpan.setAttribute(
-                "circulatingAccounts",
-                JSON.stringify(
-                    await this.walletManager.getWorkerWalletsBalance(),
-                    withBigintSerializer,
-                ),
-            );
-            roundSpan.setAttribute(
-                "lastAccountIndex",
-                this.walletManager.workers.lastUsedDerivationIndex,
-            );
-        }
 
         // report avg gas cost
         if (this.avgGasCost) {
