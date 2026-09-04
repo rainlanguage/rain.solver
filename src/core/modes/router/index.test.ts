@@ -52,7 +52,7 @@ describe("Test findBestRouterTrade", () => {
         };
         destination = "0xdestination";
         mockRainSolver = {
-            appOptions: {},
+            appOptions: { routerPartialFallback: true },
             state: {
                 gasPrice: 100n,
                 client: {
@@ -558,6 +558,47 @@ describe("Test findBestRouterTrade", () => {
         expect(trySimulateTradeSpy).toHaveBeenCalledTimes(3);
         expect(result.error.spanAttributes["partialFallback1.error"]).toBe("some other revert");
         expect(result.error.spanAttributes["partialFallback2.error"]).toBeUndefined();
+    });
+
+    it("should skip backoff when routerPartialFallback is disabled in config", async () => {
+        mockRainSolver.appOptions.routerPartialFallback = false;
+        const mockFullTradeError = Result.err({
+            type: TradeType.RouteProcessor,
+            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
+            spanAttributes: { error: "ratio too high" },
+            noneNodeError: "order ratio issue",
+        });
+        const mockViolationError = Result.err({
+            type: TradeType.RouteProcessor,
+            reason: SimulationHaltReason.NoOpportunity,
+            spanAttributes: {
+                error: "execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)",
+            },
+        });
+
+        (trySimulateTradeSpy as Mock)
+            .mockResolvedValueOnce(mockFullTradeError) // full size
+            .mockResolvedValue(mockViolationError); // partial size
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue(1000n);
+
+        const result: SimulationResult = await findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+        );
+
+        assert(result.isErr());
+        // only 1 full + 1 partial, no fallback attempts despite the violation error
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
+        expect(result.error.reason).toBe(SimulationHaltReason.NoOpportunity);
+        expect(result.error.spanAttributes["partial.error"]).toContain(
+            "MinimalOutputBalanceViolation",
+        );
+        expect(result.error.spanAttributes["partialFallback1.error"]).toBeUndefined();
     });
 
     it("should retry with the failing route dexes excluded when full trade dryrun fails", async () => {

@@ -233,9 +233,12 @@ export async function tryFindBestRouterTrade(
     // it means the offchain pool data overestimated the output for the found partial trade
     // size, so backoff by halving the trade size at each step validated against onchain
     // dryrun and accept the first size that passes, the backoff stops early if a step fails
-    // with any other error
+    // with any other error, the backoff only runs when enabled by config
     const reason = partialTradeSizeSimResult.error.reason;
-    if (SimulationHaltReason.needsRetry(partialTradeSizeSimResult.error.spanAttributes["error"])) {
+    if (
+        this.appOptions.routerPartialFallback &&
+        SimulationHaltReason.needsRetry(partialTradeSizeSimResult.error.spanAttributes["error"])
+    ) {
         let fallbackTradeSize = partialTradeSize;
         for (let i = 1; i <= 4; i++) {
             fallbackTradeSize /= 2n;

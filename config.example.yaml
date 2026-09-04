@@ -125,6 +125,9 @@ txTimeThreshold: 15000
 # The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher, default is 5000ms (5 seconds)
 blockTime: 2000
 
+# Enables the halving backoff retries for router mode partial trades that get rejected onchain, default is true
+routerPartialFallback: true
+
 # Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins
 checkWalletBalanceTime: 15
 
