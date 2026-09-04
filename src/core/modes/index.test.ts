@@ -62,7 +62,7 @@ describe("Test findBestTrade", () => {
         };
     });
 
-    it("should return highest profit result when all modes succeed", async () => {
+    it("should return the first resolved success when all modes succeed", async () => {
         const rpResult = Result.ok({
             type: "routeProcessor",
             spanAttributes: { foundOpp: true },
@@ -72,7 +72,7 @@ describe("Test findBestTrade", () => {
         const intraResult = Result.ok({
             type: "intraOrderbook",
             spanAttributes: { foundOpp: true },
-            estimatedProfit: 200n, // highest profit
+            estimatedProfit: 200n, // highest profit, but not the first to resolve
             oppBlockNumber: 123,
         });
         const interResult = Result.ok({
@@ -96,10 +96,12 @@ describe("Test findBestTrade", () => {
         const result = await findBestTrade.call(mockRainSolver, args);
 
         assert(result.isOk());
-        expect(result.value.estimatedProfit).toBe(200n); // highest profit
-        expect(result.value.type).toBe("intraOrderbook");
+        // all resolve instantly, so the race is won by the first one in
+        // order, the estimated profit does not decide the winner anymore
+        expect(result.value.estimatedProfit).toBe(100n);
+        expect(result.value.type).toBe("routeProcessor");
         expect(result.value.spanAttributes.foundOpp).toBe(true);
-        expect(result.value.spanAttributes.tradeType).toBe("intraOrderbook");
+        expect(result.value.spanAttributes.tradeType).toBe("routeProcessor");
     });
 
     it("should return success result when only some modes succeed", async () => {
@@ -263,8 +265,9 @@ describe("Test findBestTrade", () => {
         const result = await findBestTrade.call(mocksolver, args);
 
         assert(result.isOk());
-        expect(result.value.estimatedProfit).toBe(150n); // highest profit
-        expect(result.value.type).toBe("intraOrderbook");
+        // all resolve instantly, so the first one in order wins the race
+        expect(result.value.estimatedProfit).toBe(100n);
+        expect(result.value.type).toBe("routeProcessor");
         expect(findBestRouterTrade).toHaveBeenCalledWith(
             args.orderDetails,
             args.signer,
@@ -331,8 +334,9 @@ describe("Test findBestTrade", () => {
         const result = await findBestTrade.call(mockRainSolver, args);
 
         assert(result.isOk());
-        expect(result.value.estimatedProfit).toBe(150n); // highest profit
-        expect(result.value.type).toBe("intraOrderbook");
+        // all resolve instantly, so the first one in order wins the race
+        expect(result.value.estimatedProfit).toBe(100n);
+        expect(result.value.type).toBe("routeProcessor");
         expect(findBestRouterTrade).toHaveBeenCalledWith(
             args.orderDetails,
             args.signer,
@@ -365,42 +369,45 @@ describe("Test findBestTrade", () => {
         );
     });
 
-    it("should sort results by estimated profit in descending order", async () => {
+    it("should pick the winner by resolution time and not by estimated profit", async () => {
+        const delayed = <T>(ms: number, value: T): Promise<T> =>
+            new Promise((resolve) => setTimeout(() => resolve(value), ms));
         const rpResult = Result.ok({
             type: "routeProcessor",
             spanAttributes: { foundOpp: true },
-            estimatedProfit: 300n, // highest
+            estimatedProfit: 300n, // highest profit but slowest to resolve
             oppBlockNumber: 123,
         });
         const intraResult = Result.ok({
             type: "intraOrderbook",
             spanAttributes: { foundOpp: true },
-            estimatedProfit: 100n, // lowest
+            estimatedProfit: 100n, // lowest profit but fastest success
             oppBlockNumber: 123,
         });
-        const interResult = Result.ok({
+        const interResult = Result.err({
             type: "interOrderbook",
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 200n, // middle
-            oppBlockNumber: 123,
+            spanAttributes: { error: "no counterparty" },
+            noneNodeError: "inter orderbook failed",
         });
-        const raindexResult = Result.ok({
+        const raindexResult = Result.err({
             type: "raindex",
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 250n, // middle
-            oppBlockNumber: 123,
+            spanAttributes: { error: "no route" },
+            noneNodeError: "raindex router failed",
         });
 
-        (findBestRouterTrade as Mock).mockResolvedValue(rpResult);
-        (findBestIntraOrderbookTrade as Mock).mockResolvedValue(intraResult);
+        (findBestRouterTrade as Mock).mockReturnValue(delayed(50, rpResult));
+        (findBestIntraOrderbookTrade as Mock).mockReturnValue(delayed(10, intraResult));
         (findBestInterOrderbookTrade as Mock).mockResolvedValue(interResult);
         (findBestRaindexRouterTrade as Mock).mockResolvedValue(raindexResult);
 
         const result = await findBestTrade.call(mockRainSolver, args);
 
         assert(result.isOk());
-        expect(result.value.estimatedProfit).toBe(300n); // should return the highest profit
-        expect(result.value.type).toBe("routeProcessor");
+        // the fast failures do not end the race and the slow high
+        // profit success loses to the faster low profit success
+        expect(result.value.estimatedProfit).toBe(100n);
+        expect(result.value.type).toBe("intraOrderbook");
+        expect(result.value.spanAttributes.tradeType).toBe("intraOrderbook");
     });
 
     it("should handle mixed success and error results", async () => {
