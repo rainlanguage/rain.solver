@@ -775,6 +775,116 @@ describe("Test findBestRouterTrade", () => {
         );
     });
 
+    it("should pick the bigger trade size result when profits are equal", async () => {
+        mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
+        const sushiQuote = {
+            route: {
+                pcMap: new Map([["pool1", { liquidityProvider: "Hydrex" }]]),
+                route: { legs: [{ uniqueId: "pool1" }] },
+            },
+        } as any;
+        // primary succeeds at partial size (500n) and secondary succeeds at
+        // full size (1000n) with equal profits, so the secondary wins the tie
+        (simulatorWithArgsSpy as Mock)
+            .mockReturnValueOnce({
+                quote: sushiQuote,
+                trySimulateTrade: vi.fn().mockResolvedValue(
+                    Result.err({
+                        type: TradeType.RouteProcessor,
+                        reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
+                        spanAttributes: { error: "ratio too high" },
+                    }),
+                ),
+            })
+            .mockReturnValueOnce({
+                quote: undefined,
+                trySimulateTrade: vi.fn().mockResolvedValue(
+                    Result.ok({
+                        type: TradeType.RouteProcessor,
+                        spanAttributes: { foundOpp: true },
+                        estimatedProfit: 100n,
+                        oppBlockNumber: 123,
+                    }),
+                ),
+            })
+            .mockReturnValueOnce({
+                quote: undefined,
+                trySimulateTrade: vi.fn().mockResolvedValue(
+                    Result.ok({
+                        type: TradeType.RouteProcessor,
+                        spanAttributes: { foundOpp: true },
+                        estimatedProfit: 100n,
+                        oppBlockNumber: 123,
+                    }),
+                ),
+            });
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue(500n);
+
+        const result: SimulationResult = await findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+        );
+
+        assert(result.isOk());
+        expect(result.value.estimatedProfit).toBe(100n);
+        expect(result.value.spanAttributes["pickedRoute"]).toBe("secondary");
+        expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(3);
+    });
+
+    it("should keep primary result when profits and trade sizes are equal", async () => {
+        mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
+        const sushiQuote = {
+            route: {
+                pcMap: new Map([["pool1", { liquidityProvider: "Hydrex" }]]),
+                route: { legs: [{ uniqueId: "pool1" }] },
+            },
+        } as any;
+        // both succeed at full size with equal profits, so the primary is kept
+        (simulatorWithArgsSpy as Mock)
+            .mockReturnValueOnce({
+                quote: sushiQuote,
+                trySimulateTrade: vi.fn().mockResolvedValue(
+                    Result.ok({
+                        type: TradeType.RouteProcessor,
+                        spanAttributes: { foundOpp: true },
+                        estimatedProfit: 100n,
+                        oppBlockNumber: 123,
+                    }),
+                ),
+            })
+            .mockReturnValueOnce({
+                quote: undefined,
+                trySimulateTrade: vi.fn().mockResolvedValue(
+                    Result.ok({
+                        type: TradeType.RouteProcessor,
+                        spanAttributes: { foundOpp: true },
+                        estimatedProfit: 100n,
+                        oppBlockNumber: 123,
+                    }),
+                ),
+            });
+
+        const result: SimulationResult = await findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+        );
+
+        assert(result.isOk());
+        expect(result.value.estimatedProfit).toBe(100n);
+        expect(result.value.spanAttributes["pickedRoute"]).toBe("primary");
+        expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(2);
+    });
+
     it("should keep primary result when secondary profit is not higher", async () => {
         mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
         const sushiQuote = {
