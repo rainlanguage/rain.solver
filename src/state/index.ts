@@ -235,7 +235,7 @@ export class SharedState {
     writeRpc?: RpcState;
     /** List of latest successful transactions gas costs */
     gasCosts: bigint[] = [];
-    /** Oracle endpoint health tracking for cooloff and fetch results caching */
+    /** Oracle endpoint health tracking for cooloff */
     oracleHealth: OracleHealthMap = new Map();
     /** The current native gas token to USD price (18 decimals fixed point number as decimal string), updated once per round */
     gasTokenUsdPrice?: string;
