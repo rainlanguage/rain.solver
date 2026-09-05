@@ -508,7 +508,8 @@ describe("Test findBestRouterTrade", () => {
             .mockResolvedValueOnce(mockFullTradeError) // full size
             .mockResolvedValueOnce(mockViolationError) // partial size 1000n
             .mockResolvedValueOnce(mockViolationError) // partialFallback1 500n
-            .mockResolvedValueOnce(mockFallbackSuccess); // partialFallback2 250n
+            .mockResolvedValueOnce(mockFallbackSuccess) // partialFallback2 250n
+            .mockResolvedValue(mockViolationError); // remaining fallbacks
         (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
             status: TradeSizeStatus.Found,
             size: 1000n,
@@ -524,10 +525,11 @@ describe("Test findBestRouterTrade", () => {
             blockNumber,
         );
 
+        // all 4 fallback sims launch concurrently and the successful one wins
         assert(result.isOk());
         expect(result.value.spanAttributes).toEqual({ foundOpp: true });
         expect(result.value.estimatedProfit).toBe(25n);
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(4);
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(6);
         expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
             3,
             expect.objectContaining({ maximumInputFixed: 500n, isPartial: true }),
@@ -535,6 +537,14 @@ describe("Test findBestRouterTrade", () => {
         expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
             4,
             expect.objectContaining({ maximumInputFixed: 250n, isPartial: true }),
+        );
+        expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
+            5,
+            expect.objectContaining({ maximumInputFixed: 125n, isPartial: true }),
+        );
+        expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
+            6,
+            expect.objectContaining({ maximumInputFixed: 62n, isPartial: true }),
         );
         // fallback sims never get a precomputed quote, their halved
         // sizes differ from the size the search probed
@@ -618,7 +628,8 @@ describe("Test findBestRouterTrade", () => {
         (trySimulateTradeSpy as Mock)
             .mockResolvedValueOnce(mockFullTradeError) // full size
             .mockResolvedValueOnce(mockViolationError) // partial size
-            .mockResolvedValueOnce(mockOtherError); // partialFallback1
+            .mockResolvedValueOnce(mockOtherError) // partialFallback1
+            .mockResolvedValue(mockViolationError); // remaining fallbacks
         (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
             status: TradeSizeStatus.Found,
             size: 1000n,
@@ -635,10 +646,96 @@ describe("Test findBestRouterTrade", () => {
         );
 
         assert(result.isErr());
-        // 1 full + 1 partial + 1 fallback, stopped early
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(3);
+        // all fallback steps run concurrently, a non retry error on one
+        // step does not stop the others anymore
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(6);
         expect(result.error.spanAttributes["partialFallback1.error"]).toBe("some other revert");
-        expect(result.error.spanAttributes["partialFallback2.error"]).toBeUndefined();
+        expect(result.error.spanAttributes["partialFallback2.error"]).toContain(
+            "MinimalOutputBalanceViolation",
+        );
+        expect(result.error.spanAttributes["partialFallback4.error"]).toContain(
+            "MinimalOutputBalanceViolation",
+        );
+    });
+
+    it("should drop halved sizes that reach zero", async () => {
+        const mockFullTradeError = Result.err({
+            type: TradeType.RouteProcessor,
+            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
+            spanAttributes: { error: "ratio too high" },
+            noneNodeError: "order ratio issue",
+        });
+        const mockViolationError = Result.err({
+            type: TradeType.RouteProcessor,
+            reason: SimulationHaltReason.NoOpportunity,
+            spanAttributes: {
+                error: "execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)",
+            },
+        });
+
+        (trySimulateTradeSpy as Mock)
+            .mockResolvedValueOnce(mockFullTradeError) // full size
+            .mockResolvedValue(mockViolationError); // partial + all fallbacks
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
+            status: TradeSizeStatus.Found,
+            size: 8n, // tiny size, halves to 4, 2, 1 and then to zero
+        });
+
+        const result: SimulationResult = await findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+        );
+
+        assert(result.isErr());
+        // 1 full + 1 partial + only 3 fallbacks since the 4th halving hits zero
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(5);
+        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith(
+            expect.objectContaining({ maximumInputFixed: 1n, isPartial: true }),
+        );
+        expect(result.error.spanAttributes["partialFallback3.error"]).toContain(
+            "MinimalOutputBalanceViolation",
+        );
+        expect(result.error.spanAttributes["partialFallback4.error"]).toBeUndefined();
+    });
+
+    it("should not run backoff when no trade size was found even for strict checked max owner", async () => {
+        mockRainSolver.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck = true;
+        mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
+        const mockFullTradeError = Result.err({
+            type: TradeType.Router,
+            reason: SimulationHaltReason.NoRoute,
+            spanAttributes: { error: "no route" },
+            noneNodeError: "no route available",
+        });
+
+        (trySimulateTradeSpy as Mock).mockResolvedValue(mockFullTradeError);
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
+            status: TradeSizeStatus.NoWay,
+        });
+
+        const result: SimulationResult = await findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+        );
+
+        // no way means no way, only the full size sim runs and the
+        // error returns directly without any partial or fallback sims
+        assert(result.isErr());
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(1);
+        expect(result.error.spanAttributes["partial.error"]).toBe(
+            "found no route for any trade size",
+        );
+        expect(result.error.spanAttributes["partialFallback1.error"]).toBeUndefined();
     });
 
     it("should skip backoff when routerPartialFallback is disabled in config", async () => {
@@ -709,7 +806,8 @@ describe("Test findBestRouterTrade", () => {
         (trySimulateTradeSpy as Mock)
             .mockResolvedValueOnce(mockFullTradeError) // full size
             .mockResolvedValueOnce(mockPartialError) // partial size
-            .mockResolvedValueOnce(mockFallbackSuccess); // partialFallback1
+            .mockResolvedValueOnce(mockFallbackSuccess) // partialFallback1
+            .mockResolvedValue(mockPartialError); // remaining fallbacks
         (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
             status: TradeSizeStatus.PriceMismatch,
             size: 1000n,
@@ -730,7 +828,7 @@ describe("Test findBestRouterTrade", () => {
         // since the owner has a max profile and strict check is on
         assert(result.isOk());
         expect(result.value.estimatedProfit).toBe(25n);
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(3);
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(6);
         expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
             3,
             expect.objectContaining({ maximumInputFixed: 500n, isPartial: true }),

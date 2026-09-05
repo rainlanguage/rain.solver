@@ -9,7 +9,7 @@ import { RouterTradeSimulator } from "./simulate";
 import { SimulationHaltReason } from "../simulator";
 import { SushiRouterQuote, TradeSizeStatus } from "../../../router";
 import { SimulationResult, TradeType } from "../../types";
-import { Result, extendObjectWithHeader } from "../../../common";
+import { Result, raceFirstOk, extendObjectWithHeader } from "../../../common";
 
 /** Represents the result of a router trade attempt paired with its full trade size quote */
 export type RouterTradeAttempt = {
@@ -238,12 +238,11 @@ export async function tryFindBestRouterTrade(
 
     // if the partial trade size sim got rejected onchain with MinimalOutputBalanceViolation,
     // it means the offchain pool data overestimated the output for the found partial trade
-    // size, so backoff by halving the trade size at each step validated against onchain
-    // dryrun and accept the first size that passes, the backoff stops early if a step fails
-    // with any other error, the backoff only runs when enabled by config, and for orders
-    // of max profile owners with strictMaxOwnerProfilePartialTradeSizeCheck config enabled,
-    // it runs on ANY partial sim failure, so smaller sizes get probed against the real
-    // chain even when the offchain quotes show no price match
+    // size, so backoff with halved trade sizes validated against onchain dryrun and accept
+    // the first size that passes, the backoff only runs when enabled by config, and for
+    // orders of max profile owners with strictMaxOwnerProfilePartialTradeSizeCheck config
+    // enabled, it runs on ANY partial sim failure, so smaller sizes get probed against
+    // the real chain even when the offchain quotes show no price match
     const reason = partialTradeSizeSimResult.error.reason;
     if (
         this.appOptions.routerPartialFallback &&
@@ -254,40 +253,50 @@ export async function tryFindBestRouterTrade(
                     this.appOptions.ownerProfile,
                 )))
     ) {
+        // build the halved trade sizes, dropping zero or negative entries
+        const fallbackTradeSizes: bigint[] = [];
         let fallbackTradeSize = partialTradeSize;
         for (let i = 1; i <= 4; i++) {
             fallbackTradeSize /= 2n;
             if (fallbackTradeSize <= 0n) break;
-            const partialFallbackSimulator = RouterTradeSimulator.withArgs({
+            fallbackTradeSizes.push(fallbackTradeSize);
+        }
+
+        // launch all fallback sims concurrently and take the first success,
+        // instead of stepping through the halved sizes sequentially, the sims
+        // that lose the race keep running but their outcome is discarded
+        const fallbackSims = fallbackTradeSizes.map((size) =>
+            RouterTradeSimulator.withArgs({
                 type: TradeType.Router,
                 solver: this,
                 orderDetails,
                 fromToken,
                 toToken,
                 signer,
-                maximumInputFixed: fallbackTradeSize,
+                maximumInputFixed: size,
                 ethPrice,
                 isPartial: true,
                 blockNumber,
                 excludeDexes,
-            });
-            const partialFallbackSimResult = await partialFallbackSimulator.trySimulateTrade();
-            if (partialFallbackSimResult.isOk()) {
-                return { result: partialFallbackSimResult, quote };
-            }
-            extendObjectWithHeader(
-                spanAttributes,
-                partialFallbackSimResult.error.spanAttributes,
-                `partialFallback${i}`,
-            );
-            if (
-                !SimulationHaltReason.needsRetry(
-                    partialFallbackSimResult.error.spanAttributes["error"],
-                )
-            ) {
-                break;
-            }
+            }).trySimulateTrade(),
+        );
+        const fallbackPick = await raceFirstOk(fallbackSims);
+        if (fallbackPick?.isOk()) {
+            return { result: fallbackPick, quote };
         }
+
+        // all fallback sims have already settled with error at this point,
+        // merge their attributes indexed by size order, not completion order
+        const fallbackResults = await Promise.all(fallbackSims);
+        fallbackResults.forEach((fallbackResult, i) => {
+            if (fallbackResult.isErr()) {
+                extendObjectWithHeader(
+                    spanAttributes,
+                    fallbackResult.error.spanAttributes,
+                    `partialFallback${i + 1}`,
+                );
+            }
+        });
     }
     return {
         result: Result.err({
