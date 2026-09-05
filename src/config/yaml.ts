@@ -125,6 +125,8 @@ export type AppOptions = {
     blockTime: number;
     /** Enables the halving backoff retries for router mode partial trades that get rejected onchain, default is true */
     routerPartialFallback: boolean;
+    /** When true, zero output balance pairs of max profile owners go to round processing, when false, all zero output balance pairs are skipped, default is false */
+    strictMaxOwnerProfileCheck: boolean;
     /** Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins */
     checkWalletBalanceTime: number;
     /** Optional threshold as the min expected bounty multiple that the estimated profit must exceed to boost the tx gas price, no boost applies if unset */
@@ -385,6 +387,11 @@ export namespace AppOptions {
                     input.routerPartialFallback,
                     "expected a boolean value for routerPartialFallback",
                     true,
+                ),
+                strictMaxOwnerProfileCheck: Validator.resolveBool(
+                    input.strictMaxOwnerProfileCheck,
+                    "expected a boolean value for strictMaxOwnerProfileCheck",
+                    false,
                 ),
                 checkWalletBalanceTime: Validator.resolveNumericValue(
                     input.checkWalletBalanceTime,

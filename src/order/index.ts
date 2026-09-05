@@ -497,9 +497,14 @@ export class OrderManager {
                                 ),
                             )?.balance ?? pair.buyTokenVaultBalance;
 
+                    // zero output balance pairs are skipped, unless they belong to a max
+                    // profile owner and including them is explicitly enabled by config
                     if (
                         pair.sellTokenVaultBalance <= 0n &&
-                        !AppOptions.isMaxOwnerProfile(owner, this.state.appOptions.ownerProfile)
+                        !(
+                            this.state.appOptions.strictMaxOwnerProfileCheck &&
+                            AppOptions.isMaxOwnerProfile(owner, this.state.appOptions.ownerProfile)
+                        )
                     ) {
                         result.zeroOutput.push(pair);
                     } else {

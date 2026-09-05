@@ -108,6 +108,7 @@ export async function sweepFunds(opts: SweepOptions) {
         txTimeThreshold: 2_500,
         blockTime: 5_000,
         routerPartialFallback: true,
+        strictMaxOwnerProfileCheck: false,
         timeout: 15_000,
 
         // unused fields but need to be defined

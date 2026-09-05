@@ -615,6 +615,68 @@ describe("Test OrderManager", () => {
         expect(Array.isArray(takeOrder.struct.signedContext)).toBe(true);
     });
 
+    it("should put zero output balance pair of max owner in zeroOutput list by default", async () => {
+        (state as any).appOptions = {
+            ownerProfile: { "0xowner": Number.MAX_SAFE_INTEGER },
+        };
+        const mockOrder = {
+            orderHash: "0xhash",
+            orderbook: { id: "0xorderbook" },
+            orderBytes: "0xbytes",
+            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 0n }],
+            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 2n }],
+        };
+        await orderManager.addOrder(mockOrder as any);
+
+        const result = orderManager.getNextRoundOrders();
+
+        expect(result.nonZeroOutput.length).toBe(0);
+        expect(result.zeroOutput.length).toBe(1);
+        expect(result.zeroOutput[0].takeOrder.id).toBe("0xhash");
+    });
+
+    it("should put zero output balance pair of max owner in nonZeroOutput list when enabled", async () => {
+        (state as any).appOptions = {
+            strictMaxOwnerProfileCheck: true,
+            ownerProfile: { "0xowner": Number.MAX_SAFE_INTEGER },
+        };
+        const mockOrder = {
+            orderHash: "0xhash",
+            orderbook: { id: "0xorderbook" },
+            orderBytes: "0xbytes",
+            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 0n }],
+            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 2n }],
+        };
+        await orderManager.addOrder(mockOrder as any);
+
+        const result = orderManager.getNextRoundOrders();
+
+        expect(result.zeroOutput.length).toBe(0);
+        expect(result.nonZeroOutput.length).toBe(1);
+        expect(result.nonZeroOutput[0].takeOrder.id).toBe("0xhash");
+    });
+
+    it("should keep zero output balance pair of non max owner in zeroOutput list when enabled", async () => {
+        (state as any).appOptions = {
+            strictMaxOwnerProfileCheck: true,
+            ownerProfile: { "0xowner": 100 }, // not max profile
+        };
+        const mockOrder = {
+            orderHash: "0xhash",
+            orderbook: { id: "0xorderbook" },
+            orderBytes: "0xbytes",
+            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 0n }],
+            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 2n }],
+        };
+        await orderManager.addOrder(mockOrder as any);
+
+        const result = orderManager.getNextRoundOrders();
+
+        expect(result.nonZeroOutput.length).toBe(0);
+        expect(result.zeroOutput.length).toBe(1);
+        expect(result.zeroOutput[0].takeOrder.id).toBe("0xhash");
+    });
+
     it("should reset limits to default", async () => {
         const mockOrder = {
             owner: "0xowner",
