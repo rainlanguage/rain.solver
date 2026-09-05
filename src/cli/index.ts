@@ -500,7 +500,7 @@ export class RainSolverCli {
                     async (span) => {
                         const record = this.state.writeRpc!.metrics[rpc];
                         span.setAttributes({
-                            "isWriteRpc:": true,
+                            "isWriteRpc:": "true",
                             "rpc-url": rpc,
                             "request-count": record.req,
                             "success-count": record.success,
