@@ -1,5 +1,6 @@
 import { erc20Abi } from "viem";
 import { syncOrders } from "./sync";
+import { DEFAULT_OWNER_LIMIT } from "./config";
 import { SgOrder } from "../subgraph";
 import { SharedState } from "../state";
 import { errorSnapshot } from "../error";
@@ -27,9 +28,6 @@ export * from "./quote";
 export * from "./error";
 export * from "./config";
 
-/** The default owner limit */
-export const DEFAULT_OWNER_LIMIT = 25 as const;
-
 /**
  * OrderManager is responsible for managing orders state for Rainsolver during runtime, it
  * extends SubgraphManager to fetch and sync order details from subgraphs as well as providing
@@ -40,6 +38,8 @@ export class OrderManager {
     readonly quoteGas: bigint;
     /** Owner limits per round */
     readonly ownerLimits: Record<string, number>;
+    /** The default limit for owners without a configured profile */
+    readonly defaultOwnerLimit: number;
     /** Shared state instance */
     readonly state: SharedState;
     /** Subgraph manager instance */
@@ -93,6 +93,7 @@ export class OrderManager {
         this.ownerTokenVaultMap = new Map();
         this.quoteGas = state.orderManagerConfig.quoteGas;
         this.ownerLimits = state.orderManagerConfig.ownerLimits;
+        this.defaultOwnerLimit = state.orderManagerConfig.defaultOwnerLimit ?? DEFAULT_OWNER_LIMIT;
         this.subgraphManager = subgraphManager ?? new SubgraphManager(state.subgraphConfig);
     }
 
@@ -176,7 +177,7 @@ export class OrderManager {
                 takeOrders: pairs as any,
             };
             orderbookOwnerProfileItem.set(orderStruct.owner, {
-                limit: this.ownerLimits[orderStruct.owner] ?? DEFAULT_OWNER_LIMIT,
+                limit: this.ownerLimits[orderStruct.owner] ?? this.defaultOwnerLimit,
                 orders: new Map([[orderHash, order]]),
                 lastIndex: 0,
             });
@@ -497,9 +498,14 @@ export class OrderManager {
                                 ),
                             )?.balance ?? pair.buyTokenVaultBalance;
 
+                    // zero output balance pairs are skipped, unless they belong to a max
+                    // profile owner and including them is explicitly enabled by config
                     if (
                         pair.sellTokenVaultBalance <= 0n &&
-                        !AppOptions.isMaxOwnerProfile(owner, this.state.appOptions.ownerProfile)
+                        !(
+                            this.state.appOptions.strictMaxOwnerProfileCheck &&
+                            AppOptions.isMaxOwnerProfile(owner, this.state.appOptions.ownerProfile)
+                        )
                     ) {
                         result.zeroOutput.push(pair);
                     } else {
@@ -530,7 +536,7 @@ export class OrderManager {
                 ownersProfileMap.forEach((ownerProfile, owner) => {
                     // skip if owner limit is set by bot admin
                     if (typeof this.ownerLimits[owner] === "number") return;
-                    ownerProfile.limit = DEFAULT_OWNER_LIMIT;
+                    ownerProfile.limit = this.defaultOwnerLimit;
                 });
             }
         });

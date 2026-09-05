@@ -40,6 +40,7 @@ gasPriceMultiplier: 150
 txTimeThreshold: 4000
 blockTime: 3000
 routerPartialFallback: false
+strictMaxOwnerProfileCheck: true
 checkWalletBalanceTime: 30
 gasBoostProfitThreshold: 7
 gasBoostMultiplier: 3.5
@@ -52,6 +53,7 @@ skipSweep:
     - "0x8888888888888888888888888888888888888888"
     - "0x9999999999999999999999999999999999999999"
 ownerProfile: $OWNER_PROFILE
+defaultOwnerLimit: 10
 selfFundVaults:
   - token: "0x6666666666666666666666666666666666666666"
     vaultId: "1"
@@ -128,6 +130,7 @@ orderbookTradeTypes:
                 "0x4444444444444444444444444444444444444444": 100,
                 "0x5555555555555555555555555555555555555555": Number.MAX_SAFE_INTEGER,
             },
+            defaultOwnerLimit: 10,
             selfFundVaults: [
                 {
                     token: "0x6666666666666666666666666666666666666666",
@@ -168,6 +171,7 @@ orderbookTradeTypes:
             convertToGasTime: 0,
             rotateMultiWallet: false,
             routerPartialFallback: false,
+            strictMaxOwnerProfileCheck: true,
             checkWalletBalanceTime: 30,
             gasBoostProfitThreshold: 7,
             gasBoostMultiplier: 3.5,
@@ -361,7 +365,9 @@ orderbookTradeTypes:
         assert.equal(result.convertToGasTime, 2);
         assert.equal(result.rotateMultiWallet, true);
         assert.equal(result.routerPartialFallback, true); // should be default true
+        assert.equal(result.strictMaxOwnerProfileCheck, false); // should be default false
         assert.equal(result.checkWalletBalanceTime, 15); // should be default 15
+        assert.equal(result.defaultOwnerLimit, 5); // should be default 5
         assert.equal(result.wsRpc, undefined); // no ws rpc when unset
         assert.equal(result.gasBoostProfitThreshold, undefined); // no boost when unset
         assert.equal(result.gasBoostMultiplier, undefined); // no boost when unset
