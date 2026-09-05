@@ -129,6 +129,7 @@ export async function sweepFunds(opts: SweepOptions) {
         convertToGasTime: 0,
         rotateMultiWallet: false,
         checkWalletBalanceTime: 0,
+        defaultOwnerLimit: 5,
     };
 
     // prepare state config fields

@@ -175,6 +175,9 @@ ownerProfile:
   - "0x1234...5678": 100
   - "0x1234...7890": max
 
+# The default limit for owners that have no configured owner profile, default is 5
+defaultOwnerLimit: 5
+
 # Optional list of vaults to self-fund when vault balance falls below specified threshold
 # example for env: token=0xabcd...def,vaultId=0x123...456,orderbook="0x123...456",threshold=0.5,topupAmount=10,...
 selfFundVaults:

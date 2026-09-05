@@ -101,6 +101,8 @@ export type AppOptions = {
     selfFundVaults?: SelfFundVault[];
     /** Option that specifies the owner limit in form of key/value */
     ownerProfile?: Record<string, number>;
+    /** The default limit for owners that have no configured owner profile, default is 5 */
+    defaultOwnerLimit: number;
     /** Optional filters for inc/exc orders, owner and orderbooks */
     sgFilter?: SgFilter;
     /** List of contract addresses required for solving */
@@ -200,6 +202,18 @@ export namespace AppOptions {
                 liquidityProviders: Validator.resolveLiquidityProviders(input.liquidityProviders),
                 route: Validator.resolveRouteType(input.route),
                 ownerProfile: Validator.resolveOwnerProfile(input.ownerProfile),
+                defaultOwnerLimit: Validator.resolveNumericValue(
+                    input.defaultOwnerLimit,
+                    INT_PATTERN,
+                    "invalid defaultOwnerLimit value, must be an integer greater than 0",
+                    "5",
+                    undefined,
+                    (defaultOwnerLimit) =>
+                        assert(
+                            defaultOwnerLimit > 0,
+                            "invalid defaultOwnerLimit value, must be an integer greater than 0",
+                        ),
+                ),
                 selfFundVaults: Validator.resolveSelfFundVaults(input.selfFundVaults),
                 sgFilter: Validator.resolveSgFilters(input.sgFilter),
                 maxRatio: Validator.resolveBool(
