@@ -28,7 +28,7 @@ export * from "./error";
 export * from "./config";
 
 /** The default owner limit */
-export const DEFAULT_OWNER_LIMIT = 25 as const;
+export const DEFAULT_OWNER_LIMIT = 5 as const;
 
 /**
  * OrderManager is responsible for managing orders state for Rainsolver during runtime, it
