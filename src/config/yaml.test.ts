@@ -41,6 +41,7 @@ txTimeThreshold: 4000
 blockTime: 3000
 routerPartialFallback: false
 strictMaxOwnerProfileCheck: true
+strictMaxOwnerProfilePartialTradeSizeCheck: true
 checkWalletBalanceTime: 30
 gasBoostProfitThreshold: 7
 gasBoostMultiplier: 3.5
@@ -172,6 +173,7 @@ orderbookTradeTypes:
             rotateMultiWallet: false,
             routerPartialFallback: false,
             strictMaxOwnerProfileCheck: true,
+            strictMaxOwnerProfilePartialTradeSizeCheck: true,
             checkWalletBalanceTime: 30,
             gasBoostProfitThreshold: 7,
             gasBoostMultiplier: 3.5,
@@ -366,6 +368,7 @@ orderbookTradeTypes:
         assert.equal(result.rotateMultiWallet, true);
         assert.equal(result.routerPartialFallback, true); // should be default true
         assert.equal(result.strictMaxOwnerProfileCheck, false); // should be default false
+        assert.equal(result.strictMaxOwnerProfilePartialTradeSizeCheck, false); // should be default false
         assert.equal(result.checkWalletBalanceTime, 15); // should be default 15
         assert.equal(result.defaultOwnerLimit, 5); // should be default 5
         assert.equal(result.wsRpc, undefined); // no ws rpc when unset

@@ -42,6 +42,26 @@ export enum RouteStatus {
     NoWay,
 }
 
+/** Enumerates the possible statuses of a trade size search result */
+export enum TradeSizeStatus {
+    /** No route exists at any trade size */
+    NoWay,
+    /** Routes exist but no trade size clears the order ratio at quoted prices */
+    PriceMismatch,
+    /** The found trade size clears the order ratio at quoted prices */
+    Found,
+}
+
+/**
+ * Represents the result of a trade size search, size-bearing results also carry
+ * the winning probe's quote (route, price and amount out), so downstream consumers
+ * can plug it in directly instead of recomputing the same route for the same size
+ */
+export type TradeSizeResult =
+    | { status: TradeSizeStatus.NoWay }
+    | { status: TradeSizeStatus.PriceMismatch; size: bigint; quote: SushiRouterQuote }
+    | { status: TradeSizeStatus.Found; size: bigint; quote: SushiRouterQuote };
+
 /** Represents the parameters for quoting RainSolverRouter */
 export type RainSolverRouterQuoteParams = {
     fromToken: Token;
@@ -78,6 +98,12 @@ export type GetTradeParamsArgs = {
     isPartial: boolean;
     /** Liquidity providers (dexes) to exclude from route finding */
     excludeDexes?: Set<LiquidityProviders>;
+    /**
+     * Optional precomputed sushi quote for the given maximum input, when present
+     * the sushi router uses it directly instead of recomputing the same route,
+     * other routers ignore it
+     */
+    sushiQuote?: SushiRouterQuote;
 };
 
 /** Represents the trade params for a RainSolverRouter route */
@@ -142,9 +168,11 @@ export abstract class RainSolverRouterBase {
     ): Promise<Result<TradeParamsType, RainSolverRouterError>>;
 
     /**
-     * Calculates the largest possible partial trade size for rp clear, returns undefined if
-     * it cannot be determined due to the fact that order's ratio being higher than market
-     * price
+     * Searches for the largest possible partial trade size for rp clear, the result
+     * status determines the outcome: Found means the returned size clears the order
+     * ratio at quoted prices, PriceMismatch means routes exist but no size clears the
+     * order ratio and the returned size is the biggest size that had a route, NoWay
+     * means no route exists at any size
      * @param orderDetails - The order details
      * @param toToken - The token to trade to
      * @param fromToken - The token to trade from
@@ -159,15 +187,15 @@ export abstract class RainSolverRouterBase {
         maximumInputFixed: bigint,
         gasPriceBI: bigint,
         routeType: "single" | "multi",
-    ): bigint | undefined {
-        // default implementation returns undefined, override in subclass if supported
+    ): TradeSizeResult {
+        // default implementation returns NoWay, override in subclass if supported
         orderDetails;
         toToken;
         fromToken;
         maximumInputFixed;
         gasPriceBI;
         routeType;
-        return undefined;
+        return { status: TradeSizeStatus.NoWay };
     }
 
     /**

@@ -1,5 +1,5 @@
 import { GasManager } from "../gas";
-import { SushiRouter } from "../router";
+import { SushiRouter, TradeSizeStatus } from "../router";
 import { Token } from "sushi/currency";
 import { getChainConfig } from "./chain";
 import { createPublicClient } from "viem";
@@ -648,7 +648,9 @@ describe("Test SharedState", () => {
 
         it("should call getMarketPrice with correct params for partial size unhappy", async () => {
             (sharedState.router.getMarketPrice as Mock).mockResolvedValueOnce(Result.err("error"));
-            (sharedState.router.findLargestTradeSize as Mock).mockReturnValueOnce(undefined);
+            (sharedState.router.findLargestTradeSize as Mock).mockReturnValueOnce({
+                status: TradeSizeStatus.NoWay,
+            });
             const result = await sharedState.getMarketPrice(token1, token2, 12345n);
 
             assert(result.isErr());
@@ -676,76 +678,32 @@ describe("Test SharedState", () => {
         });
 
         it("should call getMarketPrice with correct params for partial size happy", async () => {
-            (sharedState.router.getMarketPrice as Mock)
-                .mockResolvedValueOnce(Result.err("error"))
-                .mockResolvedValueOnce(Result.ok({ price: 1n }));
-            (sharedState.router.findLargestTradeSize as Mock).mockReturnValueOnce(
-                500000000000000000n,
-            );
+            (sharedState.router.getMarketPrice as Mock).mockResolvedValueOnce(Result.err("error"));
+            const mockRoute = { legs: [] };
+            (sharedState.router.findLargestTradeSize as Mock).mockReturnValueOnce({
+                status: TradeSizeStatus.Found,
+                size: 500000000000000000n,
+                quote: {
+                    price: 500000000000000000n, // 0.5 in 18 decimals
+                    amountOut: 250000000000000000n,
+                    route: { route: mockRoute, pcMap: new Map() },
+                },
+            });
             const result = await sharedState.getMarketPrice(token1, token2, 12345n);
 
+            // the partial price is built directly from the size search winning
+            // probe quote, so only the initial full size market price call runs
             assert(result.isOk());
-            expect(result.value).toEqual({ price: 1n });
-            expect(sharedState.router.getMarketPrice).toHaveBeenCalledTimes(2);
+            expect(result.value).toEqual({ price: "0.5", route: mockRoute });
+            expect(sharedState.router.getMarketPrice).toHaveBeenCalledTimes(1);
             expect(sharedState.router.findLargestTradeSize).toHaveBeenCalledTimes(1);
-            expect(sharedState.router.getMarketPrice).toHaveBeenNthCalledWith(1, {
+            expect(sharedState.router.getMarketPrice).toHaveBeenCalledWith({
                 fromToken: token1,
                 toToken: token2,
                 blockNumber: 12345n,
                 skipFetch: false,
                 gasPrice: sharedState.gasPrice,
                 amountIn: 1000000000000000000n,
-                sushiRouteType: sharedState.appOptions.route,
-            });
-            expect(sharedState.router.getMarketPrice).toHaveBeenNthCalledWith(2, {
-                fromToken: token1,
-                toToken: token2,
-                blockNumber: 12345n,
-                skipFetch: false,
-                gasPrice: sharedState.gasPrice,
-                amountIn: 500000000000000000n,
-                sushiRouteType: sharedState.appOptions.route,
-            });
-            expect(sharedState.router.findLargestTradeSize).toHaveBeenCalledWith(
-                { takeOrder: { quote: { ratio: 0n } } } as any,
-                token2,
-                token1,
-                1000000000000000000n,
-                sharedState.gasPrice,
-                sharedState.appOptions.route,
-                true,
-            );
-        });
-
-        it("should call getMarketPrice with correct params for partial size unhappy all", async () => {
-            (sharedState.router.getMarketPrice as Mock)
-                .mockResolvedValueOnce(Result.err("error1"))
-                .mockResolvedValueOnce(Result.err("error2"));
-            (sharedState.router.findLargestTradeSize as Mock).mockReturnValueOnce(
-                500000000000000000n,
-            );
-            const result = await sharedState.getMarketPrice(token1, token2, 12345n);
-
-            assert(result.isErr());
-            expect(result.error).toBe("error1");
-            expect(sharedState.router.getMarketPrice).toHaveBeenCalledTimes(2);
-            expect(sharedState.router.findLargestTradeSize).toHaveBeenCalledTimes(1);
-            expect(sharedState.router.getMarketPrice).toHaveBeenNthCalledWith(1, {
-                fromToken: token1,
-                toToken: token2,
-                blockNumber: 12345n,
-                skipFetch: false,
-                gasPrice: sharedState.gasPrice,
-                amountIn: 1000000000000000000n,
-                sushiRouteType: sharedState.appOptions.route,
-            });
-            expect(sharedState.router.getMarketPrice).toHaveBeenNthCalledWith(2, {
-                fromToken: token1,
-                toToken: token2,
-                blockNumber: 12345n,
-                skipFetch: false,
-                gasPrice: sharedState.gasPrice,
-                amountIn: 500000000000000000n,
                 sushiRouteType: sharedState.appOptions.route,
             });
             expect(sharedState.router.findLargestTradeSize).toHaveBeenCalledWith(

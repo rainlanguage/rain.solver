@@ -131,6 +131,9 @@ routerPartialFallback: true
 # When true, zero output balance pairs of max profile owners go to round processing, when false, all zero output balance pairs are skipped, default is false
 strictMaxOwnerProfileCheck: false
 
+# When true, the router mode fallback partial trade backoff runs on any partial sim failure for orders of max profile owners, default is false
+strictMaxOwnerProfilePartialTradeSizeCheck: false
+
 # Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins
 checkWalletBalanceTime: 15
 

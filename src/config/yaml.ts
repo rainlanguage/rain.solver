@@ -129,6 +129,8 @@ export type AppOptions = {
     routerPartialFallback: boolean;
     /** When true, zero output balance pairs of max profile owners go to round processing, when false, all zero output balance pairs are skipped, default is false */
     strictMaxOwnerProfileCheck: boolean;
+    /** When true, the router mode fallback partial trade backoff runs on any partial sim failure for orders of max profile owners, default is false */
+    strictMaxOwnerProfilePartialTradeSizeCheck: boolean;
     /** Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins */
     checkWalletBalanceTime: number;
     /** Optional threshold as the min expected bounty multiple that the estimated profit must exceed to boost the tx gas price, no boost applies if unset */
@@ -405,6 +407,11 @@ export namespace AppOptions {
                 strictMaxOwnerProfileCheck: Validator.resolveBool(
                     input.strictMaxOwnerProfileCheck,
                     "expected a boolean value for strictMaxOwnerProfileCheck",
+                    false,
+                ),
+                strictMaxOwnerProfilePartialTradeSizeCheck: Validator.resolveBool(
+                    input.strictMaxOwnerProfilePartialTradeSizeCheck,
+                    "expected a boolean value for strictMaxOwnerProfilePartialTradeSizeCheck",
                     false,
                 ),
                 checkWalletBalanceTime: Validator.resolveNumericValue(

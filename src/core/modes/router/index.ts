@@ -1,12 +1,13 @@
 import { RainSolver } from "../..";
 import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
+import { AppOptions } from "../../../config";
 import { LiquidityProviders } from "sushi";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { RouterTradeSimulator } from "./simulate";
 import { SimulationHaltReason } from "../simulator";
-import { SushiRouterQuote } from "../../../router";
+import { SushiRouterQuote, TradeSizeStatus } from "../../../router";
 import { SimulationResult, TradeType } from "../../types";
 import { Result, extendObjectWithHeader } from "../../../common";
 
@@ -183,8 +184,10 @@ export async function tryFindBestRouterTrade(
         };
     }
 
-    // try simulation for partial trade size
-    const partialTradeSize = this.state.router.findLargestTradeSize(
+    // try simulation for partial trade size, a price mismatch result still
+    // carries the biggest routed size which is simulated as partial trade
+    // size and can then feed the fallback backoff on failure
+    const partialTradeSizeResult = this.state.router.findLargestTradeSize(
         orderDetails,
         toToken,
         fromToken,
@@ -194,8 +197,8 @@ export async function tryFindBestRouterTrade(
         false,
         excludeDexes,
     );
-    if (!partialTradeSize) {
-        spanAttributes["partial.error"] = "no viable partial trade size found";
+    if (partialTradeSizeResult.status === TradeSizeStatus.NoWay) {
+        spanAttributes["partial.error"] = "found no route for any trade size";
         return {
             result: Result.err({
                 type: fullTradeSizeSimResult.error.type,
@@ -205,6 +208,7 @@ export async function tryFindBestRouterTrade(
             quote,
         };
     }
+    const partialTradeSize = partialTradeSizeResult.size;
     const partialTradeSimulator = RouterTradeSimulator.withArgs({
         type: TradeType.Router,
         solver: this,
@@ -217,6 +221,9 @@ export async function tryFindBestRouterTrade(
         isPartial: true,
         blockNumber,
         excludeDexes,
+        // plug in the winning probe quote of the size search, so the sushi
+        // router doesnt recompute the same route for the same size again
+        sushiQuote: partialTradeSizeResult.quote,
     });
     const partialTradeSizeSimResult = await partialTradeSimulator.trySimulateTrade();
     quote = partialTradeSimulator.quote ?? quote;
@@ -233,11 +240,19 @@ export async function tryFindBestRouterTrade(
     // it means the offchain pool data overestimated the output for the found partial trade
     // size, so backoff by halving the trade size at each step validated against onchain
     // dryrun and accept the first size that passes, the backoff stops early if a step fails
-    // with any other error, the backoff only runs when enabled by config
+    // with any other error, the backoff only runs when enabled by config, and for orders
+    // of max profile owners with strictMaxOwnerProfilePartialTradeSizeCheck config enabled,
+    // it runs on ANY partial sim failure, so smaller sizes get probed against the real
+    // chain even when the offchain quotes show no price match
     const reason = partialTradeSizeSimResult.error.reason;
     if (
         this.appOptions.routerPartialFallback &&
-        SimulationHaltReason.needsRetry(partialTradeSizeSimResult.error.spanAttributes["error"])
+        (SimulationHaltReason.needsRetry(partialTradeSizeSimResult.error.spanAttributes["error"]) ||
+            (this.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck &&
+                AppOptions.isMaxOwnerProfile(
+                    orderDetails.takeOrder.struct.order.owner,
+                    this.appOptions.ownerProfile,
+                )))
     ) {
         let fallbackTradeSize = partialTradeSize;
         for (let i = 1; i <= 4; i++) {

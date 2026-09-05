@@ -2,7 +2,7 @@ import { ONE18 } from "../../math";
 import { Token } from "sushi/currency";
 import { SharedState } from "../../state";
 import { Dispair, Result } from "../../common";
-import { RouterType, RouteStatus } from "../types";
+import { RouterType, RouteStatus, TradeSizeStatus } from "../types";
 import { RouteLeg } from "sushi/tines";
 import { maxUint256, PublicClient } from "viem";
 import { SushiRouterError, SushiRouterErrorType } from "./error";
@@ -831,6 +831,49 @@ describe("test SushiRouter methods", () => {
             routeProcessor4ParamsSpy.mockRestore();
         });
 
+        it("should use the given precomputed sushi quote and skip the re-quote", async () => {
+            const mockQuote = {
+                type: RouterType.Sushi as const,
+                status: RouteStatus.Success,
+                price: 3000n * ONE18,
+                route: {
+                    route: { status: "Success", legs: [] },
+                    pcMap: new Map(),
+                } as any,
+                amountOut: 3000000000n,
+            };
+
+            const tryQuoteSpy = vi.spyOn(router, "tryQuote");
+            const visSpy = vi.spyOn(SushiRouter, "visualizeRoute");
+            visSpy.mockReturnValue(["some route"]);
+            const routeProcessor4ParamsSpy = vi.spyOn(Router, "routeProcessor4Params");
+            routeProcessor4ParamsSpy.mockReturnValue({
+                routeCode: "0xrouteCode" as `0x${string}`,
+            } as any);
+
+            const result = await router.getTradeParams({
+                ...mockGetTradeParamsArgs,
+                sushiQuote: mockQuote,
+            });
+
+            assert(result.isOk());
+            expect(result.value.quote).toEqual(mockQuote);
+            // the precomputed quote replaces the re-quote entirely
+            expect(tryQuoteSpy).not.toHaveBeenCalled();
+            expect(routeProcessor4ParamsSpy).toHaveBeenCalledWith(
+                mockQuote.route.pcMap,
+                mockQuote.route.route,
+                mockTokenIn,
+                mockTokenOut,
+                "0xdestination",
+                "0xrouteProcessor4",
+            );
+
+            visSpy.mockRestore();
+            tryQuoteSpy.mockRestore();
+            routeProcessor4ParamsSpy.mockRestore();
+        });
+
         it("should successfully return trade params for partial trade size and maxRatio false", async () => {
             const mockQuote = {
                 type: RouterType.Sushi as const,
@@ -1020,7 +1063,7 @@ describe("test SushiRouter methods", () => {
             maximumInputFixed = 10n * ONE18;
         });
 
-        it("should return undefined if no valid trade size found (all NoWay)", () => {
+        it("should return NoWay status if no route is found at any size", () => {
             (Router.findBestRoute as Mock).mockReturnValue({ status: "NoWay" });
 
             const result = router.findLargestTradeSize(
@@ -1031,10 +1074,10 @@ describe("test SushiRouter methods", () => {
                 gasPrice,
             );
 
-            expect(result).toBeUndefined();
+            expect(result).toEqual({ status: TradeSizeStatus.NoWay });
         });
 
-        it("should return the largest valid trade size when some routes are valid", () => {
+        it("should return Found status with the largest valid trade size when some routes are valid", () => {
             (Router.findBestRoute as Mock).mockImplementation(() => {
                 return { status: "OK", amountOutBI: 4n * ONE18 };
             });
@@ -1049,11 +1092,21 @@ describe("test SushiRouter methods", () => {
                 gasPrice,
             );
 
-            expect(typeof result).toBe("bigint");
-            expect(result).toBe(3999999761581420898n);
+            expect(result).toMatchObject({
+                status: TradeSizeStatus.Found,
+                size: 3999999761581420898n,
+            });
+            // carries the winning probe quote so downstream can reuse it
+            assert(result.status === TradeSizeStatus.Found);
+            expect(result.quote.amountOut).toBe(4n * ONE18);
+            expect(result.quote.price).toBeGreaterThan(1n * ONE18);
+            expect(result.quote.route.route).toEqual({
+                status: "OK",
+                amountOutBI: 4n * ONE18,
+            });
         });
 
-        it("should return undefined if all OK routes have price < ratio", () => {
+        it("should return PriceMismatch status with the biggest routed size if all OK routes have price < ratio", () => {
             (Router.findBestRoute as Mock).mockImplementation(() => ({
                 status: "OK",
                 amountOutBI: 1n, // price = 1
@@ -1068,7 +1121,61 @@ describe("test SushiRouter methods", () => {
                 gasPrice,
             );
 
-            expect(result).toBeUndefined();
+            // every probe has a route but fails the price match, so the search
+            // shrinks from the first probe, which is the biggest routed size
+            // at half of the maximum input
+            expect(result).toMatchObject({
+                status: TradeSizeStatus.PriceMismatch,
+                size: 5n * ONE18,
+            });
+            // carries the biggest routed probe quote
+            assert(result.status === TradeSizeStatus.PriceMismatch);
+            expect(result.quote.amountOut).toBe(1n);
+            expect(result.quote.route.route).toEqual({ status: "OK", amountOutBI: 1n });
+        });
+
+        it("should return PriceMismatch status with the biggest ROUTED size when big sizes have no route", () => {
+            (Router.findBestRoute as Mock).mockImplementation(
+                (_pcMap: any, _chainId: any, _fromToken: any, amountIn: bigint) =>
+                    amountIn > 4n * ONE18 ? { status: "NoWay" } : { status: "OK", amountOutBI: 1n }, // routed but price fails
+            );
+            const orderDetails = makeOrderDetails(2n * ONE18); // ratio = 2
+
+            const result = router.findLargestTradeSize(
+                orderDetails,
+                toToken,
+                fromToken,
+                maximumInputFixed,
+                gasPrice,
+            );
+
+            // first probe at 5 has no route and shrinks to 2.5 which is routed,
+            // all later probes stay below it, so the biggest routed size is 2.5
+            expect(result).toMatchObject({
+                status: TradeSizeStatus.PriceMismatch,
+                size: (25n * ONE18) / 10n,
+            });
+            assert(result.status === TradeSizeStatus.PriceMismatch);
+            expect(result.quote.amountOut).toBe(1n);
+        });
+
+        it("should treat negative output routes as unroutable", () => {
+            (Router.findBestRoute as Mock).mockImplementation(() => ({
+                status: "OK",
+                amountOutBI: -1n, // known sushi lib glitch
+            }));
+
+            const result = router.findLargestTradeSize(
+                makeOrderDetails(1n * ONE18),
+                toToken,
+                fromToken,
+                maximumInputFixed,
+                gasPrice,
+            );
+
+            // negative output probes must not be recorded nor tracked as routed,
+            // otherwise their quotes would bypass the NegativeOutput guard downstream
+            expect(result).toEqual({ status: TradeSizeStatus.NoWay });
         });
 
         it("should handle fromToken decimals other than 18", () => {
@@ -1087,8 +1194,53 @@ describe("test SushiRouter methods", () => {
                 gasPrice,
             );
 
-            expect(typeof result).toBe("bigint");
-            expect(result).toBeGreaterThan(0n);
+            assert(result.status === TradeSizeStatus.Found);
+            expect(result.size).toBeGreaterThan(0n);
+        });
+
+        it("should return Found status in absolute mode when price impact stays below tolerance", () => {
+            (Router.findBestRoute as Mock).mockReturnValue({
+                status: "OK",
+                amountOutBI: 1n,
+                priceImpact: 1, // below default tolerance
+            });
+
+            const result = router.findLargestTradeSize(
+                makeOrderDetails(1n * ONE18),
+                toToken,
+                fromToken,
+                maximumInputFixed,
+                gasPrice,
+                "single",
+                true, // absolute mode
+            );
+
+            // always below tolerance, so the search grows towards the maximum input
+            assert(result.status === TradeSizeStatus.Found);
+            expect(result.size).toBeGreaterThan(9n * ONE18);
+            expect(result.size).toBeLessThan(10n * ONE18);
+        });
+
+        it("should return NoWay and never PriceMismatch in absolute mode", () => {
+            (Router.findBestRoute as Mock).mockReturnValue({
+                status: "OK",
+                amountOutBI: 1n,
+                priceImpact: 3, // above default tolerance of 2.5
+            });
+
+            const result = router.findLargestTradeSize(
+                makeOrderDetails(1n * ONE18),
+                toToken,
+                fromToken,
+                maximumInputFixed,
+                gasPrice,
+                "single",
+                true, // absolute mode
+            );
+
+            // routed probes exist but absolute mode has no order ratio,
+            // so it reports NoWay instead of PriceMismatch
+            expect(result).toEqual({ status: TradeSizeStatus.NoWay });
         });
     });
 });

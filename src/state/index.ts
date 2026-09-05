@@ -2,7 +2,7 @@ import { GasManager } from "../gas";
 import { ChainId } from "sushi/chain";
 import { AppOptions } from "../config";
 import { Token } from "sushi/currency";
-import { BalancerRouter, DEFAULT_PRICE_IMPACT_TOLERANCE } from "../router";
+import { BalancerRouter, DEFAULT_PRICE_IMPACT_TOLERANCE, TradeSizeStatus } from "../router";
 import { LiquidityProviders } from "sushi";
 import { SolverContracts } from "./contracts";
 import { SushiRouter } from "../router/sushi";
@@ -20,6 +20,7 @@ import { RpcState, rainSolverTransport, RainSolverTransportConfig } from "../rpc
 import {
     webSocket,
     parseUnits,
+    formatUnits,
     PublicClient,
     createPublicClient,
     ReadContractErrorType,
@@ -489,21 +490,14 @@ export class SharedState {
             this.appOptions.route,
             true, // absolute
         );
-        if (typeof partialAmountIn !== "bigint") {
+        if (partialAmountIn.status !== TradeSizeStatus.Found) {
             return result;
         }
-        const partialResult = await this.router.getMarketPrice({
-            fromToken,
-            toToken,
-            blockNumber,
-            gasPrice: this.gasPrice,
-            amountIn: partialAmountIn,
-            sushiRouteType: this.appOptions.route,
-            skipFetch: !!skipFetch,
+        // build the partial market price directly from the size search winning
+        // probe quote instead of recomputing the same route for the same size
+        return Result.ok({
+            price: formatUnits(partialAmountIn.quote.price, 18),
+            route: partialAmountIn.quote.route.route,
         });
-        if (partialResult.isOk()) {
-            return partialResult;
-        }
-        return result;
     }
 }

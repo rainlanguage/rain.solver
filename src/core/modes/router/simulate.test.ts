@@ -107,6 +107,24 @@ describe("Test RouterTradeSimulator", () => {
     });
 
     describe("Test prepareTradeParams method", async () => {
+        it("should pass the precomputed sushi quote through to getTradeParams", async () => {
+            const mockSushiQuote = { route: { pcMap: new Map() }, price: 1n } as any;
+            const error = new RainSolverRouterError(
+                "some error",
+                RainSolverRouterErrorType.FetchFailed,
+            );
+            (mockSolver.state.router.getTradeParams as Mock).mockResolvedValueOnce(
+                Result.err(error),
+            );
+            simulator = new RouterTradeSimulator({ ...tradeArgs, sushiQuote: mockSushiQuote });
+
+            await simulator.prepareTradeParams();
+
+            expect(mockSolver.state.router.getTradeParams).toHaveBeenCalledWith(
+                expect.objectContaining({ sushiQuote: mockSushiQuote }),
+            );
+        });
+
         it("should return error if getTradeParams fails", async () => {
             const error = new RainSolverRouterError(
                 "some error",
