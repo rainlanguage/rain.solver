@@ -40,6 +40,8 @@ gasPriceMultiplier: 150
 txTimeThreshold: 4000
 blockTime: 3000
 routerPartialFallback: false
+routerPartialFallbackSteps: 6
+routerSecondaryRouteTry: all
 strictMaxOwnerProfileCheck: true
 strictMaxOwnerProfilePartialTradeSizeCheck: true
 checkWalletBalanceTime: 30
@@ -172,6 +174,8 @@ orderbookTradeTypes:
             convertToGasTime: 0,
             rotateMultiWallet: false,
             routerPartialFallback: false,
+            routerPartialFallbackSteps: 6,
+            routerSecondaryRouteTry: "all",
             strictMaxOwnerProfileCheck: true,
             strictMaxOwnerProfilePartialTradeSizeCheck: true,
             checkWalletBalanceTime: 30,
@@ -367,6 +371,8 @@ orderbookTradeTypes:
         assert.equal(result.convertToGasTime, 2);
         assert.equal(result.rotateMultiWallet, true);
         assert.equal(result.routerPartialFallback, true); // should be default true
+        assert.equal(result.routerPartialFallbackSteps, 4); // should be default 4
+        assert.equal(result.routerSecondaryRouteTry, "max"); // should be default max
         assert.equal(result.strictMaxOwnerProfileCheck, false); // should be default false
         assert.equal(result.strictMaxOwnerProfilePartialTradeSizeCheck, false); // should be default false
         assert.equal(result.checkWalletBalanceTime, 15); // should be default 15

@@ -274,6 +274,39 @@ describe("Test yaml Validator methods", async function () {
         );
     });
 
+    it("test Validator resolveRouterSecondaryRouteTry", async function () {
+        // happy
+        let input: any = "all";
+        let result = Validator.resolveRouterSecondaryRouteTry(input);
+        assert.equal(result, "all");
+
+        input = "MAX";
+        result = Validator.resolveRouterSecondaryRouteTry(input);
+        assert.equal(result, "max");
+
+        input = "off";
+        result = Validator.resolveRouterSecondaryRouteTry(input);
+        assert.equal(result, "off");
+
+        // default
+        input = undefined;
+        result = Validator.resolveRouterSecondaryRouteTry(input);
+        assert.equal(result, "max");
+
+        // happy from env
+        process.env.INPUT = "all";
+        input = "$INPUT";
+        result = Validator.resolveRouterSecondaryRouteTry(input);
+        assert.equal(result, "all");
+
+        // unhappy
+        input = "some";
+        assert.throws(
+            () => Validator.resolveRouterSecondaryRouteTry(input),
+            /expected either of all, max or off for routerSecondaryRouteTry/,
+        );
+    });
+
     it("test Validator resolveRouteType", async function () {
         // happy
         let input: any = "full";

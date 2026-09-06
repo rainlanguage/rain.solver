@@ -262,6 +262,26 @@ export class RainSolverRouter extends RainSolverRouterBase {
         } else {
             this.cache.set(key, 1);
         }
+
+        // when the route is locked to the given sushi quote, only the sushi
+        // router builds the trade params from it and no other router gets
+        // quoted, so the given route is reused as is
+        if (args.lockRoute && args.sushiQuote) {
+            if (!this.sushi) {
+                return Result.err(
+                    new RainSolverRouterError(
+                        "Cannot reuse sushi route as the sushi router is not available",
+                        RainSolverRouterErrorType.NoRouteFound,
+                    ),
+                );
+            }
+            const result = await this.sushi.getTradeParams(args);
+            if (result.isErr()) {
+                return Result.err(getError("Failed to reuse trade route", [result]));
+            }
+            return Result.ok(result.value);
+        }
+
         const promises = [
             this.sushi?.getTradeParams(args),
             this.balancer?.getTradeParams(args),

@@ -9,7 +9,7 @@ import { RouterTradeSimulator } from "./simulate";
 import { SimulationHaltReason } from "../simulator";
 import { SushiRouterQuote, TradeSizeStatus } from "../../../router";
 import { SimulationResult, TradeType } from "../../types";
-import { Result, raceFirstOk, extendObjectWithHeader } from "../../../common";
+import { Result, extendObjectWithHeader } from "../../../common";
 
 /** Represents the result of a router trade attempt paired with its full trade size quote */
 export type RouterTradeAttempt = {
@@ -26,7 +26,8 @@ export type RouterTradeAttempt = {
  * route's dexes excluded, so the next best route is tried, this is because the
  * sushi router lib pool models can be inaccurate for some dexes leading to false
  * positive quotes that dont hold up onchain and also shadow other good routes as
- * long as they wrongly quote the best amount out
+ * long as they wrongly quote the best amount out, the routerSecondaryRouteTry config
+ * sets which orders get the secondary try, all orders, max profile owners only, or none
  * @param this - RainSolver instance
  * @param orderDetails - The details of the order to be processed
  * @param signer - The signer to be used for the trade
@@ -58,12 +59,21 @@ export async function findBestRouterTrade(
         return primary.result;
     }
 
-    // retry once more with the primary attempt's failing route dexes
-    // excluded if it was rejected onchain during dryrun
+    // retry once more with the primary attempt's failing route dexes excluded
+    // if it was rejected onchain during dryrun and the config allows it for this order
+    const secondaryRouteTry = this.appOptions.routerSecondaryRouteTry;
+    const isSecondaryRouteTryEnabled =
+        secondaryRouteTry === "all" ||
+        (secondaryRouteTry === "max" &&
+            AppOptions.isMaxOwnerProfile(
+                orderDetails.takeOrder.struct.order.owner,
+                this.appOptions.ownerProfile,
+            ));
     const excludeDexes = SushiRouterQuote.is(primary.quote)
         ? SushiRouterQuote.getRouteDexes(primary.quote)
         : new Set<LiquidityProviders>();
     if (
+        isSecondaryRouteTryEnabled &&
         primary.result.error.reason === SimulationHaltReason.NoOpportunity &&
         excludeDexes.size == 1
     ) {
@@ -162,8 +172,7 @@ export async function tryFindBestRouterTrade(
     }
     extendObjectWithHeader(spanAttributes, fullTradeSizeSimResult.error.spanAttributes, "full");
 
-    // return early if dryrun failed
-    // in other words only try partial trade size if the full trade size failed due
+    // only run the partial trade size finder if the full trade size failed due
     // to order ratio being greater than market price or there was no route for full
     // trade size, that's because if for example for a pair there is only 1 pool and that
     // pool has certain amount of reserves that cant cover the full trade size but can
@@ -173,6 +182,32 @@ export async function tryFindBestRouterTrade(
         fullTradeSizeSimResult.error.reason !==
             SimulationHaltReason.OrderRatioGreaterThanMarketPrice
     ) {
+        // if the full trade size got rejected onchain with MinimalOutputBalanceViolation,
+        // the offchain pool data overestimated the output for the full size, the found
+        // route already clears the order ratio offchain, so the size finder adds nothing
+        // and the halved sizes are dryrun straight away with that route locked in
+        if (
+            this.appOptions.routerPartialFallback &&
+            fullTradeSizeSimResult.error.reason === SimulationHaltReason.NoOpportunity &&
+            SimulationHaltReason.needsRetry(fullTradeSizeSimResult.error.spanAttributes["error"])
+        ) {
+            const fallbackPick = await simulateFallbackTradeSizes.call(
+                this,
+                orderDetails,
+                signer,
+                ethPrice,
+                toToken,
+                fromToken,
+                blockNumber,
+                maximumInput,
+                spanAttributes,
+                [quote],
+                excludeDexes,
+            );
+            if (fallbackPick) {
+                return { result: fallbackPick, quote };
+            }
+        }
         return {
             result: Result.err({
                 type: fullTradeSizeSimResult.error.type,
@@ -253,50 +288,24 @@ export async function tryFindBestRouterTrade(
                     this.appOptions.ownerProfile,
                 )))
     ) {
-        // build the halved trade sizes, dropping zero or negative entries
-        const fallbackTradeSizes: bigint[] = [];
-        let fallbackTradeSize = partialTradeSize;
-        for (let i = 1; i <= 4; i++) {
-            fallbackTradeSize /= 2n;
-            if (fallbackTradeSize <= 0n) break;
-            fallbackTradeSizes.push(fallbackTradeSize);
-        }
-
-        // launch all fallback sims concurrently and take the first success,
-        // instead of stepping through the halved sizes sequentially, the sims
-        // that lose the race keep running but their outcome is discarded
-        const fallbackSims = fallbackTradeSizes.map((size) =>
-            RouterTradeSimulator.withArgs({
-                type: TradeType.Router,
-                solver: this,
-                orderDetails,
-                fromToken,
-                toToken,
-                signer,
-                maximumInputFixed: size,
-                ethPrice,
-                isPartial: true,
-                blockNumber,
-                excludeDexes,
-            }).trySimulateTrade(),
+        // the fallback sims reuse the sushi route already found by the partial
+        // sim, or by the full sim when the partial had none
+        const fallbackPick = await simulateFallbackTradeSizes.call(
+            this,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+            partialTradeSize,
+            spanAttributes,
+            [partialTradeSimulator.quote, fullTradeSimulator.quote],
+            excludeDexes,
         );
-        const fallbackPick = await raceFirstOk(fallbackSims);
-        if (fallbackPick?.isOk()) {
+        if (fallbackPick) {
             return { result: fallbackPick, quote };
         }
-
-        // all fallback sims have already settled with error at this point,
-        // merge their attributes indexed by size order, not completion order
-        const fallbackResults = await Promise.all(fallbackSims);
-        fallbackResults.forEach((fallbackResult, i) => {
-            if (fallbackResult.isErr()) {
-                extendObjectWithHeader(
-                    spanAttributes,
-                    fallbackResult.error.spanAttributes,
-                    `partialFallback${i + 1}`,
-                );
-            }
-        });
     }
     return {
         result: Result.err({
@@ -309,4 +318,88 @@ export async function tryFindBestRouterTrade(
         }),
         quote,
     };
+}
+
+/**
+ * Backs off from the given trade size with halved sizes (as many as the configured
+ * routerPartialFallbackSteps) validated against onchain dryrun and returns the biggest
+ * size that passes, the halved sims all launch concurrently
+ * and are all awaited, the sims reuse the first sushi route among the given quotes (in order of
+ * priority) instead of quoting again and skip the offchain price match check to go straight
+ * to dryrun, since the route already cleared the order ratio offchain for a bigger size,
+ * when none of the halved sizes pass, their span attributes get merged into the given
+ * attributes indexed by size order and undefined is returned
+ * @param this - RainSolver instance
+ * @param orderDetails - The details of the order to be processed
+ * @param signer - The signer to be used for the trade
+ * @param ethPrice - The current ETH price
+ * @param toToken - The token to trade to
+ * @param fromToken - The token to trade from
+ * @param blockNumber - The current block number
+ * @param startSize - The trade size to back off from, the halved sizes start at half of it
+ * @param spanAttributes - The attributes to merge the failed fallback sims attributes into
+ * @param quotes - The candidate quotes to reuse the route of, in order of priority
+ * @param excludeDexes - (optional) Liquidity providers (dexes) to exclude from route finding
+ */
+export async function simulateFallbackTradeSizes(
+    this: RainSolver,
+    orderDetails: Pair,
+    signer: RainSolverSigner,
+    ethPrice: string,
+    toToken: Token,
+    fromToken: Token,
+    blockNumber: bigint,
+    startSize: bigint,
+    spanAttributes: Attributes,
+    quotes: (RouterTradeSimulator["quote"] | undefined)[],
+    excludeDexes?: Set<LiquidityProviders>,
+): Promise<SimulationResult | undefined> {
+    // build the halved trade sizes, dropping zero or negative entries
+    const fallbackTradeSizes: bigint[] = [];
+    let fallbackTradeSize = startSize;
+    for (let i = 1; i <= this.appOptions.routerPartialFallbackSteps; i++) {
+        fallbackTradeSize /= 2n;
+        if (fallbackTradeSize <= 0n) break;
+        fallbackTradeSizes.push(fallbackTradeSize);
+    }
+
+    const sushiQuote = quotes.find(SushiRouterQuote.is);
+    const fallbackSims = fallbackTradeSizes.map((size) =>
+        RouterTradeSimulator.withArgs({
+            type: TradeType.Router,
+            solver: this,
+            orderDetails,
+            fromToken,
+            toToken,
+            signer,
+            maximumInputFixed: size,
+            ethPrice,
+            isPartial: true,
+            blockNumber,
+            excludeDexes,
+            sushiQuote,
+            lockRoute: true,
+            skipPriceMatchCheck: true,
+        }).trySimulateTrade(),
+    );
+    // wait for all sims and take the biggest size that passed, not the first
+    // one that resolved, the sims run concurrently so this only costs the
+    // slowest sim's latency, which is paid anyway when all of them fail
+    const fallbackResults = await Promise.all(fallbackSims);
+    const fallbackPick = fallbackResults.find((fallbackResult) => fallbackResult.isOk());
+    if (fallbackPick) {
+        return fallbackPick;
+    }
+
+    // merge the failed sims attributes indexed by size order
+    fallbackResults.forEach((fallbackResult, i) => {
+        if (fallbackResult.isErr()) {
+            extendObjectWithHeader(
+                spanAttributes,
+                fallbackResult.error.spanAttributes,
+                `partialFallback${i + 1}`,
+            );
+        }
+    });
+    return undefined;
 }

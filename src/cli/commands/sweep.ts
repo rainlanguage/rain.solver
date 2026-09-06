@@ -108,6 +108,8 @@ export async function sweepFunds(opts: SweepOptions) {
         txTimeThreshold: 2_500,
         blockTime: 5_000,
         routerPartialFallback: true,
+        routerPartialFallbackSteps: 4,
+        routerSecondaryRouteTry: "max",
         strictMaxOwnerProfileCheck: false,
         strictMaxOwnerProfilePartialTradeSizeCheck: false,
         timeout: 15_000,

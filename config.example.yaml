@@ -128,6 +128,13 @@ blockTime: 2000
 # Enables the halving backoff retries for router mode partial trades that get rejected onchain, default is true
 routerPartialFallback: true
 
+# The number of halving backoff steps to run concurrently for router mode partial trades that get rejected onchain, default is 4
+routerPartialFallbackSteps: 4
+
+# Sets which orders get a secondary router mode try with the failing route dexes excluded after an onchain rejection,
+# "all" for every order, "max" for orders of max profile owners only, "off" for none, default is "max"
+routerSecondaryRouteTry: max
+
 # When true, zero output balance pairs of max profile owners go to round processing, when false, all zero output balance pairs are skipped, default is false
 strictMaxOwnerProfileCheck: false
 
