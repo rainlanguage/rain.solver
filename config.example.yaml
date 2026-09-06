@@ -135,6 +135,12 @@ routerPartialFallbackSteps: 4
 # "all" for every order, "max" for orders of max profile owners only, "off" for none, default is "max"
 routerSecondaryRouteTry: max
 
+# Enables the dryrun gas cache that keeps an average gas limit per order pair for sushi route processor trades and skips the init dryrun once enough samples are in, default is false
+dryrunGasCache: false
+
+# Time (in minutes) between dryrun gas cache resets, default is 60
+dryrunGasCacheResetTime: 60
+
 # When true, zero output balance pairs of max profile owners go to round processing, when false, all zero output balance pairs are skipped, default is false
 strictMaxOwnerProfileCheck: false
 

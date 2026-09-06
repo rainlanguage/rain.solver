@@ -131,6 +131,10 @@ export type AppOptions = {
     routerPartialFallbackSteps: number;
     /** Sets which orders get a secondary router mode try with the failing route dexes excluded after an onchain rejection, "all" for every order, "max" for orders of max profile owners only, "off" for none, default is "max" */
     routerSecondaryRouteTry: "all" | "max" | "off";
+    /** Enables the dryrun gas cache that keeps an average gas limit per order pair for sushi route processor trades and skips the init dryrun once enough samples are in, default is false */
+    dryrunGasCache: boolean;
+    /** Time (in minutes) between dryrun gas cache resets, default is 60 */
+    dryrunGasCacheResetTime: number;
     /** When true, zero output balance pairs of max profile owners go to round processing, when false, all zero output balance pairs are skipped, default is false */
     strictMaxOwnerProfileCheck: boolean;
     /** When true, the router mode fallback partial trade backoff runs on any partial sim failure for orders of max profile owners, default is false */
@@ -422,6 +426,23 @@ export namespace AppOptions {
                 ),
                 routerSecondaryRouteTry: Validator.resolveRouterSecondaryRouteTry(
                     input.routerSecondaryRouteTry,
+                ),
+                dryrunGasCache: Validator.resolveBool(
+                    input.dryrunGasCache,
+                    "expected a boolean value for dryrunGasCache",
+                    false,
+                ),
+                dryrunGasCacheResetTime: Validator.resolveNumericValue(
+                    input.dryrunGasCacheResetTime,
+                    INT_PATTERN,
+                    "invalid dryrunGasCacheResetTime value, must be an integer greater than 0",
+                    "60",
+                    undefined,
+                    (dryrunGasCacheResetTime) =>
+                        assert(
+                            dryrunGasCacheResetTime > 0,
+                            "invalid dryrunGasCacheResetTime value, must be an integer greater than 0",
+                        ),
                 ),
                 strictMaxOwnerProfileCheck: Validator.resolveBool(
                     input.strictMaxOwnerProfileCheck,

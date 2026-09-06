@@ -2,8 +2,10 @@ import { dryrun } from "./dryrun";
 import { formatUnits } from "viem";
 import { toUsdValue } from "../../math";
 import { Attributes } from "@opentelemetry/api";
+import { EstimateGasCostResult } from "../../signer";
+import { DryrunGasCache } from "../../state/dryrunGasCache";
 import { Result, extendObjectWithHeader } from "../../common";
-import { FailedSimulation, SimulationResult } from "../types";
+import { FailedSimulation, SimulationResult, TradeType } from "../types";
 import { RouterTradePreparedParams, SimulateRouterTradeArgs } from "./router/simulate";
 import {
     SimulateIntraOrderbookTradeArgs,
@@ -108,73 +110,121 @@ export abstract class TradeSimulatorBase {
             return Result.err(prepareParamsResult.error);
         }
 
-        // set initial tx data with 0 min expected to get initial dryrun gas cost
-        let setTransactionDataResult = await this.setTransactionData({
-            ...prepareParamsResult.value,
-            minimumExpected: 0n,
-        });
-        if (setTransactionDataResult.isErr()) {
-            return Result.err(setTransactionDataResult.error);
-        }
+        const { solver, signer } = this.tradeArgs;
+        const gasTokenUsdPrice = solver.state.gasTokenUsdPrice;
 
-        // initial dryrun with 0 minimum sender output to get initial
-        // pass and tx gas cost to calc minimum sender output
-        const initDryrunResult = await dryrun(
-            this.tradeArgs.signer,
-            prepareParamsResult.value.rawtx,
-            this.tradeArgs.solver.state.gasPrice,
-            this.tradeArgs.solver.appOptions.gasLimitMultiplier,
-        );
-        if (initDryrunResult.isErr()) {
-            this.spanAttributes["stage"] = 1;
-            this.spanAttributes["duration"] = performance.now() - this.startTime;
-            Object.assign(initDryrunResult.error.spanAttributes, this.spanAttributes);
-            initDryrunResult.error.reason = SimulationHaltReason.NoOpportunity;
-            (initDryrunResult.error as FailedSimulation).type = prepareParamsResult.value.type;
-            return Result.err(initDryrunResult.error as FailedSimulation);
-        }
+        // the dryrun gas cache stands in for the init dryrun once it holds enough
+        // samples for this order pair, it only applies to sushi route processor
+        // trades, other trade types have their own gas profiles and dont take part,
+        // and it is not used when gas coverage is 0, as then the init dryrun is the
+        // only onchain validation of the trade
+        const gasCache =
+            solver.appOptions.dryrunGasCache &&
+            solver.appOptions.gasCoveragePercentage !== "0" &&
+            prepareParamsResult.value.type === TradeType.RouteProcessor
+                ? solver.state.dryrunGasCache
+                : undefined;
+        const gasCacheKey = gasCache ? DryrunGasCache.key(this.tradeArgs.orderDetails) : "";
+        const cachedGas = gasCache?.get(gasCacheKey);
 
-        const gasTokenUsdPrice = this.tradeArgs.solver.state.gasTokenUsdPrice;
-        let { estimation, estimatedGasCost } = initDryrunResult.value;
-        // include dryrun initial gas estimation in logs
-        Object.assign(this.spanAttributes, initDryrunResult.value.spanAttributes);
-        extendObjectWithHeader(
-            this.spanAttributes,
-            {
-                gasLimit: estimation.gas.toString(),
-                totalCost: estimation.totalGasCost.toString(),
-                gasPrice: estimation.gasPrice.toString(),
-                ...(gasTokenUsdPrice
-                    ? {
-                          totalCostUsd: formatUnits(
-                              toUsdValue(estimatedGasCost, gasTokenUsdPrice),
-                              18,
-                          ),
-                      }
-                    : {}),
-                ...(this.tradeArgs.solver.state.chainConfig.isSpecialL2
-                    ? {
-                          l1Cost: estimation.l1Cost.toString(),
-                          l1GasPrice: estimation.l1GasPrice.toString(),
-                      }
-                    : {}),
-            },
-            "gasEst.initial",
-        );
-
-        // exit early if gas coverage is 0, as we wont need to determine the
-        // profitability of the transaction in this case
-        if (this.tradeArgs.solver.appOptions.gasCoveragePercentage === "0") {
-            this.spanAttributes["foundOpp"] = true;
-            this.spanAttributes["duration"] = performance.now() - this.startTime;
-            return Result.ok({
-                estimatedGasCost,
-                type: prepareParamsResult.value.type,
-                spanAttributes: this.spanAttributes,
-                rawtx: prepareParamsResult.value.rawtx,
-                oppBlockNumber: Number(this.tradeArgs.blockNumber),
-                estimatedProfit: this.estimateProfit(prepareParamsResult.value.price)!,
+        let estimation: EstimateGasCostResult;
+        let estimatedGasCost: bigint;
+        let setTransactionDataResult: Result<void, FailedSimulation>;
+        if (cachedGas) {
+            // skip the init dryrun and build the initial gas cost from the
+            // cached average the same way the dryrun would from an estimation
+            const gasLimit = (cachedGas.gas * BigInt(solver.appOptions.gasLimitMultiplier)) / 100n;
+            estimatedGasCost = gasLimit * solver.state.gasPrice + cachedGas.l1Cost;
+            extendObjectWithHeader(
+                this.spanAttributes,
+                {
+                    cached: true,
+                    gasLimit: gasLimit.toString(),
+                    totalCost: estimatedGasCost.toString(),
+                    gasPrice: solver.state.gasPrice.toString(),
+                    ...(gasTokenUsdPrice
+                        ? {
+                              totalCostUsd: formatUnits(
+                                  toUsdValue(estimatedGasCost, gasTokenUsdPrice),
+                                  18,
+                              ),
+                          }
+                        : {}),
+                    ...(solver.state.chainConfig.isSpecialL2
+                        ? { l1Cost: cachedGas.l1Cost.toString() }
+                        : {}),
+                },
+                "gasEst.initial",
+            );
+        } else {
+            // set initial tx data with 0 min expected to get initial dryrun gas cost
+            setTransactionDataResult = await this.setTransactionData({
+                ...prepareParamsResult.value,
+                minimumExpected: 0n,
             });
+            if (setTransactionDataResult.isErr()) {
+                return Result.err(setTransactionDataResult.error);
+            }
+
+            // initial dryrun with 0 minimum sender output to get initial
+            // pass and tx gas cost to calc minimum sender output
+            const initDryrunResult = await dryrun(
+                signer,
+                prepareParamsResult.value.rawtx,
+                solver.state.gasPrice,
+                solver.appOptions.gasLimitMultiplier,
+            );
+            if (initDryrunResult.isErr()) {
+                this.spanAttributes["stage"] = 1;
+                this.spanAttributes["duration"] = performance.now() - this.startTime;
+                Object.assign(initDryrunResult.error.spanAttributes, this.spanAttributes);
+                initDryrunResult.error.reason = SimulationHaltReason.NoOpportunity;
+                (initDryrunResult.error as FailedSimulation).type = prepareParamsResult.value.type;
+                return Result.err(initDryrunResult.error as FailedSimulation);
+            }
+
+            ({ estimation, estimatedGasCost } = initDryrunResult.value);
+            gasCache?.recordInit(gasCacheKey, estimation.gas, estimation.l1Cost);
+            // include dryrun initial gas estimation in logs
+            Object.assign(this.spanAttributes, initDryrunResult.value.spanAttributes);
+            extendObjectWithHeader(
+                this.spanAttributes,
+                {
+                    gasLimit: estimation.gas.toString(),
+                    totalCost: estimation.totalGasCost.toString(),
+                    gasPrice: estimation.gasPrice.toString(),
+                    ...(gasTokenUsdPrice
+                        ? {
+                              totalCostUsd: formatUnits(
+                                  toUsdValue(estimatedGasCost, gasTokenUsdPrice),
+                                  18,
+                              ),
+                          }
+                        : {}),
+                    ...(solver.state.chainConfig.isSpecialL2
+                        ? {
+                              l1Cost: estimation.l1Cost.toString(),
+                              l1GasPrice: estimation.l1GasPrice.toString(),
+                          }
+                        : {}),
+                },
+                "gasEst.initial",
+            );
+
+            // exit early if gas coverage is 0, as we wont need to determine the
+            // profitability of the transaction in this case
+            if (solver.appOptions.gasCoveragePercentage === "0") {
+                this.spanAttributes["foundOpp"] = true;
+                this.spanAttributes["duration"] = performance.now() - this.startTime;
+                return Result.ok({
+                    estimatedGasCost,
+                    type: prepareParamsResult.value.type,
+                    spanAttributes: this.spanAttributes,
+                    rawtx: prepareParamsResult.value.rawtx,
+                    oppBlockNumber: Number(this.tradeArgs.blockNumber),
+                    estimatedProfit: this.estimateProfit(prepareParamsResult.value.price)!,
+                });
+            }
         }
 
         // repeat the process again with headroom to get more accurate gas cost
@@ -224,6 +274,7 @@ export abstract class TradeSimulatorBase {
         }
 
         ({ estimation, estimatedGasCost } = finalDryrunResult.value);
+        gasCache?.recordFinal(gasCacheKey, estimation.gas, estimation.l1Cost);
         // include dryrun final gas estimation in otel logs
         Object.assign(this.spanAttributes, finalDryrunResult.value.spanAttributes);
         extendObjectWithHeader(

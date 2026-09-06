@@ -5,6 +5,7 @@ import { Token } from "sushi/currency";
 import { BalancerRouter, DEFAULT_PRICE_IMPACT_TOLERANCE, TradeSizeStatus } from "../router";
 import { LiquidityProviders } from "sushi";
 import { SolverContracts } from "./contracts";
+import { DryrunGasCache } from "./dryrunGasCache";
 import { SushiRouter } from "../router/sushi";
 import { AddressProvider } from "@balancer/sdk";
 import { WalletConfig } from "../wallet/config";
@@ -229,6 +230,8 @@ export class SharedState {
     readonly router: RainSolverRouter;
     /** Gas manager instance */
     readonly gasManager: GasManager;
+    /** Keeps the average dryrun gas limit per order pair, used to skip init dryruns when enabled */
+    readonly dryrunGasCache: DryrunGasCache;
 
     /** Keeps the app's RPC state */
     rpc: RpcState;
@@ -260,6 +263,9 @@ export class SharedState {
         this.writeRpc = config.writeRpcState;
         this.router = config.router;
         this.gasManager = config.gasManager;
+        this.dryrunGasCache = new DryrunGasCache(
+            (config.appOptions?.dryrunGasCacheResetTime ?? 0) * 60_000,
+        );
         if (config.watchedTokens) {
             this.watchedTokens = config.watchedTokens;
         }
