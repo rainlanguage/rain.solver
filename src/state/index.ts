@@ -40,12 +40,20 @@ type WsTransportSubscribe = {
     }): Promise<{ unsubscribe: () => Promise<unknown> }>;
 };
 
+/** Matches a non-empty hex quantity string */
+const HEX_QUANTITY_PATTERN = /^0x[0-9a-f]+$/i;
+
 /**
  * Subscribes to the flashblocks heads (newFlashblocks) of the given ws client,
  * every flashblock head carries the number of the block it belongs to, so the
  * block number moves as soon as the first flashblock of a new block shows up,
- * the subscription errors reach the given error callback the same way as new
- * heads subscriptions, socket closure included
+ * this mirrors the subscription branch of viem's watchBlockNumber with the
+ * subscription params swapped, with two additions, the error callback is
+ * also gated on the active flag, since viem gets that from its observe
+ * wrapper that drops the listeners on unwatch, which is not in play here,
+ * and the head number is checked before parsing, since a throw here lands
+ * in the socket message listener uncaught and the flashblocks payload is
+ * provider specific
  * @param wsClient - The ws client to subscribe through
  * @param onBlockNumber - Called with the flashblock head block number
  * @param onError - Called when the subscription errors
@@ -57,35 +65,34 @@ export function subscribeToFlashblocks(
     onError: (error: any) => void,
 ): () => void {
     let active = true;
-    let unsubscribe: (() => void) | undefined;
-    // the ws transport subscribe is typed for new heads only, so go through
-    // a structural type to pass the flashblocks subscription params
-    (wsClient.transport as unknown as WsTransportSubscribe)
-        .subscribe({
-            params: ["newFlashblocks"],
-            onData: (data: any) => {
-                const number = data?.result?.number;
-                if (typeof number === "string") {
-                    onBlockNumber(hexToBigInt(number as `0x${string}`));
-                }
-            },
-            onError,
-        })
-        .then(
-            (subscription: { unsubscribe: () => Promise<unknown> }) => {
-                unsubscribe = () => {
-                    subscription.unsubscribe().catch(() => {});
-                };
-                // unsubscribed before the subscription got established
-                if (!active) unsubscribe();
-            },
-            (error: any) => {
-                if (active) onError(error);
-            },
-        );
+    let unsubscribe: () => unknown = () => (active = false);
+    (async () => {
+        try {
+            // the ws transport subscribe is typed for new heads only, so go
+            // through a structural type to pass the flashblocks params
+            const transport = wsClient.transport as unknown as WsTransportSubscribe;
+            const { unsubscribe: unsubscribe_ } = await transport.subscribe({
+                params: ["newFlashblocks"],
+                onData(data: any) {
+                    if (!active) return;
+                    const number = data?.result?.number;
+                    if (typeof number === "string" && HEX_QUANTITY_PATTERN.test(number)) {
+                        onBlockNumber(hexToBigInt(number as `0x${string}`));
+                    }
+                },
+                onError(error: any) {
+                    if (active) onError(error);
+                },
+            });
+            unsubscribe = unsubscribe_;
+            if (!active) unsubscribe();
+        } catch (err) {
+            if (active) onError(err);
+        }
+    })();
     return () => {
         active = false;
-        unsubscribe?.();
+        unsubscribe();
     };
 }
 

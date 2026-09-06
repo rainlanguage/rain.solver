@@ -8,7 +8,13 @@ import { SolverContracts } from "./contracts";
 import { RainSolverRouter } from "../router/router";
 import { Result, TokenDetails } from "../common";
 import { describe, it, expect, vi, beforeEach, afterEach, Mock, assert } from "vitest";
-import { SharedState, SharedStateConfig, SharedStateErrorType, WS_RESUBSCRIBE_DELAY } from ".";
+import {
+    SharedState,
+    SharedStateConfig,
+    SharedStateErrorType,
+    WS_RESUBSCRIBE_DELAY,
+    subscribeToFlashblocks,
+} from ".";
 
 vi.mock("../gas", () => ({
     GasManager: {
@@ -590,10 +596,8 @@ describe("Test SharedState", () => {
                     onData({ result: { number: "0x69" } });
                     expect(sharedState.blockNumber).toBe(105n);
 
-                    // should not move backwards and ignores malformed heads
+                    // should not move backwards
                     onData({ result: { number: "0x65" } });
-                    onData({ result: {} });
-                    onData({});
                     expect(sharedState.blockNumber).toBe(105n);
 
                     // no polling should be active
@@ -677,6 +681,132 @@ describe("Test SharedState", () => {
                     expect(subscribeSpy).toHaveBeenCalledTimes(1);
                 });
             });
+        });
+    });
+
+    describe("Test subscribeToFlashblocks", () => {
+        let onData: (data: any) => void;
+        let onSubError: (error: any) => void;
+        let onBlockNumber: Mock;
+        let onError: Mock;
+        let unsubscribe: Mock;
+        let resolveSubscription: () => void;
+        let rejectSubscription: (error: Error) => void;
+        let wsClient: any;
+
+        beforeEach(() => {
+            onBlockNumber = vi.fn();
+            onError = vi.fn();
+            unsubscribe = vi.fn().mockResolvedValue(true);
+            wsClient = {
+                transport: {
+                    subscribe: vi.fn().mockImplementation((args: any) => {
+                        onData = args.onData;
+                        onSubError = args.onError;
+                        return new Promise((resolve, reject) => {
+                            resolveSubscription = () =>
+                                resolve({ subscriptionId: "0x1", unsubscribe });
+                            rejectSubscription = reject;
+                        });
+                    }),
+                },
+            };
+        });
+
+        it("should parse well formed hex heads and ignore malformed ones", async () => {
+            subscribeToFlashblocks(wsClient, onBlockNumber, onError);
+            resolveSubscription();
+            await Promise.resolve();
+
+            onData({ result: { number: "0x69" } });
+            onData({ result: { number: "0xFF" } });
+            expect(onBlockNumber).toHaveBeenNthCalledWith(1, 105n);
+            expect(onBlockNumber).toHaveBeenNthCalledWith(2, 255n);
+
+            // none of these throw, as a throw here would reach the socket
+            // message listener uncaught, nor do they reach the callback
+            onData({ result: { number: "0x" } });
+            onData({ result: { number: "0xzz" } });
+            onData({ result: { number: "105" } });
+            onData({ result: { number: 105 } });
+            onData({ result: {} });
+            onData({});
+            onData(undefined);
+            expect(onBlockNumber).toHaveBeenCalledTimes(2);
+            expect(onError).not.toHaveBeenCalled();
+        });
+
+        it("should ignore heads and errors after unsubscribing", async () => {
+            const unwatch = subscribeToFlashblocks(wsClient, onBlockNumber, onError);
+            resolveSubscription();
+            await Promise.resolve();
+
+            unwatch();
+            expect(unsubscribe).toHaveBeenCalledTimes(1);
+
+            onData({ result: { number: "0x69" } });
+            onSubError(new Error("socket closed"));
+            expect(onBlockNumber).not.toHaveBeenCalled();
+            expect(onError).not.toHaveBeenCalled();
+        });
+
+        it("should report a failed subscribe request through both viem paths", async () => {
+            subscribeToFlashblocks(wsClient, onBlockNumber, onError);
+
+            // viem reports a rejected subscribe through both the callback
+            // and the rejected promise, both reach the caller as is
+            const error = new Error("unsupported");
+            onSubError(error);
+            rejectSubscription(error);
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(onError).toHaveBeenCalledTimes(2);
+            expect(onError).toHaveBeenCalledWith(error);
+        });
+
+        it("should keep reporting errors of a live subscription", async () => {
+            subscribeToFlashblocks(wsClient, onBlockNumber, onError);
+            resolveSubscription();
+            await Promise.resolve();
+
+            onSubError(new Error("first"));
+            onData({ result: { number: "0x69" } });
+            onSubError(new Error("second"));
+            expect(onError).toHaveBeenCalledTimes(2);
+            expect(onBlockNumber).toHaveBeenCalledWith(105n);
+        });
+
+        it("should report a rejected subscribe request that had no error callback", async () => {
+            subscribeToFlashblocks(wsClient, onBlockNumber, onError);
+            const error = new Error("connection failed");
+            rejectSubscription(error);
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(onError).toHaveBeenCalledTimes(1);
+            expect(onError).toHaveBeenCalledWith(error);
+        });
+
+        it("should not report a rejected subscribe request after unsubscribing", async () => {
+            const unwatch = subscribeToFlashblocks(wsClient, onBlockNumber, onError);
+            unwatch();
+            rejectSubscription(new Error("connection failed"));
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(onError).not.toHaveBeenCalled();
+            expect(unsubscribe).not.toHaveBeenCalled();
+        });
+
+        it("should unsubscribe once established when unsubscribed before that", async () => {
+            const unwatch = subscribeToFlashblocks(wsClient, onBlockNumber, onError);
+            unwatch();
+            expect(unsubscribe).not.toHaveBeenCalled();
+
+            resolveSubscription();
+            await Promise.resolve();
+            expect(unsubscribe).toHaveBeenCalledTimes(1);
         });
     });
 
