@@ -137,6 +137,7 @@ export namespace _v6 {
         `event ClearV3(address sender, ${OrderV4} alice, ${OrderV4} bob, ${ClearConfigV2} clearConfig)` as const,
         `event TakeOrderV3(address sender, ${TakeOrderConfigV4} config, ${Float} input, ${Float} output)` as const,
         `event WithdrawV2(address sender, address token, bytes32 vaultId, ${Float} targetAmount, ${Float} withdrawAmount, uint256 withdrawAmountUint256)` as const,
+        `event MetaV1_2(address sender, bytes32 subject, bytes meta)` as const,
         `function entask2(${TaskV2}[] calldata tasks) external` as const,
         `function orderExists(bytes32 orderHash) external view returns (bool exists)` as const,
         `function vaultBalance2(address owner, address token, bytes32 vaultId) external view returns (${Float} balance)` as const,

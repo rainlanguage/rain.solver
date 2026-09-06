@@ -839,32 +839,35 @@ describe("Test RainSolverCli", () => {
                 .mockImplementation(async () => {
                     order.push("rpc");
                 });
-            (mockOrderManager.sync as Mock).mockImplementation(async () => {
-                order.push("sync");
-                return { name: "sync" };
+            let releaseSync!: () => void;
+            const syncPromise = new Promise<void>((resolve) => (releaseSync = resolve)).then(() => {
+                order.push("sync:end");
             });
 
             const promise = rainSolverCli.finalizeRound(
                 mockSpan,
                 mockRoundCtx as any,
+                syncPromise,
                 Promise.resolve({ name: "check-balance" } as any),
                 Promise.resolve({ "0xworker": 1n }),
             );
 
             // every operation has started without waiting for the wallet ops,
-            // and the span stays open while they are pending
-            expect(order).toEqual(["reset", "walletOps:start", "sync", "rpc"]);
+            // and the span stays open while they and the sync are pending
+            expect(order).toEqual(["reset", "walletOps:start", "rpc"]);
             await Promise.resolve();
             expect(mockSpan.end).not.toHaveBeenCalled();
 
             releaseWalletOps();
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(order).toEqual(["reset", "walletOps:start", "rpc", "walletOps:end"]);
+            expect(mockSpan.end).not.toHaveBeenCalled();
+
+            releaseSync();
             await promise;
-            expect(order).toEqual(["reset", "walletOps:start", "sync", "rpc", "walletOps:end"]);
+            expect(order).toEqual(["reset", "walletOps:start", "rpc", "walletOps:end", "sync:end"]);
             expect(mockSpan.end).toHaveBeenCalledTimes(1);
-            expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
-                { name: "sync" },
-                mockRoundCtx,
-            );
             expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
                 { name: "check-balance" },
                 mockRoundCtx,
@@ -890,11 +893,11 @@ describe("Test RainSolverCli", () => {
             const rpcSpy = vi
                 .spyOn(rainSolverCli, "reportRpcMetricsForRound")
                 .mockRejectedValue(new Error("rpc report failed"));
-            (mockOrderManager.sync as Mock).mockRejectedValue(new Error("sync failed"));
 
             await rainSolverCli.finalizeRound(
                 mockSpan,
                 mockRoundCtx as any,
+                Promise.resolve(),
                 Promise.reject(new Error("balance check failed")),
                 Promise.reject(new Error("worker balances failed")),
             );
@@ -905,9 +908,6 @@ describe("Test RainSolverCli", () => {
                 code: SpanStatusCode.ERROR,
                 message: expect.any(String),
             });
-            expect(mockSpan.addEvent).toHaveBeenCalledWith(
-                "Failed to sync orders to upstream, will try again next round",
-            );
             expect(mockSpan.end).toHaveBeenCalledTimes(1);
             expect(rainSolverCli.prevMainWalletBalanceReport).toBeUndefined();
             expect(rainSolverCli.prevMultiWalletBalanceReports).toBeUndefined();
@@ -923,19 +923,33 @@ describe("Test RainSolverCli", () => {
             const rpcSpy = vi
                 .spyOn(rainSolverCli, "reportRpcMetricsForRound")
                 .mockResolvedValue(undefined);
-            (mockOrderManager.sync as Mock).mockResolvedValue({ name: "sync" });
 
-            await rainSolverCli.finalizeRound(mockSpan, mockRoundCtx as any);
+            await rainSolverCli.finalizeRound(mockSpan, mockRoundCtx as any, Promise.resolve());
 
             expect(mockSpan.end).toHaveBeenCalledTimes(1);
             expect(mockSpan.setAttribute).not.toHaveBeenCalledWith(
                 "circulatingAccounts",
                 expect.anything(),
             );
-            expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledTimes(1);
+            expect(mockLogger.exportPreAssembledSpan).not.toHaveBeenCalled();
 
             walletOpsSpy.mockRestore();
             rpcSpy.mockRestore();
+        });
+
+        it("should end the span even when a step throws outside the guarded operations", async () => {
+            const resetSpy = vi
+                .spyOn(rainSolverCli, "maybeResetAvgGasCost")
+                .mockImplementation(() => {
+                    throw new Error("reset failed");
+                });
+
+            await expect(
+                rainSolverCli.finalizeRound(mockSpan, mockRoundCtx as any, Promise.resolve()),
+            ).rejects.toThrow("reset failed");
+            expect(mockSpan.end).toHaveBeenCalledTimes(1);
+
+            resetSpy.mockRestore();
         });
     });
 
