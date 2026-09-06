@@ -36,7 +36,8 @@ export async function quoteSingleOrderV3(
     blockNumber?: bigint,
     gas?: bigint,
 ) {
-    const oracleResult = await fetchOracleContext.call(state, orderDetails, blockNumber);
+    blockNumber;
+    const oracleResult = await fetchOracleContext.call(state, orderDetails);
     if (oracleResult.isErr()) {
         throw oracleResult.error;
     }
@@ -81,7 +82,8 @@ export async function quoteSingleOrderV4(
     blockNumber?: bigint,
     gas?: bigint,
 ) {
-    const oracleResult = await fetchOracleContext.call(state, orderDetails, blockNumber);
+    blockNumber;
+    const oracleResult = await fetchOracleContext.call(state, orderDetails);
     if (oracleResult.isErr()) {
         throw oracleResult.error;
     }
