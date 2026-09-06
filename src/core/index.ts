@@ -58,17 +58,15 @@ export class RainSolver {
      * @returns An object containing results and reports of the processed round
      */
     async processNextRound(roundSpanCtx?: SpanWithContext, shuffle = true) {
-        const { settlements, checkpointReports, totalLength } = await initializeRound.call(
-            this,
-            roundSpanCtx,
-            shuffle,
-        );
+        const { settlements, checkpointReports, zeroLength, nonZeroLength } =
+            await initializeRound.call(this, roundSpanCtx, shuffle);
         const { results, reports } = await finalizeRound.call(this, settlements, roundSpanCtx);
         return {
             results,
             reports,
             checkpointReports,
-            totalLength,
+            nonZeroLength,
+            zeroLength,
         };
     }
 
