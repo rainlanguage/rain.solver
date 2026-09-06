@@ -804,6 +804,141 @@ describe("Test RainSolverCli", () => {
         });
     });
 
+    describe("Test finalizeRound method", () => {
+        let mockSpan: any;
+        const mockRoundCtx = { test: "round-context" };
+
+        beforeEach(() => {
+            mockSpan = {
+                setAttribute: vi.fn(),
+                setStatus: vi.fn(),
+                recordException: vi.fn(),
+                addEvent: vi.fn(),
+                end: vi.fn(),
+            };
+        });
+
+        it("should run all operations concurrently and end the span after all settle", async () => {
+            const order: string[] = [];
+            let releaseWalletOps!: () => void;
+            const walletOps = new Promise<void>((resolve) => (releaseWalletOps = resolve));
+            const resetSpy = vi
+                .spyOn(rainSolverCli, "maybeResetAvgGasCost")
+                .mockImplementation(() => {
+                    order.push("reset");
+                });
+            const walletOpsSpy = vi
+                .spyOn(rainSolverCli, "runWalletOpsForRound")
+                .mockImplementation(async () => {
+                    order.push("walletOps:start");
+                    await walletOps;
+                    order.push("walletOps:end");
+                });
+            const rpcSpy = vi
+                .spyOn(rainSolverCli, "reportRpcMetricsForRound")
+                .mockImplementation(async () => {
+                    order.push("rpc");
+                });
+            (mockOrderManager.sync as Mock).mockImplementation(async () => {
+                order.push("sync");
+                return { name: "sync" };
+            });
+
+            const promise = rainSolverCli.finalizeRound(
+                mockSpan,
+                mockRoundCtx as any,
+                Promise.resolve({ name: "check-balance" } as any),
+                Promise.resolve({ "0xworker": 1n }),
+            );
+
+            // every operation has started without waiting for the wallet ops,
+            // and the span stays open while they are pending
+            expect(order).toEqual(["reset", "walletOps:start", "sync", "rpc"]);
+            await Promise.resolve();
+            expect(mockSpan.end).not.toHaveBeenCalled();
+
+            releaseWalletOps();
+            await promise;
+            expect(order).toEqual(["reset", "walletOps:start", "sync", "rpc", "walletOps:end"]);
+            expect(mockSpan.end).toHaveBeenCalledTimes(1);
+            expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
+                { name: "sync" },
+                mockRoundCtx,
+            );
+            expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
+                { name: "check-balance" },
+                mockRoundCtx,
+            );
+            expect(rainSolverCli.prevMainWalletBalanceReport).toEqual({ name: "check-balance" });
+            expect(rainSolverCli.prevMultiWalletBalanceReports).toEqual({ "0xworker": 1n });
+            expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+                "circulatingAccounts",
+                JSON.stringify({ "0xworker": "1" }),
+            );
+            expect(mockSpan.setStatus).not.toHaveBeenCalled();
+
+            resetSpy.mockRestore();
+            walletOpsSpy.mockRestore();
+            rpcSpy.mockRestore();
+        });
+
+        it("should record failures on the span and still end it", async () => {
+            const walletOpsError = new Error("wallet ops failed");
+            const walletOpsSpy = vi
+                .spyOn(rainSolverCli, "runWalletOpsForRound")
+                .mockRejectedValue(walletOpsError);
+            const rpcSpy = vi
+                .spyOn(rainSolverCli, "reportRpcMetricsForRound")
+                .mockRejectedValue(new Error("rpc report failed"));
+            (mockOrderManager.sync as Mock).mockRejectedValue(new Error("sync failed"));
+
+            await rainSolverCli.finalizeRound(
+                mockSpan,
+                mockRoundCtx as any,
+                Promise.reject(new Error("balance check failed")),
+                Promise.reject(new Error("worker balances failed")),
+            );
+
+            expect(mockSpan.setAttribute).toHaveBeenCalledWith("severity", "HIGH");
+            expect(mockSpan.recordException).toHaveBeenCalledWith(walletOpsError);
+            expect(mockSpan.setStatus).toHaveBeenCalledWith({
+                code: SpanStatusCode.ERROR,
+                message: expect.any(String),
+            });
+            expect(mockSpan.addEvent).toHaveBeenCalledWith(
+                "Failed to sync orders to upstream, will try again next round",
+            );
+            expect(mockSpan.end).toHaveBeenCalledTimes(1);
+            expect(rainSolverCli.prevMainWalletBalanceReport).toBeUndefined();
+            expect(rainSolverCli.prevMultiWalletBalanceReports).toBeUndefined();
+
+            walletOpsSpy.mockRestore();
+            rpcSpy.mockRestore();
+        });
+
+        it("should skip the wallet balance reports when none are pending", async () => {
+            const walletOpsSpy = vi
+                .spyOn(rainSolverCli, "runWalletOpsForRound")
+                .mockResolvedValue(undefined);
+            const rpcSpy = vi
+                .spyOn(rainSolverCli, "reportRpcMetricsForRound")
+                .mockResolvedValue(undefined);
+            (mockOrderManager.sync as Mock).mockResolvedValue({ name: "sync" });
+
+            await rainSolverCli.finalizeRound(mockSpan, mockRoundCtx as any);
+
+            expect(mockSpan.end).toHaveBeenCalledTimes(1);
+            expect(mockSpan.setAttribute).not.toHaveBeenCalledWith(
+                "circulatingAccounts",
+                expect.anything(),
+            );
+            expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledTimes(1);
+
+            walletOpsSpy.mockRestore();
+            rpcSpy.mockRestore();
+        });
+    });
+
     describe("Test run method", () => {
         it("should run continuous processing loop", async () => {
             // mock process.env for preview mode to break the loop
