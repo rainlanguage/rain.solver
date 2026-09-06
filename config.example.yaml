@@ -125,6 +125,10 @@ txTimeThreshold: 15000
 # The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher, default is 5000ms (5 seconds)
 blockTime: 2000
 
+# Subscribes the block number watcher to flashblocks heads (newFlashblocks) instead of new heads over the ws rpc,
+# only supported on Base chain, requires wsRpc, default is false
+flashblocks: false
+
 # Enables the halving backoff retries for router mode partial trades that get rejected onchain, default is true
 routerPartialFallback: true
 

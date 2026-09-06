@@ -125,6 +125,8 @@ export type AppOptions = {
     txTimeThreshold: number;
     /** The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher, default is 5000 ms */
     blockTime: number;
+    /** Subscribes the block number watcher to flashblocks heads instead of new heads over the ws rpc, only supported on Base chain, requires wsRpc, default is false */
+    flashblocks: boolean;
     /** Enables the halving backoff retries for router mode partial trades that get rejected onchain, default is true */
     routerPartialFallback: boolean;
     /** The number of halving backoff steps to run concurrently for router mode partial trades that get rejected onchain, default is 4 */
@@ -199,12 +201,20 @@ export namespace AppOptions {
      */
     export function tryFrom(input: any): Result<AppOptions, AppOptionsError> {
         try {
+            const wsRpc = Validator.resolveWsRpc(input.wsRpc);
+            const flashblocks = Validator.resolveBool(
+                input.flashblocks,
+                "expected a boolean value for flashblocks",
+                false,
+            );
+            assert(!flashblocks || wsRpc, "flashblocks requires a wsRpc to subscribe through");
             return Result.ok({
                 ...Validator.resolveWalletKey(input),
                 contracts: Validator.resolveContracts(input),
                 rpc: Validator.resolveRpc(input.rpc),
                 writeRpc: Validator.resolveRpc(input.writeRpc, true),
-                wsRpc: Validator.resolveWsRpc(input.wsRpc),
+                wsRpc,
+                flashblocks,
                 subgraph: Validator.resolveUrls(
                     input.subgraph,
                     "expected array of subgraph urls with at least 1 url",

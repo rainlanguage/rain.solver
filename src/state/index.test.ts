@@ -539,6 +539,144 @@ describe("Test SharedState", () => {
                 await vi.advanceTimersByTimeAsync(15000);
                 expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
             });
+
+            describe("flashblocks", () => {
+                let onData: (data: any) => void;
+                let onSubError: (error: Error) => void;
+                let unsubscribe: Mock;
+                let subscribeSpy: Mock;
+                let resolveSubscription: () => void;
+                let rejectSubscription: (error: Error) => void;
+
+                beforeEach(() => {
+                    config.appOptions.flashblocks = true;
+                    unsubscribe = vi.fn().mockResolvedValue(true);
+                    subscribeSpy = vi.fn().mockImplementation((args: any) => {
+                        onData = args.onData;
+                        onSubError = args.onError;
+                        return new Promise((resolve, reject) => {
+                            resolveSubscription = () =>
+                                resolve({ subscriptionId: "0x1", unsubscribe });
+                            rejectSubscription = reject;
+                        });
+                    });
+                    (createPublicClient as Mock).mockReturnValue({
+                        watchBlockNumber: watchBlockNumberSpy,
+                        transport: { subscribe: subscribeSpy },
+                    });
+                    sharedState = new SharedState(config);
+                });
+
+                afterEach(() => {
+                    config.appOptions.flashblocks = false;
+                });
+
+                it("should subscribe to newFlashblocks instead of new heads and update block number", async () => {
+                    sharedState.watchBlockNumber(5000);
+                    expect(sharedState.isWatchingBlockNumber).toBe(true);
+                    expect(watchBlockNumberSpy).not.toHaveBeenCalled();
+                    expect(subscribeSpy).toHaveBeenCalledTimes(1);
+                    expect(subscribeSpy).toHaveBeenCalledWith(
+                        expect.objectContaining({ params: ["newFlashblocks"] }),
+                    );
+                    resolveSubscription();
+
+                    // immediate update over http on start
+                    await vi.advanceTimersByTimeAsync(0);
+                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                    expect(sharedState.blockNumber).toBe(100n);
+
+                    // flashblock heads push updates the block number from the hex number
+                    onData({ result: { number: "0x69" } });
+                    expect(sharedState.blockNumber).toBe(105n);
+
+                    // should not move backwards and ignores malformed heads
+                    onData({ result: { number: "0x65" } });
+                    onData({ result: {} });
+                    onData({});
+                    expect(sharedState.blockNumber).toBe(105n);
+
+                    // no polling should be active
+                    await vi.advanceTimersByTimeAsync(15000);
+                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                });
+
+                it("should fall back to polling on subscription error and resubscribe after the delay", async () => {
+                    sharedState.watchBlockNumber(5000);
+                    resolveSubscription();
+                    await vi.advanceTimersByTimeAsync(0);
+                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+
+                    // subscription error starts the polling fallback
+                    onSubError(new Error("ws failed"));
+                    (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+                    await vi.advanceTimersByTimeAsync(5000);
+                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
+                    expect(sharedState.blockNumber).toBe(101n);
+
+                    // a fresh flashblocks subscription is established after the delay
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    expect(unsubscribe).toHaveBeenCalledTimes(1);
+                    expect(subscribeSpy).toHaveBeenCalledTimes(2);
+                    expect(watchBlockNumberSpy).not.toHaveBeenCalled();
+                    resolveSubscription();
+
+                    // the fresh subscription pushes and stops the polling fallback
+                    onData({ result: { number: "0xc8" } });
+                    expect(sharedState.blockNumber).toBe(200n);
+                    const callCount = (config.client.getBlockNumber as Mock).mock.calls.length;
+                    await vi.advanceTimersByTimeAsync(15000);
+                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(callCount);
+                });
+
+                it("should fall back to polling when the subscription request fails", async () => {
+                    sharedState.watchBlockNumber(5000);
+                    rejectSubscription(new Error("unsupported subscription"));
+                    await vi.advanceTimersByTimeAsync(0);
+                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+
+                    // polling fallback runs
+                    await vi.advanceTimersByTimeAsync(5000);
+                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
+
+                    // and a fresh subscription is attempted after the delay
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    expect(subscribeSpy).toHaveBeenCalledTimes(2);
+                });
+
+                it("should unsubscribe on unwatch", async () => {
+                    sharedState.watchBlockNumber(5000);
+                    resolveSubscription();
+                    await vi.advanceTimersByTimeAsync(0);
+
+                    sharedState.unwatchBlockNumber();
+                    expect(unsubscribe).toHaveBeenCalledTimes(1);
+                    expect(sharedState.isWatchingBlockNumber).toBe(false);
+                });
+
+                it("should unsubscribe once established when unwatched before that", async () => {
+                    sharedState.watchBlockNumber(5000);
+                    sharedState.unwatchBlockNumber();
+                    expect(unsubscribe).not.toHaveBeenCalled();
+
+                    // the late established subscription gets dropped right away
+                    resolveSubscription();
+                    await vi.advanceTimersByTimeAsync(0);
+                    expect(unsubscribe).toHaveBeenCalledTimes(1);
+                });
+
+                it("should ignore a failed subscription request after unwatch", async () => {
+                    sharedState.watchBlockNumber(5000);
+                    sharedState.unwatchBlockNumber();
+                    rejectSubscription(new Error("ws failed"));
+                    await vi.advanceTimersByTimeAsync(0);
+
+                    // no polling fallback or resubscribe after unwatch
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                    expect(subscribeSpy).toHaveBeenCalledTimes(1);
+                });
+            });
         });
     });
 
