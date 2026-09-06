@@ -32,7 +32,8 @@ export async function initializeRound(
     const nextRoundOrders = this.orderManager.getNextRoundOrders();
     const orders = [...nextRoundOrders.nonZeroOutput];
     const zeroOutputs = [...nextRoundOrders.zeroOutput];
-    const totalLength = orders.length + zeroOutputs.length;
+    const nonZeroLength = orders.length;
+    const zeroLength = zeroOutputs.length;
     const settlements: Settlement[] = [];
     const checkpointReports: PreAssembledSpan[] = [];
 
@@ -50,7 +51,8 @@ export async function initializeRound(
         return {
             settlements,
             checkpointReports,
-            totalLength,
+            nonZeroLength,
+            zeroLength,
         };
     }
 
@@ -115,7 +117,8 @@ export async function initializeRound(
     return {
         settlements,
         checkpointReports,
-        totalLength,
+        nonZeroLength,
+        zeroLength,
     };
 }
 

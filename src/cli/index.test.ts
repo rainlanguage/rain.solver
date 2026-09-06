@@ -761,11 +761,25 @@ describe("Test RainSolverCli", () => {
                 results: mockResults,
                 reports: mockReports,
                 checkpointReports: mockCheckpointReports,
+                nonZeroLength: 4,
+                zeroLength: 3,
             });
 
             await rainSolverCli.processOrdersForRound(mockRoundSpan as any, mockRoundCtx as any);
 
             expect(mockRainSolver.processNextRound).toHaveBeenCalledTimes(1);
+            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith(
+                "ordersMetadata.roundProcessedOrderPairsCount",
+                7,
+            );
+            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith(
+                "ordersMetadata.roundProcessedOrderPairsNonZeroCount",
+                4,
+            );
+            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith(
+                "ordersMetadata.roundProcessedOrderPairsZeroCount",
+                3,
+            );
             expect(mockRainSolver.processNextRound).toHaveBeenCalledWith({
                 span: mockRoundSpan,
                 context: mockRoundCtx,
@@ -792,10 +806,16 @@ describe("Test RainSolverCli", () => {
                 results: mockResults,
                 reports: [],
                 checkpointReports: [],
+                nonZeroLength: 2,
+                zeroLength: 0,
             });
 
             await rainSolverCli.processOrdersForRound(mockRoundSpan as any, mockRoundCtx as any);
 
+            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith(
+                "ordersMetadata.roundProcessedOrderPairsCount",
+                2,
+            );
             expect(mockRoundSpan.setAttribute).not.toHaveBeenCalledWith("foundOpp", true);
             expect(mockRoundSpan.setAttribute).not.toHaveBeenCalledWith(
                 "txUrls",
