@@ -123,7 +123,7 @@ export type AppOptions = {
     rotateMultiWallet: boolean;
     /** Time threshold (in ms) for a transaction mine time before it counts as a trigger to increase gas price multiplier for future transactions, default is 15 seconds */
     txTimeThreshold: number;
-    /** The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher, default is 5000 ms */
+    /** The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher and the transaction receipt wait, required */
     blockTime: number;
     /** Subscribes the block number watcher to flashblocks heads instead of new heads over the ws rpc, only supported on Base chain, requires wsRpc, default is false */
     flashblocks: boolean;
@@ -145,9 +145,7 @@ export type AppOptions = {
     strictMaxOwnerProfilePartialTradeSizeCheck: boolean;
     /** Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins */
     checkWalletBalanceTime: number;
-    /** Optional threshold as the min expected bounty multiple that the estimated profit must exceed to boost the tx gas price, no boost applies if unset */
-    gasBoostProfitThreshold?: number;
-    /** Optional multiplier applied to the tx gas price when the gas boost profit threshold is exceeded, no boost applies if unset */
+    /** Optional multiplier applied to the tx gas price when the gas boost usd threshold is exceeded, no boost applies if unset */
     gasBoostMultiplier?: number;
     /** Optional threshold for the estimated profit USD value that if exceeded boosts the tx gas price, kept as 18 point decimals, no boost applies if unset */
     gasBoostUsdThreshold?: bigint;
@@ -428,12 +426,12 @@ export namespace AppOptions {
                     input.blockTime,
                     INT_PATTERN,
                     "invalid blockTime value, must be an integer greater than 0",
-                    "5000",
+                    undefined,
                     undefined,
                     (blockTime) =>
                         assert(
-                            blockTime > 0,
-                            "invalid blockTime value, must be an integer greater than 0",
+                            typeof blockTime !== "undefined" && blockTime > 0,
+                            "blockTime is required, must be an integer greater than 0",
                         ),
                 ),
                 routerPartialFallback: Validator.resolveBool(
@@ -481,18 +479,6 @@ export namespace AppOptions {
                         assert(
                             checkWalletBalanceTime >= 0,
                             "invalid checkWalletBalanceTime, must be an integer greater than equal to  0",
-                        ),
-                ),
-                gasBoostProfitThreshold: Validator.resolveNumericValue(
-                    input.gasBoostProfitThreshold,
-                    INT_PATTERN,
-                    "invalid gasBoostProfitThreshold value, must be an integer greater than 0",
-                    undefined,
-                    undefined,
-                    (gasBoostProfitThreshold) =>
-                        assert(
-                            gasBoostProfitThreshold === undefined || gasBoostProfitThreshold > 0,
-                            "invalid gasBoostProfitThreshold value, must be an integer greater than 0",
                         ),
                 ),
                 gasBoostMultiplier: Validator.resolveNumericValue(

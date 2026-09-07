@@ -122,7 +122,8 @@ gasPriceMultiplier: 107
 # Time threshold (in ms) for a transaction mine time before it counts as a trigger to increase gas price multiplier for future transactions, default is 15000ms (15 seconds)
 txTimeThreshold: 15000
 
-# The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher, default is 5000ms (5 seconds)
+# The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher
+# and the transaction receipt wait, required
 blockTime: 2000
 
 # Subscribes the block number watcher to flashblocks heads (newFlashblocks) instead of new heads over the ws rpc,
@@ -158,10 +159,7 @@ strictMaxOwnerProfilePartialTradeSizeCheck: false
 # Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins
 checkWalletBalanceTime: 15
 
-# Optional threshold as the min expected bounty multiple that the estimated profit must exceed to boost the tx gas price, no boost applies if unset
-gasBoostProfitThreshold: 10
-
-# Optional multiplier applied to the tx gas price when the gas boost profit threshold is exceeded, no boost applies if unset
+# Optional multiplier applied to the tx gas price when the gas boost usd threshold is exceeded, no boost applies if unset
 gasBoostMultiplier: 2.5
 
 # Optional threshold (in dollars) for the estimated profit USD value that if exceeded boosts the tx gas price, no boost applies if unset

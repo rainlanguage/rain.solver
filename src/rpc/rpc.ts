@@ -93,23 +93,32 @@ export class RpcState {
         // the higher chance of being selected
         const rates = this.urls.map((url) => this.metrics[url].progress.selectionRate);
         const weights = this.urls.map((url) => this.metrics[url].progress.selectionWeight);
-        return await promiseTimeout(
-            (async () => {
-                for (;;) {
-                    // pick a random one
-                    const index = probablyPicksFrom(rates, weights);
-                    if (isNaN(index)) {
-                        await sleep(pollingInterval);
-                    } else {
-                        this.lastUsedRpcIndex = index;
-                        const url = this.urls[index];
-                        return { transport: this.transports[url], url };
+        // the pick loop runs only while the wait is unsettled, so a timed out
+        // wait does not keep polling in the background nor picks an rpc late
+        let active = true;
+        try {
+            return await promiseTimeout(
+                (async () => {
+                    while (active) {
+                        // pick a random one
+                        const index = probablyPicksFrom(rates, weights);
+                        if (isNaN(index)) {
+                            await sleep(pollingInterval);
+                        } else {
+                            this.lastUsedRpcIndex = index;
+                            const url = this.urls[index];
+                            return { transport: this.transports[url], url };
+                        }
                     }
-                }
-            })(),
-            timeout,
-            new RainSolverTransportTimeoutError(timeout),
-        );
+                    // only reached once the wait has already timed out
+                    return undefined as unknown as { transport: Transport; url: string };
+                })(),
+                timeout,
+                new RainSolverTransportTimeoutError(timeout),
+            );
+        } finally {
+            active = false;
+        }
     }
 }
 

@@ -411,9 +411,9 @@ export class SharedState {
      * configured, the block number is kept up-to-date by a new heads subscription
      * for the earliest possible updates, with polling acting as a fallback while
      * the subscription errors, otherwise it is polled periodically over http
-     * @param interval - Interval to poll block number in milliseconds, default is 5 seconds
+     * @param interval - Interval to poll block number in milliseconds
      */
-    watchBlockNumber(interval = 5_000) {
+    watchBlockNumber(interval: number) {
         if (this.isWatchingBlockNumber) return;
         this.updateBlockNumber();
         if (this.appOptions.wsRpc) {

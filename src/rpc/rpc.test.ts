@@ -124,6 +124,33 @@ describe("Test RpcState", async function () {
         );
     });
 
+    it("should stop picking once the wait has timed out", async function () {
+        const urls = configs.map((v) => v.url);
+        const state = new RpcState(configs);
+        for (const url of urls) {
+            state.metrics[url].progress.buffer = Array(100).fill(RpcBufferType.Failure);
+        }
+        (sleep as Mock).mockImplementation(
+            (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+        );
+
+        await expect(state.nextRpc({ pollingInterval: 5, timeout: 30 })).rejects.toThrow(
+            new RainSolverTransportTimeoutError(30),
+        );
+
+        // the rpcs become selectable after the timeout, the dead wait must not
+        // keep polling in the background nor pick one of them late
+        for (const url of urls) {
+            state.metrics[url].progress.buffer = Array(100).fill(RpcBufferType.Success);
+        }
+        const lastUsedRpcIndex = state.lastUsedRpcIndex;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        const sleepCalls = (sleep as Mock).mock.calls.length;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        expect((sleep as Mock).mock.calls.length).toBe(sleepCalls);
+        expect(state.lastUsedRpcIndex).toBe(lastUsedRpcIndex);
+    });
+
     it("should return the picked transport atomically paired with its url", async function () {
         const urls = configs.map((v) => v.url);
         const state = new RpcState(configs);

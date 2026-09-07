@@ -102,11 +102,13 @@ export type RainSolverSignerActions<
     asWriteSigner: () => RainSolverSigner<account>;
 
     /**
-     * Waits for a transaction receipt by polling it until it's available or a timeout occurs.
+     * Waits for a transaction receipt by looking it up once per new block until it's
+     * available or a timeout occurs, the new blocks are observed through the state's
+     * block number watcher.
      * This method does not leak memory as the viem's default `waitForTransactionReceipt` method.
      * @param hash - The transaction hash to get the receipt for
      * @param timeout - The timeout in ms (default 60 sec)
-     * @param pollingInterval - The polling interval in ms (default 3 sec)
+     * @param pollingInterval - The interval (in ms) the block number is checked at a fifth of (default is the configured block time)
      * @returns Resolves with the transaction receipt or rejects with timeout error
      */
     waitForReceipt: (params: {
@@ -370,32 +372,46 @@ export function getWriteSignerFrom(signer: RainSolverSigner): RainSolverSigner {
 /**
  * Tries to get the transaction receipt for a given transaction hash.
  * this method does not leak memory as the viem's default `waitForTransactionReceipt`
- * method.
+ * method, the receipt is looked up once per new block, that is whenever the state's
+ * block number (kept up-to-date by the block number watcher) has advanced since the
+ * last lookup, the block number is checked at a fifth of the polling interval, so a
+ * lookup follows a new block by that much at most
  * @param signer - The RainSolverSigner instance
  * @param hash - The transaction hash
  * @param timeout - The timeout in ms (default 60 sec)
- * @param pollingInterval - The polling interval in ms (default 3 sec)
+ * @param pollingInterval - The interval (in ms) the block number is checked at a fifth of (default is the configured block time)
  */
 export async function tryGetReceipt(
     signer: RainSolverSigner,
     hash: `0x${string}`,
     timeout = 60_000,
-    pollingInterval = 3_000,
+    pollingInterval = signer.state.appOptions.blockTime,
 ): Promise<TransactionReceipt> {
     const start = Date.now();
+    // the poll loop runs only while the wait is unsettled, so a timed out
+    // wait does not keep polling the receipt in the background
+    let active = true;
     try {
-        // ping "getTransactionReceipt" every "pollingInterval" until "success" or "timeout"
+        // ping "getTransactionReceipt" once per new block until "success" or "timeout"
         const result = await promiseTimeout(
             (async () => {
-                for (;;) {
+                const tick = Math.floor(pollingInterval / 5);
+                let lastBlockNumber = signer.state.blockNumber;
+                while (active) {
+                    await sleep(tick);
+                    if (!active) break;
+                    const blockNumber = signer.state.blockNumber;
+                    if (blockNumber <= lastBlockNumber) continue;
+                    lastBlockNumber = blockNumber;
                     try {
-                        await sleep(pollingInterval);
                         return await signer.state.client.getTransactionReceipt({ hash });
                     } catch {
                         // ignore errors and continue polling until timeout or success
                         continue;
                     }
                 }
+                // only reached once the wait has already timed out
+                return undefined as unknown as TransactionReceipt;
             })(),
             timeout,
             new WaitForTransactionReceiptTimeoutError({ hash }),
@@ -411,5 +427,7 @@ export async function tryGetReceipt(
         // capture tx mine record
         signer.state.gasManager.onTransactionMine({ didMine: false, length: Date.now() - start });
         throw error;
+    } finally {
+        active = false;
     }
 }

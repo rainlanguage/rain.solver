@@ -49,7 +49,6 @@ dryrunGasCacheResetTime: 30
 strictMaxOwnerProfileCheck: true
 strictMaxOwnerProfilePartialTradeSizeCheck: true
 checkWalletBalanceTime: 30
-gasBoostProfitThreshold: 7
 gasBoostMultiplier: 3.5
 gasBoostUsdThreshold: 5.5
 gasLimitMultiplier: 90
@@ -187,7 +186,6 @@ orderbookTradeTypes:
             strictMaxOwnerProfileCheck: true,
             strictMaxOwnerProfilePartialTradeSizeCheck: true,
             checkWalletBalanceTime: 30,
-            gasBoostProfitThreshold: 7,
             gasBoostMultiplier: 3.5,
             gasBoostUsdThreshold: 5_500000000000000000n,
         };
@@ -226,6 +224,7 @@ orderbookTradeTypes:
             botMinBalance: "50.5",
             gasPriceMultiplier: "150",
             txTimeThreshold: "4000",
+            blockTime: "2000",
             gasLimitMultiplier: "90",
             timeout: "20000",
             maxRatio: true,
@@ -291,6 +290,13 @@ orderbookTradeTypes:
                 wsRpc: "wss://ws-rpc.example.com",
             }).isOk(),
         );
+        // blockTime is required, there is no silent default
+        const noBlockTimeRes = AppOptions.tryFrom({ ...input, blockTime: undefined });
+        assert(noBlockTimeRes.isErr());
+        assert.ok(String(noBlockTimeRes.error.cause).includes("blockTime is required"));
+        const zeroBlockTimeRes = AppOptions.tryFrom({ ...input, blockTime: "0" });
+        assert(zeroBlockTimeRes.isErr());
+        assert.ok(String(zeroBlockTimeRes.error.cause).includes("blockTime is required"));
 
         const res = AppOptions.tryFrom(input);
         assert(res.isOk());
@@ -334,7 +340,7 @@ orderbookTradeTypes:
         assert.deepEqual(result.botMinBalance, "50.5");
         assert.deepEqual(result.gasPriceMultiplier, 150);
         assert.deepEqual(result.txTimeThreshold, 4000);
-        assert.deepEqual(result.blockTime, 5000); // should be default 5000
+        assert.deepEqual(result.blockTime, 2000);
         assert.deepEqual(result.gasLimitMultiplier, 90);
         assert.deepEqual(result.timeout, 20000);
         assert.equal(result.maxRatio, true);
@@ -406,7 +412,6 @@ orderbookTradeTypes:
         assert.equal(result.wsRpc, undefined); // no ws rpc when unset
         assert.equal(result.flashblocks, false); // should be default false
         assert.equal(result.multiBroadcast, false); // should be default false
-        assert.equal(result.gasBoostProfitThreshold, undefined); // no boost when unset
         assert.equal(result.gasBoostMultiplier, undefined); // no boost when unset
         assert.equal(result.gasBoostUsdThreshold, undefined); // no boost when unset
     });
