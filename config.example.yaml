@@ -129,6 +129,10 @@ blockTime: 2000
 # only supported on Base chain, requires wsRpc, default is false
 flashblocks: false
 
+# Broadcasts each signed transaction through all the configured write rpcs (or all rpcs when no write rpc is set)
+# at the same time, taking the first accepted one, default is false
+multiBroadcast: false
+
 # Enables the halving backoff retries for router mode partial trades that get rejected onchain, default is true
 routerPartialFallback: true
 

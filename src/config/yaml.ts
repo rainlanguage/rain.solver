@@ -127,6 +127,8 @@ export type AppOptions = {
     blockTime: number;
     /** Subscribes the block number watcher to flashblocks heads instead of new heads over the ws rpc, only supported on Base chain, requires wsRpc, default is false */
     flashblocks: boolean;
+    /** Broadcasts each signed transaction through all the configured write rpcs (or all rpcs when no write rpc is set) at the same time, taking the first accepted one, default is false */
+    multiBroadcast: boolean;
     /** Enables the halving backoff retries for router mode partial trades that get rejected onchain, default is true */
     routerPartialFallback: boolean;
     /** The number of halving backoff steps to run concurrently for router mode partial trades that get rejected onchain, default is 4 */
@@ -215,6 +217,11 @@ export namespace AppOptions {
                 writeRpc: Validator.resolveRpc(input.writeRpc, true),
                 wsRpc,
                 flashblocks,
+                multiBroadcast: Validator.resolveBool(
+                    input.multiBroadcast,
+                    "expected a boolean value for multiBroadcast",
+                    false,
+                ),
                 subgraph: Validator.resolveUrls(
                     input.subgraph,
                     "expected array of subgraph urls with at least 1 url",

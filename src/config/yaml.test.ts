@@ -40,6 +40,7 @@ gasPriceMultiplier: 150
 txTimeThreshold: 4000
 blockTime: 3000
 flashblocks: true
+multiBroadcast: true
 routerPartialFallback: false
 routerPartialFallbackSteps: 6
 routerSecondaryRouteTry: all
@@ -130,6 +131,7 @@ orderbookTradeTypes:
             txTimeThreshold: 4000,
             blockTime: 3000,
             flashblocks: true,
+            multiBroadcast: true,
             gasLimitMultiplier: 90,
             timeout: 20000,
             maxRatio: true,
@@ -403,6 +405,7 @@ orderbookTradeTypes:
         assert.equal(result.defaultOwnerLimit, 5); // should be default 5
         assert.equal(result.wsRpc, undefined); // no ws rpc when unset
         assert.equal(result.flashblocks, false); // should be default false
+        assert.equal(result.multiBroadcast, false); // should be default false
         assert.equal(result.gasBoostProfitThreshold, undefined); // no boost when unset
         assert.equal(result.gasBoostMultiplier, undefined); // no boost when unset
         assert.equal(result.gasBoostUsdThreshold, undefined); // no boost when unset

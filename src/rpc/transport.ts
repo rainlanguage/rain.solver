@@ -94,64 +94,71 @@ export function rainSolverTransport(
         const instances: Record<string, ReturnType<Transport>> = {};
         const getInstance = (transport: Transport, url: string) =>
             (instances[url] ??= transport({ chain, retryCount: 0 }));
-        return createTransport({
-            key,
-            name,
-            timeout,
-            retryDelay,
-            retryCount: 0,
-            type: "RainSolverTransport",
-            async request(args, options) {
-                const req = async (
-                    tryNextCount: number,
-                    prevUrl?: string,
-                    prevError?: any,
-                ): Promise<any> => {
-                    // transport comes atomically paired with its url, reading
-                    // state.lastUsedUrl here instead could race with concurrent
-                    // requests that already moved it by their own nextRpc calls
-                    const { transport, url } = await state.nextRpc({
-                        timeout: pollingTimeout,
-                        pollingInterval,
-                    });
-                    // when the rotation lands on the same rpc that just failed,
-                    // dont waste another attempt on it and bail out with its
-                    // error, its recorded failure has already lowered its chance
-                    // of selection, so this balances out over future requests
-                    if (url === prevUrl) throw prevError;
-                    const instance = getInstance(transport, url);
-                    const attempt = async (retrySameCount: number): Promise<any> => {
+        return createTransport(
+            {
+                key,
+                name,
+                timeout,
+                retryDelay,
+                retryCount: 0,
+                type: "RainSolverTransport",
+                async request(args, options) {
+                    const req = async (
+                        tryNextCount: number,
+                        prevUrl?: string,
+                        prevError?: any,
+                    ): Promise<any> => {
+                        // transport comes atomically paired with its url, reading
+                        // state.lastUsedUrl here instead could race with concurrent
+                        // requests that already moved it by their own nextRpc calls
+                        const { transport, url } = await state.nextRpc({
+                            timeout: pollingTimeout,
+                            pollingInterval,
+                        });
+                        // when the rotation lands on the same rpc that just failed,
+                        // dont waste another attempt on it and bail out with its
+                        // error, its recorded failure has already lowered its chance
+                        // of selection, so this balances out over future requests
+                        if (url === prevUrl) throw prevError;
+                        const instance = getInstance(transport, url);
+                        const attempt = async (retrySameCount: number): Promise<any> => {
+                            try {
+                                return await instance.request(args, {
+                                    ...options,
+                                    dedupe,
+                                });
+                            } catch (error: any) {
+                                if (shouldThrow(error)) throw error;
+                                // retry the same rpc as long as it keeps a success rate
+                                // above 20% threshold, this replaces the viem transport
+                                // inner retries which were cancelled by the same criteria
+                                if (
+                                    retrySameCount > 0 &&
+                                    tryNextCount > 0 &&
+                                    state.metrics[url].progress.successRate > 2000
+                                ) {
+                                    await sleep(retryDelay);
+                                    return attempt(retrySameCount - 1);
+                                }
+                                throw error;
+                            }
+                        };
                         try {
-                            return await instance.request(args, {
-                                ...options,
-                                dedupe,
-                            });
+                            return await attempt(retryCount);
                         } catch (error: any) {
                             if (shouldThrow(error)) throw error;
-                            // retry the same rpc as long as it keeps a success rate
-                            // above 20% threshold, this replaces the viem transport
-                            // inner retries which were cancelled by the same criteria
-                            if (
-                                retrySameCount > 0 &&
-                                tryNextCount > 0 &&
-                                state.metrics[url].progress.successRate > 2000
-                            ) {
-                                await sleep(retryDelay);
-                                return attempt(retrySameCount - 1);
-                            }
+                            if (tryNextCount) return req(tryNextCount - 1, url, error);
                             throw error;
                         }
                     };
-                    try {
-                        return await attempt(retryCount);
-                    } catch (error: any) {
-                        if (shouldThrow(error)) throw error;
-                        if (tryNextCount) return req(tryNextCount - 1, url, error);
-                        throw error;
-                    }
-                };
-                return req(retryCountNext);
+                    return req(retryCountNext);
+                },
             },
-        });
+            {
+                // expose the rpc pool on the transport value, so a client can reach
+                // every rpc of its pool, eg to broadcast a signed tx through all
+                rpcState: state,
+            },
+        );
     }) as RainSolverTransport;
 }

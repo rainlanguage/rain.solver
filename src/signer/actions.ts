@@ -1,10 +1,12 @@
+import { RpcState } from "../rpc";
 import { SharedState } from "../state";
 import { publicActionsL2 } from "viem/op-stack";
-import { promiseTimeout, sleep } from "../common";
 import { RainSolverSigner, EstimateGasCostResult } from ".";
+import { Result, promiseTimeout, raceFirstOk, sleep } from "../common";
 import {
     Chain,
     HDAccount,
+    keccak256,
     PrivateKeyAccount,
     EstimateGasParameters,
     SendTransactionParameters,
@@ -12,6 +14,29 @@ import {
     WaitForTransactionReceiptTimeoutError,
 } from "viem";
 import { toUsdValue } from "../math";
+
+/**
+ * Error messages of a node that already holds the transaction, ie a broadcast
+ * copy of the same signed transaction landed on it through another rpc first,
+ * or the transaction already got mined by the time the copy arrived
+ */
+const ALREADY_KNOWN_ERRORS = [
+    "already known",
+    "already exists",
+    "already_exists",
+    "alreadyknown",
+    "known transaction",
+    "already imported",
+    "nonce too low",
+];
+
+/** Determines if the given send error means the node already holds the transaction */
+export function isAlreadyKnownTxError(error: any): boolean {
+    const msg = String(
+        error?.details ?? error?.shortMessage ?? error?.message ?? error,
+    ).toLowerCase();
+    return ALREADY_KNOWN_ERRORS.some((v) => msg.includes(v));
+}
 
 /** Represents a sent transaction with hash and wait for receipt method */
 export type SentTransaction = {
@@ -165,7 +190,7 @@ export async function sendTx(
                     throw e;
                 });
         }
-        return await signer.sendTransaction({ ...(tx as any), nonce });
+        return await broadcastTx(signer, { ...(tx as any), nonce });
     }
     try {
         const hash = await send();
@@ -270,6 +295,65 @@ export async function waitUntilFree(signer: RainSolverSigner) {
  */
 export async function getSelfBalance(signer: RainSolverSigner) {
     return await signer.getBalance({ address: signer.account.address });
+}
+
+/**
+ * Broadcasts the given fully populated transaction (nonce, gas, gas price, etc),
+ * the tx is signed once locally, with no rpc call involved, and sent as raw tx
+ * through the signer's own rpc pool, that is the write rpcs for a write signer
+ * (asWriteSigner) and the read rpcs otherwise, with multi broadcast enabled and a
+ * pool of more than one rpc, the raw tx is sent through every rpc of the pool at
+ * the same time, the first accepted one settles the send while the rest keep going
+ * in the background, a node that already got the tx through another rpc answers
+ * with an already known error, which counts as accepted since the tx is the same,
+ * when no rpc accepts, the first error is thrown, otherwise the raw tx is sent as
+ * a single request through the signer's rotating transport
+ * @param signer - The RainSolverSigner instance to send the transaction with
+ * @param tx - The transaction to broadcast
+ * @returns The transaction hash
+ */
+export async function broadcastTx(
+    signer: RainSolverSigner,
+    tx: SendTransactionParameters<Chain, HDAccount | PrivateKeyAccount>,
+): Promise<`0x${string}`> {
+    // sign locally with the signer's chain id, no rpc call is involved
+    const chainId = signer.state.chainConfig.id ?? (await signer.getChainId());
+    const serialized = await signer.account.signTransaction(
+        { ...(tx as any), chainId },
+        { serializer: signer.chain?.serializers?.transaction },
+    );
+
+    // the pool is the one the signer was built on, that is the write rpcs for
+    // a write signer (asWriteSigner) and the read rpcs otherwise
+    const rpcState = signer.transport?.rpcState as RpcState | undefined;
+    if (!signer.state.appOptions?.multiBroadcast || !rpcState || rpcState.urls.length < 2) {
+        return signer.sendRawTransaction({ serializedTransaction: serialized });
+    }
+    const hash = keccak256(serialized);
+
+    const sends = rpcState.urls.map(async (url) => {
+        try {
+            const transport = rpcState.transports[url]({
+                chain: signer.chain,
+                retryCount: 0,
+                timeout: signer.state.rainSolverTransportConfig?.timeout,
+            });
+            const result = await transport.request({
+                method: "eth_sendRawTransaction",
+                params: [serialized],
+            });
+            return Result.ok<`0x${string}`, any>(result as `0x${string}`);
+        } catch (error) {
+            if (isAlreadyKnownTxError(error)) return Result.ok<`0x${string}`, any>(hash);
+            return Result.err<`0x${string}`, any>(error);
+        }
+    });
+    const pick = await raceFirstOk(sends);
+    if (pick?.isOk()) return pick.value;
+
+    // every rpc rejected the tx, all sends have settled at this point
+    const results = await Promise.all(sends);
+    throw results[0].isErr() ? results[0].error : new Error("failed to broadcast transaction");
 }
 
 /**

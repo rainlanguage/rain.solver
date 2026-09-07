@@ -4,16 +4,18 @@ import { SharedState } from "../state";
 import { RainSolverSigner } from "./index";
 import { publicActionsL2 } from "viem/op-stack";
 import { privateKeyToAccount } from "viem/accounts";
-import { WaitForTransactionReceiptTimeoutError } from "viem";
+import { keccak256, WaitForTransactionReceiptTimeoutError } from "viem";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 import {
     sendTx,
     getTxGas,
+    broadcastTx,
     tryGetReceipt,
     waitUntilFree,
     getSelfBalance,
     estimateGasCost,
     getWriteSignerFrom,
+    isAlreadyKnownTxError,
     RainSolverSignerActions,
 } from "./actions";
 
@@ -54,24 +56,146 @@ describe("Test sendTx", () => {
     beforeEach(() => {
         mockSigner = {
             busy: false,
+            chain: { id: 1 },
             account: {
                 address: "0xsender",
+                signTransaction: vi.fn().mockResolvedValue("0xserialized"),
             },
             state: {
                 gasPrice: 20000000000n,
                 gasPriceMultiplier: 110,
                 chainConfig: {
+                    id: 1,
                     isSpecialL2: false,
                 },
                 l1GasPrice: undefined,
             },
             waitUntilFree: vi.fn().mockResolvedValue(undefined),
             getTransactionCount: vi.fn().mockResolvedValue(5),
-            sendTransaction: vi.fn().mockResolvedValue("0xhash"),
+            sendTransaction: vi.fn(),
+            sendRawTransaction: vi.fn().mockResolvedValue("0xhash"),
             estimateGas: vi.fn().mockResolvedValue(100000n),
         } as unknown as RainSolverSigner;
 
         vi.clearAllMocks();
+    });
+
+    describe("multi broadcast", () => {
+        const serialized = "0x02abcd" as `0x${string}`;
+        let request1: Mock;
+        let request2: Mock;
+
+        beforeEach(() => {
+            request1 = vi.fn();
+            request2 = vi.fn();
+            (mockSigner as any).chain = { id: 8453 };
+            (mockSigner.state as any).chainConfig.id = 8453;
+            (mockSigner as any).account.signTransaction = vi.fn().mockResolvedValue(serialized);
+            (mockSigner.state as any).appOptions = { multiBroadcast: true };
+            (mockSigner.state as any).rainSolverTransportConfig = { timeout: 1234 };
+            (mockSigner as any).transport = {
+                rpcState: {
+                    urls: ["https://rpc1", "https://rpc2"],
+                    transports: {
+                        "https://rpc1": vi.fn().mockReturnValue({ request: request1 }),
+                        "https://rpc2": vi.fn().mockReturnValue({ request: request2 }),
+                    },
+                },
+            };
+        });
+
+        it("should sign once and send the raw tx through every rpc, taking the first accepted", async () => {
+            request1.mockImplementation(
+                () => new Promise((resolve) => setTimeout(() => resolve("0xhash"), 50)),
+            );
+            request2.mockResolvedValue("0xhash");
+
+            const { hash } = await sendTx(mockSigner, mockTx);
+
+            expect(hash).toBe("0xhash");
+            expect(mockSigner.sendRawTransaction).not.toHaveBeenCalled();
+            expect(mockSigner.account.signTransaction).toHaveBeenCalledTimes(1);
+            expect(mockSigner.account.signTransaction).toHaveBeenCalledWith(
+                { ...mockTx, nonce: 5, chainId: 8453 },
+                { serializer: undefined },
+            );
+            const rpcState = (mockSigner as any).transport.rpcState;
+            expect(rpcState.transports["https://rpc1"]).toHaveBeenCalledWith({
+                chain: mockSigner.chain,
+                retryCount: 0,
+                timeout: 1234,
+            });
+            for (const request of [request1, request2]) {
+                expect(request).toHaveBeenCalledTimes(1);
+                expect(request).toHaveBeenCalledWith({
+                    method: "eth_sendRawTransaction",
+                    params: [serialized],
+                });
+            }
+        });
+
+        it("should count an already known error as accepted with the local hash", async () => {
+            request1.mockRejectedValue(new Error("already known"));
+            request2.mockRejectedValue({ details: "nonce too low" });
+
+            const { hash } = await sendTx(mockSigner, mockTx);
+
+            expect(hash).toBe(keccak256(serialized));
+            expect(mockSigner.sendRawTransaction).not.toHaveBeenCalled();
+        });
+
+        it("should throw the first error when every rpc rejects the tx", async () => {
+            const error1 = new Error("insufficient funds");
+            request1.mockRejectedValue(error1);
+            request2.mockRejectedValue(new Error("gas too low"));
+
+            // sendTx retries the send once before giving up
+            await expect(sendTx(mockSigner, mockTx, 10)).rejects.toThrow(error1);
+            expect(request1).toHaveBeenCalledTimes(2);
+            expect(request2).toHaveBeenCalledTimes(2);
+            expect(mockSigner.busy).toBe(false);
+        });
+
+        it("should use the signer's own pool, so a write signer broadcasts through the write rpcs only", async () => {
+            // the state has write rpcs, but the pool is the one the signer was
+            // built on, which for a write signer is the write rpcs themselves
+            (mockSigner.state as any).writeRpc = {
+                urls: ["https://write1", "https://write2"],
+                transports: {
+                    "https://write1": vi.fn().mockReturnValue({ request: vi.fn() }),
+                    "https://write2": vi.fn().mockReturnValue({ request: vi.fn() }),
+                },
+            };
+            request1.mockResolvedValue("0xhash");
+            request2.mockResolvedValue("0xhash");
+
+            const { hash } = await sendTx(mockSigner, mockTx);
+
+            expect(hash).toBe("0xhash");
+            expect(request1).toHaveBeenCalledTimes(1);
+            expect(request2).toHaveBeenCalledTimes(1);
+            const writeRpc = (mockSigner.state as any).writeRpc;
+            expect(writeRpc.transports["https://write1"]).not.toHaveBeenCalled();
+            expect(writeRpc.transports["https://write2"]).not.toHaveBeenCalled();
+        });
+
+        it("should send the raw tx through the signer transport when disabled or with a single rpc", async () => {
+            (mockSigner.state as any).appOptions.multiBroadcast = false;
+            await sendTx(mockSigner, mockTx);
+            expect(mockSigner.sendRawTransaction).toHaveBeenCalledTimes(1);
+            expect(mockSigner.sendRawTransaction).toHaveBeenCalledWith({
+                serializedTransaction: serialized,
+            });
+            expect(request1).not.toHaveBeenCalled();
+
+            (mockSigner.state as any).appOptions.multiBroadcast = true;
+            (mockSigner as any).transport.rpcState.urls = ["https://rpc1"];
+            mockSigner.busy = false;
+            await sendTx(mockSigner, mockTx);
+            expect(mockSigner.sendRawTransaction).toHaveBeenCalledTimes(2);
+            expect(request1).not.toHaveBeenCalled();
+            expect(mockSigner.sendTransaction).not.toHaveBeenCalled();
+        });
     });
 
     it("should successfully send a transaction on first attempt", async () => {
@@ -82,17 +206,22 @@ describe("Test sendTx", () => {
             address: "0xsender",
             blockTag: "latest",
         });
-        expect(mockSigner.sendTransaction).toHaveBeenCalledWith({
-            ...mockTx,
-            nonce: 5,
+        // signed locally with the signer chain id and sent as raw tx
+        expect(mockSigner.account.signTransaction).toHaveBeenCalledWith(
+            { ...mockTx, nonce: 5, chainId: 1 },
+            { serializer: undefined },
+        );
+        expect(mockSigner.sendRawTransaction).toHaveBeenCalledWith({
+            serializedTransaction: "0xserialized",
         });
+        expect(mockSigner.sendTransaction).not.toHaveBeenCalled();
         expect(txHash).toBe("0xhash");
         expect(mockSigner.busy).toBe(true);
         expect(wait).toBeTypeOf("function");
     });
 
     it("should successfully send a transaction on second attempt", async () => {
-        (mockSigner.sendTransaction as Mock)
+        (mockSigner.sendRawTransaction as Mock)
             .mockRejectedValueOnce(new Error("First attempt failed"))
             .mockResolvedValueOnce("0xhash");
         const { hash: txHash, wait } = await sendTx(mockSigner, mockTx, 10);
@@ -102,11 +231,11 @@ describe("Test sendTx", () => {
             address: "0xsender",
             blockTag: "latest",
         });
-        expect(mockSigner.sendTransaction).toHaveBeenCalledTimes(2);
-        expect(mockSigner.sendTransaction).toHaveBeenCalledWith({
-            ...mockTx,
-            nonce: 5,
-        });
+        expect(mockSigner.sendRawTransaction).toHaveBeenCalledTimes(2);
+        expect(mockSigner.account.signTransaction).toHaveBeenCalledWith(
+            { ...mockTx, nonce: 5, chainId: 1 },
+            { serializer: undefined },
+        );
         expect(txHash).toBe("0xhash");
         expect(mockSigner.busy).toBe(true);
         expect(wait).toBeTypeOf("function");
@@ -124,11 +253,11 @@ describe("Test sendTx", () => {
             address: "0xsender",
             blockTag: "latest",
         });
-        expect(mockSigner.sendTransaction).toHaveBeenCalledTimes(1);
-        expect(mockSigner.sendTransaction).toHaveBeenCalledWith({
-            ...mockTx,
-            nonce: 6,
-        });
+        expect(mockSigner.sendRawTransaction).toHaveBeenCalledTimes(1);
+        expect(mockSigner.account.signTransaction).toHaveBeenCalledWith(
+            { ...mockTx, nonce: 6, chainId: 1 },
+            { serializer: undefined },
+        );
         expect(txHash).toBe("0xhash");
         expect(mockSigner.busy).toBe(true);
         expect(wait).toBeTypeOf("function");
@@ -145,12 +274,12 @@ describe("Test sendTx", () => {
         await sendTx(mockSigner, mockTx);
 
         expect(busyResolved).toBe(true);
-        expect(mockSigner.sendTransaction).toHaveBeenCalled();
+        expect(mockSigner.sendRawTransaction).toHaveBeenCalled();
     });
 
     it("should set busy state during transaction", async () => {
         const states: boolean[] = [];
-        mockSigner.sendTransaction = vi.fn().mockImplementation(async () => {
+        mockSigner.sendRawTransaction = vi.fn().mockImplementation(async () => {
             states.push(mockSigner.busy);
             return "0xhash";
         });
@@ -163,7 +292,7 @@ describe("Test sendTx", () => {
 
     it("should reset busy state even if transaction fails", async () => {
         const error = new Error("Transaction failed");
-        mockSigner.sendTransaction = vi.fn().mockRejectedValue(error);
+        mockSigner.sendRawTransaction = vi.fn().mockRejectedValue(error);
 
         expect(mockSigner.busy).toBe(false);
         await expect(sendTx(mockSigner, mockTx, 10)).rejects.toThrow(error);
@@ -176,7 +305,8 @@ describe("Test sendTx", () => {
 
         await expect(sendTx(mockSigner, mockTx, 10)).rejects.toThrow(error);
         expect(mockSigner.busy).toBe(false);
-        expect(mockSigner.sendTransaction).not.toHaveBeenCalled();
+        expect(mockSigner.account.signTransaction).not.toHaveBeenCalled();
+        expect(mockSigner.sendRawTransaction).not.toHaveBeenCalled();
     });
 
     it("should use provided gas", async () => {
@@ -187,11 +317,353 @@ describe("Test sendTx", () => {
 
         await sendTx(mockSigner, txWithGas);
 
-        expect(mockSigner.sendTransaction).toHaveBeenCalledWith(
+        expect(mockSigner.account.signTransaction).toHaveBeenCalledWith(
             expect.objectContaining({
                 gas: 200000n,
             }),
+            expect.anything(),
         );
+    });
+});
+
+describe("Test isAlreadyKnownTxError", () => {
+    it("should match the already known error messages in any of the error fields", () => {
+        expect(isAlreadyKnownTxError(new Error("already known"))).toBe(true);
+        expect(isAlreadyKnownTxError(new Error("Transaction ALREADY KNOWN"))).toBe(true);
+        expect(isAlreadyKnownTxError({ details: "nonce too low" })).toBe(true);
+        expect(isAlreadyKnownTxError({ shortMessage: "known transaction: 0xabc" })).toBe(true);
+        expect(isAlreadyKnownTxError({ message: "transaction already imported" })).toBe(true);
+        expect(isAlreadyKnownTxError({ details: "ALREADY_EXISTS: already exists" })).toBe(true);
+        expect(isAlreadyKnownTxError("AlreadyKnown")).toBe(true);
+    });
+
+    it("should prefer details over short message over message", () => {
+        // details wins even when the other fields dont match
+        expect(
+            isAlreadyKnownTxError({
+                details: "already known",
+                shortMessage: "something else",
+                message: "something else",
+            }),
+        ).toBe(true);
+        // and a non matching details hides a matching message
+        expect(
+            isAlreadyKnownTxError({ details: "insufficient funds", message: "already known" }),
+        ).toBe(false);
+    });
+
+    it("should not match other errors", () => {
+        expect(isAlreadyKnownTxError(new Error("insufficient funds for gas"))).toBe(false);
+        expect(isAlreadyKnownTxError(new Error("execution reverted"))).toBe(false);
+        expect(isAlreadyKnownTxError({ details: "replacement transaction underpriced" })).toBe(false);
+        expect(isAlreadyKnownTxError(undefined)).toBe(false);
+        expect(isAlreadyKnownTxError(null)).toBe(false);
+        expect(isAlreadyKnownTxError(42)).toBe(false);
+    });
+});
+
+describe("Test broadcastTx", () => {
+    const serialized = "0x02abcd" as `0x${string}`;
+    const localHash = keccak256(serialized);
+    const tx = {
+        to: "0xdestination" as `0x${string}`,
+        data: "0xdata" as `0x${string}`,
+        gas: 100000n,
+        gasPrice: 10n,
+        nonce: 5,
+    };
+    let signer: any;
+    let request1: Mock;
+    let request2: Mock;
+    let request3: Mock;
+    let transport1: Mock;
+    let transport2: Mock;
+    let transport3: Mock;
+    const serializer = vi.fn();
+
+    // a request that settles only when told to
+    const deferred = () => {
+        let resolve!: (value: any) => void;
+        let reject!: (error: any) => void;
+        const promise = new Promise((res, rej) => {
+            resolve = res;
+            reject = rej;
+        });
+        return { promise, resolve, reject };
+    };
+
+    beforeEach(() => {
+        request1 = vi.fn();
+        request2 = vi.fn();
+        request3 = vi.fn();
+        transport1 = vi.fn().mockReturnValue({ request: request1 });
+        transport2 = vi.fn().mockReturnValue({ request: request2 });
+        transport3 = vi.fn().mockReturnValue({ request: request3 });
+        signer = {
+            chain: { id: 8453, serializers: { transaction: serializer } },
+            account: {
+                address: "0xsender",
+                signTransaction: vi.fn().mockResolvedValue(serialized),
+            },
+            state: {
+                chainConfig: { id: 8453 },
+                appOptions: { multiBroadcast: true },
+                rainSolverTransportConfig: { timeout: 1234 },
+            },
+            transport: {
+                rpcState: {
+                    urls: ["https://rpc1", "https://rpc2", "https://rpc3"],
+                    transports: {
+                        "https://rpc1": transport1,
+                        "https://rpc2": transport2,
+                        "https://rpc3": transport3,
+                    },
+                },
+            },
+            getChainId: vi.fn().mockResolvedValue(10),
+            sendRawTransaction: vi.fn().mockResolvedValue("0xsinglehash"),
+        };
+    });
+
+    describe("signing", () => {
+        it("should sign the tx as given with the state chain id and the signer chain serializer", async () => {
+            request1.mockResolvedValue("0xhash");
+            request2.mockResolvedValue("0xhash");
+            request3.mockResolvedValue("0xhash");
+
+            await broadcastTx(signer, tx as any);
+
+            expect(signer.account.signTransaction).toHaveBeenCalledTimes(1);
+            expect(signer.account.signTransaction).toHaveBeenCalledWith(
+                { ...tx, chainId: 8453 },
+                { serializer },
+            );
+            expect(signer.getChainId).not.toHaveBeenCalled();
+        });
+
+        it("should read the chain id from the rpc when the state chain config has none", async () => {
+            signer.chain = undefined;
+            signer.state.chainConfig = {};
+            request1.mockResolvedValue("0xhash");
+            request2.mockResolvedValue("0xhash");
+            request3.mockResolvedValue("0xhash");
+
+            await broadcastTx(signer, tx as any);
+
+            expect(signer.getChainId).toHaveBeenCalledTimes(1);
+            expect(signer.account.signTransaction).toHaveBeenCalledWith(
+                { ...tx, chainId: 10 },
+                { serializer: undefined },
+            );
+        });
+
+        it("should propagate a signing failure without sending anything", async () => {
+            const error = new Error("signing failed");
+            signer.account.signTransaction.mockRejectedValue(error);
+
+            await expect(broadcastTx(signer, tx as any)).rejects.toThrow(error);
+            expect(request1).not.toHaveBeenCalled();
+            expect(request2).not.toHaveBeenCalled();
+            expect(request3).not.toHaveBeenCalled();
+            expect(signer.sendRawTransaction).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("single send", () => {
+        it("should send the raw tx through the signer transport when multi broadcast is off", async () => {
+            signer.state.appOptions.multiBroadcast = false;
+
+            const hash = await broadcastTx(signer, tx as any);
+
+            expect(hash).toBe("0xsinglehash");
+            expect(signer.sendRawTransaction).toHaveBeenCalledWith({
+                serializedTransaction: serialized,
+            });
+            expect(transport1).not.toHaveBeenCalled();
+            expect(transport2).not.toHaveBeenCalled();
+            expect(transport3).not.toHaveBeenCalled();
+        });
+
+        it("should send the raw tx through the signer transport with a single rpc pool", async () => {
+            signer.transport.rpcState.urls = ["https://rpc1"];
+
+            const hash = await broadcastTx(signer, tx as any);
+
+            expect(hash).toBe("0xsinglehash");
+            expect(signer.sendRawTransaction).toHaveBeenCalledTimes(1);
+            expect(transport1).not.toHaveBeenCalled();
+        });
+
+        it("should send the raw tx through the signer transport without a reachable pool", async () => {
+            signer.transport = undefined;
+
+            const hash = await broadcastTx(signer, tx as any);
+
+            expect(hash).toBe("0xsinglehash");
+            expect(signer.sendRawTransaction).toHaveBeenCalledTimes(1);
+        });
+
+        it("should propagate the send failure", async () => {
+            signer.state.appOptions.multiBroadcast = false;
+            const error = new Error("send failed");
+            signer.sendRawTransaction.mockRejectedValue(error);
+
+            await expect(broadcastTx(signer, tx as any)).rejects.toThrow(error);
+        });
+    });
+
+    describe("multi send", () => {
+        it("should instantiate each pool transport with the signer chain, no retry and the configured timeout", async () => {
+            request1.mockResolvedValue("0xhash");
+            request2.mockResolvedValue("0xhash");
+            request3.mockResolvedValue("0xhash");
+
+            await broadcastTx(signer, tx as any);
+
+            for (const transport of [transport1, transport2, transport3]) {
+                expect(transport).toHaveBeenCalledTimes(1);
+                expect(transport).toHaveBeenCalledWith({
+                    chain: signer.chain,
+                    retryCount: 0,
+                    timeout: 1234,
+                });
+            }
+            for (const request of [request1, request2, request3]) {
+                expect(request).toHaveBeenCalledTimes(1);
+                expect(request).toHaveBeenCalledWith({
+                    method: "eth_sendRawTransaction",
+                    params: [serialized],
+                });
+            }
+        });
+
+        it("should leave the timeout undefined without a transport config", async () => {
+            signer.state.rainSolverTransportConfig = undefined;
+            request1.mockResolvedValue("0xhash");
+            request2.mockResolvedValue("0xhash");
+            request3.mockResolvedValue("0xhash");
+
+            await broadcastTx(signer, tx as any);
+
+            expect(transport1).toHaveBeenCalledWith({
+                chain: signer.chain,
+                retryCount: 0,
+                timeout: undefined,
+            });
+        });
+
+        it("should settle with the first accepted hash while the others are still pending", async () => {
+            const slow1 = deferred();
+            const slow3 = deferred();
+            request1.mockReturnValue(slow1.promise);
+            request2.mockResolvedValue("0xhash2");
+            request3.mockReturnValue(slow3.promise);
+
+            const hash = await broadcastTx(signer, tx as any);
+
+            // settled before the slow ones answered at all
+            expect(hash).toBe("0xhash2");
+            expect(request1).toHaveBeenCalledTimes(1);
+            expect(request3).toHaveBeenCalledTimes(1);
+
+            // the late answers, success or failure, are inert
+            slow1.resolve("0xhash1");
+            slow3.reject(new Error("late failure"));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+
+        it("should wait for a later acceptance when the first answers are rejections", async () => {
+            const slow = deferred();
+            request1.mockRejectedValue(new Error("insufficient funds"));
+            request2.mockReturnValue(slow.promise);
+            request3.mockRejectedValue(new Error("gas too low"));
+
+            const promise = broadcastTx(signer, tx as any);
+            // let the rejections land first
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            slow.resolve("0xlatehash");
+
+            expect(await promise).toBe("0xlatehash");
+        });
+
+        it("should count an already known rejection as acceptance with the local hash", async () => {
+            const slow = deferred();
+            request1.mockRejectedValue(new Error("already known"));
+            request2.mockReturnValue(slow.promise);
+            request3.mockReturnValue(slow.promise);
+
+            const hash = await broadcastTx(signer, tx as any);
+
+            expect(hash).toBe(localHash);
+            slow.resolve("0xhash");
+        });
+
+        it("should return the accepted rpc hash over the local hash when both come in", async () => {
+            request1.mockResolvedValue("0xrpchash");
+            request2.mockRejectedValue(new Error("already known"));
+            request3.mockRejectedValue(new Error("already known"));
+
+            const hash = await broadcastTx(signer, tx as any);
+
+            // whichever settled first wins, both name the same tx
+            expect(["0xrpchash", localHash]).toContain(hash);
+        });
+
+        it("should count a mix of a real rejection and an already known one as accepted", async () => {
+            request1.mockRejectedValue(new Error("insufficient funds"));
+            request2.mockRejectedValue({ details: "nonce too low" });
+            request3.mockRejectedValue(new Error("execution reverted"));
+
+            const hash = await broadcastTx(signer, tx as any);
+
+            expect(hash).toBe(localHash);
+        });
+
+        it("should throw the first rpc error when every rpc rejects", async () => {
+            const error1 = new Error("insufficient funds");
+            request1.mockRejectedValue(error1);
+            request2.mockRejectedValue(new Error("gas too low"));
+            request3.mockRejectedValue(new Error("execution reverted"));
+
+            await expect(broadcastTx(signer, tx as any)).rejects.toThrow(error1);
+            expect(request1).toHaveBeenCalledTimes(1);
+            expect(request2).toHaveBeenCalledTimes(1);
+            expect(request3).toHaveBeenCalledTimes(1);
+        });
+
+        it("should throw the first rpc error in pool order, not in settle order", async () => {
+            const slow = deferred();
+            const error1 = new Error("first in pool");
+            request1.mockReturnValue(slow.promise);
+            request2.mockRejectedValue(new Error("second in pool"));
+            request3.mockRejectedValue(new Error("third in pool"));
+
+            const promise = broadcastTx(signer, tx as any);
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            slow.reject(error1);
+
+            await expect(promise).rejects.toThrow(error1);
+        });
+
+        it("should throw non error rejections as they are", async () => {
+            request1.mockRejectedValue("rpc unavailable");
+            request2.mockRejectedValue("rpc unavailable");
+            request3.mockRejectedValue("rpc unavailable");
+
+            await expect(broadcastTx(signer, tx as any)).rejects.toBe("rpc unavailable");
+        });
+
+        it("should treat a transport instantiation failure as that rpc rejecting", async () => {
+            transport1.mockImplementation(() => {
+                throw new Error("bad transport");
+            });
+            request2.mockResolvedValue("0xhash");
+            request3.mockResolvedValue("0xhash");
+
+            const hash = await broadcastTx(signer, tx as any);
+
+            expect(hash).toBe("0xhash");
+        });
     });
 });
 
