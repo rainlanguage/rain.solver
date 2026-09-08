@@ -309,8 +309,10 @@ export class SharedState {
     oracleHealth: OracleHealthMap = new Map();
     /** The current native gas token to USD price (18 decimals fixed point number as decimal string), updated once per round */
     gasTokenUsdPrice?: string;
-    /** The latest observed block number of the operating chain, kept up-to-date by the block number watcher */
+    /** The latest observed block number of the operating chain, kept up-to-date by the block number watcher, the block being built when subscribed to flashblocks */
     blockNumber = 0n;
+    /** The latest sealed (canonical) block number of the operating chain, one below the observed block number when subscribed to flashblocks, equal to it otherwise */
+    canonicalBlockNumber = 0n;
 
     private blockNumberWatcher: ReturnType<typeof setInterval> | undefined;
     private wsBlockNumberUnwatcher: (() => void) | undefined;
@@ -400,8 +402,23 @@ export class SharedState {
      */
     async updateBlockNumber() {
         const blockNumber = await this.client.getBlockNumber().catch(() => undefined);
-        if (typeof blockNumber === "bigint" && blockNumber > this.blockNumber) {
+        if (typeof blockNumber === "bigint") {
+            // a read block number is always a sealed one
+            this.setBlockNumbers(blockNumber, blockNumber);
+        }
+    }
+
+    /**
+     * Sets the observed and the canonical block numbers, each only ever moves up
+     * @param blockNumber - The observed block number
+     * @param canonicalBlockNumber - The sealed block number
+     */
+    private setBlockNumbers(blockNumber: bigint, canonicalBlockNumber: bigint) {
+        if (blockNumber > this.blockNumber) {
             this.blockNumber = blockNumber;
+        }
+        if (canonicalBlockNumber > this.canonicalBlockNumber) {
+            this.canonicalBlockNumber = canonicalBlockNumber;
         }
     }
 
@@ -450,9 +467,12 @@ export class SharedState {
      */
     private subscribeToBlockNumber(wsClient: PublicClient, interval: number) {
         const onBlockNumber = (blockNumber: bigint) => {
-            if (blockNumber > this.blockNumber) {
-                this.blockNumber = blockNumber;
-            }
+            // a flashblock head belongs to the block being built, so the
+            // sealed block is the one below it, a new head is sealed itself
+            this.setBlockNumbers(
+                blockNumber,
+                this.appOptions.flashblocks ? blockNumber - 1n : blockNumber,
+            );
             // subscription is healthy, so stop the polling fallback
             // and cancel any pending resubscribe if active
             this.stopPollingBlockNumber();

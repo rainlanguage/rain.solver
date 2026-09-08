@@ -66,6 +66,7 @@ describe("Test initializeRound", () => {
         mockState = {
             chainConfig: { id: 1 },
             blockNumber: 123n,
+            canonicalBlockNumber: 123n,
             updateGasTokenUsdPrice: vi.fn().mockResolvedValue(undefined),
             client: {
                 name: "viem-client",
@@ -162,6 +163,7 @@ describe("Test initializeRound", () => {
                 seenBlockNumbers.push(args.blockNumber);
                 // simulate the watcher observing a new block during the batch
                 (mockState as any).blockNumber = args.blockNumber + 10n;
+                (mockState as any).canonicalBlockNumber = args.blockNumber + 10n;
                 return vi.fn();
             });
 
@@ -271,6 +273,7 @@ describe("Test initializeRound", () => {
                 zeroOutput: [],
             });
             mockState.blockNumber = 0n;
+            mockState.canonicalBlockNumber = 0n;
             (mockSolver as any).logger = {
                 exportPreAssembledSpan: vi.fn(),
             } as any;
