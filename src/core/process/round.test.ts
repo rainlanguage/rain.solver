@@ -2120,4 +2120,35 @@ describe("Test prepareRouter", () => {
         await prepareRouter.call(mockSolver, otherOrderDetails, 123n);
         expect(mockState.getMarketPrice as Mock).toHaveBeenCalledTimes(3);
     });
+
+    it("should prefetch a warmed pair once when the watcher observed a new pool and consume the flag", async () => {
+        const nativeWrappedToken = { address: "0xNativeWrappedToken" };
+        const mockOrderDetails = {
+            id: "0xid",
+            sellTokenDecimals: 18,
+            sellToken: "0xSellToken",
+            sellTokenSymbol: "sTKN",
+            buyTokenDecimals: 18,
+            buyToken: "0xBuyToken",
+            buyTokenSymbol: "bTKN",
+        } as any;
+        const key = `${mockOrderDetails.sellToken.toLowerCase()}-${mockOrderDetails.buyToken.toLowerCase()}`;
+        const mockState = {
+            client: { name: "client" },
+            chainConfig: { id: 1, nativeWrappedToken },
+            getMarketPrice: vi.fn().mockResolvedValue(null),
+            router: { cache: new Map<string, number>([[key, 4]]) },
+            newPoolCreated: true,
+        } as any;
+        const mockSolver = { state: mockState } as any;
+
+        // the flag bypasses the warmed pair skip and gets consumed
+        await prepareRouter.call(mockSolver, mockOrderDetails, 123n);
+        expect(mockState.getMarketPrice as Mock).toHaveBeenCalledTimes(3);
+        expect(mockState.newPoolCreated).toBe(false);
+
+        // the next call skips the warmed pair again
+        await prepareRouter.call(mockSolver, mockOrderDetails, 123n);
+        expect(mockState.getMarketPrice as Mock).toHaveBeenCalledTimes(3);
+    });
 });

@@ -313,6 +313,10 @@ export class SharedState {
     blockNumber = 0n;
     /** The latest sealed (canonical) block number of the operating chain, one below the observed block number when subscribed to flashblocks, equal to it otherwise */
     canonicalBlockNumber = 0n;
+    /** Set when a pool update observed a newly created pool, cleared by the consumer once acted on */
+    newPoolCreated = false;
+    /** Whether a pool update is in flight, a new block does not start another one meanwhile */
+    private poolUpdateInFlight = false;
 
     private blockNumberWatcher: ReturnType<typeof setInterval> | undefined;
     private wsBlockNumberUnwatcher: (() => void) | undefined;
@@ -409,7 +413,8 @@ export class SharedState {
     }
 
     /**
-     * Sets the observed and the canonical block numbers, each only ever moves up
+     * Sets the observed and the canonical block numbers, each only ever moves up,
+     * a canonical block number advance triggers a pool update up to it
      * @param blockNumber - The observed block number
      * @param canonicalBlockNumber - The sealed block number
      */
@@ -419,6 +424,29 @@ export class SharedState {
         }
         if (canonicalBlockNumber > this.canonicalBlockNumber) {
             this.canonicalBlockNumber = canonicalBlockNumber;
+            this.updatePools();
+        }
+    }
+
+    /**
+     * Updates the sushi router pools data up to the canonical block number,
+     * that is applies the pool events since the last update, only one update
+     * runs at a time, a new block during an update does not start another one,
+     * the next block picks the gap up, a failed update is dropped the same way,
+     * a newly created pool observed by the update raises the newPoolCreated flag
+     */
+    private async updatePools() {
+        const sushi = this.router.sushi;
+        if (!sushi || this.poolUpdateInFlight) return;
+        this.poolUpdateInFlight = true;
+        try {
+            if (await sushi.update(this.canonicalBlockNumber)) {
+                this.newPoolCreated = true;
+            }
+        } catch {
+            // the next block picks the gap up
+        } finally {
+            this.poolUpdateInFlight = false;
         }
     }
 

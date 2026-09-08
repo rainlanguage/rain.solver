@@ -63,14 +63,8 @@ export async function initializeRound(
     await this.state.updateGasTokenUsdPrice(blockNumber);
 
     for (const orderDetails of iterOrders(orders, shuffle)) {
-        // update pools data on each batch start
-        let newPoolCreated = false;
-        if (maxConcurrencyCounter === this.appOptions.maxConcurrency) {
-            newPoolCreated =
-                (await this.state.router.sushi?.update(blockNumber).catch(() => false)) ?? false;
-        }
-
-        await prepareRouter.call(this, orderDetails, blockNumber, newPoolCreated);
+        // the pools data is kept up-to-date by the block number watcher
+        await prepareRouter.call(this, orderDetails, blockNumber);
 
         concurrencyProcessBatch.push(
             processOrderInit.call(this, orderDetails, blockNumber!, roundSpanCtx),
@@ -125,16 +119,17 @@ export async function initializeRound(
 }
 
 /**
- * Prefetches the routers' pool data required for processing the given order details
+ * Prefetches the routers' pool data required for processing the given order details,
+ * a pair with enough fetches behind it is skipped, unless the block number watcher
+ * observed a newly created pool since the last fetch, that flag is consumed here
  * @param orderDetails - The order details
  * @param blockNumber - The block number to fetch data at
  */
-export async function prepareRouter(
-    this: RainSolver,
-    orderDetails: Pair,
-    blockNumber?: bigint,
-    newPoolCreated?: boolean,
-) {
+export async function prepareRouter(this: RainSolver, orderDetails: Pair, blockNumber?: bigint) {
+    const newPoolCreated = this.state.newPoolCreated;
+    if (newPoolCreated) {
+        this.state.newPoolCreated = false;
+    }
     const key = `${orderDetails.sellToken.toLowerCase()}-${orderDetails.buyToken.toLowerCase()}`;
     const value = this.state.router.cache.get(key);
     if (!newPoolCreated && typeof value === "number" && value > 3) return;
