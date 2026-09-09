@@ -134,10 +134,11 @@ flashblocks: false
 # at the same time, taking the first accepted one, default is false
 multiBroadcast: false
 
-# Enables the halving backoff retries for router mode partial trades that get rejected onchain, default is true
+# Adds the backoff sizes of the found trade size, three quarters of it and its halved sizes, to the router mode
+# trade size batch that gets validated against the onchain dryrun concurrently, for every order, default is true
 routerPartialFallback: true
 
-# The number of halving backoff steps to run concurrently for router mode partial trades that get rejected onchain, default is 4
+# The number of halved sizes in a router mode trade size batch, the three quarters size comes on top, default is 4
 routerPartialFallbackSteps: 4
 
 # Sets which orders get a secondary router mode try with the failing route dexes excluded after an onchain rejection,
@@ -150,10 +151,24 @@ dryrunGasCache: false
 # Time (in minutes) between dryrun gas cache resets, default is 60
 dryrunGasCacheResetTime: 60
 
+# Multiplier of the trade tx gas cost below which a trade size counts as dust and gets skipped, since a trade
+# worth less than its gas can never be profitable, 0 disables dust detection, default is 1
+dustGasCostMultiplier: 1
+
+# USD value below which a trade size counts as dust and gets skipped, when both dust checks are set a trade must fail
+# both to count as dust, 0 disables the usd dust check, default is 0
+dustUsdThreshold: 0
+
+# Runs the dust check on each order's whole max output before any simulation and skips the dust ones for the round,
+# the router mode partial trade size dust check is not affected, default is true
+dustOrderCheck: true
+
 # When true, zero output balance pairs of max profile owners go to round processing, when false, all zero output balance pairs are skipped, default is false
 strictMaxOwnerProfileCheck: false
 
-# When true, the router mode fallback partial trade backoff runs on any partial sim failure for orders of max profile owners, default is false
+# When true, orders of max profile owners get the backoff sizes in their router mode trade size batch even with
+# routerPartialFallback disabled, and a dust found trade size backs off from the full size for them instead of
+# bailing out, default is false
 strictMaxOwnerProfilePartialTradeSizeCheck: false
 
 # Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins

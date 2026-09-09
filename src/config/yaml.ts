@@ -129,9 +129,9 @@ export type AppOptions = {
     flashblocks: boolean;
     /** Broadcasts each signed transaction through all the configured write rpcs (or all rpcs when no write rpc is set) at the same time, taking the first accepted one, default is false */
     multiBroadcast: boolean;
-    /** Enables the halving backoff retries for router mode partial trades that get rejected onchain, default is true */
+    /** Adds the backoff sizes of the found trade size, three quarters of it and its halved sizes, to the router mode trade size batch that gets validated against the onchain dryrun concurrently, for every order, default is true */
     routerPartialFallback: boolean;
-    /** The number of halving backoff steps to run concurrently for router mode partial trades that get rejected onchain, default is 4 */
+    /** The number of halved sizes in a router mode trade size batch, the three quarters size comes on top, default is 4 */
     routerPartialFallbackSteps: number;
     /** Sets which orders get a secondary router mode try with the failing route dexes excluded after an onchain rejection, "all" for every order, "max" for orders of max profile owners only, "off" for none, default is "max" */
     routerSecondaryRouteTry: "all" | "max" | "off";
@@ -139,9 +139,15 @@ export type AppOptions = {
     dryrunGasCache: boolean;
     /** Time (in minutes) between dryrun gas cache resets, default is 60 */
     dryrunGasCacheResetTime: number;
+    /** Multiplier of the trade tx gas cost below which a trade size counts as dust and gets skipped, 0 disables the gas cost dust check, default is 1 */
+    dustGasCostMultiplier: number;
+    /** USD value below which a trade size counts as dust and gets skipped, when both dust checks are set a trade must fail both to count as dust, 0 disables the usd dust check, default is 0 */
+    dustUsdThreshold: number;
+    /** Runs the dust check on each order's whole max output before any simulation and skips the dust ones for the round, the router mode partial trade size dust check is not affected, default is true */
+    dustOrderCheck: boolean;
     /** When true, zero output balance pairs of max profile owners go to round processing, when false, all zero output balance pairs are skipped, default is false */
     strictMaxOwnerProfileCheck: boolean;
-    /** When true, the router mode fallback partial trade backoff runs on any partial sim failure for orders of max profile owners, default is false */
+    /** When true, orders of max profile owners get the backoff sizes in their router mode trade size batch even with routerPartialFallback disabled, and a dust found trade size backs off from the full size for them instead of bailing out, default is false */
     strictMaxOwnerProfilePartialTradeSizeCheck: boolean;
     /** Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins */
     checkWalletBalanceTime: number;
@@ -458,6 +464,35 @@ export namespace AppOptions {
                             dryrunGasCacheResetTime > 0,
                             "invalid dryrunGasCacheResetTime value, must be an integer greater than 0",
                         ),
+                ),
+                dustGasCostMultiplier: Validator.resolveNumericValue(
+                    input.dustGasCostMultiplier,
+                    FLOAT_PATTERN,
+                    "invalid dustGasCostMultiplier value, must be a number greater than or equal to 0",
+                    "1",
+                    undefined,
+                    (dustGasCostMultiplier) =>
+                        assert(
+                            dustGasCostMultiplier >= 0,
+                            "invalid dustGasCostMultiplier value, must be a number greater than or equal to 0",
+                        ),
+                ),
+                dustUsdThreshold: Validator.resolveNumericValue(
+                    input.dustUsdThreshold,
+                    FLOAT_PATTERN,
+                    "invalid dustUsdThreshold value, must be a number greater than or equal to 0",
+                    "0",
+                    undefined,
+                    (dustUsdThreshold) =>
+                        assert(
+                            dustUsdThreshold >= 0,
+                            "invalid dustUsdThreshold value, must be a number greater than or equal to 0",
+                        ),
+                ),
+                dustOrderCheck: Validator.resolveBool(
+                    input.dustOrderCheck,
+                    "expected a boolean value for dustOrderCheck",
+                    true,
                 ),
                 strictMaxOwnerProfileCheck: Validator.resolveBool(
                     input.strictMaxOwnerProfileCheck,

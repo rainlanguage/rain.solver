@@ -1,7 +1,7 @@
 import { RainSolver } from "..";
 import { Pair } from "../../order";
 import { Result } from "../../common";
-import { toUsdValue, toNumber } from "../../math";
+import { toNumber, toUsdValue, toEthValue } from "../../math";
 import { Token } from "sushi/currency";
 import { SpanWithContext } from "../../logger";
 import { formatUnits, parseUnits } from "viem";
@@ -176,9 +176,24 @@ export async function processOrder(
         outputToEthPrice = "0";
     }
 
-    // record in/out tokens to eth price andgas price for otel
+    // record in/out tokens to eth price andgas price for otel, along the in/out
+    // tokens usd price derived from their eth price and the gas token usd price
     spanAttributes["details.inputToEthPrice"] = inputToEthPrice || "no-way";
     spanAttributes["details.outputToEthPrice"] = outputToEthPrice || "no-way";
+    if (this.state.gasTokenUsdPrice) {
+        if (inputToEthPrice) {
+            spanAttributes["details.inputToUsdPrice"] = formatUnits(
+                toUsdValue(parseUnits(inputToEthPrice, 18), this.state.gasTokenUsdPrice),
+                18,
+            );
+        }
+        if (outputToEthPrice) {
+            spanAttributes["details.outputToUsdPrice"] = formatUnits(
+                toUsdValue(parseUnits(outputToEthPrice, 18), this.state.gasTokenUsdPrice),
+                18,
+            );
+        }
+    }
     spanAttributes["details.gasPrice"] = this.state.gasPrice.toString();
     if (this.state.l1GasPrice) {
         spanAttributes["details.gasPriceL1"] = this.state.l1GasPrice.toString();
@@ -190,6 +205,41 @@ export async function processOrder(
         startTime: getEthMarketPriceTime,
         duration: getEthMarketPriceDuration,
     };
+
+    // skip the order when its whole max output counts as dust by the dust checks
+    // enabled in the app options, no partial size can be profitable then, since
+    // the bounty of a trade is always a share of the market value of the output
+    // tokens it takes, the check is switched by config and dust has no meaning
+    // when gas coverage is 0
+    if (
+        this.appOptions.dustOrderCheck &&
+        this.appOptions.gasCoveragePercentage !== "0" &&
+        this.state.isDustTrade(orderDetails, outputToEthPrice, this.state.gasTokenUsdPrice)
+    ) {
+        const maxOutputValue = toEthValue(
+            orderDetails.takeOrder.quote!.maxOutput,
+            outputToEthPrice,
+        );
+        spanAttributes["details.maxOutputValue"] = formatUnits(maxOutputValue, 18);
+        if (this.state.gasTokenUsdPrice) {
+            spanAttributes["details.maxOutputValueUsd"] = formatUnits(
+                toUsdValue(maxOutputValue, this.state.gasTokenUsdPrice),
+                18,
+            );
+        }
+        const gasCost = this.state.getGasCostEstimate(orderDetails);
+        if (gasCost !== undefined) {
+            spanAttributes["details.gasCostEstimate"] = formatUnits(gasCost, 18);
+        }
+        const endTime = performance.now();
+        return async () => {
+            return Result.ok({
+                ...baseResult,
+                endTime,
+                status: ProcessOrderStatus.DustOutput,
+            });
+        };
+    }
 
     const findBestTradeTime = performance.now();
     const trade = await this.findBestTrade({

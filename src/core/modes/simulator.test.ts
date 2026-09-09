@@ -507,6 +507,22 @@ describe("Test TradeSimulatorBase", () => {
                 expect(gasCache.recordFinal).not.toHaveBeenCalled();
             });
 
+            it("should carry the estimated gas cost on a final dryrun failure", async () => {
+                gasCache.get.mockReturnValue({ gas: 20000n, l1Cost: 500n });
+                (dryrun as Mock).mockResolvedValueOnce(
+                    Result.err({ spanAttributes: { error: "minimum sender output" } }),
+                );
+
+                const result = await mockSimulator.trySimulateTrade();
+                assert(result.isErr());
+                expect(result.error.reason).toBe(SimulationHaltReason.NoOpportunity);
+                expect(result.error.spanAttributes["stage"]).toBe(2);
+                const gasLimit = (20000n * 120n) / 100n;
+                expect(result.error.estimatedGasCost).toBe(
+                    gasLimit * mockSolver.state.gasPrice + 500n,
+                );
+            });
+
             it("should not use the cache when gasCoveragePercentage is 0", async () => {
                 (mockSolver.appOptions as any).gasCoveragePercentage = "0";
                 gasCache.get.mockReturnValue({ gas: 20000n, l1Cost: 500n });

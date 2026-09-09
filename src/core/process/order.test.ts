@@ -61,6 +61,8 @@ describe("Test processOrder", () => {
                 .fn()
                 .mockResolvedValue(Result.ok({ price: "100", amountOut: "100" })),
             gasPrice: 100n,
+            isDustTrade: vi.fn().mockReturnValue(undefined),
+            getGasCostEstimate: vi.fn().mockReturnValue(undefined),
         } as any;
         mockArgs = {
             orderDetails: {
@@ -83,7 +85,7 @@ describe("Test processOrder", () => {
         mockRainSolver = {
             state: mockState,
             orderManager: mockOrderManager,
-            appOptions: {},
+            appOptions: { dustOrderCheck: true },
             findBestTrade,
         } as any;
     });
@@ -434,6 +436,106 @@ describe("Test processOrder", () => {
         });
     });
 
+    it("should skip the order as dust when the state dust check says so", async () => {
+        (mockState.isDustTrade as Mock).mockReturnValue(true);
+        (mockState.getGasCostEstimate as Mock).mockReturnValue(10n ** 40n);
+        (mockState as any).gasTokenUsdPrice = "2";
+
+        const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
+            mockRainSolver,
+            mockArgs,
+        );
+        const result = await fn();
+
+        assert(result.isOk());
+        expect(result.value.status).toBe(ProcessOrderStatus.DustOutput);
+        // 1 max output priced at the output token eth price of 100, 2 usd per eth
+        expect(result.value.spanAttributes["details.maxOutputValue"]).toBe("100");
+        expect(result.value.spanAttributes["details.maxOutputValueUsd"]).toBe("200");
+        // 1e40 wei is 1e22 eth
+        expect(result.value.spanAttributes["details.gasCostEstimate"]).toBe(
+            "10000000000000000000000",
+        );
+        expect(mockState.isDustTrade).toHaveBeenCalledWith(mockArgs.orderDetails, "100", "2");
+        expect(findBestTrade).not.toHaveBeenCalled();
+    });
+
+    it("should not skip the order when the state dust check says not dust or cannot decide", async () => {
+        (findBestTrade as Mock).mockResolvedValue(
+            Result.ok({
+                rawtx: { to: "0xRAW" },
+                oppBlockNumber: 100,
+                estimatedProfit: 123n,
+                spanAttributes: {},
+            }),
+        );
+        (processTransaction as Mock).mockReturnValue(async () =>
+            Result.ok({ status: ProcessOrderStatus.FoundOpportunity, endTime: 123 }),
+        );
+
+        (mockState.isDustTrade as Mock).mockReturnValue(false);
+        let fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
+            mockRainSolver,
+            mockArgs,
+        );
+        await fn();
+        expect(findBestTrade).toHaveBeenCalledTimes(1);
+
+        (mockState.isDustTrade as Mock).mockReturnValue(undefined);
+        fn = await processOrder.call(mockRainSolver, mockArgs);
+        await fn();
+        expect(findBestTrade).toHaveBeenCalledTimes(2);
+        expect(mockState.isDustTrade).toHaveBeenCalledTimes(2);
+    });
+
+    it("should not run the dust check when disabled by config", async () => {
+        (mockRainSolver.appOptions as any).dustOrderCheck = false;
+        (mockState.isDustTrade as Mock).mockReturnValue(true);
+        (findBestTrade as Mock).mockResolvedValue(
+            Result.ok({
+                rawtx: { to: "0xRAW" },
+                oppBlockNumber: 100,
+                estimatedProfit: 123n,
+                spanAttributes: {},
+            }),
+        );
+        (processTransaction as Mock).mockReturnValue(async () =>
+            Result.ok({ status: ProcessOrderStatus.FoundOpportunity, endTime: 123 }),
+        );
+
+        const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
+            mockRainSolver,
+            mockArgs,
+        );
+        await fn();
+        expect(mockState.isDustTrade).not.toHaveBeenCalled();
+        expect(findBestTrade).toHaveBeenCalledTimes(1);
+    });
+
+    it("should not run the dust check when gas coverage is 0", async () => {
+        mockRainSolver.appOptions.gasCoveragePercentage = "0";
+        (mockState.isDustTrade as Mock).mockReturnValue(true);
+        (findBestTrade as Mock).mockResolvedValue(
+            Result.ok({
+                rawtx: { to: "0xRAW" },
+                oppBlockNumber: 100,
+                estimatedProfit: 123n,
+                spanAttributes: {},
+            }),
+        );
+        (processTransaction as Mock).mockReturnValue(async () =>
+            Result.ok({ status: ProcessOrderStatus.FoundOpportunity, endTime: 123 }),
+        );
+
+        const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
+            mockRainSolver,
+            mockArgs,
+        );
+        await fn();
+        expect(mockState.isDustTrade).not.toHaveBeenCalled();
+        expect(findBestTrade).toHaveBeenCalledTimes(1);
+    });
+
     it("should record estimated profit usd when gas token usd price is set", async () => {
         (mockState as any).gasTokenUsdPrice = "2";
         (findBestTrade as Mock).mockResolvedValue(
@@ -462,6 +564,51 @@ describe("Test processOrder", () => {
         expect(callArgs.baseResult.spanAttributes["details.estimatedProfitUsd"]).toBe(
             "0.000000000000000246",
         );
+        // in/out tokens are 100 eth each, so 200 dollars each
+        expect(callArgs.baseResult.spanAttributes["details.inputToEthPrice"]).toBe("100");
+        expect(callArgs.baseResult.spanAttributes["details.inputToUsdPrice"]).toBe("200");
+        expect(callArgs.baseResult.spanAttributes["details.outputToEthPrice"]).toBe("100");
+        expect(callArgs.baseResult.spanAttributes["details.outputToUsdPrice"]).toBe("200");
+    });
+
+    it("should not record in/out tokens usd price when unknown", async () => {
+        (findBestTrade as Mock).mockResolvedValue(
+            Result.ok({
+                rawtx: { to: "0xRAW" },
+                oppBlockNumber: 100,
+                estimatedProfit: 123n,
+                spanAttributes: {},
+            }),
+        );
+        (processTransaction as Mock).mockReturnValue(async () =>
+            Result.ok({ status: ProcessOrderStatus.FoundOpportunity, endTime: 123 }),
+        );
+
+        // no gas token usd price, no usd prices at all
+        let fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
+            mockRainSolver,
+            mockArgs,
+        );
+        await fn();
+        let callArgs = (processTransaction as Mock).mock.calls[0][0];
+        expect(callArgs.baseResult.spanAttributes["details.inputToEthPrice"]).toBe("100");
+        expect(callArgs.baseResult.spanAttributes["details.inputToUsdPrice"]).toBeUndefined();
+        expect(callArgs.baseResult.spanAttributes["details.outputToUsdPrice"]).toBeUndefined();
+
+        // gas token usd price set but no route for the output token, so
+        // only the input token gets a usd price, the market price calls
+        // go pair quote, input to eth, output to eth in that order
+        (mockState as any).gasTokenUsdPrice = "2";
+        (mockState.getMarketPrice as Mock)
+            .mockResolvedValueOnce(Result.ok({ price: "100" }))
+            .mockResolvedValueOnce(Result.ok({ price: "100" }))
+            .mockResolvedValueOnce(Result.err(new Error("no way")));
+        fn = await processOrder.call(mockRainSolver, mockArgs);
+        await fn();
+        callArgs = (processTransaction as Mock).mock.calls[1][0];
+        expect(callArgs.baseResult.spanAttributes["details.inputToUsdPrice"]).toBe("200");
+        expect(callArgs.baseResult.spanAttributes["details.outputToEthPrice"]).toBe("no-way");
+        expect(callArgs.baseResult.spanAttributes["details.outputToUsdPrice"]).toBeUndefined();
     });
 
     it("should proceed to processTransaction if all steps succeed (happy path)", async () => {

@@ -167,8 +167,8 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
         this.spanAttributes["marketPrice"] = formatUnits(quote.price, 18);
         this.spanAttributes["route"] = routeVisual;
         if (this.tradeArgs.lockRoute && this.tradeArgs.sushiQuote) {
-            // the locked route quote belongs to a different amount, so the
-            // amountOut and marketPrice attributes above are not for this size
+            // the locked route quote may belong to a different amount, so the
+            // amountOut and marketPrice attributes above may not be for this size
             this.spanAttributes["routeReused"] = true;
         }
 

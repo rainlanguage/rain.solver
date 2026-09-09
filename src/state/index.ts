@@ -15,6 +15,8 @@ import { RainSolverRouter } from "../router/router";
 import { SubgraphConfig } from "../subgraph/config";
 import { RainSolverBaseError } from "../error/types";
 import { OrderManagerConfig } from "../order/config";
+import type { Pair } from "../order/types";
+import { toEthValue, toUsdValue } from "../math";
 import { RainSolverRouterError } from "../router/error";
 import { ChainConfig, ChainConfigError, getChainConfig } from "./chain";
 import { RpcState, rainSolverTransport, RainSolverTransportConfig } from "../rpc";
@@ -380,6 +382,89 @@ export class SharedState {
     /** Returns the average gas cost of the successful transactions */
     get avgGasCost(): bigint {
         return this.gasCosts.reduce((a, b) => a + b, 0n) / BigInt(this.gasCosts.length || 1);
+    }
+
+    /**
+     * Returns the best known estimate of the gas cost (in wei) of a trade tx for the
+     * given order pair, the pair's dryrun gas cache priced at the current gas price
+     * when it holds enough samples, as it tracks the pair's own route at the gas
+     * price of the moment, otherwise the average of the recent successful txs when
+     * there is any, undefined when neither is available
+     * @param pair - The order pair
+     */
+    getGasCostEstimate(pair: Pair): bigint | undefined {
+        const cached = this.dryrunGasCache.get(DryrunGasCache.key(pair));
+        if (cached) {
+            const gasLimit = (cached.gas * BigInt(this.appOptions.gasLimitMultiplier)) / 100n;
+            return gasLimit * this.gasPrice + cached.l1Cost;
+        }
+        if (this.gasCosts.length) return this.avgGasCost;
+        return undefined;
+    }
+
+    /** Whether any of the dust checks is enabled by the app options */
+    get isDustCheckEnabled(): boolean {
+        return this.appOptions.dustGasCostMultiplier > 0 || this.appOptions.dustUsdThreshold > 0;
+    }
+
+    /**
+     * Determines if a trade of the given order pair is dust by the dust checks enabled
+     * in the app options, the gas cost check, where the trade value cannot cover the gas
+     * cost of the trade tx scaled by the multiplier, and the usd check, where the trade
+     * value is below the usd threshold, when both are enabled a trade is dust only if
+     * both say so, when only one is enabled that one decides on its own, a dust trade can
+     * never be profitable since the bounty of a trade is always a share of the market
+     * value of the output tokens it takes, so the trade value is the trade size of the
+     * pair's output token priced by the output token eth price, the gas cost comes from
+     * the given one when known, otherwise from the best known estimate for the pair
+     * @param pair - The order pair
+     * @param outputToEthPrice - The output token eth price as decimal string, empty or undefined when unknown
+     * @param gasTokenUsdPrice - The gas token usd price as decimal string, undefined when unknown
+     * @param size - The trade size (18 fixed point decimals), defaults to the pair's quoted max output
+     * @param gasCost - The known gas cost of the trade tx (wei), defaults to the pair's gas cost estimate
+     * @returns True when the trade is dust, false when it is not, undefined when no dust check is
+     * enabled or an enabled check cannot be evaluated for lack of its inputs while no other
+     * enabled check has ruled the trade out as not dust
+     */
+    isDustTrade(
+        pair: Pair,
+        outputToEthPrice: string | undefined,
+        gasTokenUsdPrice: string | undefined,
+        size = pair.takeOrder.quote?.maxOutput,
+        gasCost?: bigint,
+    ): boolean | undefined {
+        if (!this.isDustCheckEnabled || !outputToEthPrice || size === undefined) {
+            return undefined;
+        }
+        const tradeValue = toEthValue(size, outputToEthPrice);
+        const verdicts: (boolean | undefined)[] = [];
+
+        // gas cost check, undecided without a known gas cost
+        const { dustGasCostMultiplier, dustUsdThreshold } = this.appOptions;
+        if (dustGasCostMultiplier > 0) {
+            const cost = gasCost ?? this.getGasCostEstimate(pair);
+            // keep 4 decimal points of the multiplier precision
+            const multiplier = BigInt(Math.round(dustGasCostMultiplier * 10_000));
+            verdicts.push(
+                cost === undefined || cost <= 0n
+                    ? undefined
+                    : tradeValue < (cost * multiplier) / 10_000n,
+            );
+        }
+
+        // usd value check, undecided without a known gas token usd price
+        if (dustUsdThreshold > 0) {
+            verdicts.push(
+                gasTokenUsdPrice
+                    ? toUsdValue(tradeValue, gasTokenUsdPrice) <
+                          parseUnits(dustUsdThreshold.toFixed(18), 18)
+                    : undefined,
+            );
+        }
+
+        if (verdicts.includes(false)) return false;
+        if (verdicts.includes(undefined)) return undefined;
+        return true;
     }
 
     /**

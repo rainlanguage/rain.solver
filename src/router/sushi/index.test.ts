@@ -1121,12 +1121,11 @@ describe("test SushiRouter methods", () => {
                 gasPrice,
             );
 
-            // every probe has a route but fails the price match, so the search
-            // shrinks from the first probe, which is the biggest routed size
-            // at half of the maximum input
+            // every probe has a route but fails the price match, so the biggest
+            // routed size is the full size probed first
             expect(result).toMatchObject({
                 status: TradeSizeStatus.PriceMismatch,
-                size: 5n * ONE18,
+                size: 10n * ONE18,
             });
             // carries the biggest routed probe quote
             assert(result.status === TradeSizeStatus.PriceMismatch);
@@ -1215,10 +1214,32 @@ describe("test SushiRouter methods", () => {
                 true, // absolute mode
             );
 
-            // always below tolerance, so the search grows towards the maximum input
+            // the full size probed first is below tolerance, so it is returned right away
             assert(result.status === TradeSizeStatus.Found);
-            expect(result.size).toBeGreaterThan(9n * ONE18);
-            expect(result.size).toBeLessThan(10n * ONE18);
+            expect(result.size).toBe(10n * ONE18);
+            expect(Router.findBestRoute).toHaveBeenCalledTimes(1);
+        });
+
+        it("should return the full size right away when it clears the ratio", () => {
+            (Router.findBestRoute as Mock).mockReturnValue({
+                status: "OK",
+                amountOutBI: 20n * ONE18, // price = 2
+            });
+
+            const result = router.findLargestTradeSize(
+                makeOrderDetails(1n * ONE18),
+                toToken,
+                fromToken,
+                maximumInputFixed,
+                gasPrice,
+            );
+
+            // no bisection at all, the full size probe is the only one
+            assert(result.status === TradeSizeStatus.Found);
+            expect(result.size).toBe(10n * ONE18);
+            expect(result.quote.amountOut).toBe(20n * ONE18);
+            expect(Router.findBestRoute).toHaveBeenCalledTimes(1);
+            expect((Router.findBestRoute as Mock).mock.calls[0][3]).toBe(10n * ONE18);
         });
 
         it("should return NoWay and never PriceMismatch in absolute mode", () => {

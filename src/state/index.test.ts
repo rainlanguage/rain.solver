@@ -900,6 +900,172 @@ describe("Test SharedState", () => {
         });
     });
 
+    describe("Test getGasCostEstimate", () => {
+        const pair = {
+            orderbook: "0xob",
+            takeOrder: { id: "0xid" },
+            sellToken: "0xs",
+            buyToken: "0xb",
+        } as any;
+
+        it("should return undefined without any known gas cost", () => {
+            const state = new SharedState(config);
+            expect(state.getGasCostEstimate(pair)).toBeUndefined();
+        });
+
+        it("should fall back to the avg gas cost of successful txs without a cache entry", () => {
+            const state = new SharedState(config);
+            state.gasCosts = [100n, 300n];
+            expect(state.getGasCostEstimate(pair)).toBe(200n);
+        });
+
+        it("should use the pair dryrun gas cache priced at the current gas price first", () => {
+            config.appOptions.gasLimitMultiplier = 120;
+            const state = new SharedState(config);
+            state.gasPrice = 10n;
+            const key = "0xob-0xid-0xs-0xb";
+            for (let i = 0; i < 5; i++) state.dryrunGasCache.recordInit(key, 1000n, 50n);
+
+            // 1000 gas * 120% * 10 gas price + 50 l1 cost
+            expect(state.getGasCostEstimate(pair)).toBe(12050n);
+
+            // the cache takes priority over the successful txs avg
+            state.gasCosts = [7n];
+            expect(state.getGasCostEstimate(pair)).toBe(12050n);
+
+            // other pairs have no cache entry, so they get the avg
+            expect(state.getGasCostEstimate({ ...pair, takeOrder: { id: "0xother" } })).toBe(7n);
+
+            // the cache follows the current gas price
+            state.gasPrice = 20n;
+            expect(state.getGasCostEstimate(pair)).toBe(24050n);
+        });
+    });
+
+    describe("Test isDustTrade", () => {
+        // 1 output token at 0.001 eth, so the max output is worth 1e15 wei
+        const pair = {
+            orderbook: "0xob",
+            takeOrder: { id: "0xid", quote: { maxOutput: 1000000000000000000n } },
+            sellToken: "0xs",
+            buyToken: "0xb",
+        } as any;
+        const outputToEthPrice = "0.001";
+
+        it("should return undefined when no dust check is enabled", () => {
+            config.appOptions.dustGasCostMultiplier = 0;
+            config.appOptions.dustUsdThreshold = 0;
+            const state = new SharedState(config);
+            state.gasCosts = [10n ** 18n];
+            expect(state.isDustCheckEnabled).toBe(false);
+            expect(state.isDustTrade(pair, outputToEthPrice, "2000")).toBeUndefined();
+        });
+
+        it("should return undefined without the output eth price or a quoted size", () => {
+            config.appOptions.dustGasCostMultiplier = 1;
+            config.appOptions.dustUsdThreshold = 0;
+            const state = new SharedState(config);
+            state.gasCosts = [10n ** 18n];
+            expect(state.isDustCheckEnabled).toBe(true);
+            expect(state.isDustTrade(pair, "", "2000")).toBeUndefined();
+            expect(state.isDustTrade(pair, undefined, "2000")).toBeUndefined();
+            expect(
+                state.isDustTrade({ ...pair, takeOrder: { id: "0xid" } }, outputToEthPrice, "2000"),
+            ).toBeUndefined();
+        });
+
+        it("should check the max output value against the pair gas cost estimate", () => {
+            config.appOptions.dustGasCostMultiplier = 1;
+            config.appOptions.dustUsdThreshold = 0;
+            const state = new SharedState(config);
+
+            // no gas cost known, cannot decide
+            expect(state.isDustTrade(pair, outputToEthPrice, undefined)).toBeUndefined();
+
+            // avg gas cost of 1 eth is above the 1e15 wei value, dust
+            state.gasCosts = [10n ** 18n];
+            expect(state.isDustTrade(pair, outputToEthPrice, undefined)).toBe(true);
+
+            // avg gas cost of 1e14 wei is below the value, not dust
+            state.gasCosts = [10n ** 14n];
+            expect(state.isDustTrade(pair, outputToEthPrice, undefined)).toBe(false);
+
+            // the multiplier scales the gas cost, 1e14 * 20 = 2e15 above the value
+            config.appOptions.dustGasCostMultiplier = 20;
+            expect(state.isDustTrade(pair, outputToEthPrice, undefined)).toBe(true);
+        });
+
+        it("should use the given size and gas cost over the defaults", () => {
+            config.appOptions.dustGasCostMultiplier = 1;
+            config.appOptions.dustUsdThreshold = 0;
+            const state = new SharedState(config);
+            state.gasCosts = [10n ** 18n];
+
+            // half the max output is worth 5e14 wei, the given gas cost of 1e14 is below it
+            expect(
+                state.isDustTrade(pair, outputToEthPrice, undefined, 5n * 10n ** 17n, 10n ** 14n),
+            ).toBe(false);
+            // and above it with a given gas cost of 1e15
+            expect(
+                state.isDustTrade(pair, outputToEthPrice, undefined, 5n * 10n ** 17n, 10n ** 15n),
+            ).toBe(true);
+        });
+
+        it("should scale the gas cost by the multiplier with 4 decimal points precision", () => {
+            config.appOptions.dustUsdThreshold = 0;
+            const state = new SharedState(config);
+            // the max output is worth 1e15 wei, with a 1.2345 multiplier a gas cost
+            // of 8e14 scales to 9.876e14, below the value, and 8.2e14 scales to
+            // 1.01229e15, above it
+            config.appOptions.dustGasCostMultiplier = 1.2345;
+            expect(
+                state.isDustTrade(pair, outputToEthPrice, undefined, undefined, 8n * 10n ** 14n),
+            ).toBe(false);
+            expect(
+                state.isDustTrade(pair, outputToEthPrice, undefined, undefined, 82n * 10n ** 13n),
+            ).toBe(true);
+            // a gas cost of 0 cannot be evaluated
+            expect(state.isDustTrade(pair, outputToEthPrice, undefined, undefined, 0n)).toBe(
+                undefined,
+            );
+        });
+
+        it("should rule out dust by one check even when the other cannot be evaluated", () => {
+            config.appOptions.dustGasCostMultiplier = 1;
+            config.appOptions.dustUsdThreshold = 2.5;
+            const state = new SharedState(config);
+
+            // usd says not dust at 3000 usd per eth (3 usd), gas cost unknown, not dust
+            expect(state.isDustTrade(pair, outputToEthPrice, "3000")).toBe(false);
+            // gas says not dust with the 1e14 avg cost, usd price unknown, not dust
+            state.gasCosts = [10n ** 14n];
+            expect(state.isDustTrade(pair, outputToEthPrice, undefined)).toBe(false);
+            // gas says dust with the 1 eth avg cost, usd price unknown, undecided
+            state.gasCosts = [10n ** 18n];
+            expect(state.isDustTrade(pair, outputToEthPrice, undefined)).toBeUndefined();
+        });
+
+        it("should check the usd value alone or together with the gas cost", () => {
+            config.appOptions.dustGasCostMultiplier = 0;
+            config.appOptions.dustUsdThreshold = 2.5;
+            const state = new SharedState(config);
+            state.gasCosts = [10n ** 18n];
+
+            // 1e15 wei at 2000 usd per eth is 2 usd, below 2.5, dust
+            expect(state.isDustTrade(pair, outputToEthPrice, "2000")).toBe(true);
+            // at 3000 usd per eth it is 3 usd, not dust
+            expect(state.isDustTrade(pair, outputToEthPrice, "3000")).toBe(false);
+            // unknown usd price, cannot decide
+            expect(state.isDustTrade(pair, outputToEthPrice, undefined)).toBeUndefined();
+
+            // both checks, gas says dust at 1 eth avg cost, usd says not at 3000, not dust
+            config.appOptions.dustGasCostMultiplier = 1;
+            expect(state.isDustTrade(pair, outputToEthPrice, "3000")).toBe(false);
+            // both agree at 2000
+            expect(state.isDustTrade(pair, outputToEthPrice, "2000")).toBe(true);
+        });
+    });
+
     describe("Test avgGasCost", () => {
         it("should return 0 when gasCosts array is empty", () => {
             const state = new SharedState(config);
