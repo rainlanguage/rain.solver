@@ -78,8 +78,8 @@ export class RainSolverCli {
     prevMainWalletBalanceReport?: PreAssembledSpan;
     /** The last worker wallets balances, re-reported on rounds that skip the check */
     prevMultiWalletBalanceReports?: Record<string, bigint>;
-    /** The finalization of the latest round, runs in the background while the next round starts */
-    pendingRoundFinalization?: Promise<void>;
+    /** The in flight round finalizations, they run in the background while the next rounds start */
+    pendingRoundFinalizations = new Set<Promise<void>>();
 
     private constructor(
         state: SharedState,
@@ -317,14 +317,17 @@ export class RainSolverCli {
 
             // finalize the round in the background, the round span ends once all
             // the finalization operations settle, so the next round starts on time
-            this.pendingRoundFinalization = this.finalizeRound(
+            const finalization: Promise<void> = this.finalizeRound(
                 roundSpan,
                 roundCtx,
                 syncOrdersPromise,
                 checkMainWalletBalancePromise,
                 getWorkerWalletsBalancePromise,
                 metaInfoPromise,
-            ).catch(() => {});
+            )
+                .catch(() => {})
+                .finally(() => this.pendingRoundFinalizations.delete(finalization));
+            this.pendingRoundFinalizations.add(finalization);
 
             // eslint-disable-next-line no-console
             console.log(`Starting next round in ${this.appOptions.sleep / 1000} seconds...`, "\n");
@@ -344,8 +347,9 @@ export class RainSolverCli {
             }
         }
 
-        // let the latest round finalize before flushing and closing the connection
-        await this.pendingRoundFinalization;
+        // let every round finalize before flushing and closing the connection, as
+        // spans that end after shutdown are dropped
+        await Promise.allSettled(this.pendingRoundFinalizations);
         await this.logger.shutdown();
     }
 
