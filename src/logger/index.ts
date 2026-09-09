@@ -1,5 +1,4 @@
-import { sleep } from "../common";
-import { OrderSpanEvents } from "../core/types";
+import type { OrderSpanEvents } from "../core/types";
 import { Resource } from "@opentelemetry/resources";
 import { CompressionAlgorithm } from "@opentelemetry/otlp-exporter-base";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -46,13 +45,14 @@ export type SpanWithContext = {
  *
  * @remarks
  * - Uses OpenTelemetry SDK for Node.js.
- * - Supports exporting traces to HyperDX if the API key is provided.
+ * - Exports traces to the configured OTLP HTTP endpoint.
  * - Automatically configures the service name from the `TRACER_SERVICE_NAME`
  * environment variable or defaults to "rain-solver".
  */
 export class RainSolverLogger {
     tracer: Tracer;
     exporter: OTLPTraceExporter | ConsoleSpanExporter;
+    private readonly provider: BasicTracerProvider;
 
     constructor() {
         // enable diag
@@ -64,12 +64,13 @@ export class RainSolverLogger {
             }),
         });
 
-        if (process.env.HYPERDX_API_KEY) {
+        this.provider = provider;
+
+        if (
+            process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ||
+            process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+        ) {
             const exporter = new OTLPTraceExporter({
-                url: "https://in-otel.hyperdx.io/v1/traces",
-                headers: {
-                    authorization: process?.env?.HYPERDX_API_KEY,
-                },
                 compression: CompressionAlgorithm.GZIP,
             });
             this.exporter = exporter;
@@ -163,8 +164,7 @@ export class RainSolverLogger {
      */
     async shutdown() {
         // flush and close the connection
-        await this.exporter.shutdown();
-        await sleep(3000);
+        await this.provider.shutdown();
     }
 }
 

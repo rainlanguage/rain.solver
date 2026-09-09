@@ -51,22 +51,6 @@ jobs:
       - name: Build Docker Image
         run: docker build -t "$TAG_BASE:$CHANNEL" --build-arg GIT_SHA=${{ github.sha }} --build-arg DOCKER_CHANNEL=$CHANNEL .
 
-      # we need to get from/to timestamp because hyperdx by default only shows the last 15 mins logs,
-      # so if a commit preview has been pushed more than 15 mins ago relative to whenever preview link
-      # gets opened by someone, it wont show the logs unless user manually increases the timeframe
-      # from hyperdx gui, so we set the 'from' and 'to' timestamps in the link's query parameters to
-      # ensure the link always opens within the exact timeframe when the job was executed
-      - name: Set Preview Link From Timestamp
-        run: |
-          # set from timestamps in envs
-          FROM_TIME=$(date +%s)
-
-          # set in github envs as milliseconds
-          echo "FROM_TIME=${FROM_TIME}000" >> $GITHUB_ENV
-
-          # log the timestamp for debug purposes
-          echo from timestamp: $FROM_TIME \($(date -d @$FROM_TIME)\)
-
       - name: Create GitHub Deployment
         id: deployment
         uses: bobheadxi/deployments@v1
@@ -82,7 +66,6 @@ jobs:
           echo "PREVIEW_ROUNDS=${{ vars.PREVIEW_ROUNDS }}" >> .env
           echo "TRACER_SERVICE_NAME=github-preview-${{ github.sha }}" >> .env
           echo "RPC_URL=${{ secrets.PREVIEW_RPC_URL }}" >> .env
-          echo "HYPERDX_API_KEY=${{ secrets.PREVIEW_HYPERDX_API_KEY }}" >> .env
           echo "BOT_WALLET_PRIVATEKEY=${{ secrets.PREVIEW_BOT_WALLET_PRIVATEKEY }}" >> .env
           echo "MAX_RATIO=${{ vars.PREVIEW_MAX_RATIO }}" >> .env
           echo "SUBGRAPH=${{ vars.PREVIEW_SUBGRAPH }}" >> .env
@@ -99,26 +82,15 @@ jobs:
       - name: Run Rain Solver Docker Image
         run: docker run --rm --env-file .env $TAG_BASE:$CHANNEL
 
-      # set to timestamp after bot execution has completed
-      - name: Set Preview Link To Timestamps
-        run: |
-          # set to timestamps in envs
-          TO_TIME=$(date +%s)
-
-          # set in github envs as milliseconds
-          echo "TO_TIME=${TO_TIME}000" >> $GITHUB_ENV
-
-          # log the timestamp for debug purposes
-          echo to timestamp: $TO_TIME \($(date -d @$TO_TIME)\)
-
       - name: Update Deployment Status
+        if: always() && steps.deployment.outputs.deployment_id != ''
         uses: bobheadxi/deployments@v1
         with:
           step: finish
           token: ${{ secrets.GITHUB_TOKEN }}
           env: preview
-          status: success
+          status: ${{ job.status }}
           ref: ${{ github.sha }}
           override: false
           deployment_id: ${{ steps.deployment.outputs.deployment_id }}
-          env_url: https://www.hyperdx.io/search?q=%28%28service%3A%22github-preview-${{ github.sha }}%22%29%29&from=${{ env.FROM_TIME }}&to=${{ env.TO_TIME }}
+          env_url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
