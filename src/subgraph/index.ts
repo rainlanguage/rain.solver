@@ -7,7 +7,7 @@ import { PreAssembledSpan } from "../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { ErrorSeverity, errorSnapshot } from "../error";
 import { SgOrder, SgTransaction, SubgraphSyncState, SubgraphVersions } from "./types";
-import { getTxsQuery, orderbooksQuery, DEFAULT_PAGE_SIZE, getQueryPaginated } from "./query";
+import { getTxsQuery, getOrderbooksQuery, DEFAULT_PAGE_SIZE, getQueryPaginated } from "./query";
 
 // re-export
 export * from "./types";
@@ -70,7 +70,11 @@ export class SubgraphManager {
      */
     async getOrderbooks(): Promise<Set<string>> {
         const promises = this.subgraphs.map((url) =>
-            axios.post(url, { query: orderbooksQuery }, { headers, timeout: this.requestTimeout }),
+            axios.post(
+                url,
+                { query: getOrderbooksQuery(this.getSubgraphVersion(url)) },
+                { headers, timeout: this.requestTimeout },
+            ),
         );
         const queryResults = await Promise.allSettled(promises);
         const addresses = queryResults.flatMap(
@@ -152,7 +156,7 @@ export class SubgraphManager {
             const res = await axios.post(
                 url,
                 {
-                    query: getQueryPaginated(skip, this.filters),
+                    query: getQueryPaginated(skip, this.filters, version),
                 },
                 { headers, timeout: this.requestTimeout },
             );
@@ -234,7 +238,14 @@ export class SubgraphManager {
                 try {
                     const res = await axios.post(
                         url,
-                        { query: getTxsQuery(startTimestamp, this.syncState[url].skip) },
+                        {
+                            query: getTxsQuery(
+                                startTimestamp,
+                                this.syncState[url].skip,
+                                undefined,
+                                this.getSubgraphVersion(url),
+                            ),
+                        },
                         { headers, timeout: this.requestTimeout },
                     );
                     if (typeof res?.data?.data?.transactions !== "undefined") {

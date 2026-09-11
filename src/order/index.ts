@@ -588,7 +588,7 @@ export class OrderManager {
             // skip mirrored order pairs and pairs with middle token that is not in routing base tokens
             if (
                 tkn === sellToken ||
-                BASES_TO_CHECK_TRADES_AGAINST[this.state.chainConfig.id].every(
+                (BASES_TO_CHECK_TRADES_AGAINST[this.state.chainConfig.id] ?? []).every(
                     (baseToken) => baseToken.address.toLowerCase() !== tkn,
                 )
             ) {

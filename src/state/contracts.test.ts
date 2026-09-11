@@ -608,6 +608,55 @@ describe("resolveVersionContracts", () => {
         });
     });
 
+    it("should prefer configured interpreter/store over onchain reads", async () => {
+        const mockAddresses = {
+            dispair: "0xdispairAddress" as `0x${string}`,
+            interpreter: "0xconfiguredInterpreter" as `0x${string}`,
+            store: "0xconfiguredStore" as `0x${string}`,
+            sushiArb: "0xsushiArbAddress" as `0x${string}`,
+        };
+
+        const result = await resolveVersionContracts(mockClient, mockAddresses, "v6");
+
+        expect(result).toEqual({
+            dispair: {
+                deployer: "0xdispairAddress",
+                interpreter: "0xconfiguredInterpreter",
+                store: "0xconfiguredStore",
+            },
+            sushiArb: "0xsushiArbAddress",
+        });
+        // the RaindexV6 deployer only exposes parse2, so it must not be read at all
+        expect(mockClient.readContract).not.toHaveBeenCalled();
+    });
+
+    it("should still read onchain for whichever of interpreter/store is not configured", async () => {
+        const mockAddresses = {
+            dispair: "0xdispairAddress" as `0x${string}`,
+            interpreter: "0xconfiguredInterpreter" as `0x${string}`,
+            sushiArb: "0xsushiArbAddress" as `0x${string}`,
+        };
+
+        mockClient.readContract.mockResolvedValueOnce("0xstoreAddress" as `0x${string}`);
+
+        const result = await resolveVersionContracts(mockClient, mockAddresses, "v6");
+
+        expect(result).toEqual({
+            dispair: {
+                deployer: "0xdispairAddress",
+                interpreter: "0xconfiguredInterpreter",
+                store: "0xstoreAddress",
+            },
+            sushiArb: "0xsushiArbAddress",
+        });
+        expect(mockClient.readContract).toHaveBeenCalledTimes(1);
+        expect(mockClient.readContract).toHaveBeenCalledWith({
+            address: "0xdispairAddress",
+            functionName: "I_STORE",
+            abi: ABI.Deployer.Primary.DeployerV6,
+        });
+    });
+
     it("should resolve version contracts for v6 with all addresses when all contract calls succeed", async () => {
         const mockAddresses = {
             dispair: "0xdispairAddress" as `0x${string}`,

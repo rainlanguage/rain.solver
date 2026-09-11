@@ -1,6 +1,18 @@
 import { SgFilter } from "./filter";
+import { SubgraphVersions } from "./types";
 
 export const DEFAULT_PAGE_SIZE = 1000 as const;
+
+/**
+ * The orderbook entity was renamed to `raindex` in the v6 subgraph schema, so v6
+ * queries select it under an `orderbook` alias. That keeps the response shape
+ * identical across versions and leaves every consumer of `SgOrder`/`SgTransaction`
+ * untouched.
+ * @param version - The subgraph schema version being queried
+ */
+export function orderbookField(version: SubgraphVersions): string {
+    return version === SubgraphVersions.V6 ? "orderbook: raindex" : "orderbook";
+}
 
 /**
  * Method to get the subgraph query body for order details with optional filters
@@ -8,7 +20,12 @@ export const DEFAULT_PAGE_SIZE = 1000 as const;
  * @param filters - Applies the filters for query
  * @returns the query string
  */
-export function getQueryPaginated(skip: number, filters?: SgFilter): string {
+export function getQueryPaginated(
+    skip: number,
+    filters?: SgFilter,
+    version: SubgraphVersions = SubgraphVersions.LEGACY,
+): string {
+    const orderbook = orderbookField(version);
     const getFilterVar = (header: string, f?: Set<string>) =>
         f ? `${header}: [${[...f].map((v) => `"${v.toLowerCase()}"`).join(", ")}], ` : "";
 
@@ -16,8 +33,13 @@ export function getQueryPaginated(skip: number, filters?: SgFilter): string {
     const exOwnerFilter = getFilterVar("owner_not_in", filters?.excludeOwners);
     const incOrderFilter = getFilterVar("orderHash_in", filters?.includeOrders);
     const exOrderFilter = getFilterVar("orderHash_not_in", filters?.excludeOrders);
-    const incOrderbookFilter = getFilterVar("orderbook_in", filters?.includeOrderbooks);
-    const exOrderbookFilter = getFilterVar("orderbook_not_in", filters?.excludeOrderbooks);
+    // the orderbook entity is also named `raindex` on the filter input in v6
+    const orderbookFilterKey = version === SubgraphVersions.V6 ? "raindex" : "orderbook";
+    const incOrderbookFilter = getFilterVar(`${orderbookFilterKey}_in`, filters?.includeOrderbooks);
+    const exOrderbookFilter = getFilterVar(
+        `${orderbookFilterKey}_not_in`,
+        filters?.excludeOrderbooks,
+    );
 
     return `{
     orders(
@@ -42,7 +64,7 @@ export function getQueryPaginated(skip: number, filters?: SgFilter): string {
         meta
         active
         nonce
-        orderbook {
+        ${orderbook} {
             id
         }
         inputs {
@@ -67,8 +89,8 @@ export function getQueryPaginated(skip: number, filters?: SgFilter): string {
 }`;
 }
 
-export const orderbooksQuery = `{
-    orderbooks {
+export const getOrderbooksQuery = (version: SubgraphVersions = SubgraphVersions.LEGACY) => `{
+    ${version === SubgraphVersions.V6 ? "orderbooks: raindices" : "orderbooks"} {
         id
     }
 }`;
@@ -88,7 +110,13 @@ export const statusCheckQuery = `{
  * @param skip - Skips the first number of results
  * @param endTimestamp - (optional) The timestamp to end query at
  */
-export const getTxsQuery = (startTimestamp: number, skip: number, endTimestamp?: number) => {
+export const getTxsQuery = (
+    startTimestamp: number,
+    skip: number,
+    endTimestamp?: number,
+    version: SubgraphVersions = SubgraphVersions.LEGACY,
+) => {
+    const orderbook = orderbookField(version);
     const endTimestampClause =
         typeof endTimestamp === "number" ? `timestamp_lte: "${endTimestamp}"` : "";
     return `{transactions(
@@ -112,7 +140,7 @@ export const getTxsQuery = (startTimestamp: number, skip: number, endTimestamp?:
                 meta
                 active
                 nonce
-                orderbook {
+                ${orderbook} {
                     id
                 }
                 inputs {
@@ -147,7 +175,7 @@ export const getTxsQuery = (startTimestamp: number, skip: number, endTimestamp?:
                 meta
                 active
                 nonce
-                orderbook {
+                ${orderbook} {
                     id
                 }
                 inputs {
@@ -183,7 +211,7 @@ export const getTxsQuery = (startTimestamp: number, skip: number, endTimestamp?:
                     symbol
                 }
             }
-            orderbook {
+            ${orderbook} {
                 id
             }
         }
@@ -200,7 +228,7 @@ export const getTxsQuery = (startTimestamp: number, skip: number, endTimestamp?:
                     symbol
                 }
             }
-            orderbook {
+            ${orderbook} {
                 id
             }
         }
@@ -219,7 +247,7 @@ export const getTxsQuery = (startTimestamp: number, skip: number, endTimestamp?:
                             symbol
                         }
                     }
-                    orderbook {
+                    ${orderbook} {
                         id
                     }
                 }
@@ -236,7 +264,7 @@ export const getTxsQuery = (startTimestamp: number, skip: number, endTimestamp?:
                             symbol
                         }
                     }
-                    orderbook {
+                    ${orderbook} {
                         id
                     }
                 }

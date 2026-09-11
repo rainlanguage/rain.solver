@@ -778,6 +778,8 @@ describe("Test yaml Validator methods", async function () {
             v4: {
                 sushiArb: sushiArbV4 as `0x${string}`,
                 dispair: dispairV4 as `0x${string}`,
+                interpreter: undefined,
+                store: undefined,
                 genericArb: genericArbV4 as `0x${string}`,
                 balancerArb: balancerArbV4 as `0x${string}`,
                 stabullArb: stabullArbV4 as `0x${string}`,
@@ -802,6 +804,8 @@ describe("Test yaml Validator methods", async function () {
             v5: {
                 sushiArb: sushiArbV5 as `0x${string}`,
                 dispair: dispairV5 as `0x${string}`,
+                interpreter: undefined,
+                store: undefined,
                 genericArb: genericArbV5 as `0x${string}`,
                 balancerArb: balancerArbV5 as `0x${string}`,
                 stabullArb: stabullArbV5 as `0x${string}`,
@@ -827,6 +831,8 @@ describe("Test yaml Validator methods", async function () {
             v6: {
                 sushiArb: sushiArbV6 as `0x${string}`,
                 dispair: dispairV6 as `0x${string}`,
+                interpreter: undefined,
+                store: undefined,
                 genericArb: genericArbV6 as `0x${string}`,
                 balancerArb: balancerArbV6 as `0x${string}`,
                 stabullArb: stabullArbV6 as `0x${string}`,
@@ -856,6 +862,8 @@ describe("Test yaml Validator methods", async function () {
             v4: {
                 sushiArb: sushiArbV4 as `0x${string}`,
                 dispair: dispairV4 as `0x${string}`,
+                interpreter: undefined,
+                store: undefined,
                 genericArb: undefined,
                 balancerArb: undefined,
                 stabullArb: undefined,
@@ -863,6 +871,8 @@ describe("Test yaml Validator methods", async function () {
             v5: {
                 sushiArb: undefined,
                 dispair: undefined,
+                interpreter: undefined,
+                store: undefined,
                 genericArb: genericArbV5 as `0x${string}`,
                 balancerArb: undefined,
                 stabullArb: undefined,
@@ -870,6 +880,8 @@ describe("Test yaml Validator methods", async function () {
             v6: {
                 sushiArb: undefined,
                 dispair: undefined,
+                interpreter: undefined,
+                store: undefined,
                 genericArb: undefined,
                 balancerArb: balancerArbV6 as `0x${string}`,
                 stabullArb: undefined,
@@ -891,6 +903,8 @@ describe("Test yaml Validator methods", async function () {
             v4: {
                 sushiArb: sushiArbV4 as `0x${string}`,
                 dispair: undefined,
+                interpreter: undefined,
+                store: undefined,
                 genericArb: undefined,
                 balancerArb: undefined,
                 stabullArb: undefined,
@@ -912,6 +926,8 @@ describe("Test yaml Validator methods", async function () {
             v5: {
                 sushiArb: undefined,
                 dispair: dispairV5 as `0x${string}`,
+                interpreter: undefined,
+                store: undefined,
                 genericArb: undefined,
                 balancerArb: balancerArbV5 as `0x${string}`,
                 stabullArb: undefined,
@@ -932,6 +948,8 @@ describe("Test yaml Validator methods", async function () {
             v6: {
                 sushiArb: undefined,
                 dispair: undefined,
+                interpreter: undefined,
+                store: undefined,
                 genericArb: undefined,
                 balancerArb: undefined,
                 stabullArb: undefined,
@@ -968,6 +986,8 @@ describe("Test yaml Validator methods", async function () {
             v4: {
                 sushiArb: sushiArbV4 as `0x${string}`,
                 dispair: dispairV4 as `0x${string}`,
+                interpreter: undefined,
+                store: undefined,
                 genericArb: undefined,
                 balancerArb: undefined,
                 stabullArb: undefined,
@@ -991,6 +1011,8 @@ describe("Test yaml Validator methods", async function () {
             v6: {
                 sushiArb: undefined,
                 dispair: undefined,
+                interpreter: undefined,
+                store: undefined,
                 genericArb: undefined,
                 balancerArb: balancerArbV6 as `0x${string}`,
                 stabullArb: undefined,

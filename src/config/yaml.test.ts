@@ -97,6 +97,8 @@ orderbookTradeTypes:
                     sushiArb: "0x1111111111111111111111111111111111111111",
                     balancerArb: "0x3333333333333333333333333333333333333333",
                     dispair: "0x2222222222222222222222222222222222222222",
+                    interpreter: undefined,
+                    store: undefined,
                     genericArb: undefined,
                     stabullArb: "0x4444444444444444444444444444444444444444",
                 },
@@ -179,6 +181,8 @@ orderbookTradeTypes:
                 v5: {
                     sushiArbAddress: "0x1111111111111111111111111111111111111111",
                     dispair: "0x2222222222222222222222222222222222222222",
+                    interpreter: undefined,
+                    store: undefined,
                     genericArbAddress: "0x3333333333333333333333333333333333333333",
                 },
             },
