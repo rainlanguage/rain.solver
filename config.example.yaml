@@ -53,6 +53,10 @@ contracts:
     stabullArbAddress: "0x1234...5678"
     # Dispair v4 contract address
     dispair: "0x1234...5678"
+    # Optional interpreter/store overrides, only needed when the deployer above
+    # does not expose them onchain (RaindexV6 deployers only expose parse2)
+    interpreter: "0x1234...5678"
+    store: "0x1234...5678"
   v5:
     # Sushi RP arb v5 contract address
     sushiArbAddress: "0x1234...5678"
@@ -64,6 +68,10 @@ contracts:
     stabullArbAddress: "0x1234...5678"
     # Dispair v5 contract address
     dispair: "0x1234...5678"
+    # Optional interpreter/store overrides, only needed when the deployer above
+    # does not expose them onchain (RaindexV6 deployers only expose parse2)
+    interpreter: "0x1234...5678"
+    store: "0x1234...5678"
   v6:
     # Sushi RP arb v6 contract address
     sushiArbAddress: "0x1234...5678"
@@ -77,6 +85,10 @@ contracts:
     raindexArbAddress: "0x1234...5678"
     # Dispair v6 contract address
     dispair: "0x1234...5678"
+    # Optional interpreter/store overrides, only needed when the deployer above
+    # does not expose them onchain (RaindexV6 deployers only expose parse2)
+    interpreter: "0x1234...5678"
+    store: "0x1234...5678"
 
 # list of liquidity providers
 # if provided through an env var, they should be separated by a comma

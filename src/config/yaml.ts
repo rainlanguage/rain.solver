@@ -33,6 +33,10 @@ export type AppOptionsContracts = {
     v4?: {
         sushiArb?: `0x${string}`;
         dispair?: `0x${string}`;
+        /** Optional interpreter override, for deployers that do not expose it onchain */
+        interpreter?: `0x${string}`;
+        /** Optional store override, for deployers that do not expose it onchain */
+        store?: `0x${string}`;
         genericArb?: `0x${string}`;
         balancerArb?: `0x${string}`;
         stabullArb?: `0x${string}`;
@@ -40,6 +44,10 @@ export type AppOptionsContracts = {
     v5?: {
         sushiArb?: `0x${string}`;
         dispair?: `0x${string}`;
+        /** Optional interpreter override, for deployers that do not expose it onchain */
+        interpreter?: `0x${string}`;
+        /** Optional store override, for deployers that do not expose it onchain */
+        store?: `0x${string}`;
         genericArb?: `0x${string}`;
         balancerArb?: `0x${string}`;
         stabullArb?: `0x${string}`;
@@ -47,6 +55,10 @@ export type AppOptionsContracts = {
     v6?: {
         sushiArb?: `0x${string}`;
         dispair?: `0x${string}`;
+        /** Optional interpreter override, for deployers that do not expose it onchain */
+        interpreter?: `0x${string}`;
+        /** Optional store override, for deployers that do not expose it onchain */
+        store?: `0x${string}`;
         genericArb?: `0x${string}`;
         balancerArb?: `0x${string}`;
         stabullArb?: `0x${string}`;

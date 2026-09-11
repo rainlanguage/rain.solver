@@ -79,24 +79,37 @@ export async function resolveVersionContracts(
         return undefined;
     }
 
-    const interpreter = await client
-        .readContract({
-            address: addresses.dispair,
-            functionName: version === "v6" ? "I_INTERPRETER" : "iInterpreter",
-            abi: version === "v6" ? ABI.Deployer.Primary.DeployerV6 : ABI.Deployer.Primary.Deployer,
-        })
-        .catch(() => undefined);
+    // Not every expression deployer exposes its interpreter and store onchain; the
+    // RaindexV6-era deployers, for instance, only expose parse2. Prefer the
+    // configured overrides when they are given and only read onchain otherwise.
+    const interpreter =
+        addresses.interpreter ??
+        (await client
+            .readContract({
+                address: addresses.dispair,
+                functionName: version === "v6" ? "I_INTERPRETER" : "iInterpreter",
+                abi:
+                    version === "v6"
+                        ? ABI.Deployer.Primary.DeployerV6
+                        : ABI.Deployer.Primary.Deployer,
+            })
+            .catch(() => undefined));
     if (!interpreter) {
         return undefined;
     }
 
-    const store = await client
-        .readContract({
-            address: addresses.dispair,
-            functionName: version === "v6" ? "I_STORE" : "iStore",
-            abi: version === "v6" ? ABI.Deployer.Primary.DeployerV6 : ABI.Deployer.Primary.Deployer,
-        })
-        .catch(() => undefined);
+    const store =
+        addresses.store ??
+        (await client
+            .readContract({
+                address: addresses.dispair,
+                functionName: version === "v6" ? "I_STORE" : "iStore",
+                abi:
+                    version === "v6"
+                        ? ABI.Deployer.Primary.DeployerV6
+                        : ABI.Deployer.Primary.Deployer,
+            })
+            .catch(() => undefined));
     if (!store) {
         return undefined;
     }

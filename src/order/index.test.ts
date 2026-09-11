@@ -1747,6 +1747,101 @@ describe("Test OrderManager", () => {
             expect(result.size).toBe(0);
         });
 
+        it("should not throw when the chain has no routing base tokens configured", async () => {
+            // a chain that sushi has no BASES_TO_CHECK_TRADES_AGAINST entry for
+            delete (BASES_TO_CHECK_TRADES_AGAINST as any)[state.chainConfig.id];
+
+            const orderARes = Result.ok({
+                type: Order.Type.V4,
+                owner: "0xowner",
+                validInputs: [
+                    {
+                        token: "0xinput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                validOutputs: [
+                    {
+                        token: "0xoutput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            });
+            const orderBRes = Result.ok({
+                type: Order.Type.V4,
+                owner: "0xowner",
+                validInputs: [
+                    {
+                        token: "0xbasetoken",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                validOutputs: [
+                    {
+                        token: "0xinput",
+                        vaultId:
+                            "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            });
+            (Order.tryFromBytes as Mock)
+                .mockReturnValueOnce(orderARes)
+                .mockReturnValueOnce(orderBRes);
+            const orderA = {
+                __version: SubgraphVersions.V6,
+                orderHash: "0xhashA",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytesA",
+                outputs: [
+                    {
+                        token: { address: "0xoutput", symbol: "OUT", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            };
+            const orderB = {
+                __version: SubgraphVersions.V6,
+                orderHash: "0xhashB",
+                orderbook: { id: "0xorderbook" },
+                orderBytes: "0xbytesB",
+                outputs: [
+                    {
+                        token: { address: "0xinput", symbol: "IN", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+                inputs: [
+                    {
+                        token: { address: "0xbasetoken", symbol: "BASE", decimals: "18" },
+                        balance:
+                            "0xffffffee00000000000000000000000000000000000000000000000000000001",
+                    },
+                ],
+            };
+
+            await orderManager.addOrder(orderA as any);
+            await orderManager.addOrder(orderB as any);
+
+            const pairA = getPair("0xorderbook", "0xhashA", "0xoutput", "0xinput");
+
+            const result = orderManager.getCounterpartyOrdersAgainstBaseTokens(pairA);
+
+            expect(result).toBeInstanceOf(Map);
+            expect(result.size).toBe(0);
+        });
+
         it("should skip non-base tokens", async () => {
             const mockBaseToken = { address: "0xbasetoken", symbol: "BASE", decimals: 18 };
             (BASES_TO_CHECK_TRADES_AGAINST as any)[state.chainConfig.id] = [mockBaseToken as any];

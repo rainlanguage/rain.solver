@@ -471,6 +471,12 @@ export namespace Validator {
 
     export function resolveContracts(input: any): AppOptionsContracts {
         const dispairV4 = resolveAddress(input?.contracts?.v4?.dispair, "dispair v4", true);
+        const interpreterV4 = resolveAddress(
+            input?.contracts?.v4?.interpreter,
+            "interpreter v4",
+            true,
+        );
+        const storeV4 = resolveAddress(input?.contracts?.v4?.store, "store v4", true);
         const sushiArbAddressV4 = resolveAddress(
             input?.contracts?.v4?.sushiArbAddress,
             "sushiArbAddress v4",
@@ -492,6 +498,12 @@ export namespace Validator {
             true,
         );
         const dispairV5 = resolveAddress(input?.contracts?.v5?.dispair, "dispair v5", true);
+        const interpreterV5 = resolveAddress(
+            input?.contracts?.v5?.interpreter,
+            "interpreter v5",
+            true,
+        );
+        const storeV5 = resolveAddress(input?.contracts?.v5?.store, "store v5", true);
         const sushiArbAddressV5 = resolveAddress(
             input?.contracts?.v5?.sushiArbAddress,
             "sushiArbAddress v5",
@@ -513,6 +525,12 @@ export namespace Validator {
             true,
         );
         const dispairV6 = resolveAddress(input?.contracts?.v6?.dispair, "dispair v6", true);
+        const interpreterV6 = resolveAddress(
+            input?.contracts?.v6?.interpreter,
+            "interpreter v6",
+            true,
+        );
+        const storeV6 = resolveAddress(input?.contracts?.v6?.store, "store v6", true);
         const sushiArbAddressV6 = resolveAddress(
             input?.contracts?.v6?.sushiArbAddress,
             "sushiArbAddress v6",
@@ -549,6 +567,8 @@ export namespace Validator {
             contracts.v4 = {
                 sushiArb: sushiArbAddressV4 as `0x${string}` | undefined,
                 dispair: dispairV4 as `0x${string}` | undefined,
+                interpreter: interpreterV4 as `0x${string}` | undefined,
+                store: storeV4 as `0x${string}` | undefined,
                 genericArb: genericArbAddressV4 as `0x${string}` | undefined,
                 balancerArb: balancerArbAddressV4 as `0x${string}` | undefined,
                 stabullArb: stabullArbAddressV4 as `0x${string}` | undefined,
@@ -564,6 +584,8 @@ export namespace Validator {
             contracts.v5 = {
                 sushiArb: sushiArbAddressV5 as `0x${string}` | undefined,
                 dispair: dispairV5 as `0x${string}` | undefined,
+                interpreter: interpreterV5 as `0x${string}` | undefined,
+                store: storeV5 as `0x${string}` | undefined,
                 genericArb: genericArbAddressV5 as `0x${string}` | undefined,
                 balancerArb: balancerArbAddressV5 as `0x${string}` | undefined,
                 stabullArb: stabullArbAddressV5 as `0x${string}` | undefined,
@@ -580,6 +602,8 @@ export namespace Validator {
             contracts.v6 = {
                 sushiArb: sushiArbAddressV6 as `0x${string}` | undefined,
                 dispair: dispairV6 as `0x${string}` | undefined,
+                interpreter: interpreterV6 as `0x${string}` | undefined,
+                store: storeV6 as `0x${string}` | undefined,
                 genericArb: genericArbAddressV6 as `0x${string}` | undefined,
                 balancerArb: balancerArbAddressV6 as `0x${string}` | undefined,
                 stabullArb: stabullArbAddressV6 as `0x${string}` | undefined,
