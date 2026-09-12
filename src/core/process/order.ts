@@ -1,6 +1,6 @@
 import { RainSolver } from "..";
 import { Pair } from "../../order";
-import { Result } from "../../common";
+import { Result, withBigintSerializer } from "../../common";
 import { toNumber, toUsdValue, toEthValue } from "../../math";
 import { Token } from "sushi/currency";
 import { SpanWithContext } from "../../logger";
@@ -70,7 +70,14 @@ export async function processOrder(
 
     const quoteOrderTime = performance.now();
     try {
-        await this.orderManager.quoteOrder(orderDetails);
+        // record the signed context of the previous round (if any) so it can
+        // be compared against the newly fetched one on quote failures
+        if (orderDetails.oracleUrl) {
+            spanAttributes["details.oracle.prev"] = orderDetails.takeOrder.struct.signedContext
+                ? JSON.stringify(orderDetails.takeOrder.struct.signedContext, withBigintSerializer)
+                : "N/A";
+        }
+        await this.orderManager.quoteOrder(orderDetails, spanAttributes, spanEvents);
         if (orderDetails.takeOrder.quote?.maxOutput === 0n) {
             // remove from pair maps if quote fails, to keep the pair map list free
             // of orders with 0 maxoutput this will make counterparty lookups faster

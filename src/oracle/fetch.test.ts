@@ -1,6 +1,7 @@
 import { Order } from "../order";
 import axios, { AxiosError } from "axios";
 import { OracleErrorType } from "./error";
+import { Attributes } from "@opentelemetry/api";
 import { OracleConstants, OracleHealthMap, OracleOrderRequest } from "./types";
 import { describe, it, expect, vi, beforeEach, afterEach, assert, Mock } from "vitest";
 import {
@@ -26,6 +27,7 @@ vi.mock("axios", async () => {
 
 describe("fetchSignedContext", () => {
     let healthMap: OracleHealthMap;
+    let spanAttributes: Attributes;
     const testUrl = "https://oracle.example.com";
     const testOwner = "0x1234567890123456789012345678901234567890";
     const testKey = `${testUrl}-${testOwner}`;
@@ -69,6 +71,7 @@ describe("fetchSignedContext", () => {
 
     beforeEach(() => {
         healthMap = new Map();
+        spanAttributes = {};
         vi.clearAllMocks();
 
         // Mock OracleConstants.isKnown to return true for test URL
@@ -78,7 +81,12 @@ describe("fetchSignedContext", () => {
     it("returns error when URL is unknown", async () => {
         vi.spyOn(OracleConstants, "isKnown").mockReturnValue(false);
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.Cooloff);
@@ -91,7 +99,12 @@ describe("fetchSignedContext", () => {
             cooloffUntil: Date.now() + 60000,
         });
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.Cooloff);
@@ -107,7 +120,12 @@ describe("fetchSignedContext", () => {
             config: {} as any,
         });
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isOk());
         expect(result.value).toEqual(validSignedContext);
@@ -123,7 +141,7 @@ describe("fetchSignedContext", () => {
             config: {} as any,
         });
 
-        await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        await fetchSignedContext(testUrl, mockOrderRequest, healthMap, spanAttributes);
 
         const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(0);
@@ -148,7 +166,12 @@ describe("fetchSignedContext", () => {
         (axios.post as Mock).mockRejectedValueOnce(axiosError);
         (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.RequestFailed);
@@ -174,7 +197,7 @@ describe("fetchSignedContext", () => {
         (axios.post as Mock).mockRejectedValueOnce(axiosError);
         (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
-        await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        await fetchSignedContext(testUrl, mockOrderRequest, healthMap, spanAttributes);
 
         const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(1);
@@ -187,7 +210,12 @@ describe("fetchSignedContext", () => {
         (axios.post as Mock).mockRejectedValueOnce(axiosError);
         (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.FetchError);
@@ -201,7 +229,7 @@ describe("fetchSignedContext", () => {
         (axios.post as Mock).mockRejectedValueOnce(axiosError);
         (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
-        await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        await fetchSignedContext(testUrl, mockOrderRequest, healthMap, spanAttributes);
 
         const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(1);
@@ -216,7 +244,12 @@ describe("fetchSignedContext", () => {
             config: {} as any,
         });
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.InvalidResponseType);
@@ -231,7 +264,7 @@ describe("fetchSignedContext", () => {
             config: {} as any,
         });
 
-        await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        await fetchSignedContext(testUrl, mockOrderRequest, healthMap, spanAttributes);
 
         const state = healthMap.get(testKey);
         expect(state?.consecutiveFailures).toBe(1);
@@ -246,7 +279,7 @@ describe("fetchSignedContext", () => {
             config: {} as any,
         });
 
-        await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        await fetchSignedContext(testUrl, mockOrderRequest, healthMap, spanAttributes);
 
         expect(axios.post).toHaveBeenCalledWith(
             testUrl,
@@ -268,7 +301,7 @@ describe("fetchSignedContext", () => {
             config: {} as any,
         });
 
-        await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        await fetchSignedContext(testUrl, mockOrderRequest, healthMap, spanAttributes);
 
         const callArgs = (axios.post as Mock).mock.calls[0];
         expect(callArgs[1]).toBeInstanceOf(Uint8Array);
@@ -279,7 +312,12 @@ describe("fetchSignedContext", () => {
         (axios.post as Mock).mockRejectedValueOnce(genericError);
         (axios.isAxiosError as any as Mock).mockReturnValue(false);
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.FetchError);
@@ -300,7 +338,12 @@ describe("fetchSignedContext", () => {
             config: {} as any,
         });
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.InvalidResponseType);
@@ -320,7 +363,12 @@ describe("fetchSignedContext", () => {
             config: {} as any,
         });
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.InvalidResponseType);
@@ -340,7 +388,12 @@ describe("fetchSignedContext", () => {
             config: {} as any,
         });
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.InvalidResponseType);
@@ -364,7 +417,12 @@ describe("fetchSignedContext", () => {
         (axios.post as Mock).mockRejectedValueOnce(axiosError);
         (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.RequestFailed);
@@ -389,7 +447,12 @@ describe("fetchSignedContext", () => {
         (axios.post as Mock).mockRejectedValueOnce(axiosError);
         (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.RequestFailed);
@@ -411,7 +474,12 @@ describe("fetchSignedContext", () => {
             config: {} as any,
         });
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isOk());
     });
@@ -429,7 +497,12 @@ describe("fetchSignedContext", () => {
         (axios.post as Mock).mockRejectedValueOnce(axiosError);
         (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.FetchError);
@@ -448,7 +521,12 @@ describe("fetchSignedContext", () => {
         (axios.post as Mock).mockRejectedValueOnce(axiosError);
         (axios.isAxiosError as any as Mock).mockReturnValue(true);
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.FetchError);
@@ -458,11 +536,133 @@ describe("fetchSignedContext", () => {
         (axios.post as Mock).mockRejectedValueOnce("string error");
         (axios.isAxiosError as any as Mock).mockReturnValue(false);
 
-        const result = await fetchSignedContext(testUrl, mockOrderRequest, healthMap);
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
 
         assert(result.isErr());
         expect(result.error.type).toBe(OracleErrorType.FetchError);
         expect(result.error.message).toContain("string error");
+    });
+
+    it("records raw response and validity in span attributes on valid response", async () => {
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: [validSignedContext],
+            status: 200,
+            statusText: "OK",
+            headers: {},
+            config: {} as any,
+        });
+
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
+
+        assert(result.isOk());
+        expect(spanAttributes["details.oracle.rawResponse"]).toBe(
+            JSON.stringify([validSignedContext]),
+        );
+        expect(spanAttributes["details.oracle.isValid"]).toBe(true);
+    });
+
+    it("records raw response and invalid flag in span attributes on invalid response shape", async () => {
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: { invalid: "response" },
+            status: 200,
+            statusText: "OK",
+            headers: {},
+            config: {} as any,
+        });
+
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
+
+        assert(result.isErr());
+        expect(result.error.type).toBe(OracleErrorType.InvalidResponseType);
+        expect(spanAttributes["details.oracle.rawResponse"]).toBe(
+            JSON.stringify({ invalid: "response" }),
+        );
+        expect(spanAttributes["details.oracle.isValid"]).toBe(false);
+    });
+
+    it("records error response body in span attributes on response error", async () => {
+        const axiosError = new AxiosError(
+            "Request failed with status code 400",
+            "ERR_BAD_REQUEST",
+            {} as any,
+            {},
+            {
+                status: 400,
+                statusText: "Bad Request",
+                data: { error: "Invalid request body" },
+                headers: {},
+                config: {} as any,
+            },
+        );
+
+        (axios.post as Mock).mockRejectedValueOnce(axiosError);
+        (axios.isAxiosError as any as Mock).mockReturnValue(true);
+
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
+
+        assert(result.isErr());
+        expect(result.error.type).toBe(OracleErrorType.RequestFailed);
+        expect(spanAttributes["details.oracle.rawResponse"]).toBe(
+            JSON.stringify({ error: "Invalid request body" }),
+        );
+        expect(spanAttributes["details.oracle.isValid"]).toBeUndefined();
+    });
+
+    it("does not record raw response in span attributes on network error", async () => {
+        const axiosError = new AxiosError("Network Error", "ERR_NETWORK", {} as any, {}, undefined);
+        axiosError.request = {};
+
+        (axios.post as Mock).mockRejectedValueOnce(axiosError);
+        (axios.isAxiosError as any as Mock).mockReturnValue(true);
+
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
+
+        assert(result.isErr());
+        expect(result.error.type).toBe(OracleErrorType.FetchError);
+        expect(spanAttributes).toEqual({});
+    });
+
+    it("does not touch span attributes when skipped for cooloff", async () => {
+        healthMap.set(testKey, {
+            consecutiveFailures: 5,
+            cooloffUntil: Date.now() + 60000,
+        });
+
+        const result = await fetchSignedContext(
+            testUrl,
+            mockOrderRequest,
+            healthMap,
+            spanAttributes,
+        );
+
+        assert(result.isErr());
+        expect(axios.post).not.toHaveBeenCalled();
+        expect(spanAttributes).toEqual({});
     });
 });
 

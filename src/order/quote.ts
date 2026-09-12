@@ -2,9 +2,11 @@ import { ChainId } from "sushi";
 import { SharedState } from "../state";
 import { AppOptions } from "../config";
 import { fetchOracleContext } from "../oracle";
-import { ABI, normalizeFloat } from "../common";
+import { ABI, normalizeFloat, withBigintSerializer } from "../common";
 import { BundledOrders, Pair, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData } from "viem";
+import { Attributes } from "@opentelemetry/api";
+import { OrderSpanEvents } from "../core/types";
 
 /**
  * Quotes a single order
@@ -17,13 +19,61 @@ import { decodeFunctionResult, encodeFunctionData } from "viem";
 export async function quoteSingleOrder(
     orderDetails: Pair,
     state: SharedState,
+    spanAttributes: Attributes,
+    spanEvents: OrderSpanEvents,
     blockNumber?: bigint,
     gas?: bigint,
 ) {
     if (Pair.isV3(orderDetails)) {
-        return quoteSingleOrderV3(orderDetails, state, blockNumber, gas);
+        return quoteSingleOrderV3(
+            orderDetails,
+            state,
+            spanAttributes,
+            spanEvents,
+            blockNumber,
+            gas,
+        );
     } else {
-        return quoteSingleOrderV4(orderDetails, state, blockNumber, gas);
+        return quoteSingleOrderV4(
+            orderDetails,
+            state,
+            spanAttributes,
+            spanEvents,
+            blockNumber,
+            gas,
+        );
+    }
+}
+
+/**
+ * Fetches the oracle signed context for the order (noop for orders without
+ * oracle url) and records the fetch details in the span attributes and events,
+ * throws the oracle error if the fetch fails
+ * @param orderDetails - Order details to fetch oracle context for
+ * @param state - SharedState for oracle health tracking
+ * @param spanAttributes - Span attributes to record the oracle details into
+ * @param spanEvents - Span events to record the oracle fetch timing into
+ */
+export async function fetchOracleContextWithSpan(
+    orderDetails: Pair,
+    state: SharedState,
+    spanAttributes: Attributes,
+    spanEvents: OrderSpanEvents,
+) {
+    const oracleTime = performance.now();
+    const oracleResult = await fetchOracleContext.call(state, orderDetails, spanAttributes);
+    if (orderDetails.oracleUrl) {
+        const duration = performance.now() - oracleTime;
+        spanAttributes["events.duration.oracleFetch"] = duration;
+        spanEvents["oracleFetch"] = { startTime: oracleTime, duration };
+    }
+    if (oracleResult.isErr()) {
+        throw oracleResult.error;
+    }
+    if (orderDetails.oracleUrl) {
+        spanAttributes["details.oracle.new"] = orderDetails.takeOrder.struct.signedContext
+            ? JSON.stringify(orderDetails.takeOrder.struct.signedContext, withBigintSerializer)
+            : "N/A";
     }
 }
 
@@ -33,14 +83,13 @@ export async function quoteSingleOrder(
 export async function quoteSingleOrderV3(
     orderDetails: Pair,
     state: SharedState,
+    spanAttributes: Attributes,
+    spanEvents: OrderSpanEvents,
     blockNumber?: bigint,
     gas?: bigint,
 ) {
     blockNumber;
-    const oracleResult = await fetchOracleContext.call(state, orderDetails);
-    if (oracleResult.isErr()) {
-        throw oracleResult.error;
-    }
+    await fetchOracleContextWithSpan(orderDetails, state, spanAttributes, spanEvents);
 
     const { data } = await state.client
         .call({
@@ -79,14 +128,13 @@ export async function quoteSingleOrderV3(
 export async function quoteSingleOrderV4(
     orderDetails: Pair,
     state: SharedState,
+    spanAttributes: Attributes,
+    spanEvents: OrderSpanEvents,
     blockNumber?: bigint,
     gas?: bigint,
 ) {
     blockNumber;
-    const oracleResult = await fetchOracleContext.call(state, orderDetails);
-    if (oracleResult.isErr()) {
-        throw oracleResult.error;
-    }
+    await fetchOracleContextWithSpan(orderDetails, state, spanAttributes, spanEvents);
 
     const { data } = await state.client
         .call({
@@ -101,6 +149,7 @@ export async function quoteSingleOrderV4(
         })
         .catch((error) => {
             orderDetails.takeOrder.quote = undefined;
+            spanAttributes["details.oracle.quoteRpcUrl"] = state.rpc?.lastUsedUrl;
             throw error;
         });
     if (typeof data !== "undefined") {
