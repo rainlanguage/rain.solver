@@ -79,31 +79,56 @@ export async function resolveVersionContracts(
         return undefined;
     }
 
+    // a v6 dispair can also be a Rainlang registry (IRainlang) of the newer rainlang
+    // stack instead of an expression deployer, so its getters are tried when the
+    // expression deployer getters fail, in that stack the expression deployer is only
+    // the parser, so the one used for parsing is the one the registry points at
+    const dispairAddress = addresses.dispair;
+    let isRainlang = false;
+    const readRainlang = (
+        functionName: "interpreterAddress" | "storeAddress" | "expressionDeployerAddress",
+    ) => {
+        if (version !== "v6") return undefined;
+        isRainlang = true;
+        return client
+            .readContract({
+                address: dispairAddress,
+                functionName,
+                abi: ABI.Deployer.Primary.Rainlang,
+            })
+            .catch(() => undefined);
+    };
+
     const interpreter = await client
         .readContract({
-            address: addresses.dispair,
+            address: dispairAddress,
             functionName: version === "v6" ? "I_INTERPRETER" : "iInterpreter",
             abi: version === "v6" ? ABI.Deployer.Primary.DeployerV6 : ABI.Deployer.Primary.Deployer,
         })
-        .catch(() => undefined);
+        .catch(() => readRainlang("interpreterAddress"));
     if (!interpreter) {
         return undefined;
     }
 
     const store = await client
         .readContract({
-            address: addresses.dispair,
+            address: dispairAddress,
             functionName: version === "v6" ? "I_STORE" : "iStore",
             abi: version === "v6" ? ABI.Deployer.Primary.DeployerV6 : ABI.Deployer.Primary.Deployer,
         })
-        .catch(() => undefined);
+        .catch(() => readRainlang("storeAddress"));
     if (!store) {
+        return undefined;
+    }
+
+    const deployer = isRainlang ? await readRainlang("expressionDeployerAddress") : dispairAddress;
+    if (!deployer) {
         return undefined;
     }
 
     const result: any = {
         dispair: {
-            deployer: addresses.dispair,
+            deployer,
             interpreter,
             store,
         },
