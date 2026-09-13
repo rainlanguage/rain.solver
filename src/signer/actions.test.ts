@@ -10,6 +10,7 @@ import {
     sendTx,
     getTxGas,
     broadcastTx,
+    hasExplicitGasParams,
     tryGetReceipt,
     waitUntilFree,
     getSelfBalance,
@@ -51,6 +52,7 @@ describe("Test sendTx", () => {
         to: "0xdestination" as `0x${string}`,
         data: "0xdata" as `0x${string}`,
         gas: 100000n,
+        gasPrice: 20000000000n,
     };
 
     beforeEach(() => {
@@ -220,6 +222,58 @@ describe("Test sendTx", () => {
         expect(wait).toBeTypeOf("function");
     });
 
+    it("should send through viem sendTransaction when gas limit is not set", async () => {
+        (mockSigner.sendTransaction as Mock).mockResolvedValue("0xviemhash");
+        const tx = { to: mockTx.to, value: 1n };
+        const { hash: txHash, wait } = await sendTx(mockSigner, tx as any);
+
+        expect(mockSigner.sendTransaction).toHaveBeenCalledTimes(1);
+        expect(mockSigner.sendTransaction).toHaveBeenCalledWith({ ...tx, nonce: 5 });
+        expect(mockSigner.account.signTransaction).not.toHaveBeenCalled();
+        expect(mockSigner.sendRawTransaction).not.toHaveBeenCalled();
+        expect(txHash).toBe("0xviemhash");
+        expect(mockSigner.busy).toBe(true);
+        expect(wait).toBeTypeOf("function");
+    });
+
+    it("should send through viem sendTransaction when gas price is not set", async () => {
+        (mockSigner.sendTransaction as Mock).mockResolvedValue("0xviemhash");
+        const tx = { to: mockTx.to, data: mockTx.data, gas: 100000n };
+        const { hash: txHash } = await sendTx(mockSigner, tx as any);
+
+        expect(mockSigner.sendTransaction).toHaveBeenCalledTimes(1);
+        expect(mockSigner.sendTransaction).toHaveBeenCalledWith({ ...tx, nonce: 5 });
+        expect(mockSigner.account.signTransaction).not.toHaveBeenCalled();
+        expect(mockSigner.sendRawTransaction).not.toHaveBeenCalled();
+        expect(txHash).toBe("0xviemhash");
+    });
+
+    it("should sign locally when gas limit and eip1559 max fee are set", async () => {
+        const tx = { to: mockTx.to, data: mockTx.data, gas: 100000n, maxFeePerGas: 10n };
+        const { hash: txHash } = await sendTx(mockSigner, tx as any);
+
+        expect(mockSigner.sendTransaction).not.toHaveBeenCalled();
+        expect(mockSigner.account.signTransaction).toHaveBeenCalledWith(
+            { ...tx, nonce: 5, chainId: 1 },
+            { serializer: undefined },
+        );
+        expect(mockSigner.sendRawTransaction).toHaveBeenCalledTimes(1);
+        expect(txHash).toBe("0xhash");
+    });
+
+    it("should retry through viem sendTransaction on failure", async () => {
+        (mockSigner.sendTransaction as Mock)
+            .mockRejectedValueOnce(new Error("First attempt failed"))
+            .mockResolvedValueOnce("0xviemhash");
+        const tx = { to: mockTx.to, value: 1n };
+        const { hash: txHash } = await sendTx(mockSigner, tx as any, 10);
+
+        expect(mockSigner.sendTransaction).toHaveBeenCalledTimes(2);
+        expect(mockSigner.account.signTransaction).not.toHaveBeenCalled();
+        expect(txHash).toBe("0xviemhash");
+        expect(mockSigner.busy).toBe(true);
+    });
+
     it("should successfully send a transaction on second attempt", async () => {
         (mockSigner.sendRawTransaction as Mock)
             .mockRejectedValueOnce(new Error("First attempt failed"))
@@ -361,6 +415,17 @@ describe("Test isAlreadyKnownTxError", () => {
         expect(isAlreadyKnownTxError(undefined)).toBe(false);
         expect(isAlreadyKnownTxError(null)).toBe(false);
         expect(isAlreadyKnownTxError(42)).toBe(false);
+    });
+});
+
+describe("Test hasExplicitGasParams", () => {
+    it("should be true only with gas limit and a gas price field", () => {
+        expect(hasExplicitGasParams({ to: "0x", gas: 1n, gasPrice: 1n } as any)).toBe(true);
+        expect(hasExplicitGasParams({ to: "0x", gas: 1n, maxFeePerGas: 1n } as any)).toBe(true);
+        expect(hasExplicitGasParams({ to: "0x", gas: 1n } as any)).toBe(false);
+        expect(hasExplicitGasParams({ to: "0x", gasPrice: 1n } as any)).toBe(false);
+        expect(hasExplicitGasParams({ to: "0x", maxFeePerGas: 1n } as any)).toBe(false);
+        expect(hasExplicitGasParams({ to: "0x", value: 1n } as any)).toBe(false);
     });
 });
 
