@@ -125,6 +125,46 @@ describe("Test SubgraphManager", () => {
         const orderbooks = await manager.getOrderbooks();
         expect(orderbooks).toContain("0x1");
         expect(orderbooks).toContain("0x2");
+        expect((axios.post as Mock).mock.calls[0][1].query).toContain("orderbooks {");
+        expect((axios.post as Mock).mock.calls[0][1].query).not.toContain("raindices");
+    });
+
+    it("test getOrderbooks: should query raindices for v6 subgraphs", async () => {
+        const v6Url = "https://v6.example.com";
+        const _manager = new SubgraphManager({
+            subgraphs: [subgraphUrl, `v6=${v6Url}`],
+            filters: undefined,
+            requestTimeout: 1000,
+        });
+        (axios.post as Mock).mockImplementation(async (url: string) => {
+            if (url === v6Url) return { data: { data: { orderbooks: [{ id: "0x2" }] } } };
+            return { data: { data: { orderbooks: [{ id: "0x1" }] } } };
+        });
+        const orderbooks = await _manager.getOrderbooks();
+        expect(orderbooks).toEqual(new Set(["0x1", "0x2"]));
+
+        const calls = (axios.post as Mock).mock.calls;
+        const legacyCall = calls.find((c) => c[0] === subgraphUrl)!;
+        const v6Call = calls.find((c) => c[0] === v6Url)!;
+        expect(legacyCall[1].query).toContain("orderbooks {");
+        expect(v6Call[1].query).toContain("orderbooks: raindices {");
+    });
+
+    it("test fetchSubgraphOrders: should query raindex entity for v6", async () => {
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: { data: { orders: [] } },
+        });
+        await manager.fetchSubgraphOrders(subgraphUrl, SubgraphVersions.V6);
+        expect((axios.post as Mock).mock.calls[0][1].query).toContain("orderbook: raindex {");
+    });
+
+    it("test fetchSubgraphOrders: should query orderbook entity for legacy", async () => {
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: { data: { orders: [] } },
+        });
+        await manager.fetchSubgraphOrders(subgraphUrl, SubgraphVersions.LEGACY);
+        expect((axios.post as Mock).mock.calls[0][1].query).toContain("orderbook {");
+        expect((axios.post as Mock).mock.calls[0][1].query).not.toContain("raindex");
     });
 
     it("test statusCheck: should report OK when no indexing errors", async () => {
@@ -196,6 +236,30 @@ describe("Test SubgraphManager", () => {
         result[subgraphUrl].forEach((v) => {
             expect(v.__version).toBe(SubgraphVersions.LEGACY);
         });
+        expect((axios.post as Mock).mock.calls[0][1].query).toContain("orderbook {");
+        expect((axios.post as Mock).mock.calls[0][1].query).not.toContain("raindex");
+    });
+
+    it("test getUpstreamEvents: should query raindex entity and tag v6 for v6 subgraphs", async () => {
+        const v6Url = "https://v6.example.com";
+        const _manager = new SubgraphManager({
+            subgraphs: [`v6=${v6Url}`],
+            filters: undefined,
+            requestTimeout: 1000,
+        });
+        (axios.post as Mock)
+            .mockResolvedValueOnce({
+                data: { data: { transactions: [{}] } },
+            })
+            .mockResolvedValueOnce({
+                data: { data: { transactions: [] } },
+            });
+        const { status, result } = await _manager.getUpstreamEvents();
+        expect(status[v6Url].status).toMatch("Fully fetched");
+        expect(result[v6Url].length).toBe(1);
+        expect(result[v6Url][0].__version).toBe(SubgraphVersions.V6);
+        expect((axios.post as Mock).mock.calls[0][1].query).toContain("orderbook: raindex {");
+        expect((axios.post as Mock).mock.calls[0][1].query).not.toContain("orderbook {");
     });
 
     it("test getUpstreamEvents: should handle errors and partial sync", async () => {
