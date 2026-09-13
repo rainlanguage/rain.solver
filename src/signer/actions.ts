@@ -252,7 +252,7 @@ export async function estimateGasCost(
     tx: EstimateGasParameters<Chain>,
 ): Promise<EstimateGasCostResult> {
     const gasPrice = signer.state.gasPrice;
-    const gas = await signer.estimateGas({ ...tx, blockTag: "pending" } as any);
+    const gas = await signer.estimateGas({ ...tx } as any);
     const result: EstimateGasCostResult = {
         gas,
         gasPrice,

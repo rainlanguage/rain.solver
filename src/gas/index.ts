@@ -63,9 +63,9 @@ export class GasManager {
     /** Maximum gas price multiplier */
     readonly maxGasPriceMultiplier: number;
     /** The points to increase the gas price multiplier at each step */
-    readonly gasIncreasePointsPerStep: number = 3; // default increase by 3 points
+    readonly gasIncreasePointsPerStep: number = 10; // default increase by 10 points
     /** The time to stay in increased the gas price multiplier before reseting to base */
-    readonly gasIncreaseStepTime: number = 60 * 60 * 1000; // default 60 minutes in milliseconds
+    readonly gasIncreaseStepTime: number = 15 * 60 * 1000; // default 15 minutes in milliseconds
     /** The threshold for transaction time before considering it as a trigger for gas price multiplierincrease */
     readonly txTimeThreshold: number; // default 15 seconds threshold
 
@@ -94,7 +94,7 @@ export class GasManager {
         if (config.maxGasPriceMultiplier !== undefined) {
             this.maxGasPriceMultiplier = config.maxGasPriceMultiplier;
         } else {
-            this.maxGasPriceMultiplier = this.baseGasPriceMultiplier + 100; // default +1x ceiling
+            this.maxGasPriceMultiplier = this.baseGasPriceMultiplier + 1000; // default +10x ceiling
         }
         this.gasPriceMultiplier = config.baseGasPriceMultiplier;
     }
