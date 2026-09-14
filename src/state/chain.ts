@@ -6,6 +6,7 @@ import { RainSolverBaseError } from "../error/types";
 import {
     STABLES,
     publicClientConfig,
+    BASES_TO_CHECK_TRADES_AGAINST,
     ROUTE_PROCESSOR_3_ADDRESS,
     ROUTE_PROCESSOR_4_ADDRESS,
     ROUTE_PROCESSOR_3_1_ADDRESS,
@@ -44,21 +45,23 @@ export type ChainConfig = Chain & {
     routeProcessors: { [key: string]: `0x${string}` };
     stableTokens?: Token[];
     isSpecialL2: boolean;
-    /** The dollar denominated token (USDC or USDT) of the chain, used for reporting dollar values */
+    /** The dollar denominated token (USDC, USDT or USDG) of the chain, used for reporting dollar values */
     usdToken?: Token;
 };
 
 /**
- * Finds the USD denominated token (USDC or USDT or their variants) from the
- * given list of stable tokens, prioritizing exact symbol matches over variants
- * @param stableTokens - The list of stable tokens to search in
+ * Finds the USD denominated token (USDC, USDT, USDG or the USDC/USDT variants)
+ * from the given list of candidate tokens, prioritizing exact symbol matches in
+ * that order over variants
+ * @param candidates - The list of tokens to search in
  */
-export function findUsdToken(stableTokens?: Token[]): Token | undefined {
+export function findUsdToken(candidates?: Token[]): Token | undefined {
     return (
-        stableTokens?.find((token: Token) => token.symbol === "USDC") ??
-        stableTokens?.find((token: Token) => token.symbol === "USDT") ??
-        stableTokens?.find((token: Token) => token.symbol?.includes("USDC")) ??
-        stableTokens?.find((token: Token) => token.symbol?.includes("USDT"))
+        candidates?.find((token: Token) => token.symbol === "USDC") ??
+        candidates?.find((token: Token) => token.symbol === "USDT") ??
+        candidates?.find((token: Token) => token.symbol === "USDG") ??
+        candidates?.find((token: Token) => token.symbol?.includes("USDC")) ??
+        candidates?.find((token: Token) => token.symbol?.includes("USDT"))
     );
 }
 
@@ -111,9 +114,12 @@ export function getChainConfig(chainId: ChainId): Result<ChainConfig, ChainConfi
     // get known stable coins of the chain
     const stableTokens = (STABLES as any)[chainId];
 
-    // statically determine the chain's dollar denominated token, USDC or
-    // USDT, every evm chain has both or at least one of them available
-    const usdToken = findUsdToken(stableTokens);
+    // statically determine the chain's dollar denominated token, USDC, USDT or
+    // USDG, from the chain's known stables, falling back to its base trading
+    // tokens for a chain with no usable stables entry whose dollar token is a
+    // base token of the router (like USDG on Robinhood)
+    const baseTokens = (BASES_TO_CHECK_TRADES_AGAINST as any)[chainId];
+    const usdToken = findUsdToken(stableTokens) ?? findUsdToken(baseTokens);
 
     return Result.ok({
         ...chain,
