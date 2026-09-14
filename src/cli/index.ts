@@ -226,8 +226,15 @@ export class RainSolverCli {
             const roundSpan = this.logger.tracer.startSpan(`round-${this.roundCount}`);
             const roundCtx = trace.setSpan(context.active(), roundSpan);
 
-            // report meta info
-            this.reportMetaInfoForRound(roundSpan).catch(() => {});
+            // report meta info, it runs alongside the round and the round finalization
+            // awaits it before ending the span, so the meta attributes are not lost on
+            // a round that ends before the report's subgraph query answers
+            const metaInfoPromise = this.reportMetaInfoForRound(roundSpan).catch(async (err) => {
+                roundSpan.setAttribute(
+                    "meta.error",
+                    await errorSnapshot("failed to report round meta info", err),
+                );
+            });
 
             const now = Date.now();
 
@@ -316,6 +323,7 @@ export class RainSolverCli {
                 syncOrdersPromise,
                 checkMainWalletBalancePromise,
                 getWorkerWalletsBalancePromise,
+                metaInfoPromise,
             ).catch(() => {});
 
             // eslint-disable-next-line no-console
@@ -352,6 +360,8 @@ export class RainSolverCli {
      * @param syncOrdersPromise - The in flight orders sync of the round, awaited by the caller too
      * @param checkMainWalletBalancePromise - The pending main wallet balance check, if any
      * @param getWorkerWalletsBalancePromise - The pending worker wallets balance read, if any
+     * @param metaInfoPromise - The in flight round meta info report, if any, it sets the round
+     * span meta attributes once its subgraph query answers, so the span must not end before it
      */
     async finalizeRound(
         roundSpan: Span,
@@ -359,6 +369,7 @@ export class RainSolverCli {
         syncOrdersPromise: Promise<void>,
         checkMainWalletBalancePromise?: Promise<PreAssembledSpan>,
         getWorkerWalletsBalancePromise?: Promise<Record<string, bigint>>,
+        metaInfoPromise?: Promise<void>,
     ) {
         try {
             // reset average gas cost
@@ -366,6 +377,7 @@ export class RainSolverCli {
 
             await Promise.all([
                 syncOrdersPromise,
+                metaInfoPromise,
 
                 // run wallet operations for the round
                 this.runWalletOpsForRound(roundCtx).catch(async (err) => {
