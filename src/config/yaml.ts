@@ -6,7 +6,7 @@ import { parseUnits } from "viem";
 import { Result } from "../common";
 import { SgFilter } from "../subgraph/filter";
 import { AppOptionsError, AppOptionsErrorType } from "./error";
-import { FLOAT_PATTERN, INT_PATTERN, Validator } from "./validators";
+import { FLOAT_PATTERN, INT_PATTERN, Validator, readValue } from "./validators";
 
 /** Represents a type for self-funding vaults from config */
 export type SelfFundVault = {
@@ -129,6 +129,8 @@ export type AppOptions = {
     flashblocks: boolean;
     /** Broadcasts each signed transaction through all the configured write rpcs (or all rpcs when no write rpc is set) at the same time, taking the first accepted one, default is false */
     multiBroadcast: boolean;
+    /** Specifies the block tag usde on eth_call and eth_estimateGas RPC calls, possible values are 'latest', 'earliest', 'pending', 'safe', 'finalized', not all chains support each tag, default is viem client's default, usually latest */
+    callBlockTag?: CallBlockTag;
     /** Adds the backoff sizes of the found trade size, three quarters of it and its halved sizes, to the router mode trade size batch that gets validated against the onchain dryrun concurrently, for every order, default is true */
     routerPartialFallback: boolean;
     /** The number of halved sizes in a router mode trade size batch, the three quarters size comes on top, default is 4 */
@@ -440,6 +442,7 @@ export namespace AppOptions {
                             "blockTime is required, must be an integer greater than 0",
                         ),
                 ),
+                callBlockTag: CallBlockTag.resolve(input.callBlockTag),
                 routerPartialFallback: Validator.resolveBool(
                     input.routerPartialFallback,
                     "expected a boolean value for routerPartialFallback",
@@ -568,5 +571,49 @@ export namespace AppOptions {
     ): boolean {
         const o = owner.toLowerCase();
         return !!ownerProfile && !!ownerProfile[o] && ownerProfile[o] === Number.MAX_SAFE_INTEGER;
+    }
+}
+
+/** The block tags that eth_call and eth_estimateGas rpc calls can run against */
+export enum CallBlockTag {
+    Latest = "latest",
+    Earliest = "earliest",
+    Pending = "pending",
+    Safe = "safe",
+    Finalized = "finalized",
+}
+export namespace CallBlockTag {
+    /** The list of all possible call block tags */
+    export const all: CallBlockTag[] = Object.values(CallBlockTag).filter(
+        (v): v is CallBlockTag => typeof v === "string",
+    );
+
+    /**
+     * Resolves the call block tag from the config input, case insensitive, undefined
+     * when unset so the viem client default applies, throws for an unknown tag
+     * @param input - The config input value, a plain value or an env reference
+     */
+    export function resolve(input: any): CallBlockTag | undefined {
+        const tag = readValue(input).value;
+        if (tag === undefined || tag === null || tag === "") return undefined;
+        const lowered = typeof tag === "string" ? tag.toLowerCase() : tag;
+        assert(
+            typeof lowered === "string" && all.includes(lowered as CallBlockTag),
+            new AppOptionsError(
+                `expected either of ${all.join(", ")} for callBlockTag`,
+                AppOptionsErrorType.AppOptionsValidationError,
+            ),
+        );
+        return lowered as CallBlockTag;
+    }
+
+    /**
+     * Returns the block tag param for eth_call and eth_estimateGas from the app
+     * options, to be spread into the call params, empty when no tag is configured
+     * so the viem client default (usually latest) applies
+     * @param options - The app options
+     */
+    export function getCallBlockTag(options?: AppOptions): { blockTag?: CallBlockTag } {
+        return options?.callBlockTag ? { blockTag: options.callBlockTag } : {};
     }
 }

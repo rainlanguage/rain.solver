@@ -1,5 +1,5 @@
-import { AppOptions } from "./yaml";
-import { describe, it, assert } from "vitest";
+import { AppOptions, CallBlockTag } from "./yaml";
+import { describe, it, assert, expect } from "vitest";
 import { writeFileSync, unlinkSync } from "fs";
 
 describe("Test yaml AppOptions", async function () {
@@ -41,6 +41,7 @@ txTimeThreshold: 4000
 blockTime: 3000
 flashblocks: true
 multiBroadcast: true
+callBlockTag: pending
 routerPartialFallback: false
 routerPartialFallbackSteps: 6
 routerSecondaryRouteTry: all
@@ -134,6 +135,7 @@ orderbookTradeTypes:
             blockTime: 3000,
             flashblocks: true,
             multiBroadcast: true,
+            callBlockTag: CallBlockTag.Pending,
             gasLimitMultiplier: 90,
             timeout: 20000,
             maxRatio: true,
@@ -421,7 +423,78 @@ orderbookTradeTypes:
         assert.equal(result.wsRpc, undefined); // no ws rpc when unset
         assert.equal(result.flashblocks, false); // should be default false
         assert.equal(result.multiBroadcast, false); // should be default false
+        assert.equal(result.callBlockTag, undefined); // no block tag when unset
         assert.equal(result.gasBoostMultiplier, undefined); // no boost when unset
         assert.equal(result.gasBoostUsdThreshold, undefined); // no boost when unset
+    });
+});
+
+describe("Test CallBlockTag", () => {
+    it("should list all possible tags", () => {
+        expect(CallBlockTag.all).toEqual(["latest", "earliest", "pending", "safe", "finalized"]);
+    });
+
+    it("resolve should accept each possible tag, case insensitive", () => {
+        for (const tag of CallBlockTag.all) {
+            assert.equal(CallBlockTag.resolve(tag), tag);
+            assert.equal(CallBlockTag.resolve(tag.toUpperCase()), tag);
+        }
+    });
+
+    it("resolve should return undefined when unset", () => {
+        assert.equal(CallBlockTag.resolve(undefined), undefined);
+        assert.equal(CallBlockTag.resolve(null), undefined);
+        assert.equal(CallBlockTag.resolve(""), undefined);
+    });
+
+    it("resolve should read the tag from a set env and return undefined for an unset env", () => {
+        process.env.CALL_BLOCK_TAG_TEST = "pending";
+        assert.equal(CallBlockTag.resolve("$CALL_BLOCK_TAG_TEST"), "pending");
+
+        delete process.env.CALL_BLOCK_TAG_TEST;
+        assert.equal(CallBlockTag.resolve("$CALL_BLOCK_TAG_TEST"), undefined);
+    });
+
+    it("resolve should throw for an unknown tag", () => {
+        for (const input of ["some", "latestt", 12, true, {}]) {
+            assert.throws(
+                () => CallBlockTag.resolve(input),
+                /expected either of latest, earliest, pending, safe, finalized for callBlockTag/,
+            );
+        }
+    });
+
+    it("fromYaml should reject an unknown callBlockTag", () => {
+        const res = AppOptions.tryFromYamlString(`
+rpc:
+  - url: http://rpc.example.com
+subgraph: ["http://subgraph.example.com"]
+key: "0x${"1".repeat(64)}"
+botMinBalance: 1
+blockTime: 1000
+contracts:
+  v4:
+    dispair: "0x2222222222222222222222222222222222222222"
+callBlockTag: soon
+`);
+        assert(res.isErr());
+        assert.include(
+            String((res.error as any).cause?.message ?? res.error.message),
+            "for callBlockTag",
+        );
+    });
+
+    it("getCallBlockTag should return empty params when no tag is configured", () => {
+        expect(CallBlockTag.getCallBlockTag(undefined)).toEqual({});
+        expect(CallBlockTag.getCallBlockTag({} as any)).toEqual({});
+        expect(CallBlockTag.getCallBlockTag({ callBlockTag: undefined } as any)).toEqual({});
+    });
+
+    it("getCallBlockTag should return the configured tag as the blockTag param", () => {
+        for (const tag of CallBlockTag.all) {
+            expect(CallBlockTag.getCallBlockTag({ callBlockTag: tag } as any)).toEqual({
+                blockTag: tag,
+            });
+        }
     });
 });

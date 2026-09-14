@@ -756,10 +756,21 @@ describe("Test estimateGasCost", () => {
         } as unknown as RainSolverSigner;
     });
 
+    it("should estimate gas with the configured callBlockTag", async () => {
+        for (const tag of ["latest", "earliest", "pending", "safe", "finalized"]) {
+            (mockSigner.state as any).appOptions = { callBlockTag: tag };
+
+            await estimateGasCost(mockSigner, mockTx);
+
+            expect(mockSigner.estimateGas).toHaveBeenLastCalledWith({ ...mockTx, blockTag: tag });
+        }
+    });
+
     it("should calculate basic gas cost non-L2 chains", async () => {
         const result = await estimateGasCost(mockSigner, mockTx);
 
-        expect(mockSigner.estimateGas).toHaveBeenCalledWith({ ...mockTx /*blockTag: "pending"*/ });
+        // no block tag by default, callBlockTag is not set
+        expect(mockSigner.estimateGas).toHaveBeenCalledWith({ ...mockTx });
         expect(result).toEqual({
             gas: 100000n,
             gasPrice: 20000000000n, // 20 gwei * 110%
