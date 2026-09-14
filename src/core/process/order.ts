@@ -65,7 +65,7 @@ export async function processOrder(
     spanAttributes["details.owner"] = orderDetails.takeOrder.struct.order.owner.toLowerCase();
     spanAttributes["details.startBlockNumber"] = dataFetcherBlockNumber.toString();
     if (orderDetails.oracleUrl) {
-        spanAttributes["details.oracle"] = orderDetails.oracleUrl;
+        spanAttributes["details.oracle.url"] = orderDetails.oracleUrl;
     }
 
     const quoteOrderTime = performance.now();

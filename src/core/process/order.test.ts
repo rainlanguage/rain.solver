@@ -183,7 +183,9 @@ describe("Test processOrder", () => {
         const result = await fn();
 
         assert(result.isOk());
-        expect(result.value.spanAttributes["details.oracle"]).toBe("https://oracle.example.com");
+        expect(result.value.spanAttributes["details.oracle.url"]).toBe(
+            "https://oracle.example.com",
+        );
         expect(result.value.spanAttributes["details.oracle.prev"]).toBe(
             JSON.stringify(signedContext),
         );
