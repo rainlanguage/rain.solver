@@ -164,6 +164,16 @@ dustGasCostMultiplier: 1
 # both to count as dust, 0 disables the usd dust check, default is 0
 dustUsdThreshold: 0
 
+# Submits a router mode trade at the found trade size right away with the cached dryrun gas limit and no dryrun
+# at all, so no backoff sizes get simulated either, only when the order pair already has a dryrun gas cache,
+# the estimated profit covers the min expected bounty of the cached gas cost and it exceeds snapTxThresholdUsd,
+# the tx carries no ensure bounty task, the same as the normal submitted tx, requires dryrunGasCache,
+# default is false
+snapTx: false
+
+# USD value the estimated profit of a trade must exceed for it to be submitted as a snap tx, default is 0
+snapTxThresholdUsd: 0
+
 # Runs the dust check on each order's whole max output before any simulation and skips the dust ones for the round,
 # the router mode partial trade size dust check is not affected, default is true
 dustOrderCheck: true

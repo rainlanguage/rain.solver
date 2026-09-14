@@ -202,6 +202,28 @@ export async function tryFindBestRouterTrade(
         };
     }
     const { size: tradeSize, quote } = tradeSizeResult;
+    // snap tx, the found size gets submitted right away with the cached dryrun
+    // gas and no dryrun when it qualifies (see snapTx config), so the batch of
+    // sizes is skipped altogether, a not qualifying size runs the batch as usual
+    if (this.appOptions.snapTx) {
+        const snapResult = await snapTradeSize.call(
+            this,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+            tradeSize,
+            quote,
+            excludeDexes,
+        );
+        if (snapResult.isOk()) {
+            return { result: snapResult, quote };
+        }
+        extendObjectWithHeader(spanAttributes, snapResult.error.spanAttributes, "snap");
+    }
+
     const isFullSize = tradeSize >= maximumInput;
     const shouldStrictSimulate =
         this.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck &&
@@ -287,6 +309,52 @@ export function getHalvedTradeSizes(
         sizes.push(size);
     }
     return sizes;
+}
+
+/**
+ * Tries to build the trade tx of the given trade size as a snap tx, that is with the
+ * cached dryrun gas and no dryrun, locked to the given quote's route, see
+ * TradeSimulatorBase.trySnapTrade for the checks a snap tx must pass
+ * @param this - RainSolver instance
+ * @param orderDetails - The details of the order to be processed
+ * @param signer - The signer to be used for the trade
+ * @param ethPrice - The current ETH price
+ * @param toToken - The token to trade to
+ * @param fromToken - The token to trade from
+ * @param blockNumber - The current block number
+ * @param tradeSize - The trade size to snap
+ * @param quote - The sushi quote to lock the route of
+ * @param excludeDexes - (optional) Liquidity providers (dexes) to exclude from route finding
+ */
+export async function snapTradeSize(
+    this: RainSolver,
+    orderDetails: Pair,
+    signer: RainSolverSigner,
+    ethPrice: string,
+    toToken: Token,
+    fromToken: Token,
+    blockNumber: bigint,
+    tradeSize: bigint,
+    quote: SushiRouterQuote,
+    excludeDexes?: Set<LiquidityProviders>,
+): Promise<SimulationResult> {
+    const maximumInput = orderDetails.takeOrder.quote!.maxOutput;
+    return RouterTradeSimulator.withArgs({
+        type: TradeType.Router,
+        solver: this,
+        orderDetails,
+        fromToken,
+        toToken,
+        signer,
+        maximumInputFixed: tradeSize,
+        ethPrice,
+        isPartial: tradeSize < maximumInput,
+        blockNumber,
+        excludeDexes,
+        sushiQuote: quote,
+        lockRoute: true,
+        skipPriceMatchCheck: true,
+    }).trySnapTrade();
 }
 
 /**

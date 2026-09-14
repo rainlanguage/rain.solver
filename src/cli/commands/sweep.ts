@@ -116,6 +116,8 @@ export async function sweepFunds(opts: SweepOptions) {
         dryrunGasCacheResetTime: 60,
         dustGasCostMultiplier: 1,
         dustUsdThreshold: 0,
+        snapTx: false,
+        snapTxThresholdUsd: 0n,
         dustOrderCheck: true,
         strictMaxOwnerProfileCheck: false,
         strictMaxOwnerProfilePartialTradeSizeCheck: false,
