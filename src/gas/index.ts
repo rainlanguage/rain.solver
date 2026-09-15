@@ -65,7 +65,7 @@ export class GasManager {
     /** The points to increase the gas price multiplier at each step */
     readonly gasIncreasePointsPerStep: number = 10; // default increase by 10 points
     /** The time to stay in increased the gas price multiplier before reseting to base */
-    readonly gasIncreaseStepTime: number = 15 * 60 * 1000; // default 15 minutes in milliseconds
+    readonly gasIncreaseStepTime: number = 6 * 60 * 1000; // default 6 minutes in milliseconds
     /** The threshold for transaction time before considering it as a trigger for gas price multiplierincrease */
     readonly txTimeThreshold: number; // default 15 seconds threshold
 
