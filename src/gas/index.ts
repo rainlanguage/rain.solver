@@ -35,7 +35,7 @@ export type TxMineRecord = {
  * Features:
  * - Tracks and updates the current gas price and L1 gas price (for L2 chains).
  * - Dynamically increases the gas price multiplier if transactions take longer than a threshold to mine for certain period.
- * - Resets the gas price multiplier to its base value after a configurable period.
+ * - Steps the gas price multiplier down towards its base value, one step per configurable period, whether a transaction mines or not.
  * - Periodically fetches and updates gas prices from the blockchain.
  * - Allows functionalities for starting and stopping gas price watcher.
  *
@@ -161,12 +161,36 @@ export class GasManager {
     }
 
     /**
-     * Watches gas price during runtime by reading it periodically
+     * Steps the gas price multiplier down by one step once the deadline of the
+     * current step has passed, and sets the deadline of the next step, so the
+     * multiplier decays one step per step time until it is back at base, where
+     * the deadline gets cleared, the gas price watcher calls this on every tick,
+     * so the decay goes on without mined transactions, the mine events step the
+     * multiplier down on their own after the deadline, without a next deadline
+     */
+    stepDownGasPriceMultiplierIfDue() {
+        const now = Date.now();
+        if (this.deadline === undefined || now < this.deadline) return;
+        this.gasPriceMultiplier = Math.max(
+            this.baseGasPriceMultiplier,
+            this.gasPriceMultiplier - this.gasIncreasePointsPerStep,
+        );
+        if (this.gasPriceMultiplier <= this.baseGasPriceMultiplier) {
+            this.deadline = undefined;
+        } else {
+            this.deadline = now + this.gasIncreaseStepTime;
+        }
+    }
+
+    /**
+     * Watches gas price during runtime by reading it periodically, each tick also
+     * steps an increased gas price multiplier down once its deadline has passed
      * @param interval - Interval to update gas price in milliseconds, default is 20 seconds
      */
     watchGasPrice(interval = 20_000) {
         if (this.isWatchingGasPrice) return;
         this.gasPriceWatcher = setInterval(async () => {
+            this.stepDownGasPriceMultiplierIfDue();
             const { gasPrice, l1GasPrice } = await getGasPrice(
                 this.client,
                 this.chainConfig,
