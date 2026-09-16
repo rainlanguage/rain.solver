@@ -159,6 +159,7 @@ describe("Test processTransaction", () => {
             expect(mockArgs.baseResult.spanAttributes["details.txUrl"]).toBe(
                 "https://etherscan.io/tx/0xTransactionHash123",
             );
+            expect(mockArgs.baseResult.spanAttributes["details.sender"]).toBe("0xSignerAddress");
 
             // verify processReceipt was called with correct parameters
             expect(processReceipt as Mock).toHaveBeenCalledWith({
@@ -194,8 +195,9 @@ describe("Test processTransaction", () => {
                 endTime: expect.any(Number),
             });
 
-            // verify raw transaction was logged
+            // verify raw transaction and the sender wallet were logged
             expect(mockArgs.baseResult.spanAttributes["details.rawTx"]).toBeDefined();
+            expect(mockArgs.baseResult.spanAttributes["details.sender"]).toBe("0xSignerAddress");
             expect(mockArgs.baseResult.spanAttributes["txNoneNodeError"]).toBe(true);
             expect(withBigintSerializer).toHaveBeenCalledTimes(8);
         });

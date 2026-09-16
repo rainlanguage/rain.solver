@@ -210,6 +210,40 @@ describe("Test processReceipt", () => {
             expect(result.error.endTime).toBeTypeOf("number");
         });
 
+        it("should record the gas cost and the negative net profit of a reverted tx in eth and usd", async () => {
+            (mockSigner as any).state.gasTokenUsdPrice = "2";
+            (handleRevert as Mock).mockResolvedValue({
+                snapshot: "Transaction reverted: insufficient balance",
+                nodeError: false,
+            });
+            const result = await processReceipt(mockArgs);
+
+            assert(result.isErr());
+            // the gas is paid on a revert too, gas cost = 21000 * 20 gwei = 0.00042 at 2 usd
+            expect(result.error.spanAttributes["details.actualGasCost"]).toBe(0.00042);
+            expect(result.error.spanAttributes["details.actualGasCostUsd"]).toBe(0.00084);
+            expect(result.error.spanAttributes["details.gasCostL1"]).toBeUndefined();
+            // no income on a revert, the net profit is the burned gas
+            expect(result.error.spanAttributes["details.netProfit"]).toBe(-0.00042);
+            expect(result.error.spanAttributes["details.netProfitUsd"]).toBe(-0.00084);
+            expect(result.error.spanAttributes["didClear"]).toBeUndefined();
+        });
+
+        it("should skip the usd values of a reverted tx when the gas token usd price is unknown", async () => {
+            (mockSigner as any).state.gasTokenUsdPrice = undefined;
+            (handleRevert as Mock).mockResolvedValue({
+                snapshot: "Transaction reverted: insufficient balance",
+                nodeError: false,
+            });
+            const result = await processReceipt(mockArgs);
+
+            assert(result.isErr());
+            expect(result.error.spanAttributes["details.actualGasCost"]).toBe(0.00042);
+            expect(result.error.spanAttributes["details.netProfit"]).toBe(-0.00042);
+            expect(result.error.spanAttributes["details.actualGasCostUsd"]).toBeUndefined();
+            expect(result.error.spanAttributes["details.netProfitUsd"]).toBeUndefined();
+        });
+
         it("should retry handleRevert when simulation fails to find revert reason", async () => {
             const firstSimulation = {
                 snapshot: "simulation failed to find the revert reason",

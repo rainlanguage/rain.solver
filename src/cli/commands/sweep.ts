@@ -106,6 +106,8 @@ export async function sweepFunds(opts: SweepOptions) {
         gasLimitMultiplier: 100,
         gasPriceMultiplier: 107,
         txTimeThreshold: 2_500,
+        gasIncreasePointsPerStep: 10,
+        gasIncreaseStepTime: 6,
         blockTime: 5_000,
         flashblocks: false,
         multiBroadcast: false,
@@ -191,6 +193,8 @@ export async function sweepFunds(opts: SweepOptions) {
             chainConfig,
             baseGasPriceMultiplier: options.gasPriceMultiplier,
             txTimeThreshold: options.txTimeThreshold,
+            gasIncreasePointsPerStep: options.gasIncreasePointsPerStep,
+            gasIncreaseStepTime: options.gasIncreaseStepTime * 60_000,
         }),
     };
     const state = new SharedState(stateConfig);

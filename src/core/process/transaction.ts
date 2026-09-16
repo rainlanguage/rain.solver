@@ -67,6 +67,7 @@ export async function processTransaction(
     }: ProcessTransactionArgs,
 ): Promise<() => Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>>> {
     // submit the tx
+    baseResult.spanAttributes["details.sender"] = signer.account.address;
     let hash: `0x${string}`, txUrl: string;
     let txSendTime = 0;
     try {

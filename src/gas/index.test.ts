@@ -113,6 +113,59 @@ describe("Test GasManager", () => {
             expect(gasManager.deadline).toBeDefined();
             expect(gasManager.gasPriceMultiplier).toBe(150); // increased only to max value
         });
+
+        it("should ignore a timed out receipt wait", () => {
+            // a timeout is always over the threshold but is not a gas signal
+            gasManager.onTransactionMine({
+                didMine: false,
+                length: 60_000,
+            });
+            expect(gasManager.deadline).toBeUndefined();
+            expect(gasManager.lastStepUp).toBeUndefined();
+            expect(gasManager.gasPriceMultiplier).toBe(107);
+
+            // nor does it step down an increased multiplier past its deadline
+            gasManager.gasPriceMultiplier = 117;
+            gasManager.deadline = Date.now() - 1000;
+            gasManager.onTransactionMine({
+                didMine: false,
+                length: 60_000,
+            });
+            expect(gasManager.gasPriceMultiplier).toBe(117);
+            expect(gasManager.deadline).toBeLessThan(Date.now());
+        });
+
+        it("should step up only once per step time", () => {
+            gasManager.onTransactionMine({
+                didMine: true,
+                length: 40_000,
+            });
+            const deadline = gasManager.deadline;
+            const lastStepUp = gasManager.lastStepUp;
+            expect(gasManager.gasPriceMultiplier).toBe(110);
+            expect(lastStepUp).toBeDefined();
+
+            // a second slow tx within the step time does not step up, but holds the
+            // level by pushing the step down deadline out
+            gasManager.deadline = deadline! - 5_000; // as if time has passed
+            gasManager.onTransactionMine({
+                didMine: true,
+                length: 40_000,
+            });
+            expect(gasManager.gasPriceMultiplier).toBe(110);
+            expect(gasManager.deadline).toBeGreaterThanOrEqual(deadline!);
+            expect(gasManager.lastStepUp).toBe(lastStepUp);
+
+            // once the step time has passed since the last step up, it steps up again
+            gasManager.lastStepUp = Date.now() - config.gasIncreaseStepTime - 1;
+            gasManager.onTransactionMine({
+                didMine: true,
+                length: 40_000,
+            });
+            expect(gasManager.gasPriceMultiplier).toBe(113);
+            expect(gasManager.deadline).toBeGreaterThanOrEqual(deadline!);
+            expect(gasManager.lastStepUp).toBeGreaterThanOrEqual(lastStepUp!);
+        });
     });
 
     describe("Test watchGasPrice method", () => {
@@ -250,6 +303,17 @@ describe("Test GasManager", () => {
             expect(manager.txTimeThreshold).toBe(9_999);
             // the provided maxGasPriceMultiplier is used directly
             expect(manager.maxGasPriceMultiplier).toBe(200);
+        });
+
+        it("should not let the max multiplier sit below the base", () => {
+            const manager = new GasManager({
+                chainConfig: { id: 1, isSpecialL2: false } as any,
+                client: { name: "mockClient" } as any,
+                baseGasPriceMultiplier: 120,
+                maxGasPriceMultiplier: 100,
+                txTimeThreshold: 9_999,
+            } as any);
+            expect(manager.maxGasPriceMultiplier).toBe(120);
         });
     });
 
