@@ -936,6 +936,38 @@ describe("Test RainSolverCli", () => {
             rpcSpy.mockRestore();
         });
 
+        it("should keep the span open until the pending meta info report settles", async () => {
+            const walletOpsSpy = vi
+                .spyOn(rainSolverCli, "runWalletOpsForRound")
+                .mockResolvedValue(undefined);
+            const rpcSpy = vi
+                .spyOn(rainSolverCli, "reportRpcMetricsForRound")
+                .mockResolvedValue(undefined);
+            let releaseMetaInfo!: () => void;
+            const metaInfoPromise = new Promise<void>((resolve) => (releaseMetaInfo = resolve));
+
+            const promise = rainSolverCli.finalizeRound(
+                mockSpan,
+                mockRoundCtx as any,
+                Promise.resolve(),
+                undefined,
+                undefined,
+                metaInfoPromise,
+            );
+
+            // everything else has settled, only the meta info report is pending
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(mockSpan.end).not.toHaveBeenCalled();
+
+            releaseMetaInfo();
+            await promise;
+            expect(mockSpan.end).toHaveBeenCalledTimes(1);
+
+            walletOpsSpy.mockRestore();
+            rpcSpy.mockRestore();
+        });
+
         it("should skip the wallet balance reports when none are pending", async () => {
             const walletOpsSpy = vi
                 .spyOn(rainSolverCli, "runWalletOpsForRound")
@@ -1014,11 +1046,20 @@ describe("Test RainSolverCli", () => {
             (mockSubgraphManager.getOrderbooks as Mock).mockResolvedValue(new Set());
             (mockOrderManager.sync as Mock).mockResolvedValue({ name: "sync" });
             (sleep as Mock).mockResolvedValue(undefined);
+            const finalizeSpy = vi.spyOn(rainSolverCli, "finalizeRound");
 
             const runPromise = rainSolverCli.run();
 
             // Wait for the method to complete
             await runPromise;
+
+            // the round finalization gets the in flight meta info report to await
+            expect(finalizeSpy).toHaveBeenCalledTimes(1);
+            expect(finalizeSpy.mock.calls[0][5]).toBeInstanceOf(Promise);
+            expect(mockSpan.setAttributes).toHaveBeenCalledWith(
+                expect.objectContaining({ "meta.chain": expect.anything() }),
+            );
+            finalizeSpy.mockRestore();
 
             expect(mockLogger.tracer.startSpan).toHaveBeenCalledWith("round-1");
             expect(mockWalletManager.checkMainWalletBalance).toHaveBeenCalledTimes(1);

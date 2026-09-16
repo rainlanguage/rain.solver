@@ -1,6 +1,7 @@
 import { RpcState } from "../rpc";
 import { SharedState } from "../state";
 import { publicActionsL2 } from "viem/op-stack";
+import { CallBlockTag } from "../config";
 import { RainSolverSigner, EstimateGasCostResult } from ".";
 import { Result, promiseTimeout, raceFirstOk, sleep } from "../common";
 import {
@@ -252,7 +253,10 @@ export async function estimateGasCost(
     tx: EstimateGasParameters<Chain>,
 ): Promise<EstimateGasCostResult> {
     const gasPrice = signer.state.gasPrice;
-    const gas = await signer.estimateGas({ ...tx } as any);
+    const gas = await signer.estimateGas({
+        ...tx,
+        ...CallBlockTag.getCallBlockTag(signer.state.appOptions),
+    } as any);
     const result: EstimateGasCostResult = {
         gas,
         gasPrice,

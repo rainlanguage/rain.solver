@@ -4,6 +4,7 @@ import { SharedState } from "../state";
 import { OrderSpanEvents } from "../core/types";
 import { Attributes } from "@opentelemetry/api";
 import { fetchOracleContext } from "../oracle";
+import { CallBlockTag } from "../config";
 import { OracleError, OracleErrorType } from "../oracle/error";
 import { BundledOrders, Order, Pair } from "./types";
 import { decodeFunctionResult, PublicClient } from "viem";
@@ -43,6 +44,40 @@ describe("Test quoteSingleOrder", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         (fetchOracleContext as Mock).mockResolvedValue(Result.ok(undefined));
+    });
+
+    it("should quote with no block tag by default and with the configured callBlockTag", async () => {
+        const tags = CallBlockTag.all;
+        const v4QuoteResult = [
+            true,
+            "0xffffffee00000000000000000000000000000000000000000000000000000064",
+            "0xffffffee00000000000000000000000000000000000000000000000000000002",
+        ];
+        const lastCallParams = () => (state.client.call as Mock).mock.calls.at(-1)![0];
+
+        for (const type of [Order.Type.V3, Order.Type.V4]) {
+            const orderDetails: Pair = {
+                orderbook: "0xorderbook",
+                takeOrder: { struct: { order: { type } } },
+            } as any;
+            // v4 quote result fields are floats, one per quote call below
+            const mockQuoteResult = () =>
+                type === Order.Type.V4 &&
+                (decodeFunctionResult as Mock).mockReturnValueOnce(v4QuoteResult);
+
+            // default, no callBlockTag set, no block tag in the call params
+            mockQuoteResult();
+            await quoteSingleOrder(orderDetails, state, {}, {});
+            expect("blockTag" in lastCallParams()).toBe(false);
+
+            // each possible callBlockTag
+            for (const tag of tags) {
+                mockQuoteResult();
+                const taggedState = { ...state, appOptions: { callBlockTag: tag } } as any;
+                await quoteSingleOrder(orderDetails, taggedState, {}, {});
+                expect(lastCallParams().blockTag).toBe(tag);
+            }
+        }
     });
 
     it("should set quote on the takeOrder when data is returned", async () => {

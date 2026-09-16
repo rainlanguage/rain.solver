@@ -1,7 +1,7 @@
 import { ChainId } from "sushi";
 import { SharedState } from "../state";
-import { AppOptions } from "../config";
 import { fetchOracleContext } from "../oracle";
+import { AppOptions, CallBlockTag } from "../config";
 import { ABI, normalizeFloat, withBigintSerializer } from "../common";
 import { BundledOrders, Pair, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData } from "viem";
@@ -100,7 +100,7 @@ export async function quoteSingleOrderV3(
                 args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.struct)],
             }),
             gas,
-            blockTag: "pending",
+            ...CallBlockTag.getCallBlockTag(state.appOptions),
         })
         .catch((error) => {
             orderDetails.takeOrder.quote = undefined;
@@ -145,7 +145,7 @@ export async function quoteSingleOrderV4(
                 args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.struct)],
             }),
             gas,
-            // blockTag: "pending",
+            ...CallBlockTag.getCallBlockTag(state.appOptions),
         })
         .catch((error) => {
             orderDetails.takeOrder.quote = undefined;
