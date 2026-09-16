@@ -39,7 +39,9 @@ export async function initializeRound(
 
     let concurrencyProcessBatch = [];
     let maxConcurrencyCounter = this.appOptions.maxConcurrency;
-    let blockNumber = this.state.blockNumber;
+    // the round works on the sealed block, a block being built (flashblocks)
+    // cannot be read with a numeric block number
+    let blockNumber = this.state.canonicalBlockNumber;
     if (blockNumber <= 0n) {
         // the block number watcher has not observed any block yet
         const report = new PreAssembledSpan(`order_batch_preprocess`);
@@ -86,7 +88,7 @@ export async function initializeRound(
             // reset counter and batch vector
             concurrencyProcessBatch = [];
             maxConcurrencyCounter = this.appOptions.maxConcurrency;
-            blockNumber = this.state.blockNumber;
+            blockNumber = this.state.canonicalBlockNumber;
         }
     }
 

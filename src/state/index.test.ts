@@ -335,8 +335,11 @@ describe("Test SharedState", () => {
 
         it("should update block number from rpc", async () => {
             expect(sharedState.blockNumber).toBe(0n);
+            expect(sharedState.canonicalBlockNumber).toBe(0n);
             await sharedState.updateBlockNumber();
+            // a read block number is a sealed one
             expect(sharedState.blockNumber).toBe(100n);
+            expect(sharedState.canonicalBlockNumber).toBe(100n);
         });
 
         it("should keep previous block number when the call fails", async () => {
@@ -426,13 +429,15 @@ describe("Test SharedState", () => {
                 expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
                 expect(sharedState.blockNumber).toBe(100n);
 
-                // new heads push updates the block number
+                // new heads push updates the block number, a new head is sealed
                 onBlockNumber(105n);
                 expect(sharedState.blockNumber).toBe(105n);
+                expect(sharedState.canonicalBlockNumber).toBe(105n);
 
                 // should not move backwards
                 onBlockNumber(101n);
                 expect(sharedState.blockNumber).toBe(105n);
+                expect(sharedState.canonicalBlockNumber).toBe(105n);
 
                 // no polling should be active
                 await vi.advanceTimersByTimeAsync(15000);
@@ -592,13 +597,16 @@ describe("Test SharedState", () => {
                     expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
                     expect(sharedState.blockNumber).toBe(100n);
 
-                    // flashblock heads push updates the block number from the hex number
+                    // flashblock heads push updates the block number from the hex
+                    // number, the sealed block is the one below the block being built
                     onData({ result: { number: "0x69" } });
                     expect(sharedState.blockNumber).toBe(105n);
+                    expect(sharedState.canonicalBlockNumber).toBe(104n);
 
                     // should not move backwards
                     onData({ result: { number: "0x65" } });
                     expect(sharedState.blockNumber).toBe(105n);
+                    expect(sharedState.canonicalBlockNumber).toBe(104n);
 
                     // no polling should be active
                     await vi.advanceTimersByTimeAsync(15000);
@@ -611,12 +619,14 @@ describe("Test SharedState", () => {
                     await vi.advanceTimersByTimeAsync(0);
                     expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
 
-                    // subscription error starts the polling fallback
+                    // subscription error starts the polling fallback, a polled
+                    // block number is a sealed one
                     onSubError(new Error("ws failed"));
                     (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
                     await vi.advanceTimersByTimeAsync(5000);
                     expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
                     expect(sharedState.blockNumber).toBe(101n);
+                    expect(sharedState.canonicalBlockNumber).toBe(101n);
 
                     // a fresh flashblocks subscription is established after the delay
                     await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);

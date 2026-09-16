@@ -1,10 +1,12 @@
+import { RpcState } from "../rpc";
 import { SharedState } from "../state";
 import { publicActionsL2 } from "viem/op-stack";
-import { promiseTimeout, sleep } from "../common";
 import { RainSolverSigner, EstimateGasCostResult } from ".";
+import { Result, promiseTimeout, raceFirstOk, sleep } from "../common";
 import {
     Chain,
     HDAccount,
+    keccak256,
     PrivateKeyAccount,
     EstimateGasParameters,
     SendTransactionParameters,
@@ -12,6 +14,29 @@ import {
     WaitForTransactionReceiptTimeoutError,
 } from "viem";
 import { toUsdValue } from "../math";
+
+/**
+ * Error messages of a node that already holds the transaction, ie a broadcast
+ * copy of the same signed transaction landed on it through another rpc first,
+ * or the transaction already got mined by the time the copy arrived
+ */
+const ALREADY_KNOWN_ERRORS = [
+    "already known",
+    "already exists",
+    "already_exists",
+    "alreadyknown",
+    "known transaction",
+    "already imported",
+    "nonce too low",
+];
+
+/** Determines if the given send error means the node already holds the transaction */
+export function isAlreadyKnownTxError(error: any): boolean {
+    const msg = String(
+        error?.details ?? error?.shortMessage ?? error?.message ?? error,
+    ).toLowerCase();
+    return ALREADY_KNOWN_ERRORS.some((v) => msg.includes(v));
+}
 
 /** Represents a sent transaction with hash and wait for receipt method */
 export type SentTransaction = {
@@ -77,11 +102,13 @@ export type RainSolverSignerActions<
     asWriteSigner: () => RainSolverSigner<account>;
 
     /**
-     * Waits for a transaction receipt by polling it until it's available or a timeout occurs.
+     * Waits for a transaction receipt by looking it up once per new block until it's
+     * available or a timeout occurs, the new blocks are observed through the state's
+     * block number watcher.
      * This method does not leak memory as the viem's default `waitForTransactionReceipt` method.
      * @param hash - The transaction hash to get the receipt for
      * @param timeout - The timeout in ms (default 60 sec)
-     * @param pollingInterval - The polling interval in ms (default 3 sec)
+     * @param pollingInterval - The interval (in ms) the block number is checked at a fifth of (default is the configured block time)
      * @returns Resolves with the transaction receipt or rejects with timeout error
      */
     waitForReceipt: (params: {
@@ -165,7 +192,7 @@ export async function sendTx(
                     throw e;
                 });
         }
-        return await signer.sendTransaction({ ...(tx as any), nonce });
+        return await broadcastTx(signer, { ...(tx as any), nonce });
     }
     try {
         const hash = await send();
@@ -273,6 +300,65 @@ export async function getSelfBalance(signer: RainSolverSigner) {
 }
 
 /**
+ * Broadcasts the given fully populated transaction (nonce, gas, gas price, etc),
+ * the tx is signed once locally, with no rpc call involved, and sent as raw tx
+ * through the signer's own rpc pool, that is the write rpcs for a write signer
+ * (asWriteSigner) and the read rpcs otherwise, with multi broadcast enabled and a
+ * pool of more than one rpc, the raw tx is sent through every rpc of the pool at
+ * the same time, the first accepted one settles the send while the rest keep going
+ * in the background, a node that already got the tx through another rpc answers
+ * with an already known error, which counts as accepted since the tx is the same,
+ * when no rpc accepts, the first error is thrown, otherwise the raw tx is sent as
+ * a single request through the signer's rotating transport
+ * @param signer - The RainSolverSigner instance to send the transaction with
+ * @param tx - The transaction to broadcast
+ * @returns The transaction hash
+ */
+export async function broadcastTx(
+    signer: RainSolverSigner,
+    tx: SendTransactionParameters<Chain, HDAccount | PrivateKeyAccount>,
+): Promise<`0x${string}`> {
+    // sign locally with the signer's chain id, no rpc call is involved
+    const chainId = signer.state.chainConfig.id ?? (await signer.getChainId());
+    const serialized = await signer.account.signTransaction(
+        { ...(tx as any), chainId },
+        { serializer: signer.chain?.serializers?.transaction },
+    );
+
+    // the pool is the one the signer was built on, that is the write rpcs for
+    // a write signer (asWriteSigner) and the read rpcs otherwise
+    const rpcState = signer.transport?.rpcState as RpcState | undefined;
+    if (!signer.state.appOptions?.multiBroadcast || !rpcState || rpcState.urls.length < 2) {
+        return signer.sendRawTransaction({ serializedTransaction: serialized });
+    }
+    const hash = keccak256(serialized);
+
+    const sends = rpcState.urls.map(async (url) => {
+        try {
+            const transport = rpcState.transports[url]({
+                chain: signer.chain,
+                retryCount: 0,
+                timeout: signer.state.rainSolverTransportConfig?.timeout,
+            });
+            const result = await transport.request({
+                method: "eth_sendRawTransaction",
+                params: [serialized],
+            });
+            return Result.ok<`0x${string}`, any>(result as `0x${string}`);
+        } catch (error) {
+            if (isAlreadyKnownTxError(error)) return Result.ok<`0x${string}`, any>(hash);
+            return Result.err<`0x${string}`, any>(error);
+        }
+    });
+    const pick = await raceFirstOk(sends);
+    if (pick?.isOk()) return pick.value;
+
+    // every rpc rejected the tx, all sends have settled at this point
+    const results = await Promise.all(sends);
+    throw results[0].isErr() ? results[0].error : new Error("failed to broadcast transaction");
+}
+
+/**
  * Get the associated write signer from the given signer and state, that is
  * basically the same signer wallet but configured with app's write rpc
  * @param signer - A RainSolverSigner instance
@@ -286,32 +372,46 @@ export function getWriteSignerFrom(signer: RainSolverSigner): RainSolverSigner {
 /**
  * Tries to get the transaction receipt for a given transaction hash.
  * this method does not leak memory as the viem's default `waitForTransactionReceipt`
- * method.
+ * method, the receipt is looked up once per new block, that is whenever the state's
+ * block number (kept up-to-date by the block number watcher) has advanced since the
+ * last lookup, the block number is checked at a fifth of the polling interval, so a
+ * lookup follows a new block by that much at most
  * @param signer - The RainSolverSigner instance
  * @param hash - The transaction hash
  * @param timeout - The timeout in ms (default 60 sec)
- * @param pollingInterval - The polling interval in ms (default 3 sec)
+ * @param pollingInterval - The interval (in ms) the block number is checked at a fifth of (default is the configured block time)
  */
 export async function tryGetReceipt(
     signer: RainSolverSigner,
     hash: `0x${string}`,
     timeout = 60_000,
-    pollingInterval = 3_000,
+    pollingInterval = signer.state.appOptions.blockTime,
 ): Promise<TransactionReceipt> {
     const start = Date.now();
+    // the poll loop runs only while the wait is unsettled, so a timed out
+    // wait does not keep polling the receipt in the background
+    let active = true;
     try {
-        // ping "getTransactionReceipt" every "pollingInterval" until "success" or "timeout"
+        // ping "getTransactionReceipt" once per new block until "success" or "timeout"
         const result = await promiseTimeout(
             (async () => {
-                for (;;) {
+                const tick = Math.floor(pollingInterval / 5);
+                let lastBlockNumber = signer.state.blockNumber;
+                while (active) {
+                    await sleep(tick);
+                    if (!active) break;
+                    const blockNumber = signer.state.blockNumber;
+                    if (blockNumber <= lastBlockNumber) continue;
+                    lastBlockNumber = blockNumber;
                     try {
-                        await sleep(pollingInterval);
                         return await signer.state.client.getTransactionReceipt({ hash });
                     } catch {
                         // ignore errors and continue polling until timeout or success
                         continue;
                     }
                 }
+                // only reached once the wait has already timed out
+                return undefined as unknown as TransactionReceipt;
             })(),
             timeout,
             new WaitForTransactionReceiptTimeoutError({ hash }),
@@ -327,5 +427,7 @@ export async function tryGetReceipt(
         // capture tx mine record
         signer.state.gasManager.onTransactionMine({ didMine: false, length: Date.now() - start });
         throw error;
+    } finally {
+        active = false;
     }
 }

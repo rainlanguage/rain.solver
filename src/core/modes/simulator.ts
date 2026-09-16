@@ -326,16 +326,12 @@ export abstract class TradeSimulatorBase {
         }
 
         // boost the tx gas price if the trade is highly profitable, that is when the
-        // estimated profit exceeds the min expected bounty by the configured threshold
-        // or when the estimated profit USD value exceeds the configured USD threshold,
-        // this increases the chance of the tx to land onchain faster as the trade can
-        // afford it, this has no effect if the config fields are not set
+        // estimated profit USD value exceeds the configured USD threshold, this
+        // increases the chance of the tx to land onchain faster as the trade can
+        // afford it, this has no effect if the config fields are not set or the
+        // gas token USD price is unknown
         const estimatedProfit = this.estimateProfit(prepareParamsResult.value.price)!;
-        const { gasBoostProfitThreshold, gasBoostMultiplier, gasBoostUsdThreshold } =
-            this.tradeArgs.solver.appOptions;
-        const exceedsBountyThreshold =
-            gasBoostProfitThreshold !== undefined &&
-            estimatedProfit > minimumExpected * BigInt(gasBoostProfitThreshold);
+        const { gasBoostMultiplier, gasBoostUsdThreshold } = this.tradeArgs.solver.appOptions;
         const exceedsUsdThreshold =
             gasBoostUsdThreshold !== undefined &&
             !!gasTokenUsdPrice &&
@@ -343,7 +339,7 @@ export abstract class TradeSimulatorBase {
         if (
             gasBoostMultiplier !== undefined &&
             typeof prepareParamsResult.value.rawtx.gasPrice === "bigint" &&
-            (exceedsBountyThreshold || exceedsUsdThreshold)
+            exceedsUsdThreshold
         ) {
             // scale the multiplier by 100 to apply it with 2 decimal points precision
             prepareParamsResult.value.rawtx.gasPrice =

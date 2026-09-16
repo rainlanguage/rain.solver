@@ -108,6 +108,7 @@ export async function sweepFunds(opts: SweepOptions) {
         txTimeThreshold: 2_500,
         blockTime: 5_000,
         flashblocks: false,
+        multiBroadcast: false,
         routerPartialFallback: true,
         routerPartialFallbackSteps: 4,
         routerSecondaryRouteTry: "max",
