@@ -74,6 +74,12 @@ export class RainSolverCli {
     private nextAssesWorkerWalletTime = Date.now() + 15 * MINUTE;
     /** Time for next wallet balance check */
     private nextCheckWalletBalanceTime: number;
+    /** The last main wallet balance check report, re-exported on rounds that skip the check */
+    prevMainWalletBalanceReport?: PreAssembledSpan;
+    /** The last worker wallets balances, re-reported on rounds that skip the check */
+    prevMultiWalletBalanceReports?: Record<string, bigint>;
+    /** The finalization of the latest round, runs in the background while the next round starts */
+    pendingRoundFinalization?: Promise<void>;
 
     private constructor(
         state: SharedState,
@@ -214,8 +220,6 @@ export class RainSolverCli {
      * reports and executes wallet ops.
      */
     async run() {
-        let prevMainWalletBalanceReport: PreAssembledSpan | undefined;
-        let prevMultiWalletBalanceReports;
         // eslint-disable-next-line no-constant-condition
         while (true) {
             // start round span and get round ctx
@@ -252,15 +256,15 @@ export class RainSolverCli {
                     );
                 }
             } else {
-                if (prevMainWalletBalanceReport) {
-                    prevMainWalletBalanceReport.startTime = now;
-                    prevMainWalletBalanceReport.endTime = performance.now();
-                    this.logger.exportPreAssembledSpan(prevMainWalletBalanceReport, roundCtx);
+                if (this.prevMainWalletBalanceReport) {
+                    this.prevMainWalletBalanceReport.startTime = now;
+                    this.prevMainWalletBalanceReport.endTime = performance.now();
+                    this.logger.exportPreAssembledSpan(this.prevMainWalletBalanceReport, roundCtx);
                 }
-                if (prevMultiWalletBalanceReports) {
+                if (this.prevMultiWalletBalanceReports) {
                     roundSpan.setAttribute(
                         "circulatingAccounts",
-                        JSON.stringify(prevMultiWalletBalanceReports, withBigintSerializer),
+                        JSON.stringify(this.prevMultiWalletBalanceReports, withBigintSerializer),
                     );
                     roundSpan.setAttribute(
                         "lastAccountIndex",
@@ -282,12 +286,6 @@ export class RainSolverCli {
                 // process round and export the reports
                 await this.processOrdersForRound(roundSpan, roundCtx);
 
-                // reset average gas cost
-                this.maybeResetAvgGasCost();
-
-                // run wallet operations for the round
-                await this.runWalletOpsForRound(roundCtx);
-
                 // record ok status if we reach here
                 roundSpan.setStatus({ code: SpanStatusCode.OK });
             } catch (err: any) {
@@ -298,42 +296,32 @@ export class RainSolverCli {
                 roundSpan.setStatus({ code: SpanStatusCode.ERROR, message: snapshot });
             }
 
-            // sync orders to upstream
-            try {
-                const report = await this.orderManager.sync();
-                this.logger.exportPreAssembledSpan(report, roundCtx); // export sync report
-            } catch {
-                roundSpan.addEvent("Failed to sync orders to upstream, will try again next round");
-            }
+            // start syncing orders to upstream right away, it runs alongside the
+            // rest of the round finalization, but the next round waits for it to
+            // finish, so no round ever processes orders while a sync is in flight
+            const syncOrdersPromise = this.orderManager
+                .sync()
+                .then((report) => this.logger.exportPreAssembledSpan(report, roundCtx))
+                .catch(() => {
+                    roundSpan.addEvent(
+                        "Failed to sync orders to upstream, will try again next round",
+                    );
+                });
 
-            // report rpcs performance for round
-            await this.reportRpcMetricsForRound(roundCtx);
-
-            if (checkMainWalletBalancePromise !== undefined) {
-                await checkMainWalletBalancePromise
-                    .then((checkBalanceReport) => {
-                        this.logger.exportPreAssembledSpan(checkBalanceReport, roundCtx);
-                        prevMainWalletBalanceReport = checkBalanceReport;
-                    })
-                    .catch(() => {});
-            }
-
-            if (getWorkerWalletsBalancePromise !== undefined) {
-                await getWorkerWalletsBalancePromise
-                    .then((v) => {
-                        roundSpan.setAttribute(
-                            "circulatingAccounts",
-                            JSON.stringify(v, withBigintSerializer),
-                        );
-                        prevMultiWalletBalanceReports = v;
-                    })
-                    .catch(() => {});
-            }
+            // finalize the round in the background, the round span ends once all
+            // the finalization operations settle, so the next round starts on time
+            this.pendingRoundFinalization = this.finalizeRound(
+                roundSpan,
+                roundCtx,
+                syncOrdersPromise,
+                checkMainWalletBalancePromise,
+                getWorkerWalletsBalancePromise,
+            ).catch(() => {});
 
             // eslint-disable-next-line no-console
             console.log(`Starting next round in ${this.appOptions.sleep / 1000} seconds...`, "\n");
-            roundSpan.end();
             await sleep(this.appOptions.sleep);
+            await syncOrdersPromise;
 
             // increment round count
             this.roundCount++;
@@ -348,8 +336,72 @@ export class RainSolverCli {
             }
         }
 
-        // flush and close the connection.
+        // let the latest round finalize before flushing and closing the connection
+        await this.pendingRoundFinalization;
         await this.logger.shutdown();
+    }
+
+    /**
+     * Finalizes a round by running the post round operations concurrently, that
+     * is the wallet operations, reporting rpc metrics and the pending wallet
+     * balance checks, and ends the round span once all of them and the given
+     * orders sync have settled, this is meant to run in the background, so the
+     * next round does not wait for these operations to start
+     * @param roundSpan - The round span
+     * @param roundCtx - The round context
+     * @param syncOrdersPromise - The in flight orders sync of the round, awaited by the caller too
+     * @param checkMainWalletBalancePromise - The pending main wallet balance check, if any
+     * @param getWorkerWalletsBalancePromise - The pending worker wallets balance read, if any
+     */
+    async finalizeRound(
+        roundSpan: Span,
+        roundCtx: Context,
+        syncOrdersPromise: Promise<void>,
+        checkMainWalletBalancePromise?: Promise<PreAssembledSpan>,
+        getWorkerWalletsBalancePromise?: Promise<Record<string, bigint>>,
+    ) {
+        try {
+            // reset average gas cost
+            this.maybeResetAvgGasCost();
+
+            await Promise.all([
+                syncOrdersPromise,
+
+                // run wallet operations for the round
+                this.runWalletOpsForRound(roundCtx).catch(async (err) => {
+                    const snapshot = await errorSnapshot("", err);
+                    roundSpan.setAttribute("severity", ErrorSeverity.HIGH);
+                    roundSpan.recordException(err);
+                    roundSpan.setStatus({ code: SpanStatusCode.ERROR, message: snapshot });
+                }),
+
+                // report rpcs performance for round
+                this.reportRpcMetricsForRound(roundCtx).catch(() => {}),
+
+                // report the main wallet balance check
+                checkMainWalletBalancePromise
+                    ?.then((checkBalanceReport) => {
+                        this.logger.exportPreAssembledSpan(checkBalanceReport, roundCtx);
+                        this.prevMainWalletBalanceReport = checkBalanceReport;
+                    })
+                    .catch(() => {}),
+
+                // report the worker wallets balances
+                getWorkerWalletsBalancePromise
+                    ?.then((v) => {
+                        roundSpan.setAttribute(
+                            "circulatingAccounts",
+                            JSON.stringify(v, withBigintSerializer),
+                        );
+                        this.prevMultiWalletBalanceReports = v;
+                    })
+                    .catch(() => {}),
+            ]);
+        } finally {
+            // the span ends no matter what, the finalization runs in the
+            // background and nothing awaits its failure
+            roundSpan.end();
+        }
     }
 
     /** Resets the average gas cost daily */
