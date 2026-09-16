@@ -820,6 +820,86 @@ describe("Test SharedState", () => {
         });
     });
 
+    describe("Test pool updates on new blocks", () => {
+        let update: Mock;
+
+        beforeEach(() => {
+            update = vi.fn().mockResolvedValue(false);
+            config.router.sushi = { update };
+            config.client.getBlockNumber = vi.fn().mockResolvedValue(100n);
+        });
+
+        afterEach(() => {
+            delete config.router.sushi;
+        });
+
+        it("should update the pools up to the canonical block on every advance", async () => {
+            const state = new SharedState(config);
+            await state.updateBlockNumber();
+            expect(update).toHaveBeenCalledTimes(1);
+            expect(update).toHaveBeenCalledWith(100n);
+            expect(state.newPoolCreated).toBe(false);
+
+            // the same block again is not an advance, neither is a lower one
+            await state.updateBlockNumber();
+            (config.client.getBlockNumber as Mock).mockResolvedValue(90n);
+            await state.updateBlockNumber();
+            expect(update).toHaveBeenCalledTimes(1);
+
+            // a newly created pool raises the flag for the consumer
+            update.mockResolvedValue(true);
+            (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+            await state.updateBlockNumber();
+            expect(update).toHaveBeenCalledTimes(2);
+            expect(update).toHaveBeenLastCalledWith(101n);
+            expect(state.newPoolCreated).toBe(true);
+        });
+
+        it("should not start another update while one is in flight", async () => {
+            let finish: (value: boolean) => void = () => {};
+            update.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+            const state = new SharedState(config);
+            await state.updateBlockNumber();
+            expect(update).toHaveBeenCalledTimes(1);
+
+            // blocks advance while the update runs, none starts another one
+            (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+            await state.updateBlockNumber();
+            (config.client.getBlockNumber as Mock).mockResolvedValue(102n);
+            await state.updateBlockNumber();
+            expect(update).toHaveBeenCalledTimes(1);
+
+            // once done, the next block picks the gap up
+            finish(false);
+            await Promise.resolve();
+            (config.client.getBlockNumber as Mock).mockResolvedValue(103n);
+            await state.updateBlockNumber();
+            expect(update).toHaveBeenCalledTimes(2);
+            expect(update).toHaveBeenLastCalledWith(103n);
+        });
+
+        it("should drop a failed update and try again on the next block", async () => {
+            update.mockRejectedValueOnce(new Error("rpc failed"));
+            const state = new SharedState(config);
+            await state.updateBlockNumber();
+            await Promise.resolve();
+            expect(update).toHaveBeenCalledTimes(1);
+            expect(state.newPoolCreated).toBe(false);
+
+            (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+            await state.updateBlockNumber();
+            expect(update).toHaveBeenCalledTimes(2);
+        });
+
+        it("should do nothing without a sushi router", async () => {
+            delete config.router.sushi;
+            const state = new SharedState(config);
+            await state.updateBlockNumber();
+            expect(state.canonicalBlockNumber).toBe(100n);
+            expect(update).not.toHaveBeenCalled();
+        });
+    });
+
     describe("Test avgGasCost", () => {
         it("should return 0 when gasCosts array is empty", () => {
             const state = new SharedState(config);
