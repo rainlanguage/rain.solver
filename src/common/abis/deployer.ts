@@ -22,6 +22,16 @@ const _deployerV6 = [
     `function eval4(${_EvalV4} calldata eval) external view returns (${_StackItem}[] calldata stack, bytes32[] calldata writes)`,
 ] as const;
 
+// IRainlang, the registry contract of the newer rainlang stack that exposes the
+// addresses of the four core contracts, in this stack the expression deployer is
+// only the parser and integrity checker and no longer knows the interpreter and store
+const _rainlang = [
+    "function expressionDeployerAddress() external pure returns (address)",
+    "function interpreterAddress() external pure returns (address)",
+    "function storeAddress() external pure returns (address)",
+    "function parserAddress() external pure returns (address)",
+] as const;
+
 /** Keeps ExpressionDeployer related ABIs */
 export namespace DeployerAbi {
     /** ExpressionDeployerNPE2 contract primary parsed ABI */
@@ -31,12 +41,18 @@ export namespace DeployerAbi {
 
         /** ExpressionDeployerNPE2 contract primary parsed ABI */
         export const DeployerV6 = parseAbi(_deployerV6);
+
+        /** IRainlang registry contract primary parsed ABI */
+        export const Rainlang = parseAbi(_rainlang);
     }
 
     /** Deployer signature ABI */
     export namespace Signatures {
         /** ExpressionDeployerNPE2 signature ABI */
         export const deployer = _deployer;
+
+        /** IRainlang registry signature ABI */
+        export const rainlang = _rainlang;
     }
 
     /** Deployer and Interpreter structs ABI */

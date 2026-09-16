@@ -7,7 +7,7 @@ import { PreAssembledSpan } from "../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { ErrorSeverity, errorSnapshot } from "../error";
 import { SgOrder, SgTransaction, SubgraphSyncState, SubgraphVersions } from "./types";
-import { getTxsQuery, orderbooksQuery, DEFAULT_PAGE_SIZE, getQueryPaginated } from "./query";
+import { getTxsQuery, getOrderbooksQuery, DEFAULT_PAGE_SIZE, getQueryPaginated } from "./query";
 
 // re-export
 export * from "./types";
@@ -70,7 +70,11 @@ export class SubgraphManager {
      */
     async getOrderbooks(): Promise<Set<string>> {
         const promises = this.subgraphs.map((url) =>
-            axios.post(url, { query: orderbooksQuery }, { headers, timeout: this.requestTimeout }),
+            axios.post(
+                url,
+                { query: getOrderbooksQuery(this.getSubgraphVersion(url)) },
+                { headers, timeout: this.requestTimeout },
+            ),
         );
         const queryResults = await Promise.allSettled(promises);
         const addresses = queryResults.flatMap(
@@ -152,7 +156,7 @@ export class SubgraphManager {
             const res = await axios.post(
                 url,
                 {
-                    query: getQueryPaginated(skip, this.filters),
+                    query: getQueryPaginated(skip, this.filters, version),
                 },
                 { headers, timeout: this.requestTimeout },
             );
@@ -229,19 +233,27 @@ export class SubgraphManager {
             status[url] = {};
             const allResults: SgTransaction[] = [];
             const startTimestamp = this.syncState[url].lastFetchTimestamp;
+            const version = this.getSubgraphVersion(url);
             let partiallyFetched = false;
             for (;;) {
                 try {
                     const res = await axios.post(
                         url,
-                        { query: getTxsQuery(startTimestamp, this.syncState[url].skip) },
+                        {
+                            query: getTxsQuery(
+                                startTimestamp,
+                                this.syncState[url].skip,
+                                undefined,
+                                version,
+                            ),
+                        },
                         { headers, timeout: this.requestTimeout },
                     );
                     if (typeof res?.data?.data?.transactions !== "undefined") {
                         partiallyFetched = true;
                         const txs: SgTransaction[] = res.data.data.transactions;
                         this.syncState[url].skip += txs.length;
-                        if (this.getSubgraphVersion(url) === SubgraphVersions.V6) {
+                        if (version === SubgraphVersions.V6) {
                             txs.forEach((v) => (v.__version = SubgraphVersions.V6));
                         } else {
                             txs.forEach((v) => (v.__version = SubgraphVersions.LEGACY));

@@ -288,7 +288,13 @@ describe("SolverContracts.fromAppOptions", () => {
             getAddressesForTrade: expect.any(Function),
         });
 
-        expect(mockClient.readContract).toHaveBeenCalledTimes(3);
+        // one interpreter read per version, plus the IRainlang fallback read for v6
+        expect(mockClient.readContract).toHaveBeenCalledTimes(4);
+        expect(mockClient.readContract).toHaveBeenNthCalledWith(4, {
+            address: "0xv6dispair",
+            functionName: "interpreterAddress",
+            abi: ABI.Deployer.Primary.Rainlang,
+        });
     });
 
     it("should handle partial contract read errors", async () => {
@@ -395,14 +401,16 @@ describe("SolverContracts.fromAppOptions", () => {
             .mockRejectedValueOnce(new Error("v5 interpreter failed")) // v5 interpreter error
             .mockResolvedValueOnce("0xv5store" as `0x${string}`) // v5 store success
             .mockRejectedValueOnce(new Error("v6 interpreter failed")) // v6 interpreter error
-            .mockResolvedValueOnce("0xv6store" as `0x${string}`); // v6 store success
+            .mockResolvedValueOnce("0xv6store" as `0x${string}`) // v6 store success
+            .mockRejectedValueOnce(new Error("v6 rainlang interpreter failed")) // v6 IRainlang fallback error
+            .mockRejectedValueOnce(new Error("v6 rainlang store failed")); // v6 IRainlang fallback error
 
         const result = await SolverContracts.fromAppOptions(mockClient, mockAppOptions);
 
         expect(result).toEqual({
             v4: undefined, // Should be undefined because store fetch failed
             v5: undefined, // Should be undefined because interpreter fetch failed
-            v6: undefined,
+            v6: undefined, // Should be undefined because the IRainlang fallback failed too
             getAddressesForTrade: expect.any(Function),
         });
     });
@@ -413,14 +421,15 @@ describe("SolverContracts.fromAppOptions", () => {
             .mockResolvedValueOnce("0xv5interpreter" as `0x${string}`) // v5 interpreter success
             .mockRejectedValueOnce(new Error("v5 store failed")) // v5 store error
             .mockResolvedValueOnce("0xv6interpreter" as `0x${string}`) // v6 interpreter success
-            .mockRejectedValueOnce(new Error("v6 store failed")); // v6 store error
+            .mockRejectedValueOnce(new Error("v6 store failed")) // v6 store error
+            .mockRejectedValueOnce(new Error("v6 rainlang interpreter failed")); // v6 IRainlang fallback error
 
         const result = await SolverContracts.fromAppOptions(mockClient, mockAppOptions);
 
         expect(result).toEqual({
             v4: undefined, // Should be undefined because interpreter fetch failed
             v5: undefined, // Should be undefined because store fetch failed
-            v6: undefined,
+            v6: undefined, // Should be undefined because the IRainlang fallback failed too
             getAddressesForTrade: expect.any(Function),
         });
     });
@@ -649,6 +658,125 @@ describe("resolveVersionContracts", () => {
             functionName: "I_STORE",
             abi: ABI.Deployer.Primary.DeployerV6,
         });
+    });
+
+    it("should resolve v6 contracts from a Rainlang registry when deployer getters fail", async () => {
+        const mockAddresses = {
+            dispair: "0xrainlang" as `0x${string}`,
+            sushiArb: "0xsushiArbAddress" as `0x${string}`,
+        };
+
+        mockClient.readContract
+            .mockRejectedValueOnce(new Error("I_INTERPRETER reverted")) // I_INTERPRETER
+            .mockResolvedValueOnce("0xinterpreterAddress" as `0x${string}`) // interpreterAddress
+            .mockRejectedValueOnce(new Error("I_STORE reverted")) // I_STORE
+            .mockResolvedValueOnce("0xstoreAddress" as `0x${string}`) // storeAddress
+            .mockResolvedValueOnce("0xdeployerAddress" as `0x${string}`); // expressionDeployerAddress
+
+        const result = await resolveVersionContracts(mockClient, mockAddresses, "v6");
+
+        // the deployer used for parsing is the one the registry points at, not the registry
+        expect(result).toEqual({
+            dispair: {
+                deployer: "0xdeployerAddress",
+                interpreter: "0xinterpreterAddress",
+                store: "0xstoreAddress",
+            },
+            sushiArb: "0xsushiArbAddress",
+        });
+
+        expect(mockClient.readContract).toHaveBeenCalledTimes(5);
+        expect(mockClient.readContract).toHaveBeenNthCalledWith(1, {
+            address: "0xrainlang",
+            functionName: "I_INTERPRETER",
+            abi: ABI.Deployer.Primary.DeployerV6,
+        });
+        expect(mockClient.readContract).toHaveBeenNthCalledWith(2, {
+            address: "0xrainlang",
+            functionName: "interpreterAddress",
+            abi: ABI.Deployer.Primary.Rainlang,
+        });
+        expect(mockClient.readContract).toHaveBeenNthCalledWith(3, {
+            address: "0xrainlang",
+            functionName: "I_STORE",
+            abi: ABI.Deployer.Primary.DeployerV6,
+        });
+        expect(mockClient.readContract).toHaveBeenNthCalledWith(4, {
+            address: "0xrainlang",
+            functionName: "storeAddress",
+            abi: ABI.Deployer.Primary.Rainlang,
+        });
+        expect(mockClient.readContract).toHaveBeenNthCalledWith(5, {
+            address: "0xrainlang",
+            functionName: "expressionDeployerAddress",
+            abi: ABI.Deployer.Primary.Rainlang,
+        });
+    });
+
+    it("should read the deployer from the registry when only the store getter fell back", async () => {
+        const mockAddresses = { dispair: "0xrainlang" as `0x${string}` };
+
+        mockClient.readContract
+            .mockResolvedValueOnce("0xinterpreterAddress" as `0x${string}`) // I_INTERPRETER
+            .mockRejectedValueOnce(new Error("I_STORE reverted")) // I_STORE
+            .mockResolvedValueOnce("0xstoreAddress" as `0x${string}`) // storeAddress
+            .mockResolvedValueOnce("0xdeployerAddress" as `0x${string}`); // expressionDeployerAddress
+
+        const result = await resolveVersionContracts(mockClient, mockAddresses, "v6");
+
+        expect(result).toEqual({
+            dispair: {
+                deployer: "0xdeployerAddress",
+                interpreter: "0xinterpreterAddress",
+                store: "0xstoreAddress",
+            },
+        });
+        expect(mockClient.readContract).toHaveBeenCalledTimes(4);
+    });
+
+    it("should return undefined for v6 when both deployer and Rainlang registry reads fail", async () => {
+        const mockAddresses = { dispair: "0xunknown" as `0x${string}` };
+
+        mockClient.readContract.mockRejectedValue(new Error("reverted"));
+
+        const result = await resolveVersionContracts(mockClient, mockAddresses, "v6");
+
+        expect(result).toBeUndefined();
+        expect(mockClient.readContract).toHaveBeenCalledTimes(2);
+        expect(mockClient.readContract).toHaveBeenNthCalledWith(2, {
+            address: "0xunknown",
+            functionName: "interpreterAddress",
+            abi: ABI.Deployer.Primary.Rainlang,
+        });
+    });
+
+    it("should return undefined for v6 when a Rainlang registry read fails midway", async () => {
+        const mockAddresses = { dispair: "0xrainlang" as `0x${string}` };
+
+        mockClient.readContract
+            .mockRejectedValueOnce(new Error("I_INTERPRETER reverted")) // I_INTERPRETER
+            .mockResolvedValueOnce("0xinterpreterAddress" as `0x${string}`) // interpreterAddress
+            .mockRejectedValueOnce(new Error("I_STORE reverted")) // I_STORE
+            .mockRejectedValueOnce(new Error("storeAddress reverted")); // storeAddress
+
+        const result = await resolveVersionContracts(mockClient, mockAddresses, "v6");
+
+        expect(result).toBeUndefined();
+        expect(mockClient.readContract).toHaveBeenCalledTimes(4);
+    });
+
+    it("should not try the Rainlang registry for non v6 versions", async () => {
+        const mockAddresses = { dispair: "0xdispair" as `0x${string}` };
+
+        mockClient.readContract.mockRejectedValue(new Error("reverted"));
+
+        expect(await resolveVersionContracts(mockClient, mockAddresses)).toBeUndefined();
+        expect(await resolveVersionContracts(mockClient, mockAddresses, "v4")).toBeUndefined();
+        expect(await resolveVersionContracts(mockClient, mockAddresses, "v5")).toBeUndefined();
+        expect(mockClient.readContract).toHaveBeenCalledTimes(3);
+        for (const call of mockClient.readContract.mock.calls) {
+            expect(call[0].functionName).toBe("iInterpreter");
+        }
     });
 });
 

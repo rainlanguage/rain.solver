@@ -145,7 +145,7 @@ export async function quoteSingleOrderV4(
                 args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.struct)],
             }),
             gas,
-            blockTag: "pending",
+            // blockTag: "pending",
         })
         .catch((error) => {
             orderDetails.takeOrder.quote = undefined;
