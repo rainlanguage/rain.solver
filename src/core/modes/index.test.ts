@@ -207,6 +207,7 @@ describe("Test findBestTrade", () => {
             args.toToken,
             args.fromToken,
             args.blockNumber,
+            args.outputToEthPrice,
         );
         expect(findBestIntraOrderbookTrade).not.toHaveBeenCalled();
         expect(findBestInterOrderbookTrade).not.toHaveBeenCalled();
@@ -275,6 +276,7 @@ describe("Test findBestTrade", () => {
             args.toToken,
             args.fromToken,
             args.blockNumber,
+            args.outputToEthPrice,
         );
         expect(findBestIntraOrderbookTrade).toHaveBeenCalledWith(
             args.orderDetails,
@@ -344,6 +346,7 @@ describe("Test findBestTrade", () => {
             args.toToken,
             args.fromToken,
             args.blockNumber,
+            args.outputToEthPrice,
         );
         expect(findBestIntraOrderbookTrade).toHaveBeenCalledWith(
             args.orderDetails,
@@ -526,6 +529,7 @@ describe("Test findBestTrade", () => {
             args.toToken,
             args.fromToken,
             args.blockNumber,
+            args.outputToEthPrice,
         );
         expect(findBestIntraOrderbookTrade).toHaveBeenCalledWith(
             args.orderDetails,

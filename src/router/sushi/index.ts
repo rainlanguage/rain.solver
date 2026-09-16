@@ -507,13 +507,15 @@ export class SushiRouter extends RainSolverRouterBase {
     }
 
     /**
-     * Searches for the largest possible partial trade size for rp clear, the result
-     * status determines the outcome: Found means the returned size clears the order
-     * ratio at quoted prices, PriceMismatch means routes exist but no size clears the
-     * order ratio and the returned size is the biggest size that had a route, NoWay
-     * means no route exists at any size, in absolute mode the search instead looks
-     * for the largest size below the price impact tolerance and the result is either
-     * Found or NoWay
+     * Searches for the largest possible trade size for rp clear, the full size is
+     * probed first and returned right away when it clears the gate, otherwise the
+     * sizes below it get bisected, the result status determines the outcome: Found
+     * means the returned size clears the order ratio at quoted prices, PriceMismatch
+     * means routes exist but no size clears the order ratio and the returned size is
+     * the biggest size that had a route, NoWay means no route exists at any size, in
+     * absolute mode the search instead looks for the largest size below the price
+     * impact tolerance and the result is either Found or NoWay, the result carries the
+     * quote of the returned size so downstream consumers dont recompute the same route
      * @param orderDetails - The order details
      * @param toToken - The token to trade to
      * @param fromToken - The token to trade from
@@ -539,15 +541,19 @@ export class SushiRouter extends RainSolverRouterBase {
         const ratio = orderDetails.takeOrder.quote!.ratio;
         const liquidityProviders = this.getFilteredLiquidityProviders(excludeDexes);
         const pcMap = this.dataFetcher.getCurrentPoolCodeMap(fromToken, toToken);
-        const initAmount = scaleFrom18(maximumInputFixed, fromToken.decimals) / 2n;
-        let maximumInput = initAmount;
-        for (let i = 1n; i < 26n; i++) {
-            const maxInput18 = scaleTo18(maximumInput, fromToken.decimals);
+
+        // probes the route for the given amount, undefined when it has no route,
+        // negative output routes count as unroutable, this mirrors the NegativeOutput
+        // guard of findBestRoute, which the probe quotes that are plugged in
+        // downstream would otherwise bypass, the probe quote details are carried on
+        // the result for the winning size so downstream consumers dont recompute
+        // the same route again
+        const probe = (amount: bigint): SushiRouterQuote | undefined => {
             const route = Router.findBestRoute(
                 pcMap,
                 this.chainId as ChainId,
                 fromToken,
-                maximumInput,
+                amount,
                 toToken,
                 gasPrice,
                 liquidityProviders,
@@ -555,21 +561,12 @@ export class SushiRouter extends RainSolverRouterBase {
                 undefined,
                 routeType,
             );
-
-            // negative output routes count as unroutable, this mirrors the
-            // NegativeOutput guard of findBestRoute, which the probe quotes
-            // that are plugged in downstream would otherwise bypass
-            if (route.status == "NoWay" || route.amountOutBI < 0n) {
-                maximumInput = maximumInput - initAmount / 2n ** i;
-                continue;
-            }
-            // probe quote details, carried on the result for the winning size
-            // so downstream consumers dont recompute the same route again
-            const probeQuote: SushiRouterQuote = {
+            if (route.status == "NoWay" || route.amountOutBI < 0n) return undefined;
+            return {
                 type: RouterType.Sushi,
                 status: RouteStatus.Success,
                 price: calculatePrice18(
-                    maximumInput,
+                    amount,
                     route.amountOutBI,
                     fromToken.decimals,
                     toToken.decimals,
@@ -577,35 +574,57 @@ export class SushiRouter extends RainSolverRouterBase {
                 route: { route, pcMap },
                 amountOut: route.amountOutBI,
             };
-
+        };
+        // tells if the probe quote clears the gate, the price impact tolerance in
+        // absolute mode, otherwise the order ratio against the realized average
+        // execution price of the simulated swap, which already includes the route's
+        // price impact, same as the trade simulation gate
+        const clearsGate = (probeQuote: SushiRouterQuote): boolean => {
             if (absolute) {
-                if (
-                    typeof route.priceImpact === "undefined" ||
-                    route.priceImpact < DEFAULT_PRICE_IMPACT_TOLERANCE
-                ) {
-                    result.unshift(maxInput18);
-                    foundQuote = probeQuote;
-                    maximumInput = maximumInput + initAmount / 2n ** i;
-                } else {
-                    maximumInput = maximumInput - initAmount / 2n ** i;
-                }
+                const priceImpact = probeQuote.route.route.priceImpact;
+                return (
+                    typeof priceImpact === "undefined" ||
+                    priceImpact < DEFAULT_PRICE_IMPACT_TOLERANCE
+                );
+            }
+            return probeQuote.price >= ratio;
+        };
+
+        // probe the full size first, a full size that clears the gate needs no search
+        const fullAmount = scaleFrom18(maximumInputFixed, fromToken.decimals);
+        const fullQuote = probe(fullAmount);
+        if (fullQuote) {
+            if (clearsGate(fullQuote)) {
+                return { status: TradeSizeStatus.Found, size: maximumInputFixed, quote: fullQuote };
+            }
+            if (!absolute) {
+                biggestRoutedSize = maximumInputFixed;
+                biggestRoutedQuote = fullQuote;
+            }
+        }
+
+        // bisect the sizes below the full size
+        const initAmount = fullAmount / 2n;
+        let maximumInput = initAmount;
+        for (let i = 1n; i < 26n; i++) {
+            const maxInput18 = scaleTo18(maximumInput, fromToken.decimals);
+            const probeQuote = probe(maximumInput);
+            if (!probeQuote) {
+                maximumInput = maximumInput - initAmount / 2n ** i;
+                continue;
+            }
+            // keep track of the biggest size that had a route regardless
+            // of whether its price clears the order ratio or not
+            if (!absolute && (biggestRoutedSize === undefined || maxInput18 > biggestRoutedSize)) {
+                biggestRoutedSize = maxInput18;
+                biggestRoutedQuote = probeQuote;
+            }
+            if (clearsGate(probeQuote)) {
+                result.unshift(maxInput18);
+                foundQuote = probeQuote;
+                maximumInput = maximumInput + initAmount / 2n ** i;
             } else {
-                // keep track of the biggest size that had a route regardless
-                // of whether its price clears the order ratio or not
-                if (biggestRoutedSize === undefined || maxInput18 > biggestRoutedSize) {
-                    biggestRoutedSize = maxInput18;
-                    biggestRoutedQuote = probeQuote;
-                }
-                // realized average execution price of the simulated swap, this already
-                // includes the route's price impact, same as the trade simulation gate,
-                // the probe quote price is exactly that effective price
-                if (probeQuote.price < ratio) {
-                    maximumInput = maximumInput - initAmount / 2n ** i;
-                } else {
-                    result.unshift(maxInput18);
-                    foundQuote = probeQuote;
-                    maximumInput = maximumInput + initAmount / 2n ** i;
-                }
+                maximumInput = maximumInput - initAmount / 2n ** i;
             }
         }
 

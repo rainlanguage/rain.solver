@@ -28,6 +28,7 @@ export enum SimulationHaltReason {
     FailedToGetTaskBytecode,
     UndefinedTradeDestinationAddress,
     MinimalOutputBalanceViolation,
+    DustTradeSize,
 }
 export namespace SimulationHaltReason {
     /**
@@ -270,6 +271,9 @@ export abstract class TradeSimulatorBase {
             Object.assign(finalDryrunResult.error.spanAttributes, this.spanAttributes);
             finalDryrunResult.error.reason = SimulationHaltReason.NoOpportunity;
             (finalDryrunResult.error as FailedSimulation).type = prepareParamsResult.value.type;
+            // carry the gas cost the trade was checked against, so the caller
+            // can tell a trade that is too small to ever pay the gas
+            (finalDryrunResult.error as FailedSimulation).estimatedGasCost = estimatedGasCost;
             return Result.err(finalDryrunResult.error as FailedSimulation);
         }
 

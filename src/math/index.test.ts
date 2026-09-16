@@ -6,6 +6,7 @@ import {
     toNumber,
     isBigNumberish,
     toUsdValue,
+    toEthValue,
     ONE18,
 } from ".";
 import { maxUint256 } from "viem";
@@ -149,6 +150,17 @@ describe("Test math functions", () => {
             assert.deepEqual(toUsdValue(ONE18 / 2n, "3000.5"), (150025n * ONE18) / 100n);
             // zero value equals zero dollars
             assert.deepEqual(toUsdValue(0n, "3000.5"), 0n);
+        });
+    });
+
+    describe("toEthValue", () => {
+        it("should convert the value with the given eth price", () => {
+            // 2 tokens at price of 0.5 eth each equals 1 eth
+            assert.deepEqual(toEthValue(2n * ONE18, "0.5"), ONE18);
+            assert.deepEqual(toEthValue(ONE18 / 2n, "3000.5"), (150025n * ONE18) / 100n);
+            // zero value or zero price equals zero
+            assert.deepEqual(toEthValue(0n, "3000.5"), 0n);
+            assert.deepEqual(toEthValue(2n * ONE18, "0"), 0n);
         });
     });
 });

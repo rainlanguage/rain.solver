@@ -11,11 +11,11 @@ import { SushiRouterQuote, TradeSizeStatus } from "../../../router";
 import { SimulationResult, TradeType } from "../../types";
 import { Result, extendObjectWithHeader } from "../../../common";
 
-/** Represents the result of a router trade attempt paired with its full trade size quote */
+/** Represents the result of a router trade attempt paired with the quote it was judged on */
 export type RouterTradeAttempt = {
     /** The simulation result of the attempt */
     result: SimulationResult;
-    /** The quote of the attempt's full trade size simulation */
+    /** The quote every sim of the attempt was locked to, ie the one a secondary route try excludes the dexes of */
     quote?: RouterTradeSimulator["quote"];
 };
 
@@ -35,6 +35,7 @@ export type RouterTradeAttempt = {
  * @param toToken - The token to trade to
  * @param fromToken - The token to trade from
  * @param blockNumber - The current block number
+ * @param outputToEthPrice - (optional) The output token to eth price, used for the dust checks
  */
 export async function findBestRouterTrade(
     this: RainSolver,
@@ -44,6 +45,7 @@ export async function findBestRouterTrade(
     toToken: Token,
     fromToken: Token,
     blockNumber: bigint,
+    outputToEthPrice?: string,
 ): Promise<SimulationResult> {
     // primary attempt normally with all enabled dexes
     const primary = await tryFindBestRouterTrade.call(
@@ -54,6 +56,8 @@ export async function findBestRouterTrade(
         toToken,
         fromToken,
         blockNumber,
+        undefined,
+        outputToEthPrice,
     );
     if (primary.result.isOk()) {
         return primary.result;
@@ -86,6 +90,7 @@ export async function findBestRouterTrade(
             fromToken,
             blockNumber,
             excludeDexes,
+            outputToEthPrice,
         );
         if (secondary.result.isOk()) {
             return secondary.result;
@@ -101,9 +106,18 @@ export async function findBestRouterTrade(
 }
 
 /**
- * Tries to find a trade against rain router (balancer and sushi) for the given order,
- * it will try to simulate a trade for full trade size (order's max output)
- * and if it was not successful it will try again with partial trade size
+ * Tries to find a trade against rain router for the given order, the size finder
+ * settles on the biggest trade size that routes and clears the order ratio offchain,
+ * probing the full size (order's max output) first, the route it settles on is then
+ * locked for every sim of the attempt, which all run concurrently as one batch of
+ * trade sizes validated against the onchain dryrun, the found size and its halved
+ * sizes (three quarters of it and its halved sizes), the biggest size that passes
+ * wins, the backoff sizes run when enabled by
+ * routerPartialFallback config, or for orders of max profile owners when enabled by
+ * strictMaxOwnerProfilePartialTradeSizeCheck config, a found size that counts as
+ * dust is never simulated, orders of max profile owners with the strict check
+ * enabled then back off from the full size instead, as the pool model most likely
+ * underestimated what the route can take, while other orders bail out
  * @param this - RainSolver instance
  * @param orderDetails - The details of the order to be processed
  * @param signer - The signer to be used for the trade
@@ -112,6 +126,7 @@ export async function findBestRouterTrade(
  * @param fromToken - The token to trade from
  * @param blockNumber - The current block number
  * @param excludeDexes - (optional) Liquidity providers (dexes) to exclude from route finding
+ * @param outputToEthPrice - (optional) The output token to eth price, used for the dust checks
  */
 export async function tryFindBestRouterTrade(
     this: RainSolver,
@@ -122,6 +137,7 @@ export async function tryFindBestRouterTrade(
     fromToken: Token,
     blockNumber: bigint,
     excludeDexes?: Set<LiquidityProviders>,
+    outputToEthPrice?: string,
 ): Promise<RouterTradeAttempt> {
     const spanAttributes: Attributes = {};
 
@@ -151,78 +167,10 @@ export async function tryFindBestRouterTrade(
 
     const maximumInput = orderDetails.takeOrder.quote!.maxOutput;
 
-    // try simulation for full trade size and return if succeeds
-    const fullTradeSimulator = RouterTradeSimulator.withArgs({
-        type: TradeType.Router,
-        solver: this,
-        orderDetails,
-        fromToken,
-        toToken,
-        signer,
-        maximumInputFixed: maximumInput,
-        ethPrice,
-        isPartial: false,
-        blockNumber,
-        excludeDexes,
-    });
-    const fullTradeSizeSimResult = await fullTradeSimulator.trySimulateTrade();
-    let quote = fullTradeSimulator.quote;
-    if (fullTradeSizeSimResult.isOk()) {
-        return { result: fullTradeSizeSimResult, quote };
-    }
-    extendObjectWithHeader(spanAttributes, fullTradeSizeSimResult.error.spanAttributes, "full");
-
-    // only run the partial trade size finder if the full trade size failed due
-    // to order ratio being greater than market price or there was no route for full
-    // trade size, that's because if for example for a pair there is only 1 pool and that
-    // pool has certain amount of reserves that cant cover the full trade size but can
-    // cover partial, we still need to try it
-    if (
-        fullTradeSizeSimResult.error.reason !== SimulationHaltReason.NoRoute &&
-        fullTradeSizeSimResult.error.reason !==
-            SimulationHaltReason.OrderRatioGreaterThanMarketPrice
-    ) {
-        // if the full trade size got rejected onchain with MinimalOutputBalanceViolation,
-        // the offchain pool data overestimated the output for the full size, the found
-        // route already clears the order ratio offchain, so the size finder adds nothing
-        // and the halved sizes are dryrun straight away with that route locked in
-        if (
-            this.appOptions.routerPartialFallback &&
-            fullTradeSizeSimResult.error.reason === SimulationHaltReason.NoOpportunity &&
-            SimulationHaltReason.needsRetry(fullTradeSizeSimResult.error.spanAttributes["error"])
-        ) {
-            const fallbackPick = await simulateFallbackTradeSizes.call(
-                this,
-                orderDetails,
-                signer,
-                ethPrice,
-                toToken,
-                fromToken,
-                blockNumber,
-                maximumInput,
-                spanAttributes,
-                [quote],
-                excludeDexes,
-            );
-            if (fallbackPick) {
-                return { result: fallbackPick, quote };
-            }
-        }
-        return {
-            result: Result.err({
-                type: fullTradeSizeSimResult.error.type,
-                spanAttributes,
-                noneNodeError: fullTradeSizeSimResult.error.noneNodeError,
-                reason: fullTradeSizeSimResult.error.reason,
-            }),
-            quote,
-        };
-    }
-
-    // try simulation for partial trade size, a price mismatch result still
-    // carries the biggest routed size which is simulated as partial trade
-    // size and can then feed the fallback backoff on failure
-    const partialTradeSizeResult = this.state.router.findLargestTradeSize(
+    // find the biggest trade size that routes and clears the order ratio offchain,
+    // the full size is probed first, so a full size that clears it costs no search,
+    // no route at any size or no size that clears the ratio means no trade
+    const tradeSizeResult = this.state.router.findLargestTradeSize(
         orderDetails,
         toToken,
         fromToken,
@@ -232,103 +180,124 @@ export async function tryFindBestRouterTrade(
         false,
         excludeDexes,
     );
-    if (partialTradeSizeResult.status === TradeSizeStatus.NoWay) {
-        spanAttributes["partial.error"] = "found no route for any trade size";
+    if (tradeSizeResult.status === TradeSizeStatus.NoWay) {
+        spanAttributes["error"] = "found no route for any trade size";
         return {
             result: Result.err({
-                type: fullTradeSizeSimResult.error.type,
+                type: TradeType.Router,
                 spanAttributes,
-                noneNodeError: fullTradeSizeSimResult.error.noneNodeError,
+                reason: SimulationHaltReason.NoRoute,
             }),
-            quote,
         };
     }
-    const partialTradeSize = partialTradeSizeResult.size;
-    const partialTradeSimulator = RouterTradeSimulator.withArgs({
-        type: TradeType.Router,
-        solver: this,
-        orderDetails,
-        fromToken,
-        toToken,
-        signer,
-        maximumInputFixed: partialTradeSize,
-        ethPrice,
-        isPartial: true,
-        blockNumber,
-        excludeDexes,
-        // plug in the winning probe quote of the size search, so the sushi
-        // router doesnt recompute the same route for the same size again
-        sushiQuote: partialTradeSizeResult.quote,
-    });
-    const partialTradeSizeSimResult = await partialTradeSimulator.trySimulateTrade();
-    quote = partialTradeSimulator.quote ?? quote;
-    if (partialTradeSizeSimResult.isOk()) {
-        return { result: partialTradeSizeSimResult, quote };
+    if (tradeSizeResult.status === TradeSizeStatus.PriceMismatch) {
+        spanAttributes["error"] = "found no trade size that clears the order ratio";
+        return {
+            result: Result.err({
+                type: TradeType.Router,
+                spanAttributes,
+                reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
+            }),
+            quote: tradeSizeResult.quote,
+        };
     }
-    extendObjectWithHeader(
-        spanAttributes,
-        partialTradeSizeSimResult.error.spanAttributes,
-        "partial",
-    );
-
-    // if the partial trade size sim got rejected onchain with MinimalOutputBalanceViolation,
-    // it means the offchain pool data overestimated the output for the found partial trade
-    // size, so backoff with halved trade sizes validated against onchain dryrun and accept
-    // the first size that passes, the backoff only runs when enabled by config, and for
-    // orders of max profile owners with strictMaxOwnerProfilePartialTradeSizeCheck config
-    // enabled, it runs on ANY partial sim failure, so smaller sizes get probed against
-    // the real chain even when the offchain quotes show no price match
-    const reason = partialTradeSizeSimResult.error.reason;
-    if (
-        this.appOptions.routerPartialFallback &&
-        (SimulationHaltReason.needsRetry(partialTradeSizeSimResult.error.spanAttributes["error"]) ||
-            (this.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck &&
-                AppOptions.isMaxOwnerProfile(
-                    orderDetails.takeOrder.struct.order.owner,
-                    this.appOptions.ownerProfile,
-                )))
-    ) {
-        // the fallback sims reuse the sushi route already found by the partial
-        // sim, or by the full sim when the partial had none
-        const fallbackPick = await simulateFallbackTradeSizes.call(
-            this,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-            partialTradeSize,
-            spanAttributes,
-            [partialTradeSimulator.quote, fullTradeSimulator.quote],
-            excludeDexes,
+    const { size: tradeSize, quote } = tradeSizeResult;
+    const isFullSize = tradeSize >= maximumInput;
+    const shouldStrictSimulate =
+        this.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck &&
+        AppOptions.isMaxOwnerProfile(
+            orderDetails.takeOrder.struct.order.owner,
+            this.appOptions.ownerProfile,
         );
-        if (fallbackPick) {
-            return { result: fallbackPick, quote };
+    const steps = this.appOptions.routerPartialFallbackSteps;
+
+    // a trade size is dust by the dust checks enabled in the app options, the state
+    // decides with its best known gas cost estimate for the pair, an undecided check
+    // (for lack of its inputs) does not count as dust, with no dust check enabled there
+    // is no dust logic at all, a dust size never gets simulated as it cannot pay the gas
+    const isDustSize = (size: bigint): boolean =>
+        !!this.state.isDustTrade(orderDetails, outputToEthPrice, this.state.gasTokenUsdPrice, size);
+
+    // build the batch of trade sizes, the found size and its backoff sizes, a dust
+    // found size is not worth a sim, the pool model most likely underestimated what
+    // the route can take in that case, so orders of max profile owners with the
+    // strict check enabled back off from the full size instead, other orders bail out
+    let tradeSizes: bigint[];
+    if (!isFullSize && isDustSize(tradeSize)) {
+        spanAttributes["dustTradeSize"] = true;
+        tradeSizes = shouldStrictSimulate
+            ? getHalvedTradeSizes(maximumInput, steps, isDustSize)
+            : [];
+        if (!tradeSizes.length) {
+            spanAttributes["error"] = "dust trade size";
+            return {
+                result: Result.err({
+                    type: TradeType.Router,
+                    spanAttributes,
+                    reason: SimulationHaltReason.DustTradeSize,
+                }),
+                quote,
+            };
+        }
+    } else {
+        tradeSizes = [tradeSize];
+        if (this.appOptions.routerPartialFallback || shouldStrictSimulate) {
+            tradeSizes.push(...getHalvedTradeSizes(tradeSize, steps, isDustSize));
         }
     }
-    return {
-        result: Result.err({
-            type: fullTradeSizeSimResult.error.type,
-            spanAttributes,
-            noneNodeError:
-                fullTradeSizeSimResult.error.noneNodeError ??
-                partialTradeSizeSimResult.error.noneNodeError,
-            reason,
-        }),
+
+    const result = await simulateTradeSizes.call(
+        this,
+        orderDetails,
+        signer,
+        ethPrice,
+        toToken,
+        fromToken,
+        blockNumber,
+        tradeSizes,
+        spanAttributes,
         quote,
-    };
+        excludeDexes,
+    );
+    return { result, quote };
 }
 
 /**
- * Backs off from the given trade size with halved sizes (as many as the configured
- * routerPartialFallbackSteps) validated against onchain dryrun and returns the biggest
- * size that passes, the halved sims all launch concurrently
- * and are all awaited, the sims reuse the first sushi route among the given quotes (in order of
- * priority) instead of quoting again and skip the offchain price match check to go straight
- * to dryrun, since the route already cleared the order ratio offchain for a bigger size,
- * when none of the halved sizes pass, their span attributes get merged into the given
- * attributes indexed by size order and undefined is returned
+ * Builds the backoff trade sizes of the given size, three quarters of it first,
+ * followed by its halved sizes, as many as the given steps, the first one being half
+ * of the given size, the sizes stop at the first one that reaches zero or counts as
+ * dust, since the smaller sizes are then dust as well, no steps means no sizes at all
+ * @param size - The trade size to back off from
+ * @param steps - The max number of halved sizes
+ * @param isDust - (optional) Tells if a trade size is dust, no size is dust by default
+ */
+export function getHalvedTradeSizes(
+    size: bigint,
+    steps: number,
+    isDust: (size: bigint) => boolean = () => false,
+): bigint[] {
+    if (steps <= 0) return [];
+    const sizes: bigint[] = [];
+    const threeQuarters = (size * 3n) / 4n;
+    if (threeQuarters <= 0n || isDust(threeQuarters)) return sizes;
+    sizes.push(threeQuarters);
+    for (let i = 0; i < steps; i++) {
+        size /= 2n;
+        if (size <= 0n || isDust(size)) break;
+        sizes.push(size);
+    }
+    return sizes;
+}
+
+/**
+ * Simulates the given trade sizes (in descending order) validated against onchain
+ * dryrun and returns the biggest size that passes, the sims all launch concurrently
+ * and are all awaited, the sims are all locked to the route of the given quote instead
+ * of quoting again and skip the offchain price match check to go straight to dryrun,
+ * since the onchain dryrun is the judge of the sizes, a size below the order's max
+ * output counts as a partial trade, when none of the sizes pass, their span attributes
+ * get merged into the given attributes indexed by size order and the biggest size
+ * failure represents the batch in the returned error, with the given attributes as its own
  * @param this - RainSolver instance
  * @param orderDetails - The details of the order to be processed
  * @param signer - The signer to be used for the trade
@@ -336,12 +305,12 @@ export async function tryFindBestRouterTrade(
  * @param toToken - The token to trade to
  * @param fromToken - The token to trade from
  * @param blockNumber - The current block number
- * @param startSize - The trade size to back off from, the halved sizes start at half of it
- * @param spanAttributes - The attributes to merge the failed fallback sims attributes into
- * @param quotes - The candidate quotes to reuse the route of, in order of priority
+ * @param tradeSizes - The trade sizes to simulate, in descending order
+ * @param spanAttributes - The attributes to merge the failed sims attributes into
+ * @param quote - The sushi quote to lock the route of
  * @param excludeDexes - (optional) Liquidity providers (dexes) to exclude from route finding
  */
-export async function simulateFallbackTradeSizes(
+export async function simulateTradeSizes(
     this: RainSolver,
     orderDetails: Pair,
     signer: RainSolverSigner,
@@ -349,22 +318,13 @@ export async function simulateFallbackTradeSizes(
     toToken: Token,
     fromToken: Token,
     blockNumber: bigint,
-    startSize: bigint,
+    tradeSizes: bigint[],
     spanAttributes: Attributes,
-    quotes: (RouterTradeSimulator["quote"] | undefined)[],
+    quote: SushiRouterQuote,
     excludeDexes?: Set<LiquidityProviders>,
-): Promise<SimulationResult | undefined> {
-    // build the halved trade sizes, dropping zero or negative entries
-    const fallbackTradeSizes: bigint[] = [];
-    let fallbackTradeSize = startSize;
-    for (let i = 1; i <= this.appOptions.routerPartialFallbackSteps; i++) {
-        fallbackTradeSize /= 2n;
-        if (fallbackTradeSize <= 0n) break;
-        fallbackTradeSizes.push(fallbackTradeSize);
-    }
-
-    const sushiQuote = quotes.find(SushiRouterQuote.is);
-    const fallbackSims = fallbackTradeSizes.map((size) =>
+): Promise<SimulationResult> {
+    const maximumInput = orderDetails.takeOrder.quote!.maxOutput;
+    const sims = tradeSizes.map((size) =>
         RouterTradeSimulator.withArgs({
             type: TradeType.Router,
             solver: this,
@@ -374,10 +334,10 @@ export async function simulateFallbackTradeSizes(
             signer,
             maximumInputFixed: size,
             ethPrice,
-            isPartial: true,
+            isPartial: size < maximumInput,
             blockNumber,
             excludeDexes,
-            sushiQuote,
+            sushiQuote: quote,
             lockRoute: true,
             skipPriceMatchCheck: true,
         }).trySimulateTrade(),
@@ -385,21 +345,22 @@ export async function simulateFallbackTradeSizes(
     // wait for all sims and take the biggest size that passed, not the first
     // one that resolved, the sims run concurrently so this only costs the
     // slowest sim's latency, which is paid anyway when all of them fail
-    const fallbackResults = await Promise.all(fallbackSims);
-    const fallbackPick = fallbackResults.find((fallbackResult) => fallbackResult.isOk());
-    if (fallbackPick) {
-        return fallbackPick;
+    const results = await Promise.all(sims);
+    const pick = results.find((result) => result.isOk());
+    if (pick) {
+        return pick;
     }
 
     // merge the failed sims attributes indexed by size order
-    fallbackResults.forEach((fallbackResult, i) => {
-        if (fallbackResult.isErr()) {
-            extendObjectWithHeader(
-                spanAttributes,
-                fallbackResult.error.spanAttributes,
-                `partialFallback${i + 1}`,
-            );
-        }
+    const failures = results.flatMap((result) => (result.isErr() ? [result.error] : []));
+    failures.forEach((failure, i) => {
+        extendObjectWithHeader(spanAttributes, failure.spanAttributes, `step${i + 1}`);
     });
-    return undefined;
+    // the biggest size failure represents the batch
+    return Result.err({
+        type: failures[0]?.type ?? TradeType.Router,
+        spanAttributes,
+        reason: failures[0]?.reason,
+        noneNodeError: failures[0]?.noneNodeError,
+    });
 }
