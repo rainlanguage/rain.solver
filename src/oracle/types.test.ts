@@ -28,17 +28,12 @@ describe("Test OracleHealthMap namespace", () => {
 
         it("should return the existing state without replacing it", () => {
             const map: OracleHealthMap = new Map();
-            const existing = {
-                consecutiveFailures: 3,
-                cooloffUntil: 123,
-                cache: new Map([["0xhash-0-0", { blockNumber: 1n, result: {} as any }]]),
-            };
+            const existing = { consecutiveFailures: 3, cooloffUntil: 123 };
             map.set("https://oracle.example.com-0xabcd", existing);
 
             const state = OracleHealthMap.getOrCreate(map, "https://oracle.example.com", "0xAbCd");
 
             expect(state).toBe(existing);
-            expect(state.cache?.size).toBe(1);
             expect(map.size).toBe(1);
         });
     });
