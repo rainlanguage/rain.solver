@@ -3,6 +3,7 @@ import { SharedState } from "../state";
 import { fetchOracleContext } from "./index";
 import { Order, Pair } from "../order/types";
 import { fetchSignedContext } from "./fetch";
+import { Attributes } from "@opentelemetry/api";
 import { OracleError, OracleErrorType } from "./error";
 import { assert, describe, it, expect, vi, beforeEach, Mock } from "vitest";
 
@@ -14,11 +15,13 @@ vi.mock("./fetch", () => ({
 describe("fetchOracleContext", () => {
     let mockState: SharedState;
     let mockOrderDetails: Pair;
+    let spanAttributes: Attributes;
 
     const testOwner = "0x1234567890123456789012345678901234567890";
 
     beforeEach(() => {
         vi.clearAllMocks();
+        spanAttributes = {};
         mockState = {
             oracleHealth: new Map(),
             appOptions: {},
@@ -43,7 +46,7 @@ describe("fetchOracleContext", () => {
 
     it("returns ok when no oracle URL is present", async () => {
         mockOrderDetails.oracleUrl = undefined;
-        const result = await fetchOracleContext.call(mockState, mockOrderDetails);
+        const result = await fetchOracleContext.call(mockState, mockOrderDetails, spanAttributes);
 
         assert(result.isOk());
         expect(result.value).toBeUndefined();
@@ -52,7 +55,7 @@ describe("fetchOracleContext", () => {
 
     it("returns ok when Order V3", async () => {
         mockOrderDetails.takeOrder.struct.order.type = Order.Type.V3;
-        const result = await fetchOracleContext.call(mockState, mockOrderDetails);
+        const result = await fetchOracleContext.call(mockState, mockOrderDetails, spanAttributes);
 
         assert(result.isOk());
         expect(result.value).toBeUndefined();
@@ -62,7 +65,7 @@ describe("fetchOracleContext", () => {
     it("returns correctly call fetchSignedContext when Order V4 when it returns error", async () => {
         const error = new OracleError("some error", OracleErrorType.FetchError);
         (fetchSignedContext as Mock).mockResolvedValueOnce(Result.err(error));
-        const result = await fetchOracleContext.call(mockState, mockOrderDetails);
+        const result = await fetchOracleContext.call(mockState, mockOrderDetails, spanAttributes);
 
         assert(result.isErr());
         expect(result.error).toEqual(error);
@@ -76,6 +79,7 @@ describe("fetchOracleContext", () => {
                 counterparty: "0x0000000000000000000000000000000000000000",
             },
             mockState.oracleHealth,
+            spanAttributes,
             false,
         );
     });
@@ -90,7 +94,7 @@ describe("fetchOracleContext", () => {
             signature: "0xsignature",
         };
         (fetchSignedContext as Mock).mockResolvedValueOnce(Result.ok(validSignedContext));
-        const result = await fetchOracleContext.call(mockState, mockOrderDetails);
+        const result = await fetchOracleContext.call(mockState, mockOrderDetails, spanAttributes);
 
         assert(result.isOk());
         expect(result.value).toBeUndefined();
@@ -104,6 +108,7 @@ describe("fetchOracleContext", () => {
                 counterparty: "0x0000000000000000000000000000000000000000",
             },
             mockState.oracleHealth,
+            spanAttributes,
             false,
         );
         expect(mockOrderDetails.takeOrder.struct.signedContext).toEqual([validSignedContext]);
@@ -117,8 +122,8 @@ describe("fetchOracleContext", () => {
         };
         (fetchSignedContext as Mock).mockResolvedValue(Result.ok(validSignedContext));
 
-        await fetchOracleContext.call(mockState, mockOrderDetails);
-        await fetchOracleContext.call(mockState, mockOrderDetails);
+        await fetchOracleContext.call(mockState, mockOrderDetails, spanAttributes);
+        await fetchOracleContext.call(mockState, mockOrderDetails, spanAttributes);
 
         expect(fetchSignedContext as Mock).toHaveBeenCalledTimes(2);
         expect(mockState.oracleHealth.size).toBe(0);
@@ -132,13 +137,25 @@ describe("fetchOracleContext", () => {
             Result.err(new OracleError("some error", OracleErrorType.FetchError)),
         );
 
-        await fetchOracleContext.call(mockState, mockOrderDetails);
+        await fetchOracleContext.call(mockState, mockOrderDetails, spanAttributes);
 
         expect(fetchSignedContext as Mock).toHaveBeenLastCalledWith(
             mockOrderDetails.oracleUrl,
             expect.any(Object),
             mockState.oracleHealth,
+            spanAttributes,
             true,
         );
+    });
+
+    it("passes the same span attributes object through to fetchSignedContext", async () => {
+        (fetchSignedContext as Mock).mockImplementationOnce(async (_url, _req, _map, attrs) => {
+            attrs["details.oracle.rawResponse"] = "raw";
+            return Result.err(new OracleError("some error", OracleErrorType.FetchError));
+        });
+
+        await fetchOracleContext.call(mockState, mockOrderDetails, spanAttributes);
+
+        expect(spanAttributes["details.oracle.rawResponse"]).toBe("raw");
     });
 });

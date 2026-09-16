@@ -4,6 +4,7 @@ import { SharedState } from "../state";
 import { AppOptions } from "../config";
 import { Order, Pair } from "../order/types";
 import { fetchSignedContext } from "./fetch";
+import { Attributes } from "@opentelemetry/api";
 
 /**
  * If the order has an oracle URL, fetch signed context and inject it
@@ -15,6 +16,7 @@ import { fetchSignedContext } from "./fetch";
 export async function fetchOracleContext(
     this: SharedState,
     orderDetails: Pair,
+    spanAttributes: Attributes,
 ): Promise<Result<void, OracleError>> {
     const oracleUrl = orderDetails.oracleUrl;
     if (!oracleUrl) return Result.ok(undefined);
@@ -36,6 +38,7 @@ export async function fetchOracleContext(
             counterparty: "0x0000000000000000000000000000000000000000",
         },
         this.oracleHealth,
+        spanAttributes,
         isMaxOwnerProfile,
     );
 

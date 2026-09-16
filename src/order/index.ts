@@ -22,6 +22,8 @@ import {
     OrderbookOwnerTokenVaultsMap,
 } from "./types";
 import { AppOptions } from "../config";
+import { Attributes } from "@opentelemetry/api";
+import { OrderSpanEvents } from "../core/types";
 
 export * from "./types";
 export * from "./quote";
@@ -522,8 +524,20 @@ export class OrderManager {
      * @param orderDetails - Order details to quote
      * @param blockNumber - Optional block number for the quote
      */
-    async quoteOrder(orderDetails: Pair, blockNumber?: bigint) {
-        return await quoteSingleOrder(orderDetails, this.state, blockNumber, this.quoteGas);
+    async quoteOrder(
+        orderDetails: Pair,
+        spanAttributes: Attributes,
+        spanEvents: OrderSpanEvents,
+        blockNumber?: bigint,
+    ) {
+        return await quoteSingleOrder(
+            orderDetails,
+            this.state,
+            spanAttributes,
+            spanEvents,
+            blockNumber,
+            this.quoteGas,
+        );
     }
 
     /**

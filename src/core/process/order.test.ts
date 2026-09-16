@@ -151,6 +151,75 @@ describe("Test processOrder", () => {
         expect(mockOrderManager.removeFromPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
     });
 
+    it("should pass span attributes and events to quoteOrder", async () => {
+        (mockOrderManager.quoteOrder as Mock).mockResolvedValue(undefined);
+        mockArgs.orderDetails.takeOrder.quote = { maxOutput: 0n, ratio: 0n };
+
+        const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
+            mockRainSolver,
+            mockArgs,
+        );
+        const result = await fn();
+
+        assert(result.isOk());
+        expect(mockOrderManager.quoteOrder).toHaveBeenCalledWith(
+            mockArgs.orderDetails,
+            result.value.spanAttributes,
+            result.value.spanEvents,
+        );
+    });
+
+    it("should record previous oracle signed context in span attributes for oracle orders", async () => {
+        (mockOrderManager.quoteOrder as Mock).mockResolvedValue(undefined);
+        mockArgs.orderDetails.takeOrder.quote = { maxOutput: 0n, ratio: 0n };
+        mockArgs.orderDetails.oracleUrl = "https://oracle.example.com";
+        const signedContext = [{ signer: "0xsigner", context: ["0x01"], signature: "0xsig" }];
+        (mockArgs.orderDetails.takeOrder.struct as any).signedContext = signedContext;
+
+        const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
+            mockRainSolver,
+            mockArgs,
+        );
+        const result = await fn();
+
+        assert(result.isOk());
+        expect(result.value.spanAttributes["details.oracle"]).toBe("https://oracle.example.com");
+        expect(result.value.spanAttributes["details.oracle.prev"]).toBe(
+            JSON.stringify(signedContext),
+        );
+    });
+
+    it("should record N/A as previous oracle signed context when none exists yet", async () => {
+        (mockOrderManager.quoteOrder as Mock).mockResolvedValue(undefined);
+        mockArgs.orderDetails.takeOrder.quote = { maxOutput: 0n, ratio: 0n };
+        mockArgs.orderDetails.oracleUrl = "https://oracle.example.com";
+
+        const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
+            mockRainSolver,
+            mockArgs,
+        );
+        const result = await fn();
+
+        assert(result.isOk());
+        expect(result.value.spanAttributes["details.oracle.prev"]).toBe("N/A");
+    });
+
+    it("should not record previous oracle signed context for non oracle orders", async () => {
+        (mockOrderManager.quoteOrder as Mock).mockResolvedValue(undefined);
+        mockArgs.orderDetails.takeOrder.quote = { maxOutput: 0n, ratio: 0n };
+        (mockArgs.orderDetails.takeOrder.struct as any).signedContext = [];
+
+        const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
+            mockRainSolver,
+            mockArgs,
+        );
+        const result = await fn();
+
+        assert(result.isOk());
+        expect(result.value.spanAttributes["details.oracle"]).toBeUndefined();
+        expect(result.value.spanAttributes["details.oracle.prev"]).toBeUndefined();
+    });
+
     it('should set outputToEthPrice to "" if getMarketPrice returns undefined for output and gasCoveragePercentage is not "0"', async () => {
         (mockState.getMarketPrice as Mock)
             .mockResolvedValueOnce(Result.ok({ price: "100", amountOut: "100" }))
