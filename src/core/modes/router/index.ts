@@ -3,8 +3,7 @@ import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
 import { AppOptions } from "../../../config";
 import { LiquidityProviders } from "sushi";
-import { ONE18, toUsdValue } from "../../../math";
-import { formatUnits, parseUnits } from "viem";
+import { formatUnits } from "viem";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { RouterTradeSimulator } from "./simulate";
@@ -204,23 +203,6 @@ export async function tryFindBestRouterTrade(
         };
     }
     const { size: tradeSize, quote } = tradeSizeResult;
-
-    // the found size facts, its quoted price and the bounty it is estimated to yield
-    // in usd, the same estimate the sims and the snap tx checks make, the size finder
-    // settles on the biggest size that clears the order ratio, so the found size sits
-    // at the ratio and earns the least of the batch, these tell how much room it had
-    const tradeAttributes: Attributes = {
-        tradeSizeMarketPrice: formatUnits(quote.price, 18),
-    };
-    if (this.state.gasTokenUsdPrice) {
-        const bounty = (tradeSize * (quote.price - orderDetails.takeOrder.quote!.ratio)) / ONE18;
-        tradeAttributes["tradeSizeEstimatedProfitUsd"] = formatUnits(
-            toUsdValue((bounty * parseUnits(ethPrice, 18)) / ONE18, this.state.gasTokenUsdPrice),
-            18,
-        );
-    }
-    Object.assign(spanAttributes, tradeAttributes);
-
     // snap tx, the found size gets submitted right away with the cached dryrun
     // gas and no dryrun when it qualifies (see snapTx config), so the batch of
     // sizes is skipped altogether, a not qualifying size runs the batch as usual
@@ -238,7 +220,7 @@ export async function tryFindBestRouterTrade(
             excludeDexes,
         );
         if (snapResult.isOk()) {
-            return { result: withAttemptAttributes(snapResult, tradeAttributes), quote };
+            return { result: snapResult, quote };
         }
         extendObjectWithHeader(spanAttributes, snapResult.error.spanAttributes, "snap");
     }
@@ -286,9 +268,6 @@ export async function tryFindBestRouterTrade(
             tradeSizes.push(...getHalvedTradeSizes(tradeSize, steps, isDustSize));
         }
     }
-    const triedSizes = tradeSizes.map((size) => formatUnits(size, 18));
-    tradeAttributes["tradeSizes"] = triedSizes;
-    spanAttributes["tradeSizes"] = triedSizes;
 
     const result = await simulateTradeSizes.call(
         this,
@@ -303,25 +282,7 @@ export async function tryFindBestRouterTrade(
         quote,
         excludeDexes,
     );
-    return { result: withAttemptAttributes(result, tradeAttributes), quote };
-}
-
-/**
- * Carries the given attempt attributes onto a successful simulation result, so a
- * found trade reports how the attempt that produced it went, a failed attempt
- * already reports them since it carries the attempt attributes as its own
- * @param result - The simulation result to carry the attributes onto
- * @param attributes - The attempt attributes to carry
- */
-export function withAttemptAttributes(
-    result: SimulationResult,
-    attributes: Attributes,
-): SimulationResult {
-    if (result.isErr()) return result;
-    return Result.ok({
-        ...result.value,
-        spanAttributes: { ...result.value.spanAttributes, ...attributes },
-    });
+    return { result, quote };
 }
 
 /**
@@ -403,9 +364,11 @@ export async function snapTradeSize(
  * and are all awaited, the sims are all locked to the route of the given quote instead
  * of quoting again and skip the offchain price match check to go straight to dryrun,
  * since the onchain dryrun is the judge of the sizes, a size below the order's max
- * output counts as a partial trade, when none of the sizes pass, their span attributes
- * get merged into the given attributes indexed by size order and the biggest size
- * failure represents the batch in the returned error, with the given attributes as its own
+ * output counts as a partial trade, the sizes tried get recorded on the passing sim
+ * and in the given attributes alike, when none of the sizes pass, their span
+ * attributes get merged into the given attributes indexed by size order and the
+ * biggest size failure represents the batch in the returned error, with the given
+ * attributes as its own
  * @param this - RainSolver instance
  * @param orderDetails - The details of the order to be processed
  * @param signer - The signer to be used for the trade
@@ -452,11 +415,18 @@ export async function simulateTradeSizes(
     );
     // wait for all sims and take the biggest size that passed, not the first
     // one that resolved, the sims run concurrently so this only costs the
-    // slowest sim's latency, which is paid anyway when all of them fail
+    // slowest sim's latency, which is paid anyway when all of them fail, the
+    // sizes tried get recorded on the failure and the passing sim alike, so the
+    // span tells which of them the trade came from
+    const triedSizes = tradeSizes.map((size) => formatUnits(size, 18));
+    spanAttributes["tradeSizes"] = triedSizes;
     const results = await Promise.all(sims);
     const pick = results.find((result) => result.isOk());
-    if (pick) {
-        return pick;
+    if (pick?.isOk()) {
+        return Result.ok({
+            ...pick.value,
+            spanAttributes: { ...pick.value.spanAttributes, tradeSizes: triedSizes },
+        });
     }
 
     // merge the failed sims attributes indexed by size order
