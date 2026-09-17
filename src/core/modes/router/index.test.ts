@@ -1,3 +1,5 @@
+import { formatUnits } from "viem";
+import { ONE18 } from "../../../math";
 import { Order } from "../../../order";
 import { findBestRouterTrade, getHalvedTradeSizes } from "./index";
 import { TradeSizeStatus } from "../../../router";
@@ -47,6 +49,7 @@ describe("Test findBestRouterTrade", () => {
     // the dex exclusion retry stays out unless a test asks for it
     const sizerQuote = {
         route: { route: { legs: [] }, pcMap: new Map() },
+        price: 2n * ONE18,
         tag: "sizer",
     } as any;
     const outputToEthPrice = "3";
@@ -67,6 +70,13 @@ describe("Test findBestRouterTrade", () => {
     const lockedArgs = { lockRoute: true, skipPriceMatchCheck: true, sushiQuote: sizerQuote };
     const simulatedSizes = (): bigint[] =>
         (simulatorWithArgsSpy as Mock).mock.calls.map((call: any[]) => call[0].maximumInputFixed);
+    // the found size facts every attempt records, the sizer quote prices at 2 against
+    // an order ratio of 1, so the bounty is the size itself, at an eth price of 2000
+    // and a gas token usd price of 2000
+    const foundSizeAttrs = (size: bigint) => ({
+        tradeSizeMarketPrice: "2",
+        tradeSizeEstimatedProfitUsd: formatUnits(size * 2000n * 2000n, 18),
+    });
     const setFoundSize = (size: bigint, quote: any = sizerQuote) => {
         (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
             status: TradeSizeStatus.Found,
@@ -127,7 +137,7 @@ describe("Test findBestRouterTrade", () => {
 
         orderDetails = {
             takeOrder: {
-                quote: { maxOutput: 1000n },
+                quote: { maxOutput: 1000n, ratio: ONE18 },
                 struct: { order: { type: Order.Type.V4, owner: "0xOwner" } },
             },
         };
@@ -190,9 +200,10 @@ describe("Test findBestRouterTrade", () => {
         const result = await run();
 
         assert(result.isOk());
-        // the passing sim carries the sizes tried
+        // the passing sim carries the sizes tried and the found size facts
         expect(result.value.spanAttributes).toEqual({
             foundOpp: true,
+            ...foundSizeAttrs(1000n),
             tradeSizes: [
                 "0.000000000000001",
                 "0.00000000000000075",
@@ -429,6 +440,7 @@ describe("Test findBestRouterTrade", () => {
             expect(trySimulateTradeSpy).not.toHaveBeenCalled();
             expect(result.error.reason).toBe(SimulationHaltReason.DustTradeSize);
             expect(result.error.spanAttributes).toEqual({
+                ...foundSizeAttrs(5n),
                 dustTradeSize: true,
                 error: "dust trade size",
             });
@@ -523,6 +535,7 @@ describe("Test findBestRouterTrade", () => {
             expect(trySimulateTradeSpy).not.toHaveBeenCalled();
             expect(result.error.reason).toBe(SimulationHaltReason.DustTradeSize);
             expect(result.error.spanAttributes).toEqual({
+                ...foundSizeAttrs(5n),
                 dustTradeSize: true,
                 error: "dust trade size",
             });
@@ -558,6 +571,7 @@ describe("Test findBestRouterTrade", () => {
                 pcMap: new Map([["pool1", { liquidityProvider: "Hydrex" }]]),
                 route: { legs: [{ uniqueId: "pool1" }] },
             },
+            price: 2n * ONE18,
         } as any;
         const mockDryrunError = Result.err({
             type: TradeType.RouteProcessor,
@@ -587,6 +601,7 @@ describe("Test findBestRouterTrade", () => {
             assert(result.isOk());
             expect(result.value.spanAttributes).toEqual({
                 foundOpp: true,
+                ...foundSizeAttrs(1000n),
                 tradeSizes: ["0.000000000000001"],
             });
             expect(result.value.estimatedProfit).toBe(50n);
@@ -684,8 +699,12 @@ describe("Test findBestRouterTrade", () => {
             expect(result.error.noneNodeError).toBe("full failed");
             expect(result.error.type).toBe(TradeType.RouteProcessor);
             expect(result.error.spanAttributes).toEqual({
+                ...foundSizeAttrs(1000n),
                 tradeSizes: ["0.000000000000001"],
                 "step1.error": "dryrun failed",
+                "secondary.tradeSizeMarketPrice": "2",
+                "secondary.tradeSizeEstimatedProfitUsd":
+                    foundSizeAttrs(1000n).tradeSizeEstimatedProfitUsd,
                 "secondary.tradeSizes": ["0.000000000000001"],
                 "secondary.step1.error": "retry dryrun failed",
             });
@@ -716,6 +735,7 @@ describe("Test findBestRouterTrade", () => {
 
         it("should not retry when the found route spans more than one dex", async () => {
             setFoundSize(1000n, {
+                price: 2n * ONE18,
                 route: {
                     pcMap: new Map([
                         ["pool1", { liquidityProvider: "Hydrex" }],
@@ -759,7 +779,12 @@ describe("Test findBestRouterTrade", () => {
 
             assert(result.isOk());
             expect(result.value.estimatedProfit).toBe(75n);
-            expect(result.value.spanAttributes).toEqual({ foundOpp: true, snapTx: true });
+            // a snap tx has no batch, so it carries the found size facts alone
+            expect(result.value.spanAttributes).toEqual({
+                foundOpp: true,
+                snapTx: true,
+                ...foundSizeAttrs(500n),
+            });
             expect(trySnapTradeSpy).toHaveBeenCalledTimes(1);
             expect(trySimulateTradeSpy).not.toHaveBeenCalled();
             // the snap sim is locked to the found route at the found size
