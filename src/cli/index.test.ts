@@ -6,7 +6,7 @@ import { RainSolverLogger } from "../logger";
 import { WalletManager, WalletType } from "../wallet";
 import { SharedState, SharedStateConfig } from "../state";
 import { SubgraphConfig, SubgraphManager } from "../subgraph";
-import { Result, sleep, withBigintSerializer } from "../common";
+import { Result, sleep } from "../common";
 import { SpanStatusCode, trace, context } from "@opentelemetry/api";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 
@@ -471,21 +471,9 @@ describe("Test RainSolverCli", () => {
                 "meta.liquidityProviders": ["lp1", "lp2"],
             });
 
-            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith(
-                "circulatingAccounts",
-                JSON.stringify(
-                    {
-                        "0xworker1": 1000000000000000000n,
-                        "0xworker2": 2000000000000000000n,
-                    },
-                    withBigintSerializer,
-                ),
-            );
-            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("lastAccountIndex", 5);
             expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("avgGasCost", "1");
 
             expect(mockSubgraphManager.getOrderbooks).toHaveBeenCalledTimes(1);
-            expect(mockWalletManager.getWorkerWalletsBalance).toHaveBeenCalledTimes(1);
         });
 
         it("should handle single wallet mode (no worker balances)", async () => {
@@ -835,6 +823,7 @@ describe("Test RainSolverCli", () => {
             (trace.setSpan as Mock).mockReturnValue({ test: "context" });
             (context.active as Mock).mockReturnValue({ test: "active" });
 
+            (rainSolverCli as any).nextCheckWalletBalanceTime = Date.now() - 1;
             (mockWalletManager.checkMainWalletBalance as Mock).mockResolvedValue({
                 name: "check-balance",
             });
@@ -892,8 +881,12 @@ describe("Test RainSolverCli", () => {
             (trace.setSpan as Mock).mockReturnValue({ test: "context" });
             (context.active as Mock).mockReturnValue({ test: "active" });
 
+            (rainSolverCli as any).nextCheckWalletBalanceTime = Date.now() - 1;
             (mockWalletManager.checkMainWalletBalance as Mock).mockResolvedValue({
                 name: "check-balance",
+            });
+            (mockWalletManager.getWorkerWalletsBalance as Mock).mockResolvedValue({
+                name: "check-multi-balance",
             });
             (mockWalletManager.fundOwnedVaults as Mock).mockRejectedValue(
                 new Error("Fund vault failed"),

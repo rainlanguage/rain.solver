@@ -105,6 +105,7 @@ export async function sweepFunds(opts: SweepOptions) {
         subgraph,
         gasLimitMultiplier: 100,
         gasPriceMultiplier: 107,
+        txTimeThreshold: 2_500,
         timeout: 15_000,
 
         // unused fields but need to be defined
@@ -124,6 +125,7 @@ export async function sweepFunds(opts: SweepOptions) {
         sweepWalletTime: 0,
         convertToGasTime: 0,
         rotateMultiWallet: false,
+        checkWalletBalanceTime: 0,
     };
 
     // prepare state config fields
@@ -172,6 +174,7 @@ export async function sweepFunds(opts: SweepOptions) {
             client,
             chainConfig,
             baseGasPriceMultiplier: options.gasPriceMultiplier,
+            txTimeThreshold: options.txTimeThreshold,
         }),
     };
     const state = new SharedState(stateConfig);

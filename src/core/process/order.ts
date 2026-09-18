@@ -64,6 +64,7 @@ export async function processOrder(
     spanAttributes["details.pair"] = tokenPair;
     spanAttributes["details.orderbook"] = orderDetails.orderbook;
     spanAttributes["details.owner"] = orderDetails.takeOrder.struct.order.owner.toLowerCase();
+    spanAttributes["details.startBlockNumber"] = dataFetcherBlockNumber.toString();
     if (orderDetails.oracleUrl) {
         spanAttributes["details.oracle"] = orderDetails.oracleUrl;
     }

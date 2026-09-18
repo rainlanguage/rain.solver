@@ -17,7 +17,7 @@ export type GasManagerConfig = {
     /** The time to stay in increased gas price multiplier before resetting to base value */
     gasIncreaseStepTime?: number;
     /** The time threshold (in ms) for transaction mine time before considering it as a trigger for gas price multiplier increase */
-    txTimeThreshold?: number;
+    txTimeThreshold: number;
 };
 
 /** Transaction mining record */
@@ -67,7 +67,7 @@ export class GasManager {
     /** The time to stay in increased the gas price multiplier before reseting to base */
     readonly gasIncreaseStepTime: number = 60 * 60 * 1000; // default 60 minutes in milliseconds
     /** The threshold for transaction time before considering it as a trigger for gas price multiplierincrease */
-    readonly txTimeThreshold: number = 15_000; // default 15 seconds threshold
+    readonly txTimeThreshold: number; // default 15 seconds threshold
 
     /** Current gas price of the operating chain */
     gasPrice = 0n;
@@ -84,9 +84,7 @@ export class GasManager {
         this.client = config.client;
         this.chainConfig = config.chainConfig;
         this.baseGasPriceMultiplier = config.baseGasPriceMultiplier;
-        if (config.txTimeThreshold !== undefined) {
-            this.txTimeThreshold = config.txTimeThreshold;
-        }
+        this.txTimeThreshold = config.txTimeThreshold;
         if (config.gasIncreasePointsPerStep !== undefined) {
             this.gasIncreasePointsPerStep = config.gasIncreasePointsPerStep;
         }
@@ -96,7 +94,7 @@ export class GasManager {
         if (config.maxGasPriceMultiplier !== undefined) {
             this.maxGasPriceMultiplier = config.maxGasPriceMultiplier;
         } else {
-            this.maxGasPriceMultiplier = this.baseGasPriceMultiplier + 50;
+            this.maxGasPriceMultiplier = this.baseGasPriceMultiplier + 100; // default +1x ceiling
         }
         this.gasPriceMultiplier = config.baseGasPriceMultiplier;
     }

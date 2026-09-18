@@ -167,10 +167,9 @@ describe("Test GasManager", () => {
             // class field defaults
             expect(manager.gasIncreasePointsPerStep).toBe(3);
             expect(manager.gasIncreaseStepTime).toBe(60 * 60 * 1000); // 3_600_000 ms
-            expect(manager.txTimeThreshold).toBe(15_000);
 
-            // maxGasPriceMultiplier defaults to base + 50 when not provided
-            expect(manager.maxGasPriceMultiplier).toBe(150);
+            // maxGasPriceMultiplier defaults to base + 100 when not provided
+            expect(manager.maxGasPriceMultiplier).toBe(200);
 
             // multiplier starts at the base value
             expect(manager.gasPriceMultiplier).toBe(100);

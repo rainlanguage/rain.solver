@@ -116,6 +116,10 @@ export type AppOptions = {
     convertToGasTime: number;
     /** Determines if multi wallets should be rotated at runtime, meaning new ones to replace older ones once they runs out of gas, default is false */
     rotateMultiWallet: boolean;
+    /** Time threshold (in ms) for a transaction mine time before it counts as a trigger to increase gas price multiplier for future transactions, default is 15 seconds */
+    txTimeThreshold: number;
+    /** Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins */
+    checkWalletBalanceTime: number;
 };
 
 /** Provides methods to instantiate and validate AppOptions */
@@ -338,6 +342,30 @@ export namespace AppOptions {
                     input.rotateMultiWallet,
                     "expected a boolean value for rotateMultiWallet",
                     false,
+                ),
+                txTimeThreshold: Validator.resolveNumericValue(
+                    input.txTimeThreshold,
+                    INT_PATTERN,
+                    "invalid txTimeThreshold value, must be an integer greater than 0",
+                    "15000",
+                    undefined,
+                    (txTimeThreshold) =>
+                        assert(
+                            txTimeThreshold > 0,
+                            "invalid txTimeThreshold value, must be an integer greater than 0",
+                        ),
+                ),
+                checkWalletBalanceTime: Validator.resolveNumericValue(
+                    input.checkWalletBalanceTime,
+                    INT_PATTERN,
+                    "invalid checkWalletBalanceTime, must be an integer greater than equal to  0",
+                    "15",
+                    undefined,
+                    (checkWalletBalanceTime) =>
+                        assert(
+                            checkWalletBalanceTime >= 0,
+                            "invalid checkWalletBalanceTime, must be an integer greater than equal to  0",
+                        ),
                 ),
             } as AppOptions);
         } catch (error: any) {
