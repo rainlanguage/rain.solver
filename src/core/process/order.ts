@@ -1,7 +1,7 @@
 import { RainSolver } from "..";
 import { Pair } from "../../order";
 import { Result } from "../../common";
-import { toNumber } from "../../math";
+import { toUsdValue, toNumber } from "../../math";
 import { Token } from "sushi/currency";
 import { errorSnapshot } from "../../error";
 import { SpanWithContext } from "../../logger";
@@ -234,6 +234,12 @@ export async function processOrder(
     baseResult.status = ProcessOrderStatus.FoundOpportunity;
     spanAttributes["foundOpp"] = true;
     spanAttributes["details.estimatedProfit"] = formatUnits(estimatedProfit, 18);
+    if (this.state.gasTokenUsdPrice) {
+        spanAttributes["details.estimatedProfitUsd"] = formatUnits(
+            toUsdValue(estimatedProfit, this.state.gasTokenUsdPrice),
+            18,
+        );
+    }
     for (const attrKey in trade.value.spanAttributes) {
         if (attrKey !== "oppBlockNumber" && attrKey !== "foundOpp") {
             spanAttributes["details." + attrKey] = trade.value.spanAttributes[attrKey];

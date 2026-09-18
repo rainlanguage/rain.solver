@@ -38,6 +38,7 @@ describe("Test processReceipt", () => {
             account: {
                 address: "0xSignerAddress",
             },
+            state: {},
             getSelfBalance: vi.fn().mockResolvedValue("1000000000000000000"),
         } as any;
 
@@ -84,6 +85,24 @@ describe("Test processReceipt", () => {
     });
 
     describe("successful receipt processing", () => {
+        it("should record usd values in span attributes when gas token usd price is set", async () => {
+            (mockSigner as any).state.gasTokenUsdPrice = "2";
+            (getActualClearAmount as Mock).mockReturnValue(1000000n);
+            (getIncome as Mock)
+                .mockReturnValueOnce(2000000000n)
+                .mockReturnValueOnce(1000000000000000000n);
+            (getTotalIncome as Mock).mockReturnValue(4000000000000000000n);
+
+            const result = await processReceipt(mockArgs);
+
+            assert(result.isOk());
+            // price is 2 dollars per gas token, so usd values are 2x the eth values
+            // gas cost = 21000 * 20 gwei = 0.00042, income = 4, netProfit = 3.99958
+            expect(result.value.spanAttributes["details.actualGasCostUsd"]).toBe(0.00084);
+            expect(result.value.spanAttributes["details.incomeUsd"]).toBe(8);
+            expect(result.value.spanAttributes["details.netProfitUsd"]).toBe(7.99916);
+        });
+
         it("should process successful receipt and return ok result", async () => {
             const mockClearAmount = 1000000n;
             const mockInputIncome = 2000000000n;

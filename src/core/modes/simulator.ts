@@ -1,4 +1,6 @@
 import { dryrun } from "./dryrun";
+import { formatUnits } from "viem";
+import { toUsdValue } from "../../math";
 import { Attributes } from "@opentelemetry/api";
 import { Result, extendObjectWithHeader } from "../../common";
 import { FailedSimulation, SimulationResult } from "../types";
@@ -132,6 +134,7 @@ export abstract class TradeSimulatorBase {
             return Result.err(initDryrunResult.error as FailedSimulation);
         }
 
+        const gasTokenUsdPrice = this.tradeArgs.solver.state.gasTokenUsdPrice;
         let { estimation, estimatedGasCost } = initDryrunResult.value;
         // include dryrun initial gas estimation in logs
         Object.assign(this.spanAttributes, initDryrunResult.value.spanAttributes);
@@ -141,6 +144,14 @@ export abstract class TradeSimulatorBase {
                 gasLimit: estimation.gas.toString(),
                 totalCost: estimation.totalGasCost.toString(),
                 gasPrice: estimation.gasPrice.toString(),
+                ...(gasTokenUsdPrice
+                    ? {
+                          totalCostUsd: formatUnits(
+                              toUsdValue(estimatedGasCost, gasTokenUsdPrice),
+                              18,
+                          ),
+                      }
+                    : {}),
                 ...(this.tradeArgs.solver.state.chainConfig.isSpecialL2
                     ? {
                           l1Cost: estimation.l1Cost.toString(),
@@ -181,6 +192,12 @@ export abstract class TradeSimulatorBase {
         );
         let minimumExpected = (estimatedGasCost * headroom) / 10000n;
         this.spanAttributes["gasEst.initial.minBountyExpected"] = minimumExpected.toString();
+        if (gasTokenUsdPrice) {
+            this.spanAttributes["gasEst.initial.minBountyExpectedUsd"] = formatUnits(
+                toUsdValue(minimumExpected, gasTokenUsdPrice),
+                18,
+            );
+        }
 
         // update the tx data with the new min sender output
         setTransactionDataResult = await this.setTransactionData({
@@ -215,6 +232,14 @@ export abstract class TradeSimulatorBase {
                 gasLimit: estimation.gas.toString(),
                 totalCost: estimation.totalGasCost.toString(),
                 gasPrice: estimation.gasPrice.toString(),
+                ...(gasTokenUsdPrice
+                    ? {
+                          totalCostUsd: formatUnits(
+                              toUsdValue(estimatedGasCost, gasTokenUsdPrice),
+                              18,
+                          ),
+                      }
+                    : {}),
                 ...(this.tradeArgs.solver.state.chainConfig.isSpecialL2
                     ? {
                           l1Cost: estimation.l1Cost.toString(),
@@ -242,6 +267,41 @@ export abstract class TradeSimulatorBase {
         }
 
         this.spanAttributes["gasEst.final.minBountyExpected"] = minimumExpected.toString();
+        if (gasTokenUsdPrice) {
+            this.spanAttributes["gasEst.final.minBountyExpectedUsd"] = formatUnits(
+                toUsdValue(minimumExpected, gasTokenUsdPrice),
+                18,
+            );
+        }
+
+        // boost the tx gas price if the trade is highly profitable, that is when the
+        // estimated profit exceeds the min expected bounty by the configured threshold
+        // or when the estimated profit USD value exceeds the configured USD threshold,
+        // this increases the chance of the tx to land onchain faster as the trade can
+        // afford it, this has no effect if the config fields are not set
+        const estimatedProfit = this.estimateProfit(prepareParamsResult.value.price)!;
+        const { gasBoostProfitThreshold, gasBoostMultiplier, gasBoostUsdThreshold } =
+            this.tradeArgs.solver.appOptions;
+        const exceedsBountyThreshold =
+            gasBoostProfitThreshold !== undefined &&
+            estimatedProfit > minimumExpected * BigInt(gasBoostProfitThreshold);
+        const exceedsUsdThreshold =
+            gasBoostUsdThreshold !== undefined &&
+            !!gasTokenUsdPrice &&
+            toUsdValue(estimatedProfit, gasTokenUsdPrice) > gasBoostUsdThreshold;
+        if (
+            gasBoostMultiplier !== undefined &&
+            typeof prepareParamsResult.value.rawtx.gasPrice === "bigint" &&
+            (exceedsBountyThreshold || exceedsUsdThreshold)
+        ) {
+            // scale the multiplier by 100 to apply it with 2 decimal points precision
+            prepareParamsResult.value.rawtx.gasPrice =
+                (prepareParamsResult.value.rawtx.gasPrice *
+                    BigInt(Math.round(gasBoostMultiplier * 100))) /
+                100n;
+            this.spanAttributes["gasPriceBoosted"] = true;
+        }
+
         this.spanAttributes["foundOpp"] = true;
         this.spanAttributes["duration"] = performance.now() - this.startTime;
         return Result.ok({
@@ -250,7 +310,7 @@ export abstract class TradeSimulatorBase {
             spanAttributes: this.spanAttributes,
             rawtx: prepareParamsResult.value.rawtx,
             oppBlockNumber: Number(this.tradeArgs.blockNumber),
-            estimatedProfit: this.estimateProfit(prepareParamsResult.value.price)!,
+            estimatedProfit,
         });
     }
 }

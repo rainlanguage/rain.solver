@@ -435,6 +435,36 @@ describe("Test processOrder", () => {
         });
     });
 
+    it("should record estimated profit usd when gas token usd price is set", async () => {
+        (mockState as any).gasTokenUsdPrice = "2";
+        (findBestTrade as Mock).mockResolvedValue(
+            Result.ok({
+                rawtx: { to: "0xRAW" },
+                oppBlockNumber: 100,
+                estimatedProfit: 123n,
+                spanAttributes: {},
+            }),
+        );
+        (processTransaction as Mock).mockReturnValue(async () =>
+            Result.ok({ status: ProcessOrderStatus.FoundOpportunity, endTime: 123 }),
+        );
+
+        const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
+            mockRainSolver,
+            mockArgs,
+        );
+        await fn();
+
+        // price is 2 dollars per gas token, so usd value is 2x the eth value
+        const callArgs = (processTransaction as Mock).mock.calls[0][0];
+        expect(callArgs.baseResult.spanAttributes["details.estimatedProfit"]).toBe(
+            "0.000000000000000123",
+        );
+        expect(callArgs.baseResult.spanAttributes["details.estimatedProfitUsd"]).toBe(
+            "0.000000000000000246",
+        );
+    });
+
     it("should proceed to processTransaction if all steps succeed (happy path)", async () => {
         // mock findBestTrade to return a valid opportunity
         (findBestTrade as Mock).mockResolvedValue(

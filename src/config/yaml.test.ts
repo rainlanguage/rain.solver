@@ -38,6 +38,9 @@ botMinBalance: 50.5
 gasPriceMultiplier: 150
 txTimeThreshold: 4000
 checkWalletBalanceTime: 30
+gasBoostProfitThreshold: 7
+gasBoostMultiplier: 3.5
+gasBoostUsdThreshold: 5.5
 gasLimitMultiplier: 90
 timeout: 20000
 maxRatio: true
@@ -160,6 +163,9 @@ orderbookTradeTypes:
             convertToGasTime: 0,
             rotateMultiWallet: false,
             checkWalletBalanceTime: 30,
+            gasBoostProfitThreshold: 7,
+            gasBoostMultiplier: 3.5,
+            gasBoostUsdThreshold: 5_500000000000000000n,
         };
 
         // AppOptions returned from fromYaml() should match expected
@@ -348,5 +354,8 @@ orderbookTradeTypes:
         assert.equal(result.convertToGasTime, 2);
         assert.equal(result.rotateMultiWallet, true);
         assert.equal(result.checkWalletBalanceTime, 15); // should be default 15
+        assert.equal(result.gasBoostProfitThreshold, undefined); // no boost when unset
+        assert.equal(result.gasBoostMultiplier, undefined); // no boost when unset
+        assert.equal(result.gasBoostUsdThreshold, undefined); // no boost when unset
     });
 });

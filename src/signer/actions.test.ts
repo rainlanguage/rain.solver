@@ -230,6 +230,22 @@ describe("Test estimateGasCost", () => {
         });
     });
 
+    it("should include usd value of the total gas cost when gas token usd price is known", async () => {
+        (mockSigner.state as any).gasTokenUsdPrice = "2";
+
+        const result = await estimateGasCost(mockSigner, mockTx);
+
+        // price is 2 dollars per gas token, so usd value is 2x the eth value
+        expect(result.totalGasCost).toBe(2000000000000000n);
+        expect(result.totalGasCostUsd).toBe(4000000000000000n);
+    });
+
+    it("should not include usd value of the total gas cost when gas token usd price is unknown", async () => {
+        const result = await estimateGasCost(mockSigner, mockTx);
+
+        expect(result.totalGasCostUsd).toBeUndefined();
+    });
+
     it("should calculate gas cost including L2 fees chain is special L2", async () => {
         const mockL2Client = {
             getL1BaseFee: vi.fn().mockResolvedValue(50000000000n), // 50 gwei

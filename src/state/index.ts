@@ -228,6 +228,8 @@ export class SharedState {
     gasCosts: bigint[] = [];
     /** Oracle endpoint health tracking for cooloff and fetch results caching */
     oracleHealth: OracleHealthMap = new Map();
+    /** The current native gas token to USD price (18 decimals fixed point number as decimal string), updated once per round */
+    gasTokenUsdPrice?: string;
 
     constructor(config: SharedStateConfig) {
         this.appOptions = config.appOptions;
@@ -303,6 +305,27 @@ export class SharedState {
     watchToken(tokenDetails: TokenDetails) {
         if (!this.watchedTokens.has(tokenDetails.address.toLowerCase())) {
             this.watchedTokens.set(tokenDetails.address.toLowerCase(), tokenDetails);
+        }
+    }
+
+    /**
+     * Updates the native gas token dollar price by quoting the chain's wrapped
+     * native token against the chain's dollar token (USDC or USDT), keeps the
+     * previous price if the quote fails, does nothing if the operating chain
+     * has no known dollar token
+     * @param blockNumber - (optional) The block number to fetch the price at
+     */
+    async updateGasTokenUsdPrice(blockNumber?: bigint) {
+        const usdToken = this.chainConfig.usdToken;
+        if (!usdToken) return;
+        const result = await this.getMarketPrice(
+            this.chainConfig.nativeWrappedToken,
+            usdToken,
+            blockNumber,
+            true,
+        );
+        if (result.isOk()) {
+            this.gasTokenUsdPrice = result.value.price;
         }
     }
 

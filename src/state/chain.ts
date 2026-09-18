@@ -44,7 +44,23 @@ export type ChainConfig = Chain & {
     routeProcessors: { [key: string]: `0x${string}` };
     stableTokens?: Token[];
     isSpecialL2: boolean;
+    /** The dollar denominated token (USDC or USDT) of the chain, used for reporting dollar values */
+    usdToken?: Token;
 };
+
+/**
+ * Finds the USD denominated token (USDC or USDT or their variants) from the
+ * given list of stable tokens, prioritizing exact symbol matches over variants
+ * @param stableTokens - The list of stable tokens to search in
+ */
+export function findUsdToken(stableTokens?: Token[]): Token | undefined {
+    return (
+        stableTokens?.find((token: Token) => token.symbol === "USDC") ??
+        stableTokens?.find((token: Token) => token.symbol === "USDT") ??
+        stableTokens?.find((token: Token) => token.symbol?.includes("USDC")) ??
+        stableTokens?.find((token: Token) => token.symbol?.includes("USDT"))
+    );
+}
 
 /**
  * Get the chain config for a given chain id
@@ -95,9 +111,14 @@ export function getChainConfig(chainId: ChainId): Result<ChainConfig, ChainConfi
     // get known stable coins of the chain
     const stableTokens = (STABLES as any)[chainId];
 
+    // statically determine the chain's dollar denominated token, USDC or
+    // USDT, every evm chain has both or at least one of them available
+    const usdToken = findUsdToken(stableTokens);
+
     return Result.ok({
         ...chain,
         nativeWrappedToken,
+        usdToken,
         routeProcessors,
         stableTokens,
         isSpecialL2: SpecialL2Chains.is(chain.id),

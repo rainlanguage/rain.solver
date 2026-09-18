@@ -1,9 +1,19 @@
-import { formatUnits, isBytes, isHex, maxUint256 } from "viem";
+import { formatUnits, isBytes, isHex, maxUint256, parseUnits } from "viem";
 
 /**
  * One ether which equals to 1e18
  */
 export const ONE18 = 1_000_000_000_000_000_000n as const;
+
+/**
+ * Calculates the dollar denominated value of the given value with the given dollar price
+ * @param value - The value (in 18 decimals fixed point)
+ * @param usdPrice - The dollar price (18 decimals fixed point number as decimal string)
+ * @returns The dollar value in 18 decimals fixed point
+ */
+export function toUsdValue(value: bigint, usdPrice: string): bigint {
+    return (value * parseUnits(usdPrice, 18)) / ONE18;
+}
 
 /**
  * Scales a given value and its decimals to 18 fixed point decimals

@@ -335,6 +335,55 @@ describe("Test SharedState", () => {
         });
     });
 
+    describe("Test updateGasTokenUsdPrice method", () => {
+        it("should update the gas token dollar price", async () => {
+            (sharedState.chainConfig as any).nativeWrappedToken = { symbol: "WETH" };
+            (sharedState.chainConfig as any).usdToken = { symbol: "USDC" };
+            const getMarketPriceSpy = vi
+                .spyOn(sharedState, "getMarketPrice")
+                .mockResolvedValueOnce(Result.ok({ price: "3500.25" }) as any);
+
+            await sharedState.updateGasTokenUsdPrice(123n);
+
+            expect(sharedState.gasTokenUsdPrice).toBe("3500.25");
+            expect(getMarketPriceSpy).toHaveBeenCalledTimes(1);
+            expect(getMarketPriceSpy).toHaveBeenCalledWith(
+                sharedState.chainConfig.nativeWrappedToken,
+                sharedState.chainConfig.usdToken,
+                123n,
+                true,
+            );
+
+            getMarketPriceSpy.mockRestore();
+        });
+
+        it("should keep the previous price when the quote fails", async () => {
+            (sharedState.chainConfig as any).nativeWrappedToken = { symbol: "WETH" };
+            (sharedState.chainConfig as any).usdToken = { symbol: "USDC" };
+            sharedState.gasTokenUsdPrice = "1000";
+            const getMarketPriceSpy = vi
+                .spyOn(sharedState, "getMarketPrice")
+                .mockResolvedValueOnce(Result.err(new Error("no way")) as any);
+
+            await sharedState.updateGasTokenUsdPrice(123n);
+
+            expect(sharedState.gasTokenUsdPrice).toBe("1000");
+
+            getMarketPriceSpy.mockRestore();
+        });
+
+        it("should do nothing when the chain has no dollar token", async () => {
+            const getMarketPriceSpy = vi.spyOn(sharedState, "getMarketPrice");
+
+            await sharedState.updateGasTokenUsdPrice(123n);
+
+            expect(sharedState.gasTokenUsdPrice).toBeUndefined();
+            expect(getMarketPriceSpy).not.toHaveBeenCalled();
+
+            getMarketPriceSpy.mockRestore();
+        });
+    });
+
     describe("Test getMarketPrice method", () => {
         const token1 = new Token({
             chainId: 1,
