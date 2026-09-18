@@ -209,7 +209,7 @@ export class RainSolverCli {
      * reports and executes wallet ops.
      */
     async run() {
-        let prevMainWalletBalanceReport;
+        let prevMainWalletBalanceReport: PreAssembledSpan | undefined;
         let prevMultiWalletBalanceReports;
         // eslint-disable-next-line no-constant-condition
         while (true) {
@@ -248,6 +248,8 @@ export class RainSolverCli {
                 }
             } else {
                 if (prevMainWalletBalanceReport) {
+                    prevMainWalletBalanceReport.startTime = now;
+                    prevMainWalletBalanceReport.endTime = performance.now();
                     this.logger.exportPreAssembledSpan(prevMainWalletBalanceReport, roundCtx);
                 }
                 if (prevMultiWalletBalanceReports) {
