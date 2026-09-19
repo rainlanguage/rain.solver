@@ -8,14 +8,7 @@ import { LiquidityProviders } from "sushi";
 import { BalancerRouter } from "./balancer";
 import { RainSolverRouter, RainSolverRouterConfig } from "./router";
 import { describe, it, expect, vi, beforeEach, assert } from "vitest";
-import {
-    RouterType,
-    RouteStatus,
-    TradeSizeResult,
-    TradeSizeStatus,
-    GetTradeParamsArgs,
-    RainSolverRouterQuoteParams,
-} from "./types";
+import { RouterType, RouteStatus, GetTradeParamsArgs, RainSolverRouterQuoteParams } from "./types";
 import {
     SushiRouterError,
     BalancerRouterError,
@@ -914,10 +907,7 @@ describe("RainSolverRouter", () => {
         it("should call sushi findLargestTradeSize when sushi router exists", () => {
             const mockOrderDetails = {} as Pair;
             const mockGasPrice = 1000000000n;
-            const expectedSize = {
-                status: TradeSizeStatus.Found,
-                size: 5000000000n,
-            } as TradeSizeResult;
+            const expectedSize = 5000000000n;
 
             const sushiSpy = vi.spyOn(mockSushiRouter, "findLargestTradeSize");
             sushiSpy.mockReturnValue(expectedSize);
@@ -965,8 +955,7 @@ describe("RainSolverRouter", () => {
                 "multi",
             );
 
-            // no sushi router means no trade size search can run
-            expect(result).toEqual({ status: TradeSizeStatus.NoWay });
+            expect(result).toBeUndefined();
         });
     });
 

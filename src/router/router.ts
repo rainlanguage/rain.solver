@@ -10,8 +10,6 @@ import { Account, Chain, PublicClient, Transport, parseUnits } from "viem";
 import { StabullRouterError, StabullRouterErrorType } from "./stabull/error";
 import {
     TradeParamsType,
-    TradeSizeResult,
-    TradeSizeStatus,
     GetTradeParamsArgs,
     RainSolverRouterBase,
     RainSolverRouterQuote,
@@ -295,18 +293,16 @@ export class RainSolverRouter extends RainSolverRouterBase {
         routeType: "single" | "multi" = "single",
         absolute = false,
         excludeDexes?: Set<string>,
-    ): TradeSizeResult {
-        return (
-            this.sushi?.findLargestTradeSize(
-                orderDetails,
-                toToken,
-                fromToken,
-                maximumInputFixed,
-                gasPriceBI,
-                routeType,
-                absolute,
-                excludeDexes,
-            ) ?? { status: TradeSizeStatus.NoWay }
+    ): bigint | undefined {
+        return this.sushi?.findLargestTradeSize(
+            orderDetails,
+            toToken,
+            fromToken,
+            maximumInputFixed,
+            gasPriceBI,
+            routeType,
+            absolute,
+            excludeDexes,
         );
     }
 

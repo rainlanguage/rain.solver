@@ -9,12 +9,7 @@ import { encodeFunctionData, formatUnits, parseUnits, zeroAddress } from "viem";
 import { TradeType, FailedSimulation, TaskType } from "../../types";
 import { SimulationHaltReason, TradeSimulatorBase } from "../simulator";
 import { LiquidityProviders } from "sushi";
-import {
-    RouterType,
-    SushiRouterQuote,
-    RainSolverRouterQuote,
-    RainSolverRouterErrorType,
-} from "../../../router";
+import { RainSolverRouterErrorType, RouterType, RainSolverRouterQuote } from "../../../router";
 import {
     EnsureBountyTaskType,
     EnsureBountyTaskErrorType,
@@ -45,8 +40,6 @@ export type SimulateRouterTradeArgs = {
     isPartial: boolean;
     /** Liquidity providers (dexes) to exclude from route finding */
     excludeDexes?: Set<LiquidityProviders>;
-    /** Optional precomputed sushi quote for the given maximum input, avoids recomputing the same route */
-    sushiQuote?: SushiRouterQuote;
 };
 
 /** Arguments for preparing router trade type parameters required for simulation and building tx object */
@@ -113,7 +106,6 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
             blockNumber,
             isPartial,
             excludeDexes: this.tradeArgs.excludeDexes,
-            sushiQuote: this.tradeArgs.sushiQuote,
         });
         if (tradeParamsResult.isErr()) {
             const result = {
