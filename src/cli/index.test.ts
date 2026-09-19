@@ -103,6 +103,7 @@ describe("Test RainSolverCli", () => {
             sleep: 1000,
             poolUpdateInterval: 60,
             gasCoveragePercentage: "100",
+            blockTime: 2000,
         } as any;
 
         mockState = {
@@ -173,6 +174,7 @@ describe("Test RainSolverCli", () => {
             },
             liquidityProviders: ["uniswap"],
             client: {},
+            watchBlockNumber: vi.fn(),
             avgGasCost: 1000000000000000000n,
             gasCosts: [500000000000000000n, 1500000000000000000n],
             contracts,
@@ -273,6 +275,7 @@ describe("Test RainSolverCli", () => {
             expect(AppOptions.tryFromYamlPath).toHaveBeenCalledWith("config.yaml");
             expect(SharedStateConfig.tryFromAppOptions).toHaveBeenCalledWith(mockAppOptions);
             expect(SharedState).toHaveBeenCalledWith(mockStateConfig);
+            expect(mockState.watchBlockNumber).toHaveBeenCalledWith(mockAppOptions.blockTime);
             expect(SubgraphConfig.tryFromAppOptions).toHaveBeenCalledWith(mockAppOptions);
             expect(SubgraphManager).toHaveBeenCalledWith(mockSgManagerConfig);
             expect(mockSubgraphManager.statusCheck).toHaveBeenCalledTimes(1);
@@ -465,6 +468,7 @@ describe("Test RainSolverCli", () => {
                     sleep: 1000,
                     poolUpdateInterval: 60,
                     gasCoveragePercentage: "100",
+                    blockTime: 2000,
                     key: "N/A",
                     mnemonic: "N/A",
                 }),

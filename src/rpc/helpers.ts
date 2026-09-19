@@ -97,6 +97,11 @@ export function normalizeUrl(url: string): string {
     return url.endsWith("/") ? url : `${url}/`;
 }
 
+/** Checks if the given url is a websocket url */
+export function isWebSocketUrl(url: string): boolean {
+    return /^wss?:\/\//.test(url);
+}
+
 /**
  * Probably picks an item from the given array of success rates as probablity ranges
  * which are in 2 fixed point decimalss

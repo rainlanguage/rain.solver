@@ -65,10 +65,10 @@ describe("Test initializeRound", () => {
         // mock state
         mockState = {
             chainConfig: { id: 1 },
+            blockNumber: 123n,
             updateGasTokenUsdPrice: vi.fn().mockResolvedValue(undefined),
             client: {
                 name: "viem-client",
-                getBlockNumber: vi.fn().mockResolvedValue(123n),
             },
             contracts: {
                 getAddressesForTrade: vi.fn().mockReturnValue({
@@ -140,6 +140,41 @@ describe("Test initializeRound", () => {
             expect(checkpointReport.attributes["details.owner"]).toBe("0xowner123");
             expect(checkpointReport.attributes["details.sender"]).toBe("0xSigner123");
             expect(checkpointReport.endTime).toBeTypeOf("number");
+        });
+
+        it("should refresh block number from state at batch boundaries", async () => {
+            (mockSolver.appOptions as any).maxConcurrency = 1;
+            const makeOrder = (id: string) => ({
+                orderbook: "0x3333333333333333333333333333333333333333",
+                buyTokenSymbol: "ETH",
+                sellTokenSymbol: "USDC",
+                sellToken: "0xsellToken",
+                buyToken: "0xbuyToken",
+                takeOrder: { id, struct: { order: { owner: "0xOwner123" } } },
+            });
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                nonZeroOutput: [makeOrder("0xOrder1"), makeOrder("0xOrder2")],
+                zeroOutput: [],
+            });
+            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            const seenBlockNumbers: bigint[] = [];
+            (mockSolver.processOrder as Mock).mockImplementation(async (args: any) => {
+                seenBlockNumbers.push(args.blockNumber);
+                // simulate the watcher observing a new block during the batch
+                (mockState as any).blockNumber = args.blockNumber + 10n;
+                return vi.fn();
+            });
+
+            const result: initializeRoundType = await initializeRound.call(
+                mockSolver,
+                undefined,
+                false, // no shuffle, keep the order sequence deterministic
+            );
+
+            expect(result.settlements).toHaveLength(2);
+            // the first batch uses the initial block number and the second
+            // batch uses the refreshed state value from the batch boundary
+            expect(seenBlockNumbers).toEqual([123n, 133n]);
         });
 
         it("should handle multiple orders from multiple orderbooks", async () => {
@@ -226,6 +261,38 @@ describe("Test initializeRound", () => {
             expect(result.checkpointReports).toHaveLength(0);
             expect(mockWalletManager.getRandomSigner).not.toHaveBeenCalled();
             expect(mockSolver.processOrder).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("block number not available handling", () => {
+        it("should skip the round and report error when watched block number is not available yet", async () => {
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                nonZeroOutput: [],
+                zeroOutput: [],
+            });
+            mockState.blockNumber = 0n;
+            (mockSolver as any).logger = {
+                exportPreAssembledSpan: vi.fn(),
+            } as any;
+
+            const result: initializeRoundType = await initializeRound.call(mockSolver);
+
+            expect(result.settlements).toHaveLength(0);
+            expect(result.checkpointReports).toHaveLength(0);
+            expect(mockWalletManager.getRandomSigner).not.toHaveBeenCalled();
+            expect(mockSolver.processOrder).not.toHaveBeenCalled();
+            expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledTimes(1);
+            expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    name: "order_batch_preprocess",
+                    status: expect.objectContaining({
+                        message: "block number is not available yet for orders batch process",
+                    }),
+                }),
+                undefined,
+            );
+
+            (mockSolver as any).logger = undefined; // reset logger
         });
     });
 
@@ -1702,9 +1769,9 @@ describe("Test processOrderInit", () => {
 
         // mock state
         mockState = {
+            blockNumber: 123n,
             client: {
                 name: "viem-client",
-                getBlockNumber: vi.fn().mockResolvedValue(123n),
             },
             contracts: {
                 getAddressesForTrade: vi.fn().mockReturnValue({

@@ -7,8 +7,8 @@ import { LiquidityProviders } from "sushi";
 import { SolverContracts } from "./contracts";
 import { RainSolverRouter } from "../router/router";
 import { Result, TokenDetails } from "../common";
-import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
-import { SharedState, SharedStateConfig, SharedStateErrorType } from ".";
+import { describe, it, expect, vi, beforeEach, afterEach, Mock, assert } from "vitest";
+import { SharedState, SharedStateConfig, SharedStateErrorType, WS_RESUBSCRIBE_DELAY } from ".";
 
 vi.mock("../gas", () => ({
     GasManager: {
@@ -312,6 +312,233 @@ describe("Test SharedState", () => {
             // should not duplicate
             sharedState.watchToken(token2);
             expect(Array.from(sharedState.watchedTokens).length).toBe(2);
+        });
+    });
+
+    describe("Test block number watcher", () => {
+        beforeEach(() => {
+            vi.useFakeTimers();
+            config.client.getBlockNumber = vi.fn().mockResolvedValue(100n);
+            sharedState = new SharedState(config);
+        });
+
+        afterEach(() => {
+            sharedState.unwatchBlockNumber();
+            vi.useRealTimers();
+        });
+
+        it("should update block number from rpc", async () => {
+            expect(sharedState.blockNumber).toBe(0n);
+            await sharedState.updateBlockNumber();
+            expect(sharedState.blockNumber).toBe(100n);
+        });
+
+        it("should keep previous block number when the call fails", async () => {
+            await sharedState.updateBlockNumber();
+            expect(sharedState.blockNumber).toBe(100n);
+
+            (config.client.getBlockNumber as Mock).mockRejectedValue(new Error("rpc failed"));
+            await sharedState.updateBlockNumber();
+            expect(sharedState.blockNumber).toBe(100n);
+        });
+
+        it("should not move block number backwards", async () => {
+            await sharedState.updateBlockNumber();
+            expect(sharedState.blockNumber).toBe(100n);
+
+            (config.client.getBlockNumber as Mock).mockResolvedValue(90n);
+            await sharedState.updateBlockNumber();
+            expect(sharedState.blockNumber).toBe(100n);
+
+            (config.client.getBlockNumber as Mock).mockResolvedValue(110n);
+            await sharedState.updateBlockNumber();
+            expect(sharedState.blockNumber).toBe(110n);
+        });
+
+        it("should watch block number with an immediate update and periodic updates", async () => {
+            expect(sharedState.isWatchingBlockNumber).toBe(false);
+            sharedState.watchBlockNumber(5000);
+            expect(sharedState.isWatchingBlockNumber).toBe(true);
+
+            // immediate update on start
+            await vi.advanceTimersByTimeAsync(0);
+            expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+            expect(sharedState.blockNumber).toBe(100n);
+
+            // periodic updates
+            (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+            await vi.advanceTimersByTimeAsync(5000);
+            expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
+            expect(sharedState.blockNumber).toBe(101n);
+
+            // should not start a second watcher
+            sharedState.watchBlockNumber(5000);
+            await vi.advanceTimersByTimeAsync(5000);
+            expect(config.client.getBlockNumber).toHaveBeenCalledTimes(3);
+        });
+
+        it("should unwatch block number", async () => {
+            sharedState.watchBlockNumber(5000);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(sharedState.isWatchingBlockNumber).toBe(true);
+
+            sharedState.unwatchBlockNumber();
+            expect(sharedState.isWatchingBlockNumber).toBe(false);
+
+            // no more updates after unwatch
+            await vi.advanceTimersByTimeAsync(15000);
+            expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+        });
+
+        describe("websocket new heads subscription", () => {
+            let onBlockNumber: (blockNumber: bigint) => void;
+            let onError: (error: Error) => void;
+            let wsUnwatch: Mock;
+            let watchBlockNumberSpy: Mock;
+
+            beforeEach(() => {
+                config.appOptions.wsRpc = "wss://ws-rpc.example.com";
+                wsUnwatch = vi.fn();
+                watchBlockNumberSpy = vi.fn().mockImplementation((args: any) => {
+                    onBlockNumber = args.onBlockNumber;
+                    onError = args.onError;
+                    return wsUnwatch;
+                });
+                (createPublicClient as Mock).mockReturnValue({
+                    watchBlockNumber: watchBlockNumberSpy,
+                });
+                sharedState = new SharedState(config);
+            });
+
+            it("should subscribe to new heads and update block number", async () => {
+                sharedState.watchBlockNumber(5000);
+                expect(sharedState.isWatchingBlockNumber).toBe(true);
+                expect(watchBlockNumberSpy).toHaveBeenCalledTimes(1);
+
+                // immediate update over http on start
+                await vi.advanceTimersByTimeAsync(0);
+                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                expect(sharedState.blockNumber).toBe(100n);
+
+                // new heads push updates the block number
+                onBlockNumber(105n);
+                expect(sharedState.blockNumber).toBe(105n);
+
+                // should not move backwards
+                onBlockNumber(101n);
+                expect(sharedState.blockNumber).toBe(105n);
+
+                // no polling should be active
+                await vi.advanceTimersByTimeAsync(15000);
+                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+            });
+
+            it("should fall back to polling on subscription error and stop it on recovery", async () => {
+                sharedState.watchBlockNumber(5000);
+                await vi.advanceTimersByTimeAsync(0);
+                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+
+                // subscription error starts the polling fallback
+                onError(new Error("ws failed"));
+                (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+                await vi.advanceTimersByTimeAsync(5000);
+                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
+                expect(sharedState.blockNumber).toBe(101n);
+
+                // subscription recovery stops the polling fallback
+                onBlockNumber(102n);
+                expect(sharedState.blockNumber).toBe(102n);
+                await vi.advanceTimersByTimeAsync(15000);
+                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
+            });
+
+            it("should not start a second subscription when already watching", async () => {
+                sharedState.watchBlockNumber(5000);
+                expect(watchBlockNumberSpy).toHaveBeenCalledTimes(1);
+
+                sharedState.watchBlockNumber(5000);
+                expect(watchBlockNumberSpy).toHaveBeenCalledTimes(1);
+            });
+
+            it("should not start a second polling fallback on repeated subscription errors", async () => {
+                sharedState.watchBlockNumber(5000);
+                await vi.advanceTimersByTimeAsync(0);
+                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+
+                // repeated errors should keep a single poller
+                onError(new Error("ws failed"));
+                onError(new Error("ws failed again"));
+                await vi.advanceTimersByTimeAsync(5000);
+                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
+            });
+
+            it("should re-establish the subscription after the resubscribe delay", async () => {
+                sharedState.watchBlockNumber(5000);
+                await vi.advanceTimersByTimeAsync(0);
+                expect(watchBlockNumberSpy).toHaveBeenCalledTimes(1);
+
+                // subscription error schedules a fresh subscription
+                onError(new Error("ws failed"));
+                await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                expect(wsUnwatch).toHaveBeenCalledTimes(1); // old subscription is unwatched
+                expect(watchBlockNumberSpy).toHaveBeenCalledTimes(2); // fresh subscription
+
+                // the fresh subscription pushes and stops the polling fallback
+                onBlockNumber(200n);
+                expect(sharedState.blockNumber).toBe(200n);
+                const callCount = (config.client.getBlockNumber as Mock).mock.calls.length;
+                await vi.advanceTimersByTimeAsync(15000);
+                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(callCount);
+            });
+
+            it("should schedule a single resubscribe for repeated subscription errors", async () => {
+                sharedState.watchBlockNumber(5000);
+                await vi.advanceTimersByTimeAsync(0);
+
+                onError(new Error("ws failed"));
+                onError(new Error("ws failed again"));
+                await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                expect(watchBlockNumberSpy).toHaveBeenCalledTimes(2);
+            });
+
+            it("should cancel the pending resubscribe when the subscription recovers", async () => {
+                sharedState.watchBlockNumber(5000);
+                await vi.advanceTimersByTimeAsync(0);
+
+                onError(new Error("ws failed"));
+                onBlockNumber(101n); // recovery before the resubscribe delay passes
+
+                await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                expect(wsUnwatch).not.toHaveBeenCalled();
+                expect(watchBlockNumberSpy).toHaveBeenCalledTimes(1);
+            });
+
+            it("should cancel the pending resubscribe on unwatch", async () => {
+                sharedState.watchBlockNumber(5000);
+                await vi.advanceTimersByTimeAsync(0);
+
+                onError(new Error("ws failed"));
+                sharedState.unwatchBlockNumber();
+
+                await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                expect(watchBlockNumberSpy).toHaveBeenCalledTimes(1);
+            });
+
+            it("should unwatch the subscription and the polling fallback", async () => {
+                sharedState.watchBlockNumber(5000);
+                onError(new Error("ws failed")); // start polling fallback too
+                expect(sharedState.isWatchingBlockNumber).toBe(true);
+
+                sharedState.unwatchBlockNumber();
+                expect(wsUnwatch).toHaveBeenCalledTimes(1);
+                expect(sharedState.isWatchingBlockNumber).toBe(false);
+
+                // no more polling after unwatch
+                await vi.advanceTimersByTimeAsync(0);
+                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                await vi.advanceTimersByTimeAsync(15000);
+                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+            });
         });
     });
 

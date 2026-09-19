@@ -1,7 +1,8 @@
 import { sleep } from "../common";
 import { RainSolverTransportTimeoutError } from "./transport";
+import { Transport, TimeoutError, ExecutionRevertedError } from "viem";
 import { vi, describe, it, assert, Mock, beforeEach, expect } from "vitest";
-import { RpcState, RpcConfig, RpcMetrics, RpcProgress, RpcBufferType } from "./rpc";
+import { RpcState, RpcConfig, RpcMetrics, RpcProgress, RpcBufferType, withRpcMetrics } from "./rpc";
 
 vi.mock("../common", async (importOriginal) => ({
     ...(await importOriginal()),
@@ -122,9 +123,132 @@ describe("Test RpcState", async function () {
             new RainSolverTransportTimeoutError(0),
         );
     });
+
+    it("should return the picked transport atomically paired with its url", async function () {
+        const urls = configs.map((v) => v.url);
+        const state = new RpcState(configs);
+
+        for (let i = 0; i < 10; i++) {
+            const { transport, url } = await state.nextRpc({
+                pollingInterval: 0,
+                timeout: 600000,
+            });
+            expect(urls).toContain(url);
+            expect(transport).toBe(state.transports[url]);
+            expect(url).toBe(state.lastUsedUrl);
+        }
+    });
+
+    it("should create the underlying transport based on the url scheme", async function () {
+        const state = new RpcState([
+            { url: "wss://ws-example.com" },
+            { url: "https://http-example.com" },
+        ]);
+
+        expect((state.transports["wss://ws-example.com/"]({}) as any).config.type).toBe(
+            "webSocket",
+        );
+        expect((state.transports["https://http-example.com/"]({}) as any).config.type).toBe("http");
+    });
+});
+
+describe("Test withRpcMetrics", async function () {
+    let record: RpcMetrics;
+    const makeMockTransport = (request: Mock) =>
+        (() => ({
+            config: { type: "mock" },
+            request,
+            value: undefined,
+        })) as any as Transport;
+
+    beforeEach(() => {
+        record = new RpcMetrics();
+    });
+
+    it("should pass args and options through to the underlying transport request", async function () {
+        const request = vi.fn().mockResolvedValue("0x1234");
+        const wrapped = withRpcMetrics(makeMockTransport(request), record)({} as any);
+
+        await wrapped.request({ method: "eth_call", params: ["0xdata"] }, { dedupe: true } as any);
+
+        expect(request).toHaveBeenCalledWith(
+            { method: "eth_call", params: ["0xdata"] },
+            { dedupe: true },
+        );
+    });
+
+    it("should record success for resolved request", async function () {
+        const request = vi.fn().mockResolvedValue("0x1234");
+        const wrapped = withRpcMetrics(makeMockTransport(request), record)({} as any);
+
+        const result = await wrapped.request({ method: "eth_blockNumber" });
+
+        expect(result).toBe("0x1234");
+        expect(request).toHaveBeenCalledTimes(1);
+        assert.equal(record.req, 1);
+        assert.equal(record.success, 1);
+        assert.equal(record.failure, 0);
+        assert.equal(record.timeout, 0);
+    });
+
+    it("should record success for node level error rejection", async function () {
+        // execution reverted is a node level error, meaning the
+        // rpc itself responded fine to the request
+        const error = new ExecutionRevertedError({
+            cause: new Error("execution reverted") as any,
+        });
+        const request = vi.fn().mockRejectedValue(error);
+        const wrapped = withRpcMetrics(makeMockTransport(request), record)({} as any);
+
+        await expect(wrapped.request({ method: "eth_call" })).rejects.toThrow(error);
+
+        assert.equal(record.req, 1);
+        assert.equal(record.success, 1);
+        assert.equal(record.failure, 0);
+        assert.equal(record.timeout, 0);
+    });
+
+    it("should record neither success nor failure for timeout rejection", async function () {
+        const error = new TimeoutError({
+            body: { method: "eth_blockNumber" },
+            url: "https://example.com",
+        });
+        const request = vi.fn().mockRejectedValue(error);
+        const wrapped = withRpcMetrics(makeMockTransport(request), record)({} as any);
+
+        await expect(wrapped.request({ method: "eth_blockNumber" })).rejects.toThrow(error);
+
+        assert.equal(record.req, 1);
+        assert.equal(record.success, 0);
+        assert.equal(record.failure, 0);
+        assert.equal(record.timeout, 1); // derived from req - (success + failure)
+    });
+
+    it("should record failure for any other rejection", async function () {
+        const error = new Error("connection refused");
+        const request = vi.fn().mockRejectedValue(error);
+        const wrapped = withRpcMetrics(makeMockTransport(request), record)({} as any);
+
+        await expect(wrapped.request({ method: "eth_blockNumber" })).rejects.toThrow(error);
+
+        assert.equal(record.req, 1);
+        assert.equal(record.success, 0);
+        assert.equal(record.failure, 1);
+        assert.equal(record.timeout, 0);
+    });
 });
 
 describe("Test RpcMetrics", async function () {
+    beforeEach(() => {
+        // interval tests below depend on sleep having real delays
+        (sleep as Mock).mockImplementation(
+            (ms: number) =>
+                new Promise((resolve) => {
+                    setTimeout(() => resolve(""), ms);
+                }),
+        );
+    });
+
     it("should init RpcMetrics", async function () {
         const result = new RpcMetrics();
         assert.equal(result.req, 0);
@@ -150,7 +274,9 @@ describe("Test RpcMetrics", async function () {
         assert.deepEqual(result.requestIntervals, []);
         assert.ok(result.lastRequestTimestamp > 0);
         assert.equal(result.timeout, 1);
-        assert.equal(result.avgRequestIntervals, 0);
+        // with no recorded intervals this equals Date.now() minus the last request
+        // timestamp, so allow a small delta for the time it takes to get here
+        assert.closeTo(result.avgRequestIntervals, 0, 50);
 
         // wait 2 seconds and then record another request
         await sleep(2000);

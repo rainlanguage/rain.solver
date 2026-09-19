@@ -117,12 +117,12 @@ module.exports = [
             //     decimals: 18,
             //     symbol: "WLTH",
             // }),
-            new Token({
-                chainId: ChainId.BASE,
-                address: "0x71DDE9436305D2085331AF4737ec6f1fe876Cf9f",
-                decimals: 18,
-                symbol: "PAID",
-            }),
+            // new Token({
+            //     chainId: ChainId.BASE,
+            //     address: "0x71DDE9436305D2085331AF4737ec6f1fe876Cf9f",
+            //     decimals: 18,
+            //     symbol: "PAID",
+            // }),
             new Token({
                 chainId: ChainId.BASE,
                 address: "0x3982E57fF1b193Ca8eb03D16Db268Bd4B40818f8",
@@ -134,7 +134,7 @@ module.exports = [
         [
             "0xb2cc224c1c9feE385f8ad6a55b4d94E92359DC59",
             // "0xe3715B2a3bB826cd9EC5429eE85B651f95879D34",
-            "0x4617C0F3e55930fdD72ec6EA92e79D384987C464",
+            // "0x4617C0F3e55930fdD72ec6EA92e79D384987C464",
             "0x7731D522011b4ACE5D812C15539321F373d0E964",
             "0x8da91A6298eA5d1A8Bc985e99798fd0A0f05701a",
         ],
@@ -144,7 +144,7 @@ module.exports = [
             LiquidityProviders.BaseSwap,
             LiquidityProviders.AerodromeSlipstream,
         ],
-        ["1", "10000", "10000", "100"],
+        ["1", "10000", "100"],
     ],
     // [
     //     // unique test for aerodrome slipstream

@@ -30,6 +30,11 @@ writeRpc:
   - url: https://rpc-url2.com
     weight: 0.5
 
+# Optional websocket rpc url, used explicitly for the block number watcher
+# new heads subscription for the earliest possible block updates, when unset
+# the block number is polled over http at blockTime intervals instead
+wsRpc: wss://rpc-url1.com
+
 # List of subgraph urls, required
 # for specifying more than 1 subgraph URL in the env, separate them by a comma
 # NOTE: for v6 orderbook subgraph, prepend the URL with "v6=" because the v5 and v6
@@ -116,6 +121,9 @@ gasPriceMultiplier: 107
 
 # Time threshold (in ms) for a transaction mine time before it counts as a trigger to increase gas price multiplier for future transactions, default is 15000ms (15 seconds)
 txTimeThreshold: 15000
+
+# The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher, default is 5000ms (5 seconds)
+blockTime: 2000
 
 # Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins
 checkWalletBalanceTime: 15

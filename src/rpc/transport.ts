@@ -1,4 +1,5 @@
 import { RpcState } from "./rpc";
+import { sleep } from "../common";
 import { shouldThrow } from "./helpers";
 import { BaseError, createTransport, Transport, TransportConfig } from "viem";
 
@@ -9,9 +10,9 @@ export namespace RainSolverTransportDefaults {
     export const DEDUPE = true as const;
     export const RETRY_COUNT = 1 as const;
     export const TIMEOUT = 10_000 as const;
-    export const RETRY_DELAY = 150 as const;
+    export const RETRY_DELAY = 50 as const;
     export const RETRY_COUNT_NEXT = 1 as const;
-    export const POLLING_INTERVAL = 100 as const;
+    export const POLLING_INTERVAL = 50 as const;
     export const POLLING_TIMEOUT = 10_000 as const;
     export const KEY = "RainSolverTransport" as const;
     export const NAME = "Rain Solver Transport" as const;
@@ -31,7 +32,7 @@ export type RainSolverTransportConfig = {
     retryDelay?: TransportConfig["retryDelay"];
     /** The polling timeout in milliseconds when no rpc becomes available, default: 10_000ms */
     pollingTimeout?: number;
-    /** The polling interval (in ms) to check for next available rpc, default: 250ms */
+    /** The polling interval (in ms) to check for next available rpc, default: 100ms */
     pollingInterval?: number;
     /** The max number of times to retry with next rpc, default: 1 */
     retryCountNext?: number;
@@ -86,6 +87,13 @@ export function rainSolverTransport(
         retryCountNext = RainSolverTransportDefaults.RETRY_COUNT_NEXT,
     } = config;
     return (({ chain }) => {
+        // cached transport instance of each rpc url, an instance is created once
+        // on first use and reused for all future requests to that url, a stable
+        // instance keeps viem's dedupe id stable, so identical concurrent requests
+        // to the same rpc get deduplicated into a single wire request by viem
+        const instances: Record<string, ReturnType<Transport>> = {};
+        const getInstance = (transport: Transport, url: string) =>
+            (instances[url] ??= transport({ chain, retryCount: 0 }));
         return createTransport({
             key,
             name,
@@ -94,28 +102,51 @@ export function rainSolverTransport(
             retryCount: 0,
             type: "RainSolverTransport",
             async request(args, options) {
-                const req = async (tryNextCount: number): Promise<any> => {
+                const req = async (
+                    tryNextCount: number,
+                    prevUrl?: string,
+                    prevError?: any,
+                ): Promise<any> => {
+                    // transport comes atomically paired with its url, reading
+                    // state.lastUsedUrl here instead could race with concurrent
+                    // requests that already moved it by their own nextRpc calls
+                    const { transport, url } = await state.nextRpc({
+                        timeout: pollingTimeout,
+                        pollingInterval,
+                    });
+                    // when the rotation lands on the same rpc that just failed,
+                    // dont waste another attempt on it and bail out with its
+                    // error, its recorded failure has already lowered its chance
+                    // of selection, so this balances out over future requests
+                    if (url === prevUrl) throw prevError;
+                    const instance = getInstance(transport, url);
+                    const attempt = async (retrySameCount: number): Promise<any> => {
+                        try {
+                            return await instance.request(args, {
+                                ...options,
+                                dedupe,
+                            });
+                        } catch (error: any) {
+                            if (shouldThrow(error)) throw error;
+                            // retry the same rpc as long as it keeps a success rate
+                            // above 20% threshold, this replaces the viem transport
+                            // inner retries which were cancelled by the same criteria
+                            if (
+                                retrySameCount > 0 &&
+                                tryNextCount > 0 &&
+                                state.metrics[url].progress.successRate > 2000
+                            ) {
+                                await sleep(retryDelay);
+                                return attempt(retrySameCount - 1);
+                            }
+                            throw error;
+                        }
+                    };
                     try {
-                        const transport = await state.nextRpc({
-                            timeout: pollingTimeout,
-                            pollingInterval,
-                        });
-                        // cancel inner transport retry when success rate is below 20% threshold
-                        const resolvedRetryCount =
-                            tryNextCount &&
-                            state.metrics[state.lastUsedUrl].progress.successRate > 2000
-                                ? retryCount
-                                : 0;
-                        return await transport({
-                            chain,
-                            retryCount: resolvedRetryCount,
-                        }).request(args, {
-                            ...options,
-                            dedupe,
-                        });
+                        return await attempt(retryCount);
                     } catch (error: any) {
                         if (shouldThrow(error)) throw error;
-                        if (tryNextCount) return req(tryNextCount - 1);
+                        if (tryNextCount) return req(tryNextCount - 1, url, error);
                         throw error;
                     }
                 };

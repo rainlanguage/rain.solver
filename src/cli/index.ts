@@ -136,6 +136,11 @@ export class RainSolverCli {
                 }
                 const state = new SharedState(stateConfig.value);
 
+                // watch block number during runtime, so the current block number
+                // is always available in the state without repeated rpc calls,
+                // polled at the chain's block time cadence
+                state.watchBlockNumber(appOptions.blockTime);
+
                 report.setStatus({ code: SpanStatusCode.OK });
                 report.end();
                 logger.exportPreAssembledSpan(report);

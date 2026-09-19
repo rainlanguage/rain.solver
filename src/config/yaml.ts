@@ -69,6 +69,8 @@ export type AppOptions = {
     rpc: RpcConfig[];
     /** List of write rpc configs used explicitly for write transactions */
     writeRpc?: RpcConfig[];
+    /** Optional websocket rpc url used explicitly for the block number watcher new heads subscription */
+    wsRpc?: string;
     /** List of subgraph urls */
     subgraph: string[];
     /** Option to maximize maxIORatio, default is true */
@@ -119,6 +121,8 @@ export type AppOptions = {
     rotateMultiWallet: boolean;
     /** Time threshold (in ms) for a transaction mine time before it counts as a trigger to increase gas price multiplier for future transactions, default is 15 seconds */
     txTimeThreshold: number;
+    /** The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher, default is 5000 ms */
+    blockTime: number;
     /** Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins */
     checkWalletBalanceTime: number;
     /** Optional threshold as the min expected bounty multiple that the estimated profit must exceed to boost the tx gas price, no boost applies if unset */
@@ -184,6 +188,7 @@ export namespace AppOptions {
                 contracts: Validator.resolveContracts(input),
                 rpc: Validator.resolveRpc(input.rpc),
                 writeRpc: Validator.resolveRpc(input.writeRpc, true),
+                wsRpc: Validator.resolveWsRpc(input.wsRpc),
                 subgraph: Validator.resolveUrls(
                     input.subgraph,
                     "expected array of subgraph urls with at least 1 url",
@@ -360,6 +365,18 @@ export namespace AppOptions {
                         assert(
                             txTimeThreshold > 0,
                             "invalid txTimeThreshold value, must be an integer greater than 0",
+                        ),
+                ),
+                blockTime: Validator.resolveNumericValue(
+                    input.blockTime,
+                    INT_PATTERN,
+                    "invalid blockTime value, must be an integer greater than 0",
+                    "5000",
+                    undefined,
+                    (blockTime) =>
+                        assert(
+                            blockTime > 0,
+                            "invalid blockTime value, must be an integer greater than 0",
                         ),
                 ),
                 checkWalletBalanceTime: Validator.resolveNumericValue(

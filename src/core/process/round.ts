@@ -36,18 +36,16 @@ export async function initializeRound(
     const settlements: Settlement[] = [];
     const checkpointReports: PreAssembledSpan[] = [];
 
-    let blockNumber: bigint;
     let concurrencyProcessBatch = [];
     let maxConcurrencyCounter = this.appOptions.maxConcurrency;
-    try {
-        blockNumber = await this.state.client.getBlockNumber();
-    } catch (error) {
-        const message = await errorSnapshot(
-            "failed to get block number for orders batch process",
-            error,
-        );
+    let blockNumber = this.state.blockNumber;
+    if (blockNumber <= 0n) {
+        // the block number watcher has not observed any block yet
         const report = new PreAssembledSpan(`order_batch_preprocess`);
-        report.setStatus({ code: SpanStatusCode.ERROR, message });
+        report.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: "block number is not available yet for orders batch process",
+        });
         this.logger?.exportPreAssembledSpan(report, roundSpanCtx?.context);
         return {
             settlements,
@@ -86,8 +84,7 @@ export async function initializeRound(
             // reset counter and batch vector
             concurrencyProcessBatch = [];
             maxConcurrencyCounter = this.appOptions.maxConcurrency;
-            const temp = await this.state.client.getBlockNumber().catch(() => undefined);
-            if (typeof temp === "bigint") blockNumber = temp;
+            blockNumber = this.state.blockNumber;
         }
     }
 
