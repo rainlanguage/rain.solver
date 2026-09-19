@@ -386,6 +386,178 @@ describe("Test TradeSimulatorBase", () => {
             expect(mockSimulator.estimateProfit).not.toHaveBeenCalled();
         });
 
+        describe("dryrun gas cache", () => {
+            const key = "0xob-0xid-0xs-0xb";
+            const initDryrunResult = {
+                estimation: {
+                    gas: 21000n,
+                    gasPrice: 1000000000000000000n,
+                    l1GasPrice: 50000000000n,
+                    l1Cost: 100n,
+                    totalGasCost: 21000n * 1000000000000000000n,
+                },
+                estimatedGasCost: 21000n * 1000000000000000000n + 100n,
+                spanAttributes: {},
+            };
+            const finalDryrunResult = {
+                estimation: {
+                    gas: 22000n,
+                    gasPrice: 1000000000000000000n,
+                    l1GasPrice: 50000000000n,
+                    l1Cost: 300n,
+                    totalGasCost: 22000n * 1000000000000000000n,
+                },
+                estimatedGasCost: 22000n * 1000000000000000000n + 300n,
+                spanAttributes: {},
+            };
+            let gasCache: any;
+
+            beforeEach(() => {
+                gasCache = { get: vi.fn(), recordInit: vi.fn(), recordFinal: vi.fn() };
+                (mockSolver.state as any).dryrunGasCache = gasCache;
+                (mockSolver.appOptions as any).dryrunGasCache = true;
+                (mockSolver.appOptions as any).gasLimitMultiplier = 120;
+                tradeArgs.orderDetails = {
+                    orderbook: "0xOB",
+                    takeOrder: { id: "0xID" },
+                    sellToken: "0xS",
+                    buyToken: "0xB",
+                } as any;
+                mockSimulator = new MockTradeSimulator(tradeArgs);
+                (mockSimulator.prepareTradeParams as Mock).mockResolvedValue(
+                    Result.ok(preparedParams),
+                );
+                (mockSimulator.setTransactionData as Mock).mockResolvedValue(Result.ok(void 0));
+                (mockSimulator.estimateProfit as Mock).mockReturnValue(1n);
+            });
+
+            it("should skip the init dryrun and use the cached average when available", async () => {
+                gasCache.get.mockReturnValue({ gas: 20000n, l1Cost: 500n });
+                (dryrun as Mock).mockResolvedValueOnce(Result.ok(finalDryrunResult));
+
+                const result = await mockSimulator.trySimulateTrade();
+                assert(result.isOk());
+                expect(gasCache.get).toHaveBeenCalledWith(key);
+
+                // only the final dryrun runs, with the min expected bounty
+                // built from the cached gas the same way the dryrun would
+                const gasLimit = (20000n * 120n) / 100n;
+                const estimatedGasCost = gasLimit * mockSolver.state.gasPrice + 500n;
+                const headroom = BigInt(
+                    (
+                        Number(mockSolver.appOptions.gasCoveragePercentage) *
+                        mockSolver.appOptions.headroom
+                    ).toFixed(),
+                );
+                expect(dryrun).toHaveBeenCalledTimes(1);
+                expect(mockSimulator.setTransactionData).toHaveBeenCalledTimes(2);
+                expect(mockSimulator.setTransactionData).not.toHaveBeenCalledWith(
+                    expect.objectContaining({ minimumExpected: 0n }),
+                );
+                expect(mockSimulator.setTransactionData).toHaveBeenNthCalledWith(1, {
+                    ...preparedParams,
+                    minimumExpected: (estimatedGasCost * headroom) / 10000n,
+                });
+                expect(extendObjectWithHeader).toHaveBeenCalledWith(
+                    mockSimulator.spanAttributes,
+                    expect.objectContaining({
+                        cached: true,
+                        gasLimit: gasLimit.toString(),
+                        totalCost: estimatedGasCost.toString(),
+                        l1Cost: "500",
+                    }),
+                    "gasEst.initial",
+                );
+
+                // only the final dryrun feeds the cache
+                expect(gasCache.recordInit).not.toHaveBeenCalled();
+                expect(gasCache.recordFinal).toHaveBeenCalledWith(key, 22000n, 300n);
+                expect(result.value.estimatedGasCost).toBe(finalDryrunResult.estimatedGasCost);
+            });
+
+            it("should run the init dryrun and record both samples when there is no cached average", async () => {
+                gasCache.get.mockReturnValue(undefined);
+                (dryrun as Mock)
+                    .mockResolvedValueOnce(Result.ok(initDryrunResult))
+                    .mockResolvedValueOnce(Result.ok(finalDryrunResult));
+
+                const result = await mockSimulator.trySimulateTrade();
+                assert(result.isOk());
+                expect(gasCache.get).toHaveBeenCalledWith(key);
+                expect(dryrun).toHaveBeenCalledTimes(2);
+                expect(mockSimulator.setTransactionData).toHaveBeenCalledTimes(3);
+                expect(mockSimulator.setTransactionData).toHaveBeenNthCalledWith(1, {
+                    ...preparedParams,
+                    minimumExpected: 0n,
+                });
+                expect(gasCache.recordInit).toHaveBeenCalledWith(key, 21000n, 100n);
+                expect(gasCache.recordFinal).toHaveBeenCalledWith(key, 22000n, 300n);
+            });
+
+            it("should not record the init sample when the init dryrun fails", async () => {
+                gasCache.get.mockReturnValue(undefined);
+                (dryrun as Mock).mockResolvedValueOnce(
+                    Result.err({ spanAttributes: { error: "reverted" } }),
+                );
+
+                const result = await mockSimulator.trySimulateTrade();
+                assert(result.isErr());
+                expect(result.error.reason).toBe(SimulationHaltReason.NoOpportunity);
+                expect(gasCache.recordInit).not.toHaveBeenCalled();
+                expect(gasCache.recordFinal).not.toHaveBeenCalled();
+            });
+
+            it("should not use the cache when gasCoveragePercentage is 0", async () => {
+                (mockSolver.appOptions as any).gasCoveragePercentage = "0";
+                gasCache.get.mockReturnValue({ gas: 20000n, l1Cost: 500n });
+                (dryrun as Mock).mockResolvedValueOnce(Result.ok(initDryrunResult));
+
+                const result = await mockSimulator.trySimulateTrade();
+                assert(result.isOk());
+
+                // the init dryrun is the only onchain validation here, so it always runs
+                expect(gasCache.get).not.toHaveBeenCalled();
+                expect(gasCache.recordInit).not.toHaveBeenCalled();
+                expect(dryrun).toHaveBeenCalledTimes(1);
+                expect(mockSimulator.setTransactionData).toHaveBeenCalledWith({
+                    ...preparedParams,
+                    minimumExpected: 0n,
+                });
+            });
+
+            it("should not use the cache for trade types other than sushi route processor", async () => {
+                (mockSimulator.prepareTradeParams as Mock).mockResolvedValue(
+                    Result.ok({ ...preparedParams, type: TradeType.Balancer }),
+                );
+                gasCache.get.mockReturnValue({ gas: 20000n, l1Cost: 500n });
+                (dryrun as Mock)
+                    .mockResolvedValueOnce(Result.ok(initDryrunResult))
+                    .mockResolvedValueOnce(Result.ok(finalDryrunResult));
+
+                const result = await mockSimulator.trySimulateTrade();
+                assert(result.isOk());
+                expect(gasCache.get).not.toHaveBeenCalled();
+                expect(gasCache.recordInit).not.toHaveBeenCalled();
+                expect(gasCache.recordFinal).not.toHaveBeenCalled();
+                expect(dryrun).toHaveBeenCalledTimes(2);
+            });
+
+            it("should not use the cache when disabled by config", async () => {
+                (mockSolver.appOptions as any).dryrunGasCache = false;
+                gasCache.get.mockReturnValue({ gas: 20000n, l1Cost: 500n });
+                (dryrun as Mock)
+                    .mockResolvedValueOnce(Result.ok(initDryrunResult))
+                    .mockResolvedValueOnce(Result.ok(finalDryrunResult));
+
+                const result = await mockSimulator.trySimulateTrade();
+                assert(result.isOk());
+                expect(gasCache.get).not.toHaveBeenCalled();
+                expect(gasCache.recordInit).not.toHaveBeenCalled();
+                expect(gasCache.recordFinal).not.toHaveBeenCalled();
+                expect(dryrun).toHaveBeenCalledTimes(2);
+            });
+        });
+
         it("should return error if last setTransactionData fails when gasCoveragePercentage is NOT 0", async () => {
             const preparedResult = Result.ok(preparedParams);
             (mockSimulator.prepareTradeParams as Mock).mockResolvedValueOnce(preparedResult);

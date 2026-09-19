@@ -110,6 +110,8 @@ export async function sweepFunds(opts: SweepOptions) {
         routerPartialFallback: true,
         routerPartialFallbackSteps: 4,
         routerSecondaryRouteTry: "max",
+        dryrunGasCache: false,
+        dryrunGasCacheResetTime: 60,
         strictMaxOwnerProfileCheck: false,
         strictMaxOwnerProfilePartialTradeSizeCheck: false,
         timeout: 15_000,
