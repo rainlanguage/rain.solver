@@ -58,6 +58,32 @@ export async function promiseTimeout<T>(
 }
 
 /**
+ * Races the given promises of Result values and resolves with the first one
+ * that resolves ok, a rejecting result (err) does not end the race, it only
+ * ends the race when it is the last one remaining, in which case the race
+ * resolves with undefined meaning all results settled with err, a rejected
+ * promise rejects the race itself
+ * @param promises - The promises of Result values to race
+ * @returns The first ok Result, or undefined when all of them are err
+ */
+export async function raceFirstOk<V, E>(
+    promises: Promise<Result<V, E>>[],
+): Promise<Result<V, E> | undefined> {
+    return await new Promise((resolve, reject) => {
+        if (!promises.length) return resolve(undefined);
+        let remaining = promises.length;
+        const settle = (result: Result<V, E>) => {
+            if (result.isOk()) {
+                resolve(result); // first ok wins the race
+            } else if (--remaining === 0) {
+                resolve(undefined); // all settled with err
+            }
+        };
+        promises.forEach((promise) => promise.then(settle, reject));
+    });
+}
+
+/**
  * Json serializer function for handling bigint type
  */
 export function withBigintSerializer(_k: string, v: any) {

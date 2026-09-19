@@ -1,8 +1,10 @@
 import { vi, describe, it, expect, beforeEach, afterEach, assert } from "vitest";
+import { Result } from "./result";
 import {
     sleep,
     toFloat,
     iterRandom,
+    raceFirstOk,
     shuffleArray,
     promiseTimeout,
     normalizeFloat,
@@ -315,6 +317,57 @@ describe("Test iterRandom function", () => {
         });
 
         expect(iterRandomTime).toBeLessThan(iterShuffleArrayTime);
+    });
+});
+
+describe("Test raceFirstOk", () => {
+    const delayed = <T>(ms: number, value: T): Promise<T> =>
+        new Promise((resolve) => setTimeout(() => resolve(value), ms));
+
+    it("should resolve with the first ok result", async () => {
+        const winner: Result<string, string> = Result.ok("fast");
+        const result = await raceFirstOk<string, string>([
+            Promise.resolve(Result.err("error")),
+            Promise.resolve(winner),
+            delayed<Result<string, string>>(20, Result.ok("slow")),
+        ]);
+
+        expect(result).toBe(winner);
+    });
+
+    it("should resolve with a late ok result when earlier ones are err", async () => {
+        const winner: Result<string, string> = Result.ok("slow but ok");
+        const result = await raceFirstOk<string, string>([
+            Promise.resolve(Result.err("error1")),
+            Promise.resolve(Result.err("error2")),
+            delayed(10, winner),
+        ]);
+
+        expect(result).toBe(winner);
+    });
+
+    it("should resolve undefined when all results are err", async () => {
+        const result = await raceFirstOk<string, string>([
+            Promise.resolve(Result.err("error1")),
+            delayed(10, Result.err("error2")),
+        ]);
+
+        expect(result).toBeUndefined();
+    });
+
+    it("should resolve undefined for an empty list", async () => {
+        const result = await raceFirstOk<string, string>([]);
+
+        expect(result).toBeUndefined();
+    });
+
+    it("should reject when a promise rejects", async () => {
+        await expect(
+            raceFirstOk<string, string>([
+                Promise.resolve(Result.err("error")),
+                Promise.reject(new Error("boom")),
+            ]),
+        ).rejects.toThrow("boom");
     });
 });
 

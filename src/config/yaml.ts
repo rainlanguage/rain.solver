@@ -127,6 +127,10 @@ export type AppOptions = {
     blockTime: number;
     /** Enables the halving backoff retries for router mode partial trades that get rejected onchain, default is true */
     routerPartialFallback: boolean;
+    /** The number of halving backoff steps to run concurrently for router mode partial trades that get rejected onchain, default is 4 */
+    routerPartialFallbackSteps: number;
+    /** Sets which orders get a secondary router mode try with the failing route dexes excluded after an onchain rejection, "all" for every order, "max" for orders of max profile owners only, "off" for none, default is "max" */
+    routerSecondaryRouteTry: "all" | "max" | "off";
     /** When true, zero output balance pairs of max profile owners go to round processing, when false, all zero output balance pairs are skipped, default is false */
     strictMaxOwnerProfileCheck: boolean;
     /** When true, the router mode fallback partial trade backoff runs on any partial sim failure for orders of max profile owners, default is false */
@@ -214,6 +218,18 @@ export namespace AppOptions {
                         assert(
                             defaultOwnerLimit > 0,
                             "invalid defaultOwnerLimit value, must be an integer greater than 0",
+                        ),
+                ),
+                routerPartialFallbackSteps: Validator.resolveNumericValue(
+                    input.routerPartialFallbackSteps,
+                    INT_PATTERN,
+                    "invalid routerPartialFallbackSteps value, must be an integer greater than 0",
+                    "4",
+                    undefined,
+                    (routerPartialFallbackSteps) =>
+                        assert(
+                            routerPartialFallbackSteps > 0,
+                            "invalid routerPartialFallbackSteps value, must be an integer greater than 0",
                         ),
                 ),
                 selfFundVaults: Validator.resolveSelfFundVaults(input.selfFundVaults),
@@ -403,6 +419,9 @@ export namespace AppOptions {
                     input.routerPartialFallback,
                     "expected a boolean value for routerPartialFallback",
                     true,
+                ),
+                routerSecondaryRouteTry: Validator.resolveRouterSecondaryRouteTry(
+                    input.routerSecondaryRouteTry,
                 ),
                 strictMaxOwnerProfileCheck: Validator.resolveBool(
                     input.strictMaxOwnerProfileCheck,

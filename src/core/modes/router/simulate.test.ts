@@ -260,6 +260,83 @@ describe("Test RouterTradeSimulator", () => {
             expect(mockSolver.state.contracts.getAddressesForTrade).not.toHaveBeenCalled();
         });
 
+        it("should skip the price match check when skipPriceMatchCheck is set", async () => {
+            const params = {
+                type: RouterType.Sushi,
+                quote: {
+                    type: RouterType.Sushi,
+                    status: "Success",
+                    price: ONE18 / 2n,
+                    route: {
+                        route: {},
+                        pcMap: new Map(),
+                    },
+                    amountOut: ONE18 / 2n,
+                },
+                routeVisual: ["some route"],
+                takeOrdersConfigStruct: {} as any,
+            };
+            (mockSolver.state.router.getTradeParams as Mock).mockResolvedValueOnce(
+                Result.ok(params),
+            );
+            simulator = new RouterTradeSimulator({ ...tradeArgs, skipPriceMatchCheck: true });
+
+            // the market price is lower than the order ratio, but the
+            // check is skipped so the params get built for dryrun
+            const result = await simulator.prepareTradeParams();
+            assert(result.isOk());
+            expect(result.value.type).toBe(TradeType.RouteProcessor);
+            expect(result.value.price).toBe(params.quote.price);
+            expect(simulator.spanAttributes["error"]).toBeUndefined();
+            expect(simulator.spanAttributes["routeReused"]).toBeUndefined();
+            expect(mockSolver.state.contracts.getAddressesForTrade).toHaveBeenCalledWith(
+                tradeArgs.orderDetails,
+                TradeType.RouteProcessor,
+            );
+        });
+
+        it("should pass lockRoute through and flag the reused route when locked to a sushi quote", async () => {
+            const mockSushiQuote = { route: { pcMap: new Map() }, price: 1n } as any;
+            const params = {
+                type: RouterType.Sushi,
+                quote: {
+                    type: RouterType.Sushi,
+                    status: "Success",
+                    price: 1234n * ONE18,
+                    route: {
+                        route: {},
+                        pcMap: new Map(),
+                    },
+                    amountOut: 1234n * ONE18,
+                },
+                routeVisual: ["some route"],
+                takeOrdersConfigStruct: {} as any,
+            };
+            (mockSolver.state.router.getTradeParams as Mock).mockResolvedValueOnce(
+                Result.ok(params),
+            );
+            simulator = new RouterTradeSimulator({
+                ...tradeArgs,
+                sushiQuote: mockSushiQuote,
+                lockRoute: true,
+            });
+
+            const result = await simulator.prepareTradeParams();
+            assert(result.isOk());
+            expect(simulator.spanAttributes["routeReused"]).toBe(true);
+            expect(mockSolver.state.router.getTradeParams).toHaveBeenCalledWith(
+                expect.objectContaining({ sushiQuote: mockSushiQuote, lockRoute: true }),
+            );
+
+            // lockRoute without a sushi quote does not flag the route as reused
+            (mockSolver.state.router.getTradeParams as Mock).mockResolvedValueOnce(
+                Result.ok(params),
+            );
+            simulator = new RouterTradeSimulator({ ...tradeArgs, lockRoute: true });
+            await simulator.prepareTradeParams();
+            expect(simulator.spanAttributes["routeReused"]).toBeUndefined();
+        });
+
         it("should return success", async () => {
             const params = {
                 type: RouterType.Balancer,

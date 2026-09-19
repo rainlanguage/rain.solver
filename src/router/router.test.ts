@@ -908,6 +908,127 @@ describe("RainSolverRouter", () => {
             balancerSpy.mockRestore();
             sushiSpy.mockRestore();
         });
+
+        describe("locked route", () => {
+            const sushiQuote = {
+                type: RouterType.Sushi,
+                status: RouteStatus.Success,
+                price: 3000n * ONE18,
+                amountOut: 2500000000n,
+                route: { route: {}, pcMap: new Map() },
+            } as any;
+            const lockedArgs: GetTradeParamsArgs = { ...mockArgs, sushiQuote, lockRoute: true };
+
+            it("should only call sushi getTradeParams when locked to a sushi quote", async () => {
+                const sushiResult = Result.ok({
+                    type: RouterType.Sushi,
+                    quote: sushiQuote,
+                    routeVisual: [],
+                    takeOrdersConfigStruct: {} as any,
+                }) as any;
+                const sushiSpy = vi.spyOn(mockSushiRouter, "getTradeParams");
+                sushiSpy.mockResolvedValue(sushiResult);
+                const balancerSpy = vi.spyOn(mockBalancerRouter, "getTradeParams");
+                const stabullSpy = vi.spyOn(mockStabullRouter, "getTradeParams");
+
+                const result = await router.getTradeParams(lockedArgs);
+
+                assert(result.isOk());
+                expect(result.value.type).toBe(RouterType.Sushi);
+                expect(result.value.quote).toBe(sushiQuote);
+                expect(sushiSpy).toHaveBeenCalledWith(lockedArgs);
+                expect(balancerSpy).not.toHaveBeenCalled();
+                expect(stabullSpy).not.toHaveBeenCalled();
+
+                sushiSpy.mockRestore();
+                balancerSpy.mockRestore();
+                stabullSpy.mockRestore();
+            });
+
+            it("should return error when locked sushi getTradeParams fails", async () => {
+                const sushiSpy = vi.spyOn(mockSushiRouter, "getTradeParams");
+                sushiSpy.mockResolvedValue(
+                    Result.err(
+                        new SushiRouterError("sushi error", SushiRouterErrorType.NoRouteFound),
+                    ) as any,
+                );
+                const balancerSpy = vi.spyOn(mockBalancerRouter, "getTradeParams");
+                const stabullSpy = vi.spyOn(mockStabullRouter, "getTradeParams");
+
+                const result = await router.getTradeParams(lockedArgs);
+
+                assert(result.isErr());
+                expect(result.error.message).toContain("Failed to reuse trade route");
+                expect(result.error.typ).toBe(RainSolverRouterErrorType.NoRouteFound);
+                expect(balancerSpy).not.toHaveBeenCalled();
+                expect(stabullSpy).not.toHaveBeenCalled();
+
+                sushiSpy.mockRestore();
+                balancerSpy.mockRestore();
+                stabullSpy.mockRestore();
+            });
+
+            it("should return error when sushi router is not available", async () => {
+                (router.sushi as any) = undefined;
+                const balancerSpy = vi.spyOn(mockBalancerRouter, "getTradeParams");
+                const stabullSpy = vi.spyOn(mockStabullRouter, "getTradeParams");
+
+                const result = await router.getTradeParams(lockedArgs);
+
+                assert(result.isErr());
+                expect(result.error.message).toContain("sushi router is not available");
+                expect(result.error.typ).toBe(RainSolverRouterErrorType.NoRouteFound);
+                expect(balancerSpy).not.toHaveBeenCalled();
+                expect(stabullSpy).not.toHaveBeenCalled();
+
+                balancerSpy.mockRestore();
+                stabullSpy.mockRestore();
+            });
+
+            it("should quote all routers when lockRoute is set without a sushi quote", async () => {
+                const balancerResult = Result.ok({
+                    type: RouterType.Balancer,
+                    quote: {
+                        type: RouterType.Balancer as const,
+                        status: RouteStatus.Success,
+                        price: 3000n * ONE18,
+                        amountOut: 3000000000n,
+                    },
+                    routeVisual: [],
+                    takeOrdersConfigStruct: {} as any,
+                }) as any;
+                const sushiSpy = vi.spyOn(mockSushiRouter, "getTradeParams");
+                sushiSpy.mockResolvedValue(
+                    Result.err(
+                        new SushiRouterError("sushi error", SushiRouterErrorType.NoRouteFound),
+                    ) as any,
+                );
+                const balancerSpy = vi.spyOn(mockBalancerRouter, "getTradeParams");
+                balancerSpy.mockResolvedValue(balancerResult);
+                const stabullSpy = vi.spyOn(mockStabullRouter, "getTradeParams");
+                stabullSpy.mockResolvedValue(
+                    Result.err(
+                        new StabullRouterError(
+                            "stabull error",
+                            StabullRouterErrorType.NoRouteFound,
+                        ),
+                    ) as any,
+                );
+
+                const args: GetTradeParamsArgs = { ...mockArgs, lockRoute: true };
+                const result = await router.getTradeParams(args);
+
+                assert(result.isOk());
+                expect(result.value.type).toBe(RouterType.Balancer);
+                expect(sushiSpy).toHaveBeenCalledWith(args);
+                expect(balancerSpy).toHaveBeenCalledWith(args);
+                expect(stabullSpy).toHaveBeenCalledWith(args);
+
+                sushiSpy.mockRestore();
+                balancerSpy.mockRestore();
+                stabullSpy.mockRestore();
+            });
+        });
     });
 
     describe("test findLargestTradeSize method", () => {

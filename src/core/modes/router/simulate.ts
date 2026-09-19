@@ -47,6 +47,10 @@ export type SimulateRouterTradeArgs = {
     excludeDexes?: Set<LiquidityProviders>;
     /** Optional precomputed sushi quote for the given maximum input, avoids recomputing the same route */
     sushiQuote?: SushiRouterQuote;
+    /** Locks the trade to the route of the given `sushiQuote`, only the sushi router builds the trade params, no re-quoting */
+    lockRoute?: boolean;
+    /** Skips the offchain order ratio vs market price check and goes straight to dryrun */
+    skipPriceMatchCheck?: boolean;
 };
 
 /** Arguments for preparing router trade type parameters required for simulation and building tx object */
@@ -114,6 +118,7 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
             isPartial,
             excludeDexes: this.tradeArgs.excludeDexes,
             sushiQuote: this.tradeArgs.sushiQuote,
+            lockRoute: this.tradeArgs.lockRoute,
         });
         if (tradeParamsResult.isErr()) {
             const result = {
@@ -161,9 +166,18 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
         this.spanAttributes["amountOut"] = formatUnits(quote.amountOut, toToken.decimals);
         this.spanAttributes["marketPrice"] = formatUnits(quote.price, 18);
         this.spanAttributes["route"] = routeVisual;
+        if (this.tradeArgs.lockRoute && this.tradeArgs.sushiQuote) {
+            // the locked route quote belongs to a different amount, so the
+            // amountOut and marketPrice attributes above are not for this size
+            this.spanAttributes["routeReused"] = true;
+        }
 
-        // exit early if market price is lower than order quote ratio
-        if (quote.price < orderDetails.takeOrder.quote!.ratio) {
+        // exit early if market price is lower than order quote ratio, unless
+        // the check is skipped, in which case it goes straight to dryrun
+        if (
+            !this.tradeArgs.skipPriceMatchCheck &&
+            quote.price < orderDetails.takeOrder.quote!.ratio
+        ) {
             this.spanAttributes["error"] = "Order's ratio greater than market price";
             const result = {
                 type,

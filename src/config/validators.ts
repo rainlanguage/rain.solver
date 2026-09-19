@@ -207,6 +207,16 @@ export namespace Validator {
         else return route;
     }
 
+    /** Resolves config's router secondary route try mode */
+    export function resolveRouterSecondaryRouteTry(input: any): "all" | "max" | "off" {
+        const mode = (readValue(input).value || "max")?.toLowerCase();
+        assert(
+            typeof mode === "string" && (mode === "all" || mode === "max" || mode === "off"),
+            validationError("expected either of all, max or off for routerSecondaryRouteTry"),
+        );
+        return mode;
+    }
+
     /** Resolves config's rpcs */
     export function resolveRpc<isOptional extends boolean = false>(
         input: any,
