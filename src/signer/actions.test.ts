@@ -220,7 +220,7 @@ describe("Test estimateGasCost", () => {
     it("should calculate basic gas cost non-L2 chains", async () => {
         const result = await estimateGasCost(mockSigner, mockTx);
 
-        expect(mockSigner.estimateGas).toHaveBeenCalledWith(mockTx);
+        expect(mockSigner.estimateGas).toHaveBeenCalledWith({ ...mockTx, blockTag: "pending" });
         expect(result).toEqual({
             gas: 100000n,
             gasPrice: 20000000000n, // 20 gwei * 110%

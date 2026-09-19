@@ -101,6 +101,8 @@ export type AppOptions = {
     selfFundVaults?: SelfFundVault[];
     /** Option that specifies the owner limit in form of key/value */
     ownerProfile?: Record<string, number>;
+    /** The default limit for owners that have no configured owner profile, default is 5 */
+    defaultOwnerLimit: number;
     /** Optional filters for inc/exc orders, owner and orderbooks */
     sgFilter?: SgFilter;
     /** List of contract addresses required for solving */
@@ -125,6 +127,8 @@ export type AppOptions = {
     blockTime: number;
     /** Enables the halving backoff retries for router mode partial trades that get rejected onchain, default is true */
     routerPartialFallback: boolean;
+    /** When true, zero output balance pairs of max profile owners go to round processing, when false, all zero output balance pairs are skipped, default is false */
+    strictMaxOwnerProfileCheck: boolean;
     /** Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins */
     checkWalletBalanceTime: number;
     /** Optional threshold as the min expected bounty multiple that the estimated profit must exceed to boost the tx gas price, no boost applies if unset */
@@ -198,6 +202,18 @@ export namespace AppOptions {
                 liquidityProviders: Validator.resolveLiquidityProviders(input.liquidityProviders),
                 route: Validator.resolveRouteType(input.route),
                 ownerProfile: Validator.resolveOwnerProfile(input.ownerProfile),
+                defaultOwnerLimit: Validator.resolveNumericValue(
+                    input.defaultOwnerLimit,
+                    INT_PATTERN,
+                    "invalid defaultOwnerLimit value, must be an integer greater than 0",
+                    "5",
+                    undefined,
+                    (defaultOwnerLimit) =>
+                        assert(
+                            defaultOwnerLimit > 0,
+                            "invalid defaultOwnerLimit value, must be an integer greater than 0",
+                        ),
+                ),
                 selfFundVaults: Validator.resolveSelfFundVaults(input.selfFundVaults),
                 sgFilter: Validator.resolveSgFilters(input.sgFilter),
                 maxRatio: Validator.resolveBool(
@@ -385,6 +401,11 @@ export namespace AppOptions {
                     input.routerPartialFallback,
                     "expected a boolean value for routerPartialFallback",
                     true,
+                ),
+                strictMaxOwnerProfileCheck: Validator.resolveBool(
+                    input.strictMaxOwnerProfileCheck,
+                    "expected a boolean value for strictMaxOwnerProfileCheck",
+                    false,
                 ),
                 checkWalletBalanceTime: Validator.resolveNumericValue(
                     input.checkWalletBalanceTime,

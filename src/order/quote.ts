@@ -50,6 +50,7 @@ export async function quoteSingleOrderV3(
                 args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.struct)],
             }),
             gas,
+            blockTag: "pending",
         })
         .catch((error) => {
             orderDetails.takeOrder.quote = undefined;
@@ -94,6 +95,7 @@ export async function quoteSingleOrderV4(
                 args: [TakeOrder.getQuoteConfig(orderDetails.takeOrder.struct)],
             }),
             gas,
+            blockTag: "pending",
         })
         .catch((error) => {
             orderDetails.takeOrder.quote = undefined;
