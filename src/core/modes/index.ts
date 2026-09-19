@@ -31,12 +31,14 @@ export type FindBestTradeArgs = {
 };
 
 /**
- * Finds and returns the most profitable trade transaction and other relevant information for the given order
+ * Finds and returns a trade transaction and other relevant information for the given order
  * to be broadcasted onchain.
  *
- * This function concurrently evaluates multiple trade strategies, including route processor, intra-orderbook,
- * and inter-orderbook trades. It selects the trade with the highest estimated profit among all successful
- * results. If all strategies fail, it aggregates error information and returns a comprehensive error result.
+ * This function concurrently evaluates multiple trade strategies, including route processor,
+ * intra-orderbook and inter-orderbook trades. It resolves with the first strategy that
+ * simulates successfully, so the found opportunity is acted on with the lowest latency
+ * instead of waiting for all strategies to settle. If all strategies fail, it aggregates
+ * error information and returns a comprehensive error result.
  *
  * @param this - The instance of `RainSolver`
  * @param args - The arguments required to find the best trade
@@ -99,35 +101,38 @@ export async function findBestTrade(
             blockNumber,
         ),
     ];
-    const results = (await Promise.all(promises)).filter(
-        (v) => v !== undefined,
-    ) as SimulationResult[];
+    const trades = promises.filter((v) => v !== undefined) as Promise<SimulationResult>[];
 
-    // if at least one result is ok, we can proceed to pick the best one
-    if (results.some((v) => v.isOk())) {
-        // sort results descending by estimated profit,
-        // so those that are errors will be at the end
-        // and the first one will be the one with highest estimated profit
-        // as we know at least one result is ok, so we can safely access it
-        const pick = results.sort((a, b) => {
-            if (a.isErr() && b.isErr()) return 0;
-            if (a.isErr()) return 1;
-            if (b.isErr()) return -1;
-            return a.value.estimatedProfit < b.value.estimatedProfit
-                ? 1
-                : a.value.estimatedProfit > b.value.estimatedProfit
-                  ? -1
-                  : 0;
-        })[0];
+    // resolve with the first trade sim that succeeds instead of waiting for all
+    // of them to settle, so the found opportunity is acted on with the lowest
+    // latency, the sims that lose the race keep running in the background but
+    // their outcome is discarded, resolves undefined when all sims fail
+    const pick = await new Promise<SimulationResult | undefined>((resolve, reject) => {
+        if (!trades.length) return resolve(undefined);
+        let remaining = trades.length;
+        const settle = (result: SimulationResult) => {
+            if (result.isOk()) {
+                resolve(result); // first success wins the race
+            } else if (--remaining === 0) {
+                resolve(undefined); // all sims failed
+            }
+        };
+        trades.forEach((trade) => trade.then(settle, reject));
+    });
 
+    if (pick) {
         // set the picked trade type in attrs
-        assert(pick.isOk()); // just for type check as we know at least one result is ok
+        assert(pick.isOk()); // just for type check as we know the picked result is ok
         pick.value.spanAttributes["tradeType"] = pick.value.type;
 
         return pick;
     } else {
         const spanAttributes: Attributes = {};
         let noneNodeError: string | undefined = undefined;
+
+        // all sims have already settled with error at this point, so this
+        // resolves instantly while keeping the original trade type order
+        const results = await Promise.all(trades);
 
         // extend span attributes with the result error attrs and trade type header
         for (const result of results) {
