@@ -12,6 +12,8 @@ import { Chain, Account, Transport, formatUnits, PublicClient, encodeAbiParamete
 import {
     RouterType,
     RouteStatus,
+    TradeSizeResult,
+    TradeSizeStatus,
     GetTradeParamsArgs,
     RainSolverRouterBase,
     RainSolverRouterQuoteParams,
@@ -433,17 +435,21 @@ export class SushiRouter extends RainSolverRouterBase {
             );
         }
 
-        // get route details from sushi dataFetcher
-        const quoteResult = await this.tryQuote({
-            fromToken,
-            toToken,
-            amountIn: maximumInput,
-            gasPrice,
-            blockNumber,
-            skipFetch: true,
-            sushiRouteType: state.appOptions.route,
-            excludeDexes: args.excludeDexes,
-        });
+        // use the precomputed quote when given, since recomputing the route
+        // for the same amount is deterministic and yields the same result,
+        // otherwise get route details from sushi dataFetcher
+        const quoteResult = args.sushiQuote
+            ? Result.ok<SushiRouterQuote, SushiRouterError>(args.sushiQuote)
+            : await this.tryQuote({
+                  fromToken,
+                  toToken,
+                  amountIn: maximumInput,
+                  gasPrice,
+                  blockNumber,
+                  skipFetch: true,
+                  sushiRouteType: state.appOptions.route,
+                  excludeDexes: args.excludeDexes,
+              });
 
         // exit early if no route found
         if (quoteResult.isErr()) {
@@ -501,9 +507,13 @@ export class SushiRouter extends RainSolverRouterBase {
     }
 
     /**
-     * Calculates the largest possible partial trade size for rp clear, returns undefined if
-     * it cannot be determined due to the fact that order's ratio being higher than market
-     * price
+     * Searches for the largest possible partial trade size for rp clear, the result
+     * status determines the outcome: Found means the returned size clears the order
+     * ratio at quoted prices, PriceMismatch means routes exist but no size clears the
+     * order ratio and the returned size is the biggest size that had a route, NoWay
+     * means no route exists at any size, in absolute mode the search instead looks
+     * for the largest size below the price impact tolerance and the result is either
+     * Found or NoWay
      * @param orderDetails - The order details
      * @param toToken - The token to trade to
      * @param fromToken - The token to trade from
@@ -520,8 +530,11 @@ export class SushiRouter extends RainSolverRouterBase {
         routeType: "single" | "multi" = "single",
         absolute = false,
         excludeDexes?: Set<string>,
-    ): bigint | undefined {
+    ): TradeSizeResult {
         const result: bigint[] = [];
+        let foundQuote: SushiRouterQuote | undefined = undefined;
+        let biggestRoutedSize: bigint | undefined = undefined;
+        let biggestRoutedQuote: SushiRouterQuote | undefined = undefined;
         const gasPrice = Number(gasPriceBI);
         const ratio = orderDetails.takeOrder.quote!.ratio;
         const liquidityProviders = this.getFilteredLiquidityProviders(excludeDexes);
@@ -543,41 +556,72 @@ export class SushiRouter extends RainSolverRouterBase {
                 routeType,
             );
 
-            if (route.status == "NoWay") {
+            // negative output routes count as unroutable, this mirrors the
+            // NegativeOutput guard of findBestRoute, which the probe quotes
+            // that are plugged in downstream would otherwise bypass
+            if (route.status == "NoWay" || route.amountOutBI < 0n) {
                 maximumInput = maximumInput - initAmount / 2n ** i;
-            } else if (absolute) {
+                continue;
+            }
+            // probe quote details, carried on the result for the winning size
+            // so downstream consumers dont recompute the same route again
+            const probeQuote: SushiRouterQuote = {
+                type: RouterType.Sushi,
+                status: RouteStatus.Success,
+                price: calculatePrice18(
+                    maximumInput,
+                    route.amountOutBI,
+                    fromToken.decimals,
+                    toToken.decimals,
+                ),
+                route: { route, pcMap },
+                amountOut: route.amountOutBI,
+            };
+
+            if (absolute) {
                 if (
                     typeof route.priceImpact === "undefined" ||
                     route.priceImpact < DEFAULT_PRICE_IMPACT_TOLERANCE
                 ) {
                     result.unshift(maxInput18);
+                    foundQuote = probeQuote;
                     maximumInput = maximumInput + initAmount / 2n ** i;
                 } else {
                     maximumInput = maximumInput - initAmount / 2n ** i;
                 }
             } else {
+                // keep track of the biggest size that had a route regardless
+                // of whether its price clears the order ratio or not
+                if (biggestRoutedSize === undefined || maxInput18 > biggestRoutedSize) {
+                    biggestRoutedSize = maxInput18;
+                    biggestRoutedQuote = probeQuote;
+                }
                 // realized average execution price of the simulated swap, this already
-                // includes the route's price impact, same as the trade simulation gate
-                const effectivePrice = calculatePrice18(
-                    maximumInput,
-                    route.amountOutBI,
-                    fromToken.decimals,
-                    toToken.decimals,
-                );
-                if (effectivePrice < ratio) {
+                // includes the route's price impact, same as the trade simulation gate,
+                // the probe quote price is exactly that effective price
+                if (probeQuote.price < ratio) {
                     maximumInput = maximumInput - initAmount / 2n ** i;
                 } else {
                     result.unshift(maxInput18);
+                    foundQuote = probeQuote;
                     maximumInput = maximumInput + initAmount / 2n ** i;
                 }
             }
         }
 
         if (result.length) {
-            return result[0];
-        } else {
-            return undefined;
+            return { status: TradeSizeStatus.Found, size: result[0], quote: foundQuote! };
         }
+        // only non-absolute mode reports price mismatch since
+        // absolute mode has no order ratio to match against
+        if (biggestRoutedSize !== undefined) {
+            return {
+                status: TradeSizeStatus.PriceMismatch,
+                size: biggestRoutedSize,
+                quote: biggestRoutedQuote!,
+            };
+        }
+        return { status: TradeSizeStatus.NoWay };
     }
 
     /**

@@ -1,5 +1,5 @@
 import { maxUint256 } from "viem";
-import { RainSolverRouterBase } from "./types";
+import { RainSolverRouterBase, TradeSizeStatus } from "./types";
 import { Order, OrderbookVersions, Pair, PairV3, PairV4 } from "../order";
 import { maxFloat, minFloat, Result, toFloat } from "../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
@@ -21,6 +21,25 @@ class MockRouter extends RainSolverRouterBase {
 }
 
 describe("Test RainSolverRouterBase", () => {
+    describe("Test findLargestTradeSize default implementation", () => {
+        it("should return NoWay status by default", () => {
+            const router = new MockRouter(1, {} as any);
+
+            const result = router.findLargestTradeSize(
+                {} as Pair,
+                {} as any,
+                {} as any,
+                1000n,
+                100n,
+                "single",
+            );
+
+            // the base class does not support trade size search,
+            // subclasses override it when they support it
+            expect(result).toEqual({ status: TradeSizeStatus.NoWay });
+        });
+    });
+
     describe("Test getTakeOrdersConfigV3 method", () => {
         let router: MockRouter;
         let order: PairV3;
