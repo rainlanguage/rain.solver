@@ -14,8 +14,10 @@ import { Result, extendObjectWithHeader } from "../../../common";
 export type RouterTradeAttempt = {
     /** The simulation result of the attempt */
     result: SimulationResult;
-    /** The quote of the attempt's full trade size simulation */
+    /** The quote of the attempt's trade size simulation */
     quote?: RouterTradeSimulator["quote"];
+    /** The trade size (in 18 decimals) that the attempt succeeded with */
+    tradeSize?: bigint;
 };
 
 /**
@@ -91,8 +93,10 @@ export async function findBestRouterTrade(
 
 /**
  * Tries to find a trade against rain router (balancer and sushi) for the given order,
- * it will try to simulate a trade for full trade size (order's max output)
- * and if it was not successful it will try again with partial trade size
+ * it first finds the most profitable trade size offchain (full trade size included as
+ * a candidate) and simulates that single trade size, then if the simulation gets
+ * rejected onchain due to offchain pool data overestimation, it backs off by halving
+ * the trade size validated against onchain dryrun until one passes
  * @param this - RainSolver instance
  * @param orderDetails - The details of the order to be processed
  * @param signer - The signer to be used for the trade
@@ -140,51 +144,10 @@ export async function tryFindBestRouterTrade(
 
     const maximumInput = orderDetails.takeOrder.quote!.maxOutput;
 
-    // try simulation for full trade size and return if succeeds
-    const fullTradeSimulator = RouterTradeSimulator.withArgs({
-        type: TradeType.Router,
-        solver: this,
-        orderDetails,
-        fromToken,
-        toToken,
-        signer,
-        maximumInputFixed: maximumInput,
-        ethPrice,
-        isPartial: false,
-        blockNumber,
-        excludeDexes,
-    });
-    const fullTradeSizeSimResult = await fullTradeSimulator.trySimulateTrade();
-    let quote = fullTradeSimulator.quote;
-    if (fullTradeSizeSimResult.isOk()) {
-        return { result: fullTradeSizeSimResult, quote };
-    }
-    extendObjectWithHeader(spanAttributes, fullTradeSizeSimResult.error.spanAttributes, "full");
-
-    // return early if dryrun failed
-    // in other words only try partial trade size if the full trade size failed due
-    // to order ratio being greater than market price or there was no route for full
-    // trade size, that's because if for example for a pair there is only 1 pool and that
-    // pool has certain amount of reserves that cant cover the full trade size but can
-    // cover partial, we still need to try it
-    if (
-        fullTradeSizeSimResult.error.reason !== SimulationHaltReason.NoRoute &&
-        fullTradeSizeSimResult.error.reason !==
-            SimulationHaltReason.OrderRatioGreaterThanMarketPrice
-    ) {
-        return {
-            result: Result.err({
-                type: fullTradeSizeSimResult.error.type,
-                spanAttributes,
-                noneNodeError: fullTradeSizeSimResult.error.noneNodeError,
-                reason: fullTradeSizeSimResult.error.reason,
-            }),
-            quote,
-        };
-    }
-
-    // try simulation for partial trade size
-    const partialTradeSize = this.state.router.findLargestTradeSize(
+    // find the most profitable trade size offchain, the full trade size is
+    // included as a candidate in the search so the winner competes among all
+    // viable sizes including the full size
+    const mostProfitableTradeSize = this.state.router.findLargestTradeSize(
         orderDetails,
         toToken,
         fromToken,
@@ -194,53 +157,46 @@ export async function tryFindBestRouterTrade(
         false,
         excludeDexes,
     );
-    if (!partialTradeSize) {
-        spanAttributes["partial.error"] = "no viable partial trade size found";
-        return {
-            result: Result.err({
-                type: fullTradeSizeSimResult.error.type,
-                spanAttributes,
-                noneNodeError: fullTradeSizeSimResult.error.noneNodeError,
-            }),
-            quote,
-        };
-    }
-    const partialTradeSimulator = RouterTradeSimulator.withArgs({
+
+    // fall back to the full trade size when no profitable size was found, ie
+    // when the order ratio is above the sushi market price or sushi has no
+    // route at all, since the size finder only knows sushi liquidity, while
+    // the simulation still quotes balancer and stabull routes as well
+    const tradeSize = mostProfitableTradeSize ?? maximumInput;
+
+    // simulate the trade for the determined trade size
+    const simulator = RouterTradeSimulator.withArgs({
         type: TradeType.Router,
         solver: this,
         orderDetails,
         fromToken,
         toToken,
         signer,
-        maximumInputFixed: partialTradeSize,
+        maximumInputFixed: tradeSize,
         ethPrice,
-        isPartial: true,
+        isPartial: tradeSize < maximumInput,
         blockNumber,
         excludeDexes,
     });
-    const partialTradeSizeSimResult = await partialTradeSimulator.trySimulateTrade();
-    quote = partialTradeSimulator.quote ?? quote;
-    if (partialTradeSizeSimResult.isOk()) {
-        return { result: partialTradeSizeSimResult, quote };
+    const simResult = await simulator.trySimulateTrade();
+    const quote = simulator.quote;
+    if (simResult.isOk()) {
+        return { result: simResult, quote, tradeSize };
     }
-    extendObjectWithHeader(
-        spanAttributes,
-        partialTradeSizeSimResult.error.spanAttributes,
-        "partial",
-    );
+    Object.assign(spanAttributes, simResult.error.spanAttributes);
+    const reason = simResult.error.reason;
 
-    // if the partial trade size sim got rejected onchain with MinimalOutputBalanceViolation,
-    // it means the offchain pool data overestimated the output for the found partial trade
-    // size, so backoff by halving the trade size at each step validated against onchain
-    // dryrun and accept the first size that passes, the backoff stops early if a step fails
-    // with any other error
-    const reason = partialTradeSizeSimResult.error.reason;
-    if (SimulationHaltReason.needsRetry(partialTradeSizeSimResult.error.spanAttributes["error"])) {
-        let fallbackTradeSize = partialTradeSize;
+    // if the trade sim got rejected onchain with MinimalOutputBalanceViolation,
+    // it means the offchain pool data overestimated the output for the found
+    // trade size, so backoff by halving the trade size at each step validated
+    // against onchain dryrun and accept the first size that passes, the backoff
+    // stops early if a step fails with any other error
+    if (SimulationHaltReason.needsRetry(simResult.error.spanAttributes["error"])) {
+        let fallbackTradeSize = tradeSize;
         for (let i = 1; i <= 4; i++) {
             fallbackTradeSize /= 2n;
             if (fallbackTradeSize <= 0n) break;
-            const partialFallbackSimulator = RouterTradeSimulator.withArgs({
+            const fallbackSimulator = RouterTradeSimulator.withArgs({
                 type: TradeType.Router,
                 solver: this,
                 orderDetails,
@@ -253,31 +209,25 @@ export async function tryFindBestRouterTrade(
                 blockNumber,
                 excludeDexes,
             });
-            const partialFallbackSimResult = await partialFallbackSimulator.trySimulateTrade();
-            if (partialFallbackSimResult.isOk()) {
-                return { result: partialFallbackSimResult, quote };
+            const fallbackSimResult = await fallbackSimulator.trySimulateTrade();
+            if (fallbackSimResult.isOk()) {
+                return { result: fallbackSimResult, quote, tradeSize: fallbackTradeSize };
             }
             extendObjectWithHeader(
                 spanAttributes,
-                partialFallbackSimResult.error.spanAttributes,
-                `partialFallback${i}`,
+                fallbackSimResult.error.spanAttributes,
+                `fallback${i}`,
             );
-            if (
-                !SimulationHaltReason.needsRetry(
-                    partialFallbackSimResult.error.spanAttributes["error"],
-                )
-            ) {
+            if (!SimulationHaltReason.needsRetry(fallbackSimResult.error.spanAttributes["error"])) {
                 break;
             }
         }
     }
     return {
         result: Result.err({
-            type: fullTradeSizeSimResult.error.type,
+            type: simResult.error.type,
             spanAttributes,
-            noneNodeError:
-                fullTradeSizeSimResult.error.noneNodeError ??
-                partialTradeSizeSimResult.error.noneNodeError,
+            noneNodeError: simResult.error.noneNodeError,
             reason,
         }),
         quote,

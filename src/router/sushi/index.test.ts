@@ -1,4 +1,4 @@
-import { ONE18 } from "../../math";
+import { ONE18, scaleTo18 } from "../../math";
 import { Token } from "sushi/currency";
 import { SharedState } from "../../state";
 import { Dispair, Result } from "../../common";
@@ -1034,10 +1034,16 @@ describe("test SushiRouter methods", () => {
             expect(result).toBeUndefined();
         });
 
-        it("should return the largest valid trade size when some routes are valid", () => {
-            (Router.findBestRoute as Mock).mockImplementation(() => {
-                return { status: "OK", amountOutBI: 4n * ONE18 };
-            });
+        it("should return the most profitable trade size instead of the largest viable one", () => {
+            // concave route output: doubles the input up to a cap of 8, so with
+            // ratio of 1 the estimated profit (out - in * ratio) peaks at input
+            // of 4, while the largest viable (zero profit) size would be 8
+            (Router.findBestRoute as Mock).mockImplementation(
+                (_pcMap: any, _chainId: any, _fromToken: any, amountIn: bigint) => ({
+                    status: "OK",
+                    amountOutBI: amountIn * 2n > 8n * ONE18 ? 8n * ONE18 : amountIn * 2n,
+                }),
+            );
 
             const orderDetails = makeOrderDetails(1n * ONE18);
 
@@ -1049,8 +1055,83 @@ describe("test SushiRouter methods", () => {
                 gasPrice,
             );
 
-            expect(typeof result).toBe("bigint");
-            expect(result).toBe(3999999761581420898n);
+            assert(typeof result === "bigint");
+            // should converge near the profit peak at 4,
+            // far below the largest viable size of ~8
+            expect(result).toBeGreaterThan((35n * ONE18) / 10n);
+            expect(result).toBeLessThan((45n * ONE18) / 10n);
+        });
+
+        it("should return the exact full trade size when profit peaks at the full size", () => {
+            // profit strictly increases with size, so the full size is the most
+            // profitable, it is probed as an explicit candidate since the ternary
+            // search itself never probes the range boundaries
+            (Router.findBestRoute as Mock).mockImplementation(
+                (_pcMap: any, _chainId: any, _fromToken: any, amountIn: bigint) => ({
+                    status: "OK",
+                    amountOutBI: amountIn * 2n,
+                }),
+            );
+
+            const result = router.findLargestTradeSize(
+                makeOrderDetails(1n * ONE18),
+                toToken,
+                fromToken,
+                maximumInputFixed,
+                gasPrice,
+            );
+
+            expect(result).toBe(maximumInputFixed);
+        });
+
+        it("should return the given full size as is for low decimal tokens with sub-precision dust", () => {
+            fromToken = { address: "0xFrom", decimals: 6 } as any;
+            // full size carries dust below the 6 decimal token precision, when
+            // the full size wins it must be returned as given so it does not
+            // wrongly read as a partial size after scaling truncation
+            maximumInputFixed = 10n * ONE18 + 123n;
+            (Router.findBestRoute as Mock).mockImplementation(
+                (_pcMap: any, _chainId: any, _fromToken: any, amountIn: bigint) => ({
+                    status: "OK",
+                    amountOutBI: scaleTo18(amountIn, 6) * 2n,
+                }),
+            );
+
+            const result = router.findLargestTradeSize(
+                makeOrderDetails(1n * ONE18),
+                toToken,
+                fromToken,
+                maximumInputFixed,
+                gasPrice,
+            );
+
+            expect(result).toBe(maximumInputFixed);
+        });
+
+        it("should return the largest size below price impact tolerance in absolute mode", () => {
+            // price impact crosses the default tolerance (2.5) above input size of 5
+            (Router.findBestRoute as Mock).mockImplementation(
+                (_pcMap: any, _chainId: any, _fromToken: any, amountIn: bigint) => ({
+                    status: "OK",
+                    amountOutBI: amountIn,
+                    priceImpact: amountIn > 5n * ONE18 ? 3 : 1,
+                }),
+            );
+
+            const result = router.findLargestTradeSize(
+                makeOrderDetails(1n * ONE18),
+                toToken,
+                fromToken,
+                maximumInputFixed,
+                gasPrice,
+                "single",
+                true, // absolute mode
+            );
+
+            assert(typeof result === "bigint");
+            // bisection converges to the largest size below the impact threshold at 5
+            expect(result).toBeGreaterThan((49n * ONE18) / 10n);
+            expect(result).toBeLessThanOrEqual(5n * ONE18);
         });
 
         it("should return undefined if all OK routes have price < ratio", () => {
