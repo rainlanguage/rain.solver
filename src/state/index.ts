@@ -22,6 +22,7 @@ import {
     webSocket,
     parseUnits,
     formatUnits,
+    hexToBigInt,
     PublicClient,
     createPublicClient,
     ReadContractErrorType,
@@ -29,6 +30,71 @@ import {
 
 /** Delay (in ms) before an errored ws new heads subscription is re-established */
 export const WS_RESUBSCRIBE_DELAY = 15_000;
+
+/** The raw eth_subscribe interface of the viem ws transport */
+type WsTransportSubscribe = {
+    subscribe(args: {
+        params: string[];
+        onData: (data: any) => void;
+        onError?: (error: any) => void;
+    }): Promise<{ unsubscribe: () => Promise<unknown> }>;
+};
+
+/** Matches a non-empty hex quantity string */
+const HEX_QUANTITY_PATTERN = /^0x[0-9a-f]+$/i;
+
+/**
+ * Subscribes to the flashblocks heads (newFlashblocks) of the given ws client,
+ * every flashblock head carries the number of the block it belongs to, so the
+ * block number moves as soon as the first flashblock of a new block shows up,
+ * this mirrors the subscription branch of viem's watchBlockNumber with the
+ * subscription params swapped, with two additions, the error callback is
+ * also gated on the active flag, since viem gets that from its observe
+ * wrapper that drops the listeners on unwatch, which is not in play here,
+ * and the head number is checked before parsing, since a throw here lands
+ * in the socket message listener uncaught and the flashblocks payload is
+ * provider specific
+ * @param wsClient - The ws client to subscribe through
+ * @param onBlockNumber - Called with the flashblock head block number
+ * @param onError - Called when the subscription errors
+ * @returns A function that unsubscribes
+ */
+export function subscribeToFlashblocks(
+    wsClient: PublicClient,
+    onBlockNumber: (blockNumber: bigint) => void,
+    onError: (error: any) => void,
+): () => void {
+    let active = true;
+    let unsubscribe: () => unknown = () => (active = false);
+    (async () => {
+        try {
+            // the ws transport subscribe is typed for new heads only, so go
+            // through a structural type to pass the flashblocks params
+            const transport = wsClient.transport as unknown as WsTransportSubscribe;
+            const { unsubscribe: unsubscribe_ } = await transport.subscribe({
+                params: ["newFlashblocks"],
+                onData(data: any) {
+                    if (!active) return;
+                    const number = data?.result?.number;
+                    if (typeof number === "string" && HEX_QUANTITY_PATTERN.test(number)) {
+                        onBlockNumber(hexToBigInt(number as `0x${string}`));
+                    }
+                },
+                onError(error: any) {
+                    if (active) onError(error);
+                },
+            });
+            unsubscribe = unsubscribe_;
+            if (!active) unsubscribe();
+        } catch (err) {
+            if (active) onError(err);
+        }
+    })();
+    return () => {
+        active = false;
+        unsubscribe();
+    };
+}
 
 /** Enumerates the possible error types that can occur within the chain config */
 export enum SharedStateErrorType {
@@ -373,7 +439,8 @@ export class SharedState {
     }
 
     /**
-     * Establishes the ws new heads subscription for block number updates,
+     * Establishes the ws subscription for block number updates, new heads by
+     * default, or flashblocks heads (newFlashblocks) when enabled by config,
      * an errored subscription degrades to polling and schedules a fresh
      * subscription after a delay, since viem reconnects the dropped socket
      * but does not replay its subscriptions, when the ws endpoint is still
@@ -382,27 +449,30 @@ export class SharedState {
      * the block number updates for the whole outage
      */
     private subscribeToBlockNumber(wsClient: PublicClient, interval: number) {
-        this.wsBlockNumberUnwatcher = wsClient.watchBlockNumber({
-            onBlockNumber: (blockNumber) => {
-                if (blockNumber > this.blockNumber) {
-                    this.blockNumber = blockNumber;
-                }
-                // subscription is healthy, so stop the polling fallback
-                // and cancel any pending resubscribe if active
-                this.stopPollingBlockNumber();
-                this.clearWsResubscribeTimer();
-            },
-            onError: () => {
-                this.startPollingBlockNumber(interval);
-                if (this.wsResubscribeTimer === undefined) {
-                    this.wsResubscribeTimer = setTimeout(() => {
-                        this.wsResubscribeTimer = undefined;
-                        this.wsBlockNumberUnwatcher?.();
-                        this.subscribeToBlockNumber(wsClient, interval);
-                    }, WS_RESUBSCRIBE_DELAY);
-                }
-            },
-        });
+        const onBlockNumber = (blockNumber: bigint) => {
+            if (blockNumber > this.blockNumber) {
+                this.blockNumber = blockNumber;
+            }
+            // subscription is healthy, so stop the polling fallback
+            // and cancel any pending resubscribe if active
+            this.stopPollingBlockNumber();
+            this.clearWsResubscribeTimer();
+        };
+        const onError = () => {
+            this.startPollingBlockNumber(interval);
+            if (this.wsResubscribeTimer === undefined) {
+                this.wsResubscribeTimer = setTimeout(() => {
+                    this.wsResubscribeTimer = undefined;
+                    this.wsBlockNumberUnwatcher?.();
+                    this.subscribeToBlockNumber(wsClient, interval);
+                }, WS_RESUBSCRIBE_DELAY);
+            }
+        };
+        if (this.appOptions.flashblocks) {
+            this.wsBlockNumberUnwatcher = subscribeToFlashblocks(wsClient, onBlockNumber, onError);
+        } else {
+            this.wsBlockNumberUnwatcher = wsClient.watchBlockNumber({ onBlockNumber, onError });
+        }
     }
 
     /** Cancels the pending ws resubscribe if there is one scheduled */

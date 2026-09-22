@@ -39,6 +39,7 @@ botMinBalance: 50.5
 gasPriceMultiplier: 150
 txTimeThreshold: 4000
 blockTime: 3000
+flashblocks: true
 routerPartialFallback: false
 routerPartialFallbackSteps: 6
 routerSecondaryRouteTry: all
@@ -128,6 +129,7 @@ orderbookTradeTypes:
             gasPriceMultiplier: 150,
             txTimeThreshold: 4000,
             blockTime: 3000,
+            flashblocks: true,
             gasLimitMultiplier: 90,
             timeout: 20000,
             maxRatio: true,
@@ -272,6 +274,22 @@ orderbookTradeTypes:
                 raindexRouter: [`0x${"9".repeat(40)}`],
             },
         };
+        // flashblocks needs a ws rpc to subscribe through
+        const flashblocksRes = AppOptions.tryFrom({ ...input, flashblocks: true });
+        assert(flashblocksRes.isErr());
+        assert.ok(
+            String(flashblocksRes.error.cause).includes(
+                "flashblocks requires a wsRpc to subscribe through",
+            ),
+        );
+        assert(
+            AppOptions.tryFrom({
+                ...input,
+                flashblocks: true,
+                wsRpc: "wss://ws-rpc.example.com",
+            }).isOk(),
+        );
+
         const res = AppOptions.tryFrom(input);
         assert(res.isOk());
         const result = res.value;
@@ -384,6 +402,7 @@ orderbookTradeTypes:
         assert.equal(result.checkWalletBalanceTime, 15); // should be default 15
         assert.equal(result.defaultOwnerLimit, 5); // should be default 5
         assert.equal(result.wsRpc, undefined); // no ws rpc when unset
+        assert.equal(result.flashblocks, false); // should be default false
         assert.equal(result.gasBoostProfitThreshold, undefined); // no boost when unset
         assert.equal(result.gasBoostMultiplier, undefined); // no boost when unset
         assert.equal(result.gasBoostUsdThreshold, undefined); // no boost when unset
