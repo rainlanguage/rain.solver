@@ -140,6 +140,64 @@ describe("Test GasManager", () => {
             gasManager.unwatchGasPrice();
         });
 
+        it("should step the multiplier down once the deadline passes even without a tx mine", async () => {
+            (getGasPrice as any).mockResolvedValue({
+                gasPrice: Result.ok(5555n),
+                l1GasPrice: Result.ok(8888n),
+            });
+            gasManager.gasPriceMultiplier = 120;
+            gasManager.deadline = Date.now() - 1000; // the increase has run its step time
+            gasManager.watchGasPrice(10);
+            await sleep(50);
+
+            // the tick steps the multiplier down on its own, no mine event needed,
+            // sets the deadline of the next step, and the gas price gets fetched
+            // with the stepped down multiplier from then on
+            expect(gasManager.gasPriceMultiplier).toBe(117);
+            expect(gasManager.deadline).toBeGreaterThan(
+                Date.now() + config.gasIncreaseStepTime - 1000,
+            );
+            expect(getGasPrice).toHaveBeenLastCalledWith(config.client, config.chainConfig, 117);
+
+            gasManager.unwatchGasPrice();
+        });
+
+        it("should keep stepping down on ticks as each deadline passes until back at base", async () => {
+            (getGasPrice as any).mockResolvedValue({
+                gasPrice: Result.ok(5555n),
+                l1GasPrice: Result.ok(8888n),
+            });
+            // a step time shorter than the tick, so every tick finds the deadline passed
+            gasManager = new GasManager({ ...config, gasIncreaseStepTime: 1 });
+            gasManager.gasPriceMultiplier = 113;
+            gasManager.deadline = Date.now() - 1000;
+            gasManager.watchGasPrice(10);
+            await sleep(100);
+
+            expect(gasManager.gasPriceMultiplier).toBe(107);
+            expect(gasManager.deadline).toBeUndefined();
+
+            gasManager.unwatchGasPrice();
+        });
+
+        it("should keep the increased multiplier on tick while the deadline is in the future", async () => {
+            (getGasPrice as any).mockResolvedValue({
+                gasPrice: Result.ok(5555n),
+                l1GasPrice: Result.ok(8888n),
+            });
+            gasManager.gasPriceMultiplier = 120;
+            gasManager.deadline = Date.now() + 100_000;
+            const deadline = gasManager.deadline;
+            gasManager.watchGasPrice(10);
+            await sleep(50);
+
+            expect(gasManager.gasPriceMultiplier).toBe(120);
+            expect(gasManager.deadline).toBe(deadline);
+            expect(getGasPrice).toHaveBeenLastCalledWith(config.client, config.chainConfig, 120);
+
+            gasManager.unwatchGasPrice();
+        });
+
         it("should not start a second watcher when already watching", () => {
             // the active interval handle while watching
             gasManager.watchGasPrice();
@@ -166,7 +224,7 @@ describe("Test GasManager", () => {
 
             // class field defaults
             expect(manager.gasIncreasePointsPerStep).toBe(10);
-            expect(manager.gasIncreaseStepTime).toBe(15 * 60 * 1000); // 900_000 ms
+            expect(manager.gasIncreaseStepTime).toBe(6 * 60 * 1000); // 900_000 ms
 
             // maxGasPriceMultiplier defaults to base + 1000 when not provided
             expect(manager.maxGasPriceMultiplier).toBe(1100);
@@ -192,6 +250,41 @@ describe("Test GasManager", () => {
             expect(manager.txTimeThreshold).toBe(9_999);
             // the provided maxGasPriceMultiplier is used directly
             expect(manager.maxGasPriceMultiplier).toBe(200);
+        });
+    });
+
+    describe("Test stepDownGasPriceMultiplierIfDue method", () => {
+        it("should do nothing without a deadline", () => {
+            gasManager.gasPriceMultiplier = 120;
+            gasManager.stepDownGasPriceMultiplierIfDue();
+            expect(gasManager.gasPriceMultiplier).toBe(120);
+            expect(gasManager.deadline).toBeUndefined();
+        });
+
+        it("should do nothing while the deadline is in the future", () => {
+            gasManager.gasPriceMultiplier = 120;
+            gasManager.deadline = Date.now() + 100_000;
+            const deadline = gasManager.deadline;
+            gasManager.stepDownGasPriceMultiplierIfDue();
+            expect(gasManager.gasPriceMultiplier).toBe(120);
+            expect(gasManager.deadline).toBe(deadline);
+        });
+
+        it("should step down once and set the next deadline once the deadline has passed", () => {
+            gasManager.gasPriceMultiplier = 120;
+            gasManager.deadline = Date.now() - 1;
+            const before = Date.now();
+            gasManager.stepDownGasPriceMultiplierIfDue();
+            expect(gasManager.gasPriceMultiplier).toBe(117);
+            expect(gasManager.deadline).toBeGreaterThanOrEqual(before + config.gasIncreaseStepTime);
+        });
+
+        it("should land on base and clear the deadline on the last step", () => {
+            gasManager.gasPriceMultiplier = 108; // less than a step above base
+            gasManager.deadline = Date.now() - 1;
+            gasManager.stepDownGasPriceMultiplierIfDue();
+            expect(gasManager.gasPriceMultiplier).toBe(107);
+            expect(gasManager.deadline).toBeUndefined();
         });
     });
 
