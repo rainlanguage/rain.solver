@@ -1,7 +1,4 @@
 import type { Order } from "../order";
-import type { Result } from "../common";
-import type { OracleError } from "./error";
-import type { SignedContextV2 } from "../order/types/v4";
 
 /** Provides constants and functionalities for interacting with oracles */
 export namespace OracleConstants {
@@ -34,13 +31,6 @@ export type OracleHealthState = {
     consecutiveFailures: number;
     /** Timestamp (ms) until which the oracle is in cooloff, 0 means no cooloff */
     cooloffUntil: number;
-    /**
-     * Caches the result of the last oracle fetch per order pair, keyed as
-     * `orderHash-inputIOIndex-outputIOIndex`, along the block number it was
-     * fetched at, so that repeated fetches for the same order pair at the
-     * same block number get the cached result instead of hitting the oracle
-     */
-    cache?: Map<string, { blockNumber: bigint; result: Result<SignedContextV2, OracleError> }>;
 };
 
 /** Keeps oracles health state per oracle url and owner */

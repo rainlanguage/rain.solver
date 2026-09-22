@@ -143,7 +143,7 @@ export function extractOracleUrl(metaHex: string): string | undefined {
 
 /** Checks if the given oracle URL is in cooloff period or not */
 export function isInCooloff(healthMap: OracleHealthMap, url: string, owner: string): boolean {
-    const state = healthMap.get(OracleHealthMap.key(url, owner));
+    const state = healthMap.get(`${url}-${owner}`);
     if (!state || state.cooloffUntil === 0) return false;
     if (Date.now() >= state.cooloffUntil) {
         state.cooloffUntil = 0;
@@ -154,9 +154,7 @@ export function isInCooloff(healthMap: OracleHealthMap, url: string, owner: stri
 
 /** Records the sucess in orcale health map */
 export function recordOracleSuccess(healthMap: OracleHealthMap, url: string, owner: string) {
-    const state = OracleHealthMap.getOrCreate(healthMap, url, owner);
-    state.consecutiveFailures = 0;
-    state.cooloffUntil = 0;
+    healthMap.set(`${url}-${owner}`, { consecutiveFailures: 0, cooloffUntil: 0 });
 }
 
 /** Records the failure in orcale health map */
@@ -169,9 +167,11 @@ export function recordOracleFailure(
     const cooloffDuration = isMaxOwnerProfile
         ? OracleConstants.COOLOFF_MAX_PROFILE_OWNER
         : OracleConstants.COOLOFF_DURATION_MS;
-    const state = OracleHealthMap.getOrCreate(healthMap, url, owner);
+    const id = `${url}-${owner}`;
+    const state = healthMap.get(id) ?? { consecutiveFailures: 0, cooloffUntil: 0 };
     state.consecutiveFailures++;
     if (state.consecutiveFailures >= OracleConstants.COOLOFF_THRESHOLD) {
         state.cooloffUntil = Date.now() + cooloffDuration;
     }
+    healthMap.set(id, state);
 }

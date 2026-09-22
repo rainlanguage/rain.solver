@@ -572,7 +572,8 @@ describe("Test initializeRound", () => {
             expect(result).toEqual({
                 settlements: expect.any(Array),
                 checkpointReports: expect.any(Array),
-                totalLength: 0,
+                nonZeroLength: 0,
+                zeroLength: 0,
             });
             expect(Array.isArray(result.settlements)).toBe(true);
             expect(Array.isArray(result.checkpointReports)).toBe(true);
@@ -602,6 +603,35 @@ describe("Test initializeRound", () => {
 
             expect(result.checkpointReports).toHaveLength(result.settlements.length);
             expect(result.checkpointReports).toHaveLength(1);
+            expect(result.nonZeroLength).toBe(1);
+            expect(result.zeroLength).toBe(0);
+        });
+
+        it("should report the non zero and zero output order counts separately", async () => {
+            const zeroOutputOrder = {
+                orderbook: "0x3333333333333333333333333333333333333333",
+                buyTokenSymbol: "ETH",
+                sellTokenSymbol: "USDC",
+                buyToken: "0xbuyToken",
+                sellToken: "0xsellToken",
+                takeOrder: { id: "0xZero", struct: { order: { owner: "0xOwner123" } } },
+            };
+            (mockOrderManager.getNextRoundOrders as Mock).mockReturnValue({
+                nonZeroOutput: [],
+                zeroOutput: [
+                    zeroOutputOrder,
+                    {
+                        ...zeroOutputOrder,
+                        takeOrder: { id: "0xZero2", struct: { order: { owner: "0xOwner123" } } },
+                    },
+                ],
+            });
+
+            const result: initializeRoundType = await initializeRound.call(mockSolver);
+
+            expect(result.settlements).toHaveLength(0);
+            expect(result.nonZeroLength).toBe(0);
+            expect(result.zeroLength).toBe(2);
         });
     });
 
