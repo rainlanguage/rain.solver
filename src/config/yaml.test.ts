@@ -46,6 +46,9 @@ routerPartialFallbackSteps: 6
 routerSecondaryRouteTry: all
 dryrunGasCache: true
 dryrunGasCacheResetTime: 30
+dustGasCostMultiplier: 1.5
+dustUsdThreshold: 0.25
+dustOrderCheck: false
 strictMaxOwnerProfileCheck: true
 strictMaxOwnerProfilePartialTradeSizeCheck: true
 checkWalletBalanceTime: 30
@@ -183,6 +186,9 @@ orderbookTradeTypes:
             routerSecondaryRouteTry: "all",
             dryrunGasCache: true,
             dryrunGasCacheResetTime: 30,
+            dustGasCostMultiplier: 1.5,
+            dustUsdThreshold: 0.25,
+            dustOrderCheck: false,
             strictMaxOwnerProfileCheck: true,
             strictMaxOwnerProfilePartialTradeSizeCheck: true,
             checkWalletBalanceTime: 30,
@@ -405,6 +411,9 @@ orderbookTradeTypes:
         assert.equal(result.routerSecondaryRouteTry, "max"); // should be default max
         assert.equal(result.dryrunGasCache, false); // should be default false
         assert.equal(result.dryrunGasCacheResetTime, 60); // should be default 60
+        assert.equal(result.dustGasCostMultiplier, 1); // should be default 1
+        assert.equal(result.dustUsdThreshold, 0); // should be default 0
+        assert.equal(result.dustOrderCheck, true); // should be default true
         assert.equal(result.strictMaxOwnerProfileCheck, false); // should be default false
         assert.equal(result.strictMaxOwnerProfilePartialTradeSizeCheck, false); // should be default false
         assert.equal(result.checkWalletBalanceTime, 15); // should be default 15

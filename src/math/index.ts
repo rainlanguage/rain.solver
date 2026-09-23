@@ -16,6 +16,16 @@ export function toUsdValue(value: bigint, usdPrice: string): bigint {
 }
 
 /**
+ * Calculates the gas token (eth) denominated value of the given value with the given eth price
+ * @param value - The value (in 18 decimals fixed point)
+ * @param ethPrice - The eth price of the value's token (18 decimals fixed point number as decimal string)
+ * @returns The eth value in 18 decimals fixed point (ie wei)
+ */
+export function toEthValue(value: bigint, ethPrice: string): bigint {
+    return (value * parseUnits(ethPrice, 18)) / ONE18;
+}
+
+/**
  * Scales a given value and its decimals to 18 fixed point decimals
  * @param value - The value to scale to 18
  * @param decimals - The decimals of the value to scale to 18

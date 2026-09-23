@@ -21,6 +21,8 @@ export enum ProcessOrderStatus {
     NoOpportunity,
     FoundOpportunity,
     UndefinedTradeAddresses,
+    /** The order's whole max output is worth less than the gas of a trade tx, so it cannot fill profitably */
+    DustOutput,
 }
 
 /** Specifies types of trades */
@@ -90,6 +92,8 @@ export type DryrunSuccess = DryrunResultBase & {
 export type DryrunFailure = DryrunResultBase & {
     reason?: number;
     noneNodeError?: string;
+    /** The estimated gas cost the trade was checked against, set when the final dryrun failed */
+    estimatedGasCost?: bigint;
 };
 export type DryrunResult = Result<DryrunSuccess, DryrunFailure>;
 

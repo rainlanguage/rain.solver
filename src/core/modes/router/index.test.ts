@@ -1,5 +1,5 @@
 import { Order } from "../../../order";
-import { findBestRouterTrade } from "./index";
+import { findBestRouterTrade, getHalvedTradeSizes } from "./index";
 import { TradeSizeStatus } from "../../../router";
 import { Dispair, Result } from "../../../common";
 import { RouterTradeSimulator } from "./simulate";
@@ -43,6 +43,49 @@ describe("Test findBestRouterTrade", () => {
     let dispair: Dispair;
     let destination: `0x${string}`;
 
+    // the sushi quote the size finder settles on, with no route legs so
+    // the dex exclusion retry stays out unless a test asks for it
+    const sizerQuote = {
+        route: { route: { legs: [] }, pcMap: new Map() },
+        tag: "sizer",
+    } as any;
+    const outputToEthPrice = "3";
+    const mockViolationError = Result.err({
+        type: TradeType.RouteProcessor,
+        reason: SimulationHaltReason.NoOpportunity,
+        spanAttributes: {
+            error: "execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)",
+        },
+        noneNodeError: "violation",
+    });
+    const mockSuccess = Result.ok({
+        type: TradeType.RouteProcessor,
+        spanAttributes: { foundOpp: true },
+        estimatedProfit: 25n,
+        oppBlockNumber: 123,
+    });
+    const lockedArgs = { lockRoute: true, skipPriceMatchCheck: true, sushiQuote: sizerQuote };
+    const simulatedSizes = (): bigint[] =>
+        (simulatorWithArgsSpy as Mock).mock.calls.map((call: any[]) => call[0].maximumInputFixed);
+    const setFoundSize = (size: bigint, quote: any = sizerQuote) => {
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
+            status: TradeSizeStatus.Found,
+            size,
+            quote,
+        });
+    };
+    const run = (): Promise<SimulationResult> =>
+        findBestRouterTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            ethPrice,
+            toToken,
+            fromToken,
+            blockNumber,
+            outputToEthPrice,
+        );
+
     beforeEach(() => {
         vi.clearAllMocks();
 
@@ -57,9 +100,14 @@ describe("Test findBestRouterTrade", () => {
                 routerPartialFallback: true,
                 routerPartialFallbackSteps: 4,
                 routerSecondaryRouteTry: "all",
+                dustGasCostMultiplier: 1,
+                dustUsdThreshold: 0,
             },
             state: {
                 gasPrice: 100n,
+                gasTokenUsdPrice: "2000",
+                isDustCheckEnabled: true,
+                isDustTrade: vi.fn().mockReturnValue(undefined),
                 client: {
                     getBlockNumber: vi.fn().mockResolvedValue(123n),
                 },
@@ -94,31 +142,60 @@ describe("Test findBestRouterTrade", () => {
         trySimulateTradeSpy = vi.spyOn(RouterTradeSimulator.prototype, "trySimulateTrade");
     });
 
-    it("should return success result if full trade size simulation succeeds", async () => {
-        const mockSuccessResult = Result.ok({
-            type: "balancer",
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 100n,
-            oppBlockNumber: 123,
-        });
-        (trySimulateTradeSpy as Mock).mockResolvedValue(mockSuccessResult);
+    it("should bail out without any sim when no route is found at any size", async () => {
+        const result = await run();
 
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
+        assert(result.isErr());
+        expect(result.error.type).toBe(TradeType.Router);
+        expect(result.error.reason).toBe(SimulationHaltReason.NoRoute);
+        expect(result.error.spanAttributes).toEqual({
+            error: "found no route for any trade size",
+        });
+        expect(trySimulateTradeSpy).not.toHaveBeenCalled();
+        expect(mockRainSolver.state.isDustTrade).not.toHaveBeenCalled();
+        expect(mockRainSolver.state.router.findLargestTradeSize).toHaveBeenCalledWith(
             orderDetails,
-            signer,
-            ethPrice,
             toToken,
             fromToken,
-            blockNumber,
+            1000n,
+            100n,
+            undefined,
+            false,
+            undefined,
         );
+    });
+
+    it("should bail out without any sim when no size clears the order ratio", async () => {
+        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
+            status: TradeSizeStatus.PriceMismatch,
+            size: 400n,
+            quote: sizerQuote,
+        });
+        const result = await run();
+
+        assert(result.isErr());
+        expect(result.error.reason).toBe(SimulationHaltReason.OrderRatioGreaterThanMarketPrice);
+        expect(result.error.spanAttributes).toEqual({
+            error: "found no trade size that clears the order ratio",
+        });
+        expect(trySimulateTradeSpy).not.toHaveBeenCalled();
+        expect(mockRainSolver.state.isDustTrade).not.toHaveBeenCalled();
+    });
+
+    it("should run the full size and its halved sizes locked to the found route when the full size clears the ratio", async () => {
+        setFoundSize(1000n);
+        (trySimulateTradeSpy as Mock)
+            .mockResolvedValueOnce(mockSuccess) // 1000n
+            .mockResolvedValue(mockViolationError); // halved sizes
+        const result = await run();
 
         assert(result.isOk());
         expect(result.value.spanAttributes).toEqual({ foundOpp: true });
-        expect(result.value.estimatedProfit).toBe(100n);
-        expect(result.value.oppBlockNumber).toBe(123);
-        expect(result.value.type).toBe("balancer");
-        expect(simulatorWithArgsSpy).toHaveBeenCalledWith({
+        expect(result.value.estimatedProfit).toBe(25n);
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(6);
+        expect(simulatedSizes()).toEqual([1000n, 750n, 500n, 250n, 125n, 62n]);
+        // the full size is not a partial trade, every other size is
+        expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(1, {
             type: TradeType.Router,
             solver: mockRainSolver,
             orderDetails,
@@ -129,501 +206,35 @@ describe("Test findBestRouterTrade", () => {
             ethPrice,
             isPartial: false,
             blockNumber: 123n,
+            excludeDexes: undefined,
+            ...lockedArgs,
         });
+        for (let i = 1; i < 6; i++) {
+            expect((simulatorWithArgsSpy as Mock).mock.calls[i][0]).toEqual(
+                expect.objectContaining({ isPartial: true, ...lockedArgs }),
+            );
+        }
     });
 
-    it("should return error if no route found", async () => {
-        const mockErrorResult = Result.err({
-            type: TradeType.Router,
-            reason: SimulationHaltReason.NoRoute,
-            spanAttributes: { route: "no-way" },
-            noneNodeError: "no route available",
-        });
-        (trySimulateTradeSpy as Mock).mockResolvedValue(mockErrorResult);
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
-        assert(result.isErr());
-        expect(result.error.noneNodeError).toBe("no route available");
-        expect(result.error.type).toBe("router");
-        expect(result.error.spanAttributes).toEqual({
-            "full.route": "no-way",
-            "partial.error": "found no route for any trade size",
-        });
-        expect(extendObjectWithHeader).toHaveBeenCalledWith(
-            expect.any(Object),
-            { route: "no-way" },
-            "full",
-        );
-    });
-
-    it("should try partial trade with the biggest routed size on PriceMismatch result", async () => {
-        const mockFullTradeError = Result.err({
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-            noneNodeError: "order ratio issue",
-        });
-        const mockPartialTradeSuccess = Result.ok({
-            type: "routeProcessor",
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 25n,
-            oppBlockNumber: 123,
-        });
-
-        const mockSizeQuote = { route: { pcMap: new Map() }, price: 1n, amountOut: 1n };
+    it("should run the found size and its halved sizes when the found size is below the full size", async () => {
+        setFoundSize(500n);
         (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError)
-            .mockResolvedValueOnce(mockPartialTradeSuccess);
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.PriceMismatch,
-            size: 400n,
-            quote: mockSizeQuote,
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
-        // the price mismatch size is still simulated as partial trade size,
-        // with the size search winning probe quote plugged in, while the
-        // full size sim runs without a precomputed quote
-        assert(result.isOk());
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
-        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith(
-            expect.objectContaining({
-                maximumInputFixed: 400n,
-                isPartial: true,
-                sushiQuote: mockSizeQuote,
-            }),
-        );
-        expect((simulatorWithArgsSpy as Mock).mock.calls[0][0].sushiQuote).toBeUndefined();
-    });
-
-    it("should try partial trade if full trade fails with non-NoRoute reason", async () => {
-        const mockFullTradeError = Result.err({
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-            noneNodeError: "order ratio issue",
-        });
-        const mockPartialTradeSuccess = Result.ok({
-            type: "routeProcessor",
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 50n,
-            oppBlockNumber: 123,
-        });
-
-        (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError)
-            .mockResolvedValueOnce(mockPartialTradeSuccess);
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.Found,
-            size: 500n,
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
+            .mockResolvedValueOnce(mockViolationError) // 500n
+            .mockResolvedValueOnce(mockSuccess) // 375n
+            .mockResolvedValue(mockViolationError); // rest
+        const result = await run();
 
         assert(result.isOk());
-        expect(result.value.spanAttributes).toEqual({ foundOpp: true });
-        expect(result.value.estimatedProfit).toBe(50n);
-        expect(result.value.type).toBe("routeProcessor");
-        expect(mockRainSolver.state.router.findLargestTradeSize).toHaveBeenCalledWith(
-            orderDetails,
-            toToken,
-            fromToken,
-            1000n,
-            100n,
-            undefined,
-            false,
-            undefined,
-        );
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
-        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith({
-            type: TradeType.Router,
-            solver: mockRainSolver,
-            orderDetails,
-            fromToken,
-            toToken,
-            signer,
-            maximumInputFixed: 500n,
-            ethPrice,
-            isPartial: true,
-            blockNumber: 123n,
-        });
-    });
-
-    it("should try partial trade if full trade fails with NoRoute reason", async () => {
-        const mockFullTradeError = Result.err({
-            reason: SimulationHaltReason.NoRoute,
-            spanAttributes: { error: "no route" },
-            noneNodeError: "no route for pair trade size",
-        });
-        const mockPartialTradeSuccess = Result.ok({
-            type: "routeProcessor",
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 50n,
-            oppBlockNumber: 123,
-        });
-
-        (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError)
-            .mockResolvedValueOnce(mockPartialTradeSuccess);
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.Found,
-            size: 500n,
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
-        assert(result.isOk());
-        expect(result.value.spanAttributes).toEqual({ foundOpp: true });
-        expect(result.value.estimatedProfit).toBe(50n);
-        expect(result.value.type).toBe("routeProcessor");
-        expect(mockRainSolver.state.router.findLargestTradeSize).toHaveBeenCalledWith(
-            orderDetails,
-            toToken,
-            fromToken,
-            1000n,
-            100n,
-            undefined,
-            false,
-            undefined,
-        );
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
-        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith({
-            type: TradeType.Router,
-            solver: mockRainSolver,
-            orderDetails,
-            fromToken,
-            toToken,
-            signer,
-            maximumInputFixed: 500n,
-            ethPrice,
-            isPartial: true,
-            blockNumber: 123n,
-        });
-    });
-
-    it("should return error if partial trade size cannot be found", async () => {
-        const mockFullTradeError = Result.err({
-            type: TradeType.Router,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-            noneNodeError: "order ratio issue",
-        });
-
-        (trySimulateTradeSpy as Mock).mockResolvedValue(mockFullTradeError);
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.NoWay,
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
-        assert(result.isErr());
-        expect(result.error.noneNodeError).toBe("order ratio issue");
-        expect(result.error.type).toBe("router");
-        expect(result.error.spanAttributes).toEqual({
-            "full.error": "ratio too high",
-            "partial.error": "found no route for any trade size",
-        });
-        expect(extendObjectWithHeader).toHaveBeenCalledWith(
-            expect.any(Object),
-            { error: "ratio too high" },
-            "full",
-        );
-    });
-
-    it("should return error if partial trade simulation also fails", async () => {
-        const mockFullTradeError = Result.err({
-            type: TradeType.Balancer,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-            noneNodeError: "order ratio issue",
-        });
-        const mockPartialTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: { error: "no opportunity" },
-            noneNodeError: "partial failed",
-        });
-
-        (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError)
-            .mockResolvedValueOnce(mockPartialTradeError);
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.Found,
-            size: 1500n,
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
-        assert(result.isErr());
-        expect(result.error.noneNodeError).toBe("order ratio issue"); // from full trade error
-        expect(result.error.type).toBe("balancer");
-        expect(result.error.spanAttributes).toEqual({
-            "full.error": "ratio too high",
-            "partial.error": "no opportunity",
-        });
-        expect(extendObjectWithHeader).toHaveBeenCalledWith(
-            expect.any(Object),
-            { error: "ratio too high" },
-            "full",
-        );
-        expect(extendObjectWithHeader).toHaveBeenCalledWith(
-            expect.any(Object),
-            { error: "no opportunity" },
-            "partial",
-        );
-    });
-
-    it("should return success result if partial trade simulation succeeds", async () => {
-        const mockFullTradeError = Result.err({
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-            noneNodeError: "order ratio issue",
-        });
-        const mockPartialTradeSuccess = Result.ok({
-            type: "routeProcessor",
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 75n,
-            oppBlockNumber: 123,
-        });
-
-        (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError)
-            .mockResolvedValueOnce(mockPartialTradeSuccess);
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.Found,
-            size: 500n,
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
-        assert(result.isOk());
-        expect(result.value.spanAttributes).toEqual({ foundOpp: true });
-        expect(result.value.estimatedProfit).toBe(75n);
-        expect(result.value.oppBlockNumber).toBe(123);
-        expect(result.value.type).toBe("routeProcessor");
-        expect(mockRainSolver.state.router.findLargestTradeSize).toHaveBeenCalledWith(
-            orderDetails,
-            toToken,
-            fromToken,
-            1000n,
-            100n,
-            undefined,
-            false,
-            undefined,
-        );
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
-        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith({
-            type: TradeType.Router,
-            solver: mockRainSolver,
-            orderDetails,
-            fromToken,
-            toToken,
-            signer,
-            maximumInputFixed: 500n,
-            ethPrice,
-            isPartial: true,
-            blockNumber: 123n,
-        });
-        expect(extendObjectWithHeader).toHaveBeenCalledWith(
-            expect.any(Object),
-            { error: "ratio too high" },
-            "full",
-        );
-    });
-
-    it("should backoff with halved trade sizes when partial trade fails with MinimalOutputBalanceViolation", async () => {
-        const mockFullTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-            noneNodeError: "order ratio issue",
-        });
-        const mockViolationError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: {
-                error: "execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)",
-            },
-        });
-        const mockFallbackSuccess = Result.ok({
-            type: TradeType.RouteProcessor,
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 25n,
-            oppBlockNumber: 123,
-        });
-
-        (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError) // full size
-            .mockResolvedValueOnce(mockViolationError) // partial size 1000n
-            .mockResolvedValueOnce(mockViolationError) // partialFallback1 500n
-            .mockResolvedValueOnce(mockFallbackSuccess) // partialFallback2 250n
-            .mockResolvedValue(mockViolationError); // remaining fallbacks
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.Found,
-            size: 1000n,
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
-        // all 4 fallback sims launch concurrently and the successful one wins
-        assert(result.isOk());
-        expect(result.value.spanAttributes).toEqual({ foundOpp: true });
         expect(result.value.estimatedProfit).toBe(25n);
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(6);
-        // fallback sims lock the route to the already found quote and
-        // skip the offchain price match check to go straight to dryrun
-        const fallbackArgs = { isPartial: true, lockRoute: true, skipPriceMatchCheck: true };
-        expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
-            3,
-            expect.objectContaining({ maximumInputFixed: 500n, ...fallbackArgs }),
-        );
-        expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
-            4,
-            expect.objectContaining({ maximumInputFixed: 250n, ...fallbackArgs }),
-        );
-        expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
-            5,
-            expect.objectContaining({ maximumInputFixed: 125n, ...fallbackArgs }),
-        );
-        expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
-            6,
-            expect.objectContaining({ maximumInputFixed: 62n, ...fallbackArgs }),
-        );
-        // the full and partial sims never lock the route or skip the check
-        expect((simulatorWithArgsSpy as Mock).mock.calls[0][0].lockRoute).toBeUndefined();
-        expect((simulatorWithArgsSpy as Mock).mock.calls[1][0].lockRoute).toBeUndefined();
-        expect((simulatorWithArgsSpy as Mock).mock.calls[0][0].skipPriceMatchCheck).toBeUndefined();
-        expect((simulatorWithArgsSpy as Mock).mock.calls[1][0].skipPriceMatchCheck).toBeUndefined();
+        expect(simulatedSizes()).toEqual([500n, 375n, 250n, 125n, 62n, 31n]);
+        for (let i = 0; i < 6; i++) {
+            expect((simulatorWithArgsSpy as Mock).mock.calls[i][0]).toEqual(
+                expect.objectContaining({ isPartial: true, ...lockedArgs }),
+            );
+        }
     });
 
-    it("should run as many backoff steps as configured by routerPartialFallbackSteps", async () => {
-        mockRainSolver.appOptions.routerPartialFallbackSteps = 2;
-        const mockFullTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-        });
-        const mockViolationError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: {
-                error: "execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)",
-            },
-        });
-        (trySimulateTradeSpy as Mock).mockResolvedValueOnce(mockFullTradeError);
-        (trySimulateTradeSpy as Mock).mockResolvedValue(mockViolationError);
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.Found,
-            size: 1000n,
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
-        // full, partial and only 2 fallback sims
-        assert(result.isErr());
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(4);
-        expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
-            3,
-            expect.objectContaining({ maximumInputFixed: 500n, isPartial: true }),
-        );
-        expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
-            4,
-            expect.objectContaining({ maximumInputFixed: 250n, isPartial: true }),
-        );
-        expect(result.error.spanAttributes["partialFallback1.error"]).toContain(
-            "MinimalOutputBalanceViolation",
-        );
-        expect(result.error.spanAttributes["partialFallback2.error"]).toContain(
-            "MinimalOutputBalanceViolation",
-        );
-        expect(result.error.spanAttributes["partialFallback3.error"]).toBeUndefined();
-    });
-
-    it("should pick the biggest passing fallback size, not the first one that resolves", async () => {
-        const mockFullTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-        });
-        const mockViolationError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: {
-                error: "execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)",
-            },
-        });
+    it("should pick the biggest passing size, not the first one that resolves", async () => {
         const mockBigSuccess = Result.ok({
             type: TradeType.RouteProcessor,
             spanAttributes: { size: "big" },
@@ -636,31 +247,16 @@ describe("Test findBestRouterTrade", () => {
             estimatedProfit: 10n,
             oppBlockNumber: 123,
         });
-
-        // the 250n fallback passes but resolves after the 125n one
+        setFoundSize(1000n);
+        // the 750n size passes but resolves after the 500n one
         (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError) // full size
-            .mockResolvedValueOnce(mockViolationError) // partial size 1000n
-            .mockResolvedValueOnce(mockViolationError) // partialFallback1 500n
+            .mockResolvedValueOnce(mockViolationError) // 1000n
             .mockImplementationOnce(
                 () => new Promise((resolve) => setTimeout(() => resolve(mockBigSuccess), 20)),
-            ) // partialFallback2 250n
-            .mockResolvedValueOnce(mockSmallSuccess) // partialFallback3 125n
-            .mockResolvedValue(mockViolationError); // partialFallback4 62n
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.Found,
-            size: 1000n,
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
+            ) // 750n
+            .mockResolvedValueOnce(mockSmallSuccess) // 500n
+            .mockResolvedValue(mockViolationError); // rest
+        const result = await run();
 
         assert(result.isOk());
         expect(result.value.spanAttributes).toEqual({ size: "big" });
@@ -668,893 +264,452 @@ describe("Test findBestRouterTrade", () => {
         expect(trySimulateTradeSpy).toHaveBeenCalledTimes(6);
     });
 
-    it("should reuse the partial sim sushi route for fallback sims, falling back to the full sim route", async () => {
-        const fullQuote = { route: { pcMap: new Map() }, tag: "full" } as any;
-        const partialQuote = { route: { pcMap: new Map() }, tag: "partial" } as any;
-        const balancerQuote = { price: 1n, tag: "balancer" } as any;
-        const mockFullTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-        });
-        const mockViolationError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: {
-                error: "execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)",
-            },
-        });
-        const mockFallbackSuccess = Result.ok({
-            type: TradeType.Balancer,
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 25n,
-            oppBlockNumber: 123,
-        });
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.Found,
-            size: 1000n,
-        });
+    it("should run as many halved sizes as configured by routerPartialFallbackSteps", async () => {
+        mockRainSolver.appOptions.routerPartialFallbackSteps = 2;
+        setFoundSize(1000n);
+        (trySimulateTradeSpy as Mock).mockResolvedValue(mockViolationError);
+        const result = await run();
 
-        // partial sim has its own quote, so fallback sims reuse it
-        (simulatorWithArgsSpy as Mock)
-            .mockReturnValueOnce({
-                quote: fullQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockFullTradeError),
-            })
-            .mockReturnValueOnce({
-                quote: partialQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockViolationError),
-            })
-            .mockReturnValue({
-                quote: partialQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockFallbackSuccess),
-            });
-        let result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-        assert(result.isOk());
-        expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(6);
-        for (let i = 2; i < 6; i++) {
-            const args = (simulatorWithArgsSpy as Mock).mock.calls[i][0];
-            expect(args.sushiQuote).toBe(partialQuote);
-            expect(args.lockRoute).toBe(true);
-            expect(args.skipPriceMatchCheck).toBe(true);
-        }
-
-        // partial sim has no quote, so fallback sims reuse the full sim one
-        (simulatorWithArgsSpy as Mock).mockReset();
-        (simulatorWithArgsSpy as Mock)
-            .mockReturnValueOnce({
-                quote: fullQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockFullTradeError),
-            })
-            .mockReturnValueOnce({
-                quote: undefined,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockViolationError),
-            })
-            .mockReturnValue({
-                quote: fullQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockFallbackSuccess),
-            });
-        result = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-        assert(result.isOk());
-        expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(6);
-        for (let i = 2; i < 6; i++) {
-            const args = (simulatorWithArgsSpy as Mock).mock.calls[i][0];
-            expect(args.sushiQuote).toBe(fullQuote);
-            expect(args.lockRoute).toBe(true);
-        }
-
-        // partial sim quote is not a sushi one, so fallback sims skip it
-        // and reuse the full sim sushi quote instead
-        (simulatorWithArgsSpy as Mock).mockReset();
-        (simulatorWithArgsSpy as Mock)
-            .mockReturnValueOnce({
-                quote: fullQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockFullTradeError),
-            })
-            .mockReturnValueOnce({
-                quote: balancerQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockViolationError),
-            })
-            .mockReturnValue({
-                quote: fullQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockFallbackSuccess),
-            });
-        result = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-        assert(result.isOk());
-        expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(6);
-        for (let i = 2; i < 6; i++) {
-            const args = (simulatorWithArgsSpy as Mock).mock.calls[i][0];
-            expect(args.sushiQuote).toBe(fullQuote);
-            expect(args.lockRoute).toBe(true);
-        }
-
-        // neither sim has a sushi quote, so fallback sims carry no quote to
-        // lock to and get quoted normally
-        (simulatorWithArgsSpy as Mock).mockReset();
-        (simulatorWithArgsSpy as Mock)
-            .mockReturnValueOnce({
-                quote: balancerQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockFullTradeError),
-            })
-            .mockReturnValueOnce({
-                quote: balancerQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockViolationError),
-            })
-            .mockReturnValue({
-                quote: balancerQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockFallbackSuccess),
-            });
-        result = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-        assert(result.isOk());
-        expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(6);
-        for (let i = 2; i < 6; i++) {
-            expect((simulatorWithArgsSpy as Mock).mock.calls[i][0].sushiQuote).toBeUndefined();
-        }
-
-        // drop the persistent mock impl so it doesnt leak into other tests
-        (simulatorWithArgsSpy as Mock).mockRestore();
-    });
-
-    it("should return error with MinimalOutputBalanceViolation reason when all backoff steps fail", async () => {
-        const mockFullTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-            noneNodeError: "order ratio issue",
-        });
-        const mockViolationError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: {
-                error: "execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)",
-            },
-        });
-
-        (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError) // full size
-            .mockResolvedValue(mockViolationError); // partial + all fallbacks
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.Found,
-            size: 1024000n,
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
+        // the three quarters size comes on top of the two halved sizes
         assert(result.isErr());
-        expect(result.error.noneNodeError).toBe("order ratio issue");
-        // 1 full + 1 partial + 4 fallbacks
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(6);
-        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith(
-            expect.objectContaining({ maximumInputFixed: 64000n, isPartial: true }),
-        );
-        expect(result.error.spanAttributes["full.error"]).toBe("ratio too high");
-        expect(result.error.spanAttributes["partial.error"]).toContain(
+        expect(simulatedSizes()).toEqual([1000n, 750n, 500n, 250n]);
+        expect(result.error.spanAttributes["step1.error"]).toContain(
             "MinimalOutputBalanceViolation",
         );
-        expect(result.error.spanAttributes["partialFallback1.error"]).toContain(
+        expect(result.error.spanAttributes["step4.error"]).toContain(
             "MinimalOutputBalanceViolation",
         );
-        expect(result.error.spanAttributes["partialFallback4.error"]).toContain(
-            "MinimalOutputBalanceViolation",
-        );
-        expect(result.error.spanAttributes["partialFallback5.error"]).toBeUndefined();
-    });
-
-    it("should stop backoff when a step fails with an error other than MinimalOutputBalanceViolation", async () => {
-        const mockFullTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-            noneNodeError: "order ratio issue",
-        });
-        const mockViolationError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: {
-                error: "execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)",
-            },
-        });
-        const mockOtherError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: { error: "some other revert" },
-        });
-
-        (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError) // full size
-            .mockResolvedValueOnce(mockViolationError) // partial size
-            .mockResolvedValueOnce(mockOtherError) // partialFallback1
-            .mockResolvedValue(mockViolationError); // remaining fallbacks
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.Found,
-            size: 1000n,
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
-        assert(result.isErr());
-        // all fallback steps run concurrently, a non retry error on one
-        // step does not stop the others anymore
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(6);
-        expect(result.error.spanAttributes["partialFallback1.error"]).toBe("some other revert");
-        expect(result.error.spanAttributes["partialFallback2.error"]).toContain(
-            "MinimalOutputBalanceViolation",
-        );
-        expect(result.error.spanAttributes["partialFallback4.error"]).toContain(
-            "MinimalOutputBalanceViolation",
-        );
+        expect(result.error.spanAttributes["step5.error"]).toBeUndefined();
     });
 
     it("should drop halved sizes that reach zero", async () => {
-        const mockFullTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-            noneNodeError: "order ratio issue",
-        });
-        const mockViolationError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: {
-                error: "execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)",
-            },
-        });
+        orderDetails.takeOrder.quote.maxOutput = 16n;
+        setFoundSize(8n);
+        (trySimulateTradeSpy as Mock).mockResolvedValue(mockViolationError);
+        const result = await run();
 
-        (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError) // full size
-            .mockResolvedValue(mockViolationError); // partial + all fallbacks
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.Found,
-            size: 8n, // tiny size, halves to 4, 2, 1 and then to zero
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
+        // the halving hits zero after 1n
         assert(result.isErr());
-        // 1 full + 1 partial + only 3 fallbacks since the 4th halving hits zero
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(5);
-        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith(
-            expect.objectContaining({ maximumInputFixed: 1n, isPartial: true }),
-        );
-        expect(result.error.spanAttributes["partialFallback3.error"]).toContain(
+        expect(simulatedSizes()).toEqual([8n, 6n, 4n, 2n, 1n]);
+        expect(result.error.spanAttributes["step5.error"]).toContain(
             "MinimalOutputBalanceViolation",
         );
-        expect(result.error.spanAttributes["partialFallback4.error"]).toBeUndefined();
+        expect(result.error.spanAttributes["step6.error"]).toBeUndefined();
     });
 
-    it("should not run backoff when no trade size was found even for strict checked max owner", async () => {
-        mockRainSolver.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck = true;
-        mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
-        const mockFullTradeError = Result.err({
-            type: TradeType.Router,
-            reason: SimulationHaltReason.NoRoute,
-            spanAttributes: { error: "no route" },
-            noneNodeError: "no route available",
-        });
-
-        (trySimulateTradeSpy as Mock).mockResolvedValue(mockFullTradeError);
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.NoWay,
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
+    it("should drop the halved sizes from the first dust one on", async () => {
+        (mockRainSolver.state.isDustTrade as Mock).mockImplementation(
+            (_pair: any, _price: any, _usd: any, size: bigint) => size < 300n,
         );
+        setFoundSize(1000n);
+        (trySimulateTradeSpy as Mock).mockResolvedValue(mockViolationError);
+        const result = await run();
 
-        // no way means no way, only the full size sim runs and the
-        // error returns directly without any partial or fallback sims
+        // 250n is dust and so is everything below it
         assert(result.isErr());
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(1);
-        expect(result.error.spanAttributes["partial.error"]).toBe(
-            "found no route for any trade size",
-        );
-        expect(result.error.spanAttributes["partialFallback1.error"]).toBeUndefined();
+        expect(simulatedSizes()).toEqual([1000n, 750n, 500n]);
+        expect(result.error.spanAttributes["dustTradeSize"]).toBeUndefined();
     });
 
-    it("should skip backoff when routerPartialFallback is disabled in config", async () => {
+    it("should run the found size only when routerPartialFallback is disabled", async () => {
         mockRainSolver.appOptions.routerPartialFallback = false;
-        const mockFullTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-            noneNodeError: "order ratio issue",
-        });
-        const mockViolationError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: {
-                error: "execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)",
-            },
-        });
-
-        (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError) // full size
-            .mockResolvedValue(mockViolationError); // partial size
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.Found,
-            size: 1000n,
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
+        setFoundSize(500n);
+        (trySimulateTradeSpy as Mock).mockResolvedValue(mockViolationError);
+        const result = await run();
 
         assert(result.isErr());
-        // only 1 full + 1 partial, no fallback attempts despite the violation error
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
+        expect(simulatedSizes()).toEqual([500n]);
         expect(result.error.reason).toBe(SimulationHaltReason.NoOpportunity);
-        expect(result.error.spanAttributes["partial.error"]).toContain(
+        expect(result.error.spanAttributes["step1.error"]).toContain(
             "MinimalOutputBalanceViolation",
         );
-        expect(result.error.spanAttributes["partialFallback1.error"]).toBeUndefined();
+        expect(result.error.spanAttributes["step2.error"]).toBeUndefined();
     });
 
-    it("should run backoff on any partial failure for max owner with strict check enabled", async () => {
+    it("should run the halved sizes for a strict checked max owner even when routerPartialFallback is disabled", async () => {
+        mockRainSolver.appOptions.routerPartialFallback = false;
         mockRainSolver.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck = true;
         mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
-        const mockFullTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-            noneNodeError: "order ratio issue",
-        });
-        const mockPartialError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" }, // NOT a needsRetry error
-        });
-        const mockFallbackSuccess = Result.ok({
-            type: TradeType.RouteProcessor,
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 25n,
-            oppBlockNumber: 123,
-        });
-
-        (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError) // full size
-            .mockResolvedValueOnce(mockPartialError) // partial size
-            .mockResolvedValueOnce(mockFallbackSuccess) // partialFallback1
-            .mockResolvedValue(mockPartialError); // remaining fallbacks
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.PriceMismatch,
-            size: 1000n,
-            quote: { route: { pcMap: new Map() } },
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
-        // the non retry partial failure still triggers the backoff
-        // since the owner has a max profile and strict check is on
-        assert(result.isOk());
-        expect(result.value.estimatedProfit).toBe(25n);
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(6);
-        expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
-            3,
-            expect.objectContaining({ maximumInputFixed: 500n, isPartial: true }),
-        );
-    });
-
-    it("should not run backoff on non retry failure for max owner when strict check is disabled", async () => {
-        mockRainSolver.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck = false;
-        mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
-        const mockFullTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-            noneNodeError: "order ratio issue",
-        });
-        const mockPartialError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" }, // NOT a needsRetry error
-        });
-
-        (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError)
-            .mockResolvedValue(mockPartialError);
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.PriceMismatch,
-            size: 1000n,
-            quote: { route: { pcMap: new Map() } },
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
+        setFoundSize(500n);
+        (trySimulateTradeSpy as Mock).mockResolvedValue(mockViolationError);
+        const result = await run();
 
         assert(result.isErr());
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2); // no fallback attempts
-        expect(result.error.spanAttributes["partialFallback1.error"]).toBeUndefined();
+        expect(simulatedSizes()).toEqual([500n, 375n, 250n, 125n, 62n, 31n]);
     });
 
-    it("should not run backoff on non retry failure for non max owner with strict check enabled", async () => {
+    it("should run the found size only for a non max owner with strict check enabled when routerPartialFallback is disabled", async () => {
+        mockRainSolver.appOptions.routerPartialFallback = false;
         mockRainSolver.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck = true;
         mockRainSolver.appOptions.ownerProfile = { "0xowner": 100 }; // not max profile
-        const mockFullTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" },
-            noneNodeError: "order ratio issue",
-        });
-        const mockPartialError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.OrderRatioGreaterThanMarketPrice,
-            spanAttributes: { error: "ratio too high" }, // NOT a needsRetry error
-        });
-
-        (trySimulateTradeSpy as Mock)
-            .mockResolvedValueOnce(mockFullTradeError)
-            .mockResolvedValue(mockPartialError);
-        (mockRainSolver.state.router.findLargestTradeSize as Mock).mockReturnValue({
-            status: TradeSizeStatus.PriceMismatch,
-            size: 1000n,
-            quote: { route: { pcMap: new Map() } },
-        });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
+        setFoundSize(500n);
+        (trySimulateTradeSpy as Mock).mockResolvedValue(mockViolationError);
+        const result = await run();
 
         assert(result.isErr());
-        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2); // no fallback attempts
-        expect(result.error.spanAttributes["partialFallback1.error"]).toBeUndefined();
+        expect(simulatedSizes()).toEqual([500n]);
     });
 
-    describe("full trade size backoff", () => {
-        // a sushi quote with no route legs, so the dex exclusion retry stays out
-        const fullQuote = { route: { route: { legs: [] }, pcMap: new Map() }, tag: "full" } as any;
-        const mockViolationError = Result.err({
-            type: TradeType.RouteProcessor,
+    it("should return the batch failure with the step attributes when every size fails", async () => {
+        const mockOtherError = Result.err({
+            type: TradeType.Balancer,
             reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: {
-                error: "execution reverted: MinimalOutputBalanceViolation(0xtoken, 123)",
-            },
-            noneNodeError: "full violation",
+            spanAttributes: { error: "some other revert" },
+            noneNodeError: "other",
         });
-        const mockFallbackSuccess = Result.ok({
-            type: TradeType.RouteProcessor,
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 25n,
-            oppBlockNumber: 123,
+        setFoundSize(1000n);
+        (trySimulateTradeSpy as Mock)
+            .mockResolvedValueOnce(mockOtherError) // 1000n
+            .mockResolvedValue(mockViolationError); // halved sizes
+        const result = await run();
+
+        assert(result.isErr());
+        expect(trySimulateTradeSpy).toHaveBeenCalledTimes(6);
+        // the biggest size failure represents the batch
+        expect(result.error.type).toBe(TradeType.Balancer);
+        expect(result.error.reason).toBe(SimulationHaltReason.NoOpportunity);
+        expect(result.error.noneNodeError).toBe("other");
+        expect(result.error.spanAttributes["step1.error"]).toBe("some other revert");
+        expect(result.error.spanAttributes["step2.error"]).toContain(
+            "MinimalOutputBalanceViolation",
+        );
+        expect(result.error.spanAttributes["step6.error"]).toContain(
+            "MinimalOutputBalanceViolation",
+        );
+        expect(result.error.spanAttributes["step7.error"]).toBeUndefined();
+        expect(extendObjectWithHeader).toHaveBeenCalledWith(
+            expect.any(Object),
+            { error: "some other revert" },
+            "step1",
+        );
+    });
+
+    describe("dust found size", () => {
+        beforeEach(() => {
+            setFoundSize(5n);
+            (trySimulateTradeSpy as Mock).mockResolvedValue(mockSuccess);
         });
 
-        it("should backoff from full size with the full route locked when full dryrun fails with MinimalOutputBalanceViolation", async () => {
-            (simulatorWithArgsSpy as Mock)
-                .mockReturnValueOnce({
-                    quote: fullQuote,
-                    trySimulateTrade: vi.fn().mockResolvedValue(mockViolationError),
-                })
-                .mockReturnValueOnce({
-                    quote: fullQuote,
-                    trySimulateTrade: vi.fn().mockResolvedValue(mockViolationError),
-                })
-                .mockReturnValue({
-                    quote: fullQuote,
-                    trySimulateTrade: vi.fn().mockResolvedValue(mockFallbackSuccess),
-                });
+        it("should ask the state dust check with the found size before any sim", async () => {
+            (mockRainSolver.state.isDustTrade as Mock).mockReturnValue(false);
+            const result = await run();
 
-            const result: SimulationResult = await findBestRouterTrade.call(
-                mockRainSolver,
-                orderDetails,
-                signer,
-                ethPrice,
-                toToken,
-                fromToken,
-                blockNumber,
-            );
-
-            // the size finder is skipped and the 4 halved sizes of the
-            // full size run straight away with the full route locked in
             assert(result.isOk());
-            expect(result.value.spanAttributes).toEqual({ foundOpp: true });
-            expect(mockRainSolver.state.router.findLargestTradeSize).not.toHaveBeenCalled();
-            expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(5);
-            expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
-                1,
-                expect.objectContaining({ maximumInputFixed: 1000n, isPartial: false }),
+            expect(mockRainSolver.state.isDustTrade).toHaveBeenCalledWith(
+                orderDetails,
+                outputToEthPrice,
+                "2000",
+                5n,
             );
-            const fallbackArgs = {
-                isPartial: true,
-                sushiQuote: fullQuote,
-                lockRoute: true,
-                skipPriceMatchCheck: true,
-            };
-            expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
-                2,
-                expect.objectContaining({ maximumInputFixed: 500n, ...fallbackArgs }),
-            );
-            expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
-                3,
-                expect.objectContaining({ maximumInputFixed: 250n, ...fallbackArgs }),
-            );
-            expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
-                4,
-                expect.objectContaining({ maximumInputFixed: 125n, ...fallbackArgs }),
-            );
-            expect(simulatorWithArgsSpy).toHaveBeenNthCalledWith(
-                5,
-                expect.objectContaining({ maximumInputFixed: 62n, ...fallbackArgs }),
-            );
-            expect((simulatorWithArgsSpy as Mock).mock.calls[0][0].lockRoute).toBeUndefined();
-
-            (simulatorWithArgsSpy as Mock).mockRestore();
+            // not dust, so the found size gets simulated with its backoff sizes
+            expect(simulatedSizes()).toEqual([5n, 3n, 2n, 1n]);
         });
 
-        it("should return the full error with fallback attributes when all full size backoff steps fail", async () => {
-            (simulatorWithArgsSpy as Mock).mockReturnValue({
-                quote: fullQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockViolationError),
-            });
-
-            const result: SimulationResult = await findBestRouterTrade.call(
-                mockRainSolver,
-                orderDetails,
-                signer,
-                ethPrice,
-                toToken,
-                fromToken,
-                blockNumber,
-            );
+        it("should bail out without any sim when the found size is dust", async () => {
+            (mockRainSolver.state.isDustTrade as Mock).mockReturnValue(true);
+            const result = await run();
 
             assert(result.isErr());
-            expect(result.error.reason).toBe(SimulationHaltReason.NoOpportunity);
-            expect(result.error.noneNodeError).toBe("full violation");
-            expect(result.error.spanAttributes["full.error"]).toContain(
-                "MinimalOutputBalanceViolation",
+            expect(trySimulateTradeSpy).not.toHaveBeenCalled();
+            expect(result.error.reason).toBe(SimulationHaltReason.DustTradeSize);
+            expect(result.error.spanAttributes).toEqual({
+                dustTradeSize: true,
+                error: "dust trade size",
+            });
+        });
+
+        it("should not count a found size as dust when the state cannot decide", async () => {
+            (mockRainSolver.state.isDustTrade as Mock).mockReturnValue(undefined);
+            const result = await run();
+
+            // undecided is not dust, however small the size, so the found
+            // size gets simulated with its backoff sizes
+            assert(result.isOk());
+            expect(simulatedSizes()).toEqual([5n, 3n, 2n, 1n]);
+        });
+
+        it("should never count the full size as dust", async () => {
+            (mockRainSolver.state.isDustTrade as Mock).mockReturnValue(true);
+            setFoundSize(1000n);
+            const result = await run();
+
+            // the full size runs, its halved sizes are all dust though
+            assert(result.isOk());
+            expect(simulatedSizes()).toEqual([1000n]);
+        });
+
+        it("should have no dust logic at all when no check is enabled", async () => {
+            // the state is the gate, with no check enabled it never decides
+            mockRainSolver.state.isDustCheckEnabled = false;
+            (mockRainSolver.state.isDustTrade as Mock).mockReturnValue(undefined);
+            const result = await run();
+
+            // the found size gets simulated with its backoff sizes
+            assert(result.isOk());
+            expect(simulatedSizes()).toEqual([5n, 3n, 2n, 1n]);
+            expect(mockRainSolver.state.isDustTrade).toHaveBeenCalledWith(
+                orderDetails,
+                outputToEthPrice,
+                "2000",
+                5n,
             );
-            for (let i = 1; i <= 4; i++) {
-                expect(result.error.spanAttributes[`partialFallback${i}.error`]).toContain(
-                    "MinimalOutputBalanceViolation",
+        });
+
+        it("should halve from the full size for a strict checked max owner", async () => {
+            mockRainSolver.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck = true;
+            mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
+            (mockRainSolver.state.isDustTrade as Mock).mockImplementation(
+                (_pair: any, _price: any, _usd: any, size: bigint) => size === 5n,
+            );
+            (trySimulateTradeSpy as Mock)
+                .mockResolvedValueOnce(mockViolationError) // 750n
+                .mockResolvedValueOnce(mockSuccess) // 500n
+                .mockResolvedValue(mockViolationError); // rest
+            const result = await run();
+
+            // the found size never gets simulated, the backoff sizes of the
+            // full size do, locked to the found route as well
+            assert(result.isOk());
+            expect(result.value.estimatedProfit).toBe(25n);
+            expect(simulatedSizes()).toEqual([750n, 500n, 250n, 125n, 62n]);
+            for (let i = 0; i < 5; i++) {
+                expect((simulatorWithArgsSpy as Mock).mock.calls[i][0]).toEqual(
+                    expect.objectContaining({ isPartial: true, ...lockedArgs }),
                 );
             }
-            expect(result.error.spanAttributes["partial.error"]).toBeUndefined();
-            expect(mockRainSolver.state.router.findLargestTradeSize).not.toHaveBeenCalled();
-            expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(5);
-
-            (simulatorWithArgsSpy as Mock).mockRestore();
         });
 
-        it("should not backoff from full size when routerPartialFallback is disabled", async () => {
-            mockRainSolver.appOptions.routerPartialFallback = false;
-            (simulatorWithArgsSpy as Mock).mockReturnValue({
-                quote: fullQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockViolationError),
-            });
-
-            const result: SimulationResult = await findBestRouterTrade.call(
-                mockRainSolver,
-                orderDetails,
-                signer,
-                ethPrice,
-                toToken,
-                fromToken,
-                blockNumber,
+        it("should flag the dust found size when the halved full sizes fail", async () => {
+            mockRainSolver.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck = true;
+            mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
+            (mockRainSolver.state.isDustTrade as Mock).mockImplementation(
+                (_pair: any, _price: any, _usd: any, size: bigint) => size <= 125n,
             );
+            (trySimulateTradeSpy as Mock).mockResolvedValue(mockViolationError);
+            const result = await run();
 
             assert(result.isErr());
-            expect(result.error.reason).toBe(SimulationHaltReason.NoOpportunity);
-            expect(result.error.spanAttributes["partialFallback1.error"]).toBeUndefined();
-            expect(mockRainSolver.state.router.findLargestTradeSize).not.toHaveBeenCalled();
-            expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(1);
-
-            (simulatorWithArgsSpy as Mock).mockRestore();
+            expect(simulatedSizes()).toEqual([750n, 500n, 250n]);
+            expect(result.error.spanAttributes["dustTradeSize"]).toBe(true);
+            expect(result.error.spanAttributes["step3.error"]).toContain(
+                "MinimalOutputBalanceViolation",
+            );
+            expect(result.error.spanAttributes["step4.error"]).toBeUndefined();
         });
 
-        it("should not backoff from full size when full dryrun fails with a non retry error", async () => {
-            const mockOtherError = Result.err({
-                type: TradeType.RouteProcessor,
-                reason: SimulationHaltReason.NoOpportunity,
-                spanAttributes: { error: "execution reverted: SomeOtherError()" },
-            });
-            (simulatorWithArgsSpy as Mock).mockReturnValue({
-                quote: fullQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockOtherError),
-            });
-
-            const result: SimulationResult = await findBestRouterTrade.call(
-                mockRainSolver,
-                orderDetails,
-                signer,
-                ethPrice,
-                toToken,
-                fromToken,
-                blockNumber,
-            );
+        it("should bail out for a strict checked max owner when every halved full size is dust too", async () => {
+            mockRainSolver.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck = true;
+            mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
+            (mockRainSolver.state.isDustTrade as Mock).mockReturnValue(true);
+            const result = await run();
 
             assert(result.isErr());
-            expect(result.error.reason).toBe(SimulationHaltReason.NoOpportunity);
-            expect(result.error.spanAttributes["partialFallback1.error"]).toBeUndefined();
-            expect(mockRainSolver.state.router.findLargestTradeSize).not.toHaveBeenCalled();
-            expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(1);
+            expect(trySimulateTradeSpy).not.toHaveBeenCalled();
+            expect(result.error.reason).toBe(SimulationHaltReason.DustTradeSize);
+            expect(result.error.spanAttributes).toEqual({
+                dustTradeSize: true,
+                error: "dust trade size",
+            });
+        });
 
-            (simulatorWithArgsSpy as Mock).mockRestore();
+        it("should bail out for a max owner when strict check is disabled", async () => {
+            mockRainSolver.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck = false;
+            mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
+            (mockRainSolver.state.isDustTrade as Mock).mockReturnValue(true);
+            const result = await run();
+
+            assert(result.isErr());
+            expect(trySimulateTradeSpy).not.toHaveBeenCalled();
+            expect(result.error.reason).toBe(SimulationHaltReason.DustTradeSize);
+        });
+
+        it("should bail out for a non max owner when strict check is enabled", async () => {
+            mockRainSolver.appOptions.strictMaxOwnerProfilePartialTradeSizeCheck = true;
+            mockRainSolver.appOptions.ownerProfile = { "0xowner": 100 }; // not max profile
+            (mockRainSolver.state.isDustTrade as Mock).mockReturnValue(true);
+            const result = await run();
+
+            assert(result.isErr());
+            expect(trySimulateTradeSpy).not.toHaveBeenCalled();
+            expect(result.error.reason).toBe(SimulationHaltReason.DustTradeSize);
         });
     });
 
-    it("should retry with the failing route dexes excluded when full trade dryrun fails", async () => {
-        const sushiQuote = {
+    describe("secondary route try", () => {
+        // a found route with a single dex, so the retry excludes exactly it
+        const hydrexQuote = {
             route: {
                 pcMap: new Map([["pool1", { liquidityProvider: "Hydrex" }]]),
                 route: { legs: [{ uniqueId: "pool1" }] },
             },
         } as any;
-        const mockFullTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: { error: "dryrun failed" },
-        });
-        const mockRetrySuccess = Result.ok({
-            type: TradeType.RouteProcessor,
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 50n,
-            oppBlockNumber: 123,
-        });
-        (simulatorWithArgsSpy as Mock)
-            .mockReturnValueOnce({
-                quote: sushiQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockFullTradeError),
-            })
-            .mockReturnValueOnce({
-                quote: sushiQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockRetrySuccess),
-            });
-
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
-        assert(result.isOk());
-        expect(result.value.spanAttributes).toEqual({ foundOpp: true });
-        expect(result.value.estimatedProfit).toBe(50n);
-        expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(2);
-        expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith({
-            type: TradeType.Router,
-            solver: mockRainSolver,
-            orderDetails,
-            fromToken,
-            toToken,
-            signer,
-            maximumInputFixed: 1000n,
-            ethPrice,
-            isPartial: false,
-            blockNumber: 123n,
-            excludeDexes: new Set(["Hydrex"]),
-        });
-        expect(mockRainSolver.state.router.findLargestTradeSize).not.toHaveBeenCalled();
-    });
-
-    describe("routerSecondaryRouteTry config", () => {
-        const sushiQuote = {
-            route: {
-                pcMap: new Map([["pool1", { liquidityProvider: "Hydrex" }]]),
-                route: { legs: [{ uniqueId: "pool1" }] },
-            },
-        } as any;
-        const mockFullTradeError = Result.err({
-            type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: { error: "dryrun failed" },
-        });
-        const mockRetrySuccess = Result.ok({
-            type: TradeType.RouteProcessor,
-            spanAttributes: { foundOpp: true },
-            estimatedProfit: 50n,
-            oppBlockNumber: 123,
-        });
-        const runWithMode = async (mode: string, ownerProfile?: Record<string, number>) => {
-            mockRainSolver.appOptions.routerSecondaryRouteTry = mode;
-            mockRainSolver.appOptions.ownerProfile = ownerProfile;
-            (simulatorWithArgsSpy as Mock)
-                .mockReturnValueOnce({
-                    quote: sushiQuote,
-                    trySimulateTrade: vi.fn().mockResolvedValue(mockFullTradeError),
-                })
-                .mockReturnValueOnce({
-                    quote: sushiQuote,
-                    trySimulateTrade: vi.fn().mockResolvedValue(mockRetrySuccess),
-                });
-            return findBestRouterTrade.call(
-                mockRainSolver,
-                orderDetails,
-                signer,
-                ethPrice,
-                toToken,
-                fromToken,
-                blockNumber,
-            );
-        };
-
-        it("should retry for every order when set to all", async () => {
-            const result = await runWithMode("all");
-            assert(result.isOk());
-            expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(2);
-            expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith(
-                expect.objectContaining({ excludeDexes: new Set(["Hydrex"]) }),
-            );
-        });
-
-        it("should retry only for max profile owners when set to max", async () => {
-            // non max owner, no retry
-            let result = await runWithMode("max", { "0xother": Number.MAX_SAFE_INTEGER });
-            assert(result.isErr());
-            expect(result.error.spanAttributes["secondary.full.error"]).toBeUndefined();
-            expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(1);
-
-            // max owner, retry
-            (simulatorWithArgsSpy as Mock).mockReset();
-            result = await runWithMode("max", { "0xowner": Number.MAX_SAFE_INTEGER });
-            assert(result.isOk());
-            expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(2);
-            expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith(
-                expect.objectContaining({ excludeDexes: new Set(["Hydrex"]) }),
-            );
-        });
-
-        it("should never retry when set to off", async () => {
-            const result = await runWithMode("off", { "0xowner": Number.MAX_SAFE_INTEGER });
-            assert(result.isErr());
-            expect(result.error.spanAttributes["secondary.full.error"]).toBeUndefined();
-            expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(1);
-        });
-    });
-
-    it("should return error when retry attempt also fails", async () => {
-        const sushiQuote = {
-            route: {
-                pcMap: new Map([["pool1", { liquidityProvider: "Hydrex" }]]),
-                route: { legs: [{ uniqueId: "pool1" }] },
-            },
-        } as any;
-        const mockFullTradeError = Result.err({
+        const mockDryrunError = Result.err({
             type: TradeType.RouteProcessor,
             reason: SimulationHaltReason.NoOpportunity,
             spanAttributes: { error: "dryrun failed" },
             noneNodeError: "full failed",
         });
-        const mockRetryError = Result.err({
+        const mockRetrySuccess = Result.ok({
             type: TradeType.RouteProcessor,
-            reason: SimulationHaltReason.NoOpportunity,
-            spanAttributes: { error: "retry dryrun failed" },
-            noneNodeError: "retry failed",
+            spanAttributes: { foundOpp: true },
+            estimatedProfit: 50n,
+            oppBlockNumber: 123,
         });
-        (simulatorWithArgsSpy as Mock)
-            .mockReturnValueOnce({
-                quote: sushiQuote,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockFullTradeError),
-            })
-            .mockReturnValueOnce({
-                quote: undefined,
-                trySimulateTrade: vi.fn().mockResolvedValue(mockRetryError),
+
+        beforeEach(() => {
+            // a single size per attempt keeps the sim sequence simple
+            mockRainSolver.appOptions.routerPartialFallbackSteps = 0;
+            setFoundSize(1000n, hydrexQuote);
+            (trySimulateTradeSpy as Mock)
+                .mockResolvedValueOnce(mockDryrunError) // primary attempt
+                .mockResolvedValueOnce(mockRetrySuccess); // secondary attempt
+        });
+
+        it("should retry with the found route dexes excluded when the batch fails onchain", async () => {
+            const result = await run();
+
+            assert(result.isOk());
+            expect(result.value.spanAttributes).toEqual({ foundOpp: true });
+            expect(result.value.estimatedProfit).toBe(50n);
+            expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
+            // the size finder runs again with the dexes excluded
+            expect(mockRainSolver.state.router.findLargestTradeSize).toHaveBeenCalledTimes(2);
+            expect(mockRainSolver.state.router.findLargestTradeSize).toHaveBeenLastCalledWith(
+                orderDetails,
+                toToken,
+                fromToken,
+                1000n,
+                100n,
+                undefined,
+                false,
+                new Set(["Hydrex"]),
+            );
+            expect(simulatorWithArgsSpy).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    maximumInputFixed: 1000n,
+                    excludeDexes: new Set(["Hydrex"]),
+                    sushiQuote: hydrexQuote,
+                }),
+            );
+        });
+
+        it("should not retry when the batch fails for a reason other than an onchain rejection", async () => {
+            (trySimulateTradeSpy as Mock).mockReset();
+            (trySimulateTradeSpy as Mock).mockResolvedValue(
+                Result.err({
+                    type: TradeType.RouteProcessor,
+                    reason: SimulationHaltReason.UndefinedTradeDestinationAddress,
+                    spanAttributes: { error: "no address" },
+                }),
+            );
+            const result = await run();
+
+            assert(result.isErr());
+            expect(trySimulateTradeSpy).toHaveBeenCalledTimes(1);
+            expect(result.error.spanAttributes["secondary.step1.error"]).toBeUndefined();
+        });
+
+        it("should retry for every order when set to all", async () => {
+            mockRainSolver.appOptions.routerSecondaryRouteTry = "all";
+            mockRainSolver.appOptions.ownerProfile = { "0xother": Number.MAX_SAFE_INTEGER };
+            const result = await run();
+
+            assert(result.isOk());
+            expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
+        });
+
+        it("should retry only for max profile owners when set to max", async () => {
+            mockRainSolver.appOptions.routerSecondaryRouteTry = "max";
+            // non max owner, no retry
+            mockRainSolver.appOptions.ownerProfile = { "0xother": Number.MAX_SAFE_INTEGER };
+            let result = await run();
+            assert(result.isErr());
+            expect(result.error.spanAttributes["secondary.step1.error"]).toBeUndefined();
+            expect(trySimulateTradeSpy).toHaveBeenCalledTimes(1);
+
+            // max owner, retry
+            (trySimulateTradeSpy as Mock).mockReset();
+            (trySimulateTradeSpy as Mock)
+                .mockResolvedValueOnce(mockDryrunError)
+                .mockResolvedValueOnce(mockRetrySuccess);
+            mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
+            result = await run();
+            assert(result.isOk());
+            expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
+        });
+
+        it("should never retry when set to off", async () => {
+            mockRainSolver.appOptions.routerSecondaryRouteTry = "off";
+            mockRainSolver.appOptions.ownerProfile = { "0xowner": Number.MAX_SAFE_INTEGER };
+            const result = await run();
+
+            assert(result.isErr());
+            expect(result.error.spanAttributes["secondary.step1.error"]).toBeUndefined();
+            expect(trySimulateTradeSpy).toHaveBeenCalledTimes(1);
+        });
+
+        it("should return the primary error with the secondary attributes when the retry also fails", async () => {
+            const mockRetryError = Result.err({
+                type: TradeType.RouteProcessor,
+                reason: SimulationHaltReason.NoOpportunity,
+                spanAttributes: { error: "retry dryrun failed" },
+                noneNodeError: "retry failed",
             });
+            (trySimulateTradeSpy as Mock).mockReset();
+            (trySimulateTradeSpy as Mock)
+                .mockResolvedValueOnce(mockDryrunError)
+                .mockResolvedValueOnce(mockRetryError);
+            const result = await run();
 
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
-
-        assert(result.isErr());
-        expect(result.error.noneNodeError).toBe("full failed");
-        expect(result.error.type).toBe(TradeType.RouteProcessor);
-        expect(result.error.spanAttributes).toEqual({
-            "full.error": "dryrun failed",
-            "secondary.full.error": "retry dryrun failed",
+            assert(result.isErr());
+            expect(result.error.noneNodeError).toBe("full failed");
+            expect(result.error.type).toBe(TradeType.RouteProcessor);
+            expect(result.error.spanAttributes).toEqual({
+                "step1.error": "dryrun failed",
+                "secondary.step1.error": "retry dryrun failed",
+            });
+            expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
+            expect(extendObjectWithHeader).toHaveBeenCalledWith(
+                expect.any(Object),
+                expect.any(Object),
+                "secondary",
+            );
         });
-        expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(2);
-        expect(extendObjectWithHeader).toHaveBeenCalledWith(
-            expect.any(Object),
-            { error: "dryrun failed" },
-            "full",
-        );
-        expect(extendObjectWithHeader).toHaveBeenCalledWith(
-            expect.any(Object),
-            { error: "retry dryrun failed" },
-            "full",
-        );
-        expect(extendObjectWithHeader).toHaveBeenCalledWith(
-            expect.any(Object),
-            expect.any(Object),
-            "secondary",
-        );
-        expect(mockRainSolver.state.router.findLargestTradeSize).not.toHaveBeenCalled();
+
+        it("should not retry when no route was found with the dexes excluded", async () => {
+            (mockRainSolver.state.router.findLargestTradeSize as Mock)
+                .mockReturnValueOnce({
+                    status: TradeSizeStatus.Found,
+                    size: 1000n,
+                    quote: hydrexQuote,
+                })
+                .mockReturnValueOnce({ status: TradeSizeStatus.NoWay });
+            const result = await run();
+
+            assert(result.isErr());
+            expect(trySimulateTradeSpy).toHaveBeenCalledTimes(1);
+            expect(result.error.spanAttributes["secondary.error"]).toBe(
+                "found no route for any trade size",
+            );
+        });
+
+        it("should not retry when the found route spans more than one dex", async () => {
+            setFoundSize(1000n, {
+                route: {
+                    pcMap: new Map([
+                        ["pool1", { liquidityProvider: "Hydrex" }],
+                        ["pool2", { liquidityProvider: "UniswapV3" }],
+                    ]),
+                    route: { legs: [{ uniqueId: "pool1" }, { uniqueId: "pool2" }] },
+                },
+            });
+            const result = await run();
+
+            assert(result.isErr());
+            expect(trySimulateTradeSpy).toHaveBeenCalledTimes(1);
+            expect(mockRainSolver.state.router.findLargestTradeSize).toHaveBeenCalledTimes(1);
+            expect(result.error.spanAttributes["secondary.step1.error"]).toBeUndefined();
+        });
     });
 
     it("should return early if ethPrice is unknown", async () => {
@@ -1573,19 +728,12 @@ describe("Test findBestRouterTrade", () => {
         expect(result.error.spanAttributes.error).toBe(
             "no route to get price of input token to eth",
         );
+        expect(mockRainSolver.state.router.findLargestTradeSize).not.toHaveBeenCalled();
     });
 
     it("should return error when trade addresses are not configured", async () => {
         (mockRainSolver.state.contracts.getAddressesForTrade as Mock).mockReturnValue(undefined);
-        const result: SimulationResult = await findBestRouterTrade.call(
-            mockRainSolver,
-            orderDetails,
-            signer,
-            ethPrice,
-            toToken,
-            fromToken,
-            blockNumber,
-        );
+        const result = await run();
 
         assert(result.isErr());
         expect(result.error.type).toBe(TradeType.Router);
@@ -1594,5 +742,30 @@ describe("Test findBestRouterTrade", () => {
             orderDetails,
             TradeType.Router,
         );
+        expect(mockRainSolver.state.router.findLargestTradeSize).not.toHaveBeenCalled();
+    });
+});
+
+describe("Test getHalvedTradeSizes", () => {
+    it("should start at three quarters and halve the size as many times as the steps", () => {
+        expect(getHalvedTradeSizes(1000n, 4)).toEqual([750n, 500n, 250n, 125n, 62n]);
+        expect(getHalvedTradeSizes(1000n, 1)).toEqual([750n, 500n]);
+        // no steps means no sizes at all, not even the three quarters one
+        expect(getHalvedTradeSizes(1000n, 0)).toEqual([]);
+    });
+
+    it("should stop at the first size that reaches zero", () => {
+        expect(getHalvedTradeSizes(8n, 10)).toEqual([6n, 4n, 2n, 1n]);
+        expect(getHalvedTradeSizes(1n, 10)).toEqual([]);
+        expect(getHalvedTradeSizes(0n, 10)).toEqual([]);
+    });
+
+    it("should stop at the first dust size", () => {
+        const isDust = (size: bigint) => size < 200n;
+        expect(getHalvedTradeSizes(1000n, 4, isDust)).toEqual([750n, 500n, 250n]);
+        // 225n clears, its half 150n is dust
+        expect(getHalvedTradeSizes(300n, 4, isDust)).toEqual([225n]);
+        // a dust three quarters size means no sizes at all
+        expect(getHalvedTradeSizes(200n, 4, isDust)).toEqual([]);
     });
 });

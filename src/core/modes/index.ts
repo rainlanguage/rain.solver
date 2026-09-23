@@ -74,6 +74,7 @@ export async function findBestTrade(
             toToken,
             fromToken,
             blockNumber,
+            outputToEthPrice,
         ),
         findBestIntraOrderbookTradeFn?.call(
             this,

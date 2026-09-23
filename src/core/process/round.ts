@@ -287,6 +287,10 @@ export async function finalizeRound(
                     report.setStatus({ code: SpanStatusCode.OK, message: "zero max output" });
                     break;
                 }
+                case ProcessOrderStatus.DustOutput: {
+                    report.setStatus({ code: SpanStatusCode.OK, message: "dust max output" });
+                    break;
+                }
                 case ProcessOrderStatus.NoOpportunity: {
                     if (value.message) {
                         report.setStatus({ code: SpanStatusCode.ERROR, message: value.message });
