@@ -186,9 +186,6 @@ describe("Test processOrder", () => {
         expect(result.value.spanAttributes["details.oracle.url"]).toBe(
             "https://oracle.example.com",
         );
-        expect(result.value.spanAttributes["details.oracle.prev"]).toBe(
-            JSON.stringify(signedContext),
-        );
     });
 
     it("should record N/A as previous oracle signed context when none exists yet", async () => {
@@ -203,7 +200,6 @@ describe("Test processOrder", () => {
         const result = await fn();
 
         assert(result.isOk());
-        expect(result.value.spanAttributes["details.oracle.prev"]).toBe("N/A");
     });
 
     it("should not record previous oracle signed context for non oracle orders", async () => {

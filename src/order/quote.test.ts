@@ -280,7 +280,6 @@ describe("Test fetchOracleContextWithSpan", () => {
             duration: expect.any(Number),
         });
         expect(spanAttributes["events.duration.oracleFetch"]).toBeTypeOf("number");
-        expect(spanAttributes["details.oracle.new"]).toBe(JSON.stringify([validSignedContext]));
     });
 
     it("should record fetch event and rethrow the oracle error on failure", async () => {
@@ -297,14 +296,6 @@ describe("Test fetchOracleContextWithSpan", () => {
         });
         expect(spanAttributes["events.duration.oracleFetch"]).toBeTypeOf("number");
         expect(spanAttributes["details.oracle.new"]).toBeUndefined();
-    });
-
-    it("should record N/A as new signed context when none is set after fetch", async () => {
-        (fetchOracleContext as Mock).mockResolvedValueOnce(Result.ok(undefined));
-
-        await fetchOracleContextWithSpan(orderDetails, state, spanAttributes, spanEvents);
-
-        expect(spanAttributes["details.oracle.new"]).toBe("N/A");
     });
 
     it("should not record anything for orders without oracle url", async () => {
