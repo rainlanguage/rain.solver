@@ -5,7 +5,7 @@ import { processReceipt } from "./receipt";
 import { RainSolverSigner } from "../../signer";
 import { PreAssembledSpan } from "../../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
-import { containsNodeError, errorSnapshot, isTimeout } from "../../error";
+import { containsNodeError, ErrorSeverity, errorSnapshot, isTimeout } from "../../error";
 import { RawTransaction, Result, withBigintSerializer } from "../../common";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import {
@@ -349,6 +349,48 @@ describe("Test processTransaction", () => {
             spanEventSpy.mockRestore();
             spanSetStatusSpy.mockRestore();
             spanExtendAttrsSpy.mockRestore();
+        });
+
+        it("should not set high severity for known error even with txNoneNodeError flag", async () => {
+            const mockReceipt = { status: "reverted" };
+            const mockErrorResult = Result.err<ProcessTransactionSuccess, ProcessOrderFailure>({
+                error: { snapshot: "block not found: 0x314dc55" },
+                spanAttributes: { txNoneNodeError: true },
+                spanEvents: {},
+            } as any);
+
+            (mockSigner.waitForReceipt as Mock).mockResolvedValueOnce(mockReceipt);
+            (processReceipt as Mock).mockResolvedValueOnce(mockErrorResult);
+            const spanSetAttrSpy = vi.spyOn(PreAssembledSpan.prototype, "setAttr");
+
+            const result = await transactionSettlement.call(mockSolver, mockArgsSettlement);
+
+            assert(result.isErr());
+            expect(spanSetAttrSpy).not.toHaveBeenCalledWith("severity", ErrorSeverity.HIGH);
+            expect(spanSetAttrSpy).toHaveBeenCalledWith("txReverted", true);
+
+            spanSetAttrSpy.mockRestore();
+        });
+
+        it("should set high severity for unknown error with txNoneNodeError flag", async () => {
+            const mockReceipt = { status: "reverted" };
+            const mockErrorResult = Result.err<ProcessTransactionSuccess, ProcessOrderFailure>({
+                error: { snapshot: "some unrecognized revert reason" },
+                spanAttributes: { txNoneNodeError: true },
+                spanEvents: {},
+            } as any);
+
+            (mockSigner.waitForReceipt as Mock).mockResolvedValueOnce(mockReceipt);
+            (processReceipt as Mock).mockResolvedValueOnce(mockErrorResult);
+            const spanSetAttrSpy = vi.spyOn(PreAssembledSpan.prototype, "setAttr");
+
+            const result = await transactionSettlement.call(mockSolver, mockArgsSettlement);
+
+            assert(result.isErr());
+            expect(spanSetAttrSpy).toHaveBeenCalledWith("severity", ErrorSeverity.HIGH);
+            expect(spanSetAttrSpy).toHaveBeenCalledWith("txReverted", true);
+
+            spanSetAttrSpy.mockRestore();
         });
 
         it("failed setllement", async () => {

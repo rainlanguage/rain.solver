@@ -196,10 +196,12 @@ export async function transactionSettlement(
                 }
                 report.setAttr("errorDetails", message);
             }
+            let isUnknown = false;
             if (KnownErrors.every((v) => !message.includes(v))) {
+                isUnknown = true;
                 report.setAttr("severity", ErrorSeverity.HIGH);
             }
-            if (err.spanAttributes["txNoneNodeError"]) {
+            if (isUnknown && err.spanAttributes["txNoneNodeError"]) {
                 report.setAttr("severity", ErrorSeverity.HIGH);
             }
             report.setStatus({ code: SpanStatusCode.ERROR, message });

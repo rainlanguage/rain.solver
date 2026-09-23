@@ -1347,7 +1347,7 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].endTime).toBe(789);
         });
 
-        it("should handle TxReverted error with txNoneNodeError flag (high severity)", async () => {
+        it("should handle TxReverted error with unknown error (high severity)", async () => {
             const mockSettle = vi.fn().mockResolvedValue(
                 Result.err({
                     reason: ProcessOrderHaltReason.TxReverted,
@@ -1376,6 +1376,35 @@ describe("Test finalizeRound", () => {
             expect(result.reports[0].attributes["txReverted"]).toBe(true);
             expect(result.reports[0].startTime).toBe(123);
             expect(result.reports[0].endTime).toBe(789);
+        });
+
+        it("should not set high severity for known error even with txNoneNodeError flag", async () => {
+            const mockSettle = vi.fn().mockResolvedValue(
+                Result.err({
+                    reason: ProcessOrderHaltReason.TxReverted,
+                    spanAttributes: { txNoneNodeError: true },
+                    spanEvents: {},
+                    status: "reverted",
+                    error: { snapshot: "block not found: 0x314dc55" },
+                    endTime: 789,
+                }),
+            );
+
+            settlements = [
+                {
+                    settle: mockSettle,
+                    pair: "UNI/WETH",
+                    owner: "0xabc",
+                    orderHash: "0x456",
+                    startTime: 123,
+                },
+            ];
+
+            const result: finalizeRoundType = await finalizeRound.call(mockSolver, settlements);
+
+            expect(result.reports[0].status?.code).toBe(SpanStatusCode.ERROR);
+            expect(result.reports[0].attributes["severity"]).toBeUndefined();
+            expect(result.reports[0].attributes["txReverted"]).toBe(true);
         });
 
         it("should handle TxMineFailed error with timeout", async () => {
