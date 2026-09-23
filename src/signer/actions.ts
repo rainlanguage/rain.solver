@@ -151,8 +151,26 @@ export namespace RainSolverSignerActions {
 }
 
 /**
+ * Determines if the given tx has its gas limit and gas price (legacy or eip1559)
+ * explicitly set, such a tx can be signed locally and sent as a raw tx without
+ * any rpc call for populating its fields
+ * @param tx - The transaction parameters
+ */
+export function hasExplicitGasParams(
+    tx: SendTransactionParameters<Chain, HDAccount | PrivateKeyAccount>,
+): boolean {
+    return (
+        typeof tx.gas === "bigint" &&
+        (typeof tx.gasPrice === "bigint" || typeof tx.maxFeePerGas === "bigint")
+    );
+}
+
+/**
  * A wrapper for viem sendTransactions that handles nonce and manages signer busy
- * state while the transaction is being sent ensuring proper busy state management
+ * state while the transaction is being sent ensuring proper busy state management,
+ * a tx with explicit gas limit and gas price is signed locally and broadcasted as
+ * a raw tx (see broadcastTx), otherwise it is sent through viem sendTransaction
+ * which populates the missing fields over rpc before signing
  *
  * @param signer - The RainSolverSigner instance to use for sending the transaction
  * @param tx - The transaction parameters to send
@@ -179,6 +197,10 @@ export async function sendTx(
         tx.gas = getTxGas(signer.state, tx.gas);
     }
 
+    // only a fully populated tx can be signed locally, the rest go
+    // through viem sendTransaction that fills in the missing fields
+    const canBroadcast = hasExplicitGasParams(tx);
+
     async function send() {
         if (typeof nonce !== "number") {
             await signer
@@ -192,7 +214,11 @@ export async function sendTx(
                     throw e;
                 });
         }
-        return await broadcastTx(signer, { ...(tx as any), nonce });
+        if (canBroadcast) {
+            return await broadcastTx(signer, { ...(tx as any), nonce });
+        } else {
+            return await signer.sendTransaction({ ...(tx as any), nonce });
+        }
     }
     try {
         const hash = await send();
@@ -226,7 +252,7 @@ export async function estimateGasCost(
     tx: EstimateGasParameters<Chain>,
 ): Promise<EstimateGasCostResult> {
     const gasPrice = signer.state.gasPrice;
-    const gas = await signer.estimateGas({ ...tx, blockTag: "pending" } as any);
+    const gas = await signer.estimateGas({ ...tx } as any);
     const result: EstimateGasCostResult = {
         gas,
         gasPrice,
