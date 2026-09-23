@@ -962,7 +962,7 @@ describe("Test OrderManager", () => {
                 },
             },
         } as any;
-        await orderManager.quoteOrder(bundledOrder as any);
+        await orderManager.quoteOrder(bundledOrder as any, {}, {});
         expect(bundledOrder.takeOrder.quote).toEqual({
             maxOutput: 100n,
             ratio: 2n,

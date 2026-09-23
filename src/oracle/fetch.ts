@@ -9,6 +9,7 @@ import {
     OracleOrderRequest,
     OracleSingleAbiParams,
 } from "./types";
+import { Attributes } from "@opentelemetry/api";
 
 /**
  * Fetch signed context from an oracle endpoint (single request format).
@@ -27,6 +28,7 @@ export async function fetchSignedContext(
     url: string,
     request: OracleOrderRequest,
     healthMap: OracleHealthMap,
+    spanAttributes: Attributes,
     isMaxOwnerProfile?: boolean,
 ): Promise<Result<SignedContextV2, OracleError>> {
     if (!OracleConstants.isKnown(url)) {
@@ -62,12 +64,15 @@ export async function fetchSignedContext(
             timeout: OracleConstants.ORACLE_TIMEOUT_MS,
             responseType: "json",
         });
+        spanAttributes["details.oracle.rawResponse"] = JSON.stringify(response.data);
 
         // Validate shape of response
         if (SignedContextV2.isValidList(response.data)) {
+            spanAttributes["details.oracle.isValid"] = true;
             recordOracleSuccess(healthMap, url, owner);
             return Result.ok(response.data[0]);
         } else {
+            spanAttributes["details.oracle.isValid"] = false;
             recordOracleFailure(healthMap, url, owner, isMaxOwnerProfile);
             return Result.err(
                 new OracleError(
@@ -89,6 +94,7 @@ export async function fetchSignedContext(
 
         if (axios.isAxiosError(err)) {
             if (err.response) {
+                spanAttributes["details.oracle.rawResponse"] = JSON.stringify(err.response.data);
                 error = new OracleError(
                     `Oracle request failed with: ${err.response.status} ${err.response.statusText}`,
                     OracleErrorType.RequestFailed,
