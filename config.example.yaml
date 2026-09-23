@@ -126,6 +126,11 @@ txTimeThreshold: 15000
 # and the transaction receipt wait, required
 blockTime: 2000
 
+# Optional block tag used for the order quote calls (eth_call) and the gas estimate calls (eth_estimateGas),
+# either of latest, earliest, pending, safe or finalized, not all chains support each tag, when unset the
+# viem client default applies, which is usually latest
+callBlockTag: pending
+
 # Subscribes the block number watcher to flashblocks heads (newFlashblocks) instead of new heads over the ws rpc,
 # only supported on Base chain, requires wsRpc, default is false
 flashblocks: false
