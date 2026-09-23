@@ -34,7 +34,7 @@ export type TxMineRecord = {
  *
  * Features:
  * - Tracks and updates the current gas price and L1 gas price (for L2 chains).
- * - Dynamically increases the gas price multiplier if transactions take longer than a threshold to mine for certain period.
+ * - Dynamically increases the gas price multiplier if mined transactions take longer than a threshold to mine, at most one step per configurable period, every slow transaction holds the level for another period, a timed out receipt wait is not a gas signal and does not count.
  * - Steps the gas price multiplier down towards its base value, one step per configurable period, whether a transaction mines or not.
  * - Periodically fetches and updates gas prices from the blockchain.
  * - Allows functionalities for starting and stopping gas price watcher.
@@ -77,6 +77,8 @@ export class GasManager {
     gasPriceMultiplier: number;
     /** Deadline for gas price increase to reset */
     deadline: number | undefined;
+    /** Timestamp of the last gas price multiplier step up, undefined when none has happened yet */
+    lastStepUp: number | undefined;
 
     private gasPriceWatcher: ReturnType<typeof setInterval> | undefined;
 
@@ -92,7 +94,11 @@ export class GasManager {
             this.gasIncreaseStepTime = config.gasIncreaseStepTime;
         }
         if (config.maxGasPriceMultiplier !== undefined) {
-            this.maxGasPriceMultiplier = config.maxGasPriceMultiplier;
+            // the ceiling can never sit below the base
+            this.maxGasPriceMultiplier = Math.max(
+                config.baseGasPriceMultiplier,
+                config.maxGasPriceMultiplier,
+            );
         } else {
             this.maxGasPriceMultiplier = this.baseGasPriceMultiplier + 1000; // default +10x ceiling
         }
@@ -133,22 +139,35 @@ export class GasManager {
     /**
      * Updates the gas price multiplier by the given transaction mining event accordingly.
      * That is done through the following logic:
-     * - If the transaction took longer than the threshold to mine, increase the gas price
-     *   multiplier by a set number of points, up to a maximum value, and set a deadline for
-     *   when the multiplier can be reset.
-     * - If the transaction mined successfully and the current time is past the deadline,
+     * - A timed out receipt wait is ignored, it is not a gas signal, a timeout has other
+     *   causes too (an rpc not serving the receipt, a dropped tx) and counting it would
+     *   drive the multiplier up with no effect on the cause.
+     * - If the mined transaction took longer than the threshold to mine, it holds the
+     *   current multiplier for another step time by pushing the step down deadline out,
+     *   and increases the multiplier by a set number of points, up to a maximum value,
+     *   at most once per step time, so sustained slow transactions climb one step per
+     *   step time instead of one step per transaction, and the decay starts one step
+     *   time after the last slow transaction.
+     * - If the transaction mined fast and the current time is past the deadline,
      *   reduces it step by step until back to base.
      * @param txMineRecord - The transaction mining record
      */
     onTransactionMine(txMineRecord: TxMineRecord) {
+        if (!txMineRecord.didMine) return;
+        const now = Date.now();
         if (txMineRecord.length >= this.txTimeThreshold) {
-            this.deadline = Date.now() + this.gasIncreaseStepTime;
+            // a slow tx always holds the level, the step up is rate limited
+            this.deadline = now + this.gasIncreaseStepTime;
+            if (this.lastStepUp !== undefined && now - this.lastStepUp < this.gasIncreaseStepTime) {
+                return;
+            }
+            this.lastStepUp = now;
             this.gasPriceMultiplier = Math.min(
                 this.maxGasPriceMultiplier,
                 this.gasPriceMultiplier + this.gasIncreasePointsPerStep,
             );
         } else {
-            if (this.deadline && Date.now() >= this.deadline) {
+            if (this.deadline && now >= this.deadline) {
                 this.gasPriceMultiplier = Math.max(
                     this.baseGasPriceMultiplier,
                     this.gasPriceMultiplier - this.gasIncreasePointsPerStep,

@@ -77,6 +77,7 @@ export const KnownErrors = [
     "ClearZeroAmount",
     "StalePrice",
     "MinimumInput",
+    "block not found",
 ] as const;
 
 /** Represents a decoded solidity error type */

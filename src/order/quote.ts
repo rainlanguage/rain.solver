@@ -2,7 +2,7 @@ import { ChainId } from "sushi";
 import { SharedState } from "../state";
 import { fetchOracleContext } from "../oracle";
 import { AppOptions, CallBlockTag } from "../config";
-import { ABI, normalizeFloat, withBigintSerializer } from "../common";
+import { ABI, normalizeFloat } from "../common";
 import { BundledOrders, Pair, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData } from "viem";
 import { Attributes } from "@opentelemetry/api";
@@ -69,11 +69,6 @@ export async function fetchOracleContextWithSpan(
     }
     if (oracleResult.isErr()) {
         throw oracleResult.error;
-    }
-    if (orderDetails.oracleUrl) {
-        spanAttributes["details.oracle.new"] = orderDetails.takeOrder.struct.signedContext
-            ? JSON.stringify(orderDetails.takeOrder.struct.signedContext, withBigintSerializer)
-            : "N/A";
     }
 }
 

@@ -57,6 +57,17 @@ export async function processReceipt({
     // keep track of gas consumption of the account and bounty token
     baseResult.gasCost = gasCost;
 
+    // the gas is paid whether the tx cleared or reverted, so it is reported in both cases
+    baseResult.spanAttributes["details.actualGasCost"] = toNumber(gasCost);
+    if (signer.state.gasTokenUsdPrice) {
+        baseResult.spanAttributes["details.actualGasCostUsd"] = toNumber(
+            toUsdValue(gasCost, signer.state.gasTokenUsdPrice),
+        );
+    }
+    if (l1Fee) {
+        baseResult.spanAttributes["details.gasCostL1"] = toNumber(l1Fee);
+    }
+
     if (receipt.status === "success") {
         baseResult.spanAttributes["didClear"] = true;
 
@@ -78,15 +89,6 @@ export async function processReceipt({
         );
         const netProfit = income ? income - gasCost : undefined;
 
-        baseResult.spanAttributes["details.actualGasCost"] = toNumber(gasCost);
-        if (signer.state.gasTokenUsdPrice) {
-            baseResult.spanAttributes["details.actualGasCostUsd"] = toNumber(
-                toUsdValue(gasCost, signer.state.gasTokenUsdPrice),
-            );
-        }
-        if (l1Fee) {
-            baseResult.spanAttributes["details.gasCostL1"] = toNumber(l1Fee);
-        }
         if (income) {
             baseResult.spanAttributes["details.income"] = toNumber(income);
             baseResult.spanAttributes["details.netProfit"] = toNumber(netProfit!);
@@ -157,6 +159,13 @@ export async function processReceipt({
         })();
         if (simulation) {
             baseResult.spanAttributes["txNoneNodeError"] = !simulation.nodeError;
+        }
+        // a reverted tx has no income, so its net profit is the gas it burned
+        baseResult.spanAttributes["details.netProfit"] = toNumber(-gasCost);
+        if (signer.state.gasTokenUsdPrice) {
+            baseResult.spanAttributes["details.netProfitUsd"] = toNumber(
+                toUsdValue(-gasCost, signer.state.gasTokenUsdPrice),
+            );
         }
         const failure: ProcessOrderFailure = {
             ...baseResult,
