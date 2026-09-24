@@ -4,7 +4,7 @@
 - add the block number at which the debugging should take place.
 - replace the `from` address with the transaction sender address, ie msg.sender.
 - replace the `to` address with the arb contract address on the desired network.
-- replace the `data` with the calldata without leading 0x taken from otel (hyperdx).
+- replace the `data` with the calldata without leading 0x taken from the trace in VictoriaTraces.
 - save the file and now you can run the following command to get the traces:
 ```bash
 forge script diag/DiagOrder.sol:DiagOrder -vvvvv
