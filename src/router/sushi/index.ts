@@ -215,7 +215,6 @@ export class SushiRouter extends RainSolverRouterBase {
             fromToken,
             toToken,
             amountIn,
-            gasPrice,
             blockNumber = undefined,
             ignoreCache = undefined,
             skipFetch = false,
@@ -236,7 +235,7 @@ export class SushiRouter extends RainSolverRouterBase {
                 fromToken,
                 amountIn,
                 toToken,
-                Number(gasPrice),
+                0,
                 this.getFilteredLiquidityProviders(excludeDexes),
                 poolFilter,
                 undefined,
@@ -290,6 +289,66 @@ export class SushiRouter extends RainSolverRouterBase {
      */
     async update(blockNumber?: bigint): Promise<boolean> {
         return await this.dataFetcher.updatePools(blockNumber);
+    }
+
+    /**
+     * Requotes the route of the given quote for another amount in, the route is
+     * kept as is (same legs and pools) and only its amounts get simulated again for
+     * the new amount, so a route found for one trade size can be reused for another
+     * size with a price and amount out that belong to that size, falls back to the
+     * given quote as is when the route cannot be simulated for the new amount
+     * @param quote - The quote whose route is reused
+     * @param amountIn - The new amount in to quote the route for
+     * @param fromToken - The token to sell
+     * @param toToken - The token to buy
+     * @param gasPrice - The current gas price
+     * @param sushiRouteType - The route type, single or multi
+     */
+    requoteRoute(
+        quote: SushiRouterQuote,
+        amountIn: bigint,
+        fromToken: Token,
+        toToken: Token,
+        _gasPrice: bigint,
+        sushiRouteType?: "single" | "multi",
+    ): SushiRouterQuote {
+        // narrow the pool map down to the pools of the route legs, so the route
+        // finder has no other pools to route through than the locked route ones
+        const routePcMap = new Map<string, PoolCode>();
+        for (const leg of quote.route.route.legs ?? []) {
+            const poolCode = quote.route.pcMap.get(leg.uniqueId);
+            if (poolCode) routePcMap.set(leg.uniqueId, poolCode);
+        }
+        if (!routePcMap.size) {
+            return quote;
+        }
+        const route = Router.findBestRoute(
+            routePcMap,
+            this.chainId as ChainId,
+            fromToken,
+            amountIn,
+            toToken,
+            0,
+            undefined,
+            poolFilter,
+            undefined,
+            sushiRouteType,
+        );
+        if (route.status == "NoWay" || route.amountOutBI < 0n) {
+            return quote;
+        }
+        return {
+            type: RouterType.Sushi,
+            status: RouteStatus.Success,
+            price: calculatePrice18(
+                amountIn,
+                route.amountOutBI,
+                fromToken.decimals,
+                toToken.decimals,
+            ),
+            route: { route, pcMap: quote.route.pcMap },
+            amountOut: route.amountOutBI,
+        };
     }
 
     /**
@@ -435,11 +494,25 @@ export class SushiRouter extends RainSolverRouterBase {
             );
         }
 
-        // use the precomputed quote when given, since recomputing the route
-        // for the same amount is deterministic and yields the same result,
-        // otherwise get route details from sushi dataFetcher
+        // use the precomputed quote when given, since recomputing the route for
+        // the same amount is deterministic and yields the same result, a locked
+        // route quote may belong to another amount though, so its route gets
+        // requoted for the given maximum input, keeping the route and getting
+        // the price and amount out of this size, otherwise get route details
+        // from sushi dataFetcher
         const quoteResult = args.sushiQuote
-            ? Result.ok<SushiRouterQuote, SushiRouterError>(args.sushiQuote)
+            ? Result.ok<SushiRouterQuote, SushiRouterError>(
+                  args.lockRoute
+                      ? this.requoteRoute(
+                            args.sushiQuote,
+                            maximumInput,
+                            fromToken,
+                            toToken,
+                            gasPrice,
+                            state.appOptions.route,
+                        )
+                      : args.sushiQuote,
+              )
             : await this.tryQuote({
                   fromToken,
                   toToken,

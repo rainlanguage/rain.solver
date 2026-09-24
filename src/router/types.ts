@@ -107,9 +107,9 @@ export type GetTradeParamsArgs = {
     /**
      * Locks the trade to the route of the given `sushiQuote`, when set only the
      * sushi router builds the trade params from it and no other router gets quoted,
-     * the quote may have been found for a different amount, so its price and amount
-     * out do not correspond to the given maximum input and only the route itself
-     * is meant to be used, has no effect without `sushiQuote`
+     * the quote may have been found for a different amount, so only its route is
+     * reused and the sushi router requotes that route for the given maximum input
+     * to get the price and amount out of this size, has no effect without `sushiQuote`
      */
     lockRoute?: boolean;
 };
