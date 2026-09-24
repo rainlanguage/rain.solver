@@ -1,40 +1,38 @@
-import { OracleHealthMap } from "./types";
+import { OracleConstants } from "./types";
 import { describe, it, expect } from "vitest";
 
-describe("Test OracleHealthMap namespace", () => {
-    describe("key", () => {
-        it("should build the key from the url and lowercased owner", () => {
-            expect(OracleHealthMap.key("https://oracle.example.com", "0xAbCd")).toBe(
-                "https://oracle.example.com-0xabcd",
-            );
-        });
-
-        it("should build identical keys regardless of owner casing", () => {
-            expect(OracleHealthMap.key("https://oracle.example.com", "0xABCD")).toBe(
-                OracleHealthMap.key("https://oracle.example.com", "0xabcd"),
-            );
-        });
+describe("Test OracleConstants.isKnown", () => {
+    it("should accept the known urls", () => {
+        for (const url of OracleConstants.KnownUrls) {
+            expect(OracleConstants.isKnown(url)).toBe(true);
+            expect(OracleConstants.isKnown(`${url}?chain=1`)).toBe(true);
+        }
     });
 
-    describe("getOrCreate", () => {
-        it("should create and store a fresh state when none exists", () => {
-            const map: OracleHealthMap = new Map();
-            const state = OracleHealthMap.getOrCreate(map, "https://oracle.example.com", "0xAbCd");
+    it("should accept any https subdomain of a known domain", () => {
+        for (const url of [
+            "https://t0trade.com/context",
+            "https://oracle.t0trade.com/context",
+            "https://oracle-base.t0trade.com/context",
+            "https://a.b.c.t0trade.com/some/path?x=1",
+            "https://T0TRADE.com/context",
+        ]) {
+            expect(OracleConstants.isKnown(url)).toBe(true);
+        }
+    });
 
-            expect(state).toEqual({ consecutiveFailures: 0, cooloffUntil: 0 });
-            expect(map.get("https://oracle.example.com-0xabcd")).toBe(state);
-            expect(map.size).toBe(1);
-        });
-
-        it("should return the existing state without replacing it", () => {
-            const map: OracleHealthMap = new Map();
-            const existing = { consecutiveFailures: 3, cooloffUntil: 123 };
-            map.set("https://oracle.example.com-0xabcd", existing);
-
-            const state = OracleHealthMap.getOrCreate(map, "https://oracle.example.com", "0xAbCd");
-
-            expect(state).toBe(existing);
-            expect(map.size).toBe(1);
-        });
+    it("should reject lookalike hosts, other domains and non https urls", () => {
+        for (const url of [
+            "https://t0trade.com.evil.com/context",
+            "https://evil-t0trade.com/context",
+            "https://evil.com/oracle.t0trade.com/context",
+            "https://evil.com/?u=https://oracle.t0trade.com/context",
+            "http://oracle.t0trade.com/context",
+            "https://example.com/context",
+            "not a url",
+            "",
+        ]) {
+            expect(OracleConstants.isKnown(url)).toBe(false);
+        }
     });
 });

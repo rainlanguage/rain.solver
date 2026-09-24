@@ -21,8 +21,28 @@ export namespace OracleConstants {
         "https://oracle-robinhood.t0trade.com/context",
     ] as const;
 
+    /** Domains that any of their subdomains is a known oracle host, over https only */
+    export const KnownDomains = ["t0trade.com"] as const;
+
+    /**
+     * Determines if the given oracle url is known, that is either one of the known
+     * urls or an https url on a known domain or any subdomain of it, the host is
+     * checked as parsed so a lookalike host like t0trade.com.evil.com is rejected
+     * @param url - The oracle url
+     */
     export function isKnown(url: string): boolean {
-        return KnownUrls.some((v) => url.startsWith(v));
+        if (KnownUrls.some((v) => url.startsWith(v))) {
+            return true;
+        }
+        try {
+            const { protocol, hostname } = new URL(url);
+            return (
+                protocol === "https:" &&
+                KnownDomains.some((v) => hostname === v || hostname.endsWith(`.${v}`))
+            );
+        } catch {
+            return false;
+        }
     }
 }
 
