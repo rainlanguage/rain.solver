@@ -145,6 +145,10 @@ export type AppOptions = {
     dustGasCostMultiplier: number;
     /** USD value below which a trade size counts as dust and gets skipped, when both dust checks are set a trade must fail both to count as dust, 0 disables the usd dust check, default is 0 */
     dustUsdThreshold: number;
+    /** Submits a router mode trade at the found trade size right away with the cached dryrun gas and no dryrun at all (no backoff sizes either), when the order pair has a dryrun gas cache and the estimated profit covers the min expected bounty and exceeds snapTxThresholdUsd, requires dryrunGasCache, default is false */
+    snapTx: boolean;
+    /** USD value the estimated profit of a trade must exceed for it to be submitted as a snap tx, kept as 18 point decimals, default is 0 */
+    snapTxThresholdUsd: bigint;
     /** Runs the dust check on each order's whole max output before any simulation and skips the dust ones for the round, the router mode partial trade size dust check is not affected, default is true */
     dustOrderCheck: boolean;
     /** When true, zero output balance pairs of max profile owners go to round processing, when false, all zero output balance pairs are skipped, default is false */
@@ -491,6 +495,26 @@ export namespace AppOptions {
                             dustUsdThreshold >= 0,
                             "invalid dustUsdThreshold value, must be a number greater than or equal to 0",
                         ),
+                ),
+                snapTx: Validator.resolveBool(
+                    input.snapTx,
+                    "expected a boolean value for snapTx",
+                    false,
+                ),
+                snapTxThresholdUsd: parseUnits(
+                    Validator.resolveNumericValue(
+                        input.snapTxThresholdUsd,
+                        FLOAT_PATTERN,
+                        "invalid snapTxThresholdUsd value, must be a number greater than or equal to 0",
+                        "0",
+                        true,
+                        (value) =>
+                            assert(
+                                Number(value) >= 0,
+                                "invalid snapTxThresholdUsd value, must be a number greater than or equal to 0",
+                            ),
+                    ),
+                    18,
                 ),
                 dustOrderCheck: Validator.resolveBool(
                     input.dustOrderCheck,

@@ -962,7 +962,8 @@ describe("Test TradeSimulatorBase", () => {
                     l1Cost: 15000n * 50000000000n,
                     totalGasCost: 21000n * 1000000000000000000n,
                 },
-                estimatedGasCost: 21000n * 1000000000000000000n + 15000n * 50000000000n,
+                // a gas cost of 0.01 gas token, the 0.1 profit affords the full 2 multiplier
+                estimatedGasCost: ONE18 / 100n,
                 spanAttributes: {},
             };
             (dryrun as Mock)
@@ -1041,6 +1042,276 @@ describe("Test TradeSimulatorBase", () => {
             );
 
             const result = await mockSimulator.trySimulateTrade();
+            assert(result.isOk());
+            expect(result.value.rawtx.gasPrice).toBe(1000n);
+            expect(result.value.spanAttributes["gasPriceBoosted"]).toBeUndefined();
+        });
+    });
+
+    describe("Test trySnapTrade method", () => {
+        const key = "0xob-0xid-0xs-0xb";
+        let gasCache: any;
+        // the expected values of the cached gas of 20000 with the 120 gas limit multiplier
+        const gasLimit = (20000n * 120n) / 100n;
+        const gasCost = () => gasLimit * mockSolver.state.gasPrice + 500n;
+        const minExpected = () => {
+            const headroom = BigInt(
+                (
+                    Number(mockSolver.appOptions.gasCoveragePercentage) *
+                    mockSolver.appOptions.headroom
+                ).toFixed(),
+            );
+            return (gasCost() * headroom) / 10000n;
+        };
+
+        beforeEach(() => {
+            gasCache = { get: vi.fn().mockReturnValue({ gas: 20000n, l1Cost: 500n }) };
+            (mockSolver.state as any).dryrunGasCache = gasCache;
+            (mockSolver.state as any).gasTokenUsdPrice = "2000";
+            (mockSolver.appOptions as any).dryrunGasCache = true;
+            (mockSolver.appOptions as any).gasLimitMultiplier = 120;
+            (mockSolver.appOptions as any).snapTxThresholdUsd = 0n;
+            tradeArgs.orderDetails = {
+                orderbook: "0xOB",
+                takeOrder: { id: "0xID" },
+                sellToken: "0xS",
+                buyToken: "0xB",
+            } as any;
+            mockSimulator = new MockTradeSimulator(tradeArgs);
+            (mockSimulator.prepareTradeParams as Mock).mockResolvedValue(Result.ok(preparedParams));
+            (mockSimulator.setTransactionData as Mock).mockResolvedValue(Result.ok(void 0));
+            // a profit well above the min expected bounty
+            (mockSimulator.estimateProfit as Mock).mockReturnValue(gasCost() * 10n);
+        });
+
+        it("should return error if prepareTradeParams fails", async () => {
+            const error = {
+                type: TradeType.RouteProcessor,
+                spanAttributes: { error: "prepare failed" },
+                reason: SimulationHaltReason.NoRoute,
+            };
+            (mockSimulator.prepareTradeParams as Mock).mockResolvedValue(Result.err(error));
+
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isErr());
+            expect(result.error).toEqual(error);
+            expect(gasCache.get).toHaveBeenCalledWith(key);
+            expect(mockSimulator.setTransactionData).not.toHaveBeenCalled();
+        });
+
+        it("should build the tx with the cached gas and the min expected bounty without any dryrun", async () => {
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isOk());
+            expect(gasCache.get).toHaveBeenCalledWith(key);
+            expect(dryrun).not.toHaveBeenCalled();
+            expect(mockSimulator.estimateProfit).toHaveBeenCalledWith(preparedParams.price);
+            // the tx carries no ensure bounty task, the same as the normal submitted tx
+            expect(mockSimulator.setTransactionData).toHaveBeenCalledTimes(1);
+            expect(mockSimulator.setTransactionData).toHaveBeenCalledWith({
+                ...preparedParams,
+                minimumExpected: minExpected(),
+                noTask: true,
+            });
+            expect(result.value.rawtx.gas).toBe(gasLimit);
+            expect(result.value.estimatedGasCost).toBe(gasCost());
+            expect(result.value.estimatedProfit).toBe(gasCost() * 10n);
+            expect(result.value.type).toBe(TradeType.RouteProcessor);
+            expect(result.value.oppBlockNumber).toBe(123);
+            expect(result.value.spanAttributes["snapTx"]).toBe(true);
+            expect(result.value.spanAttributes["foundOpp"]).toBe(true);
+            expect(result.value.spanAttributes["snapTxSkipped"]).toBeUndefined();
+            expect(result.value.spanAttributes["snapEstimatedProfitUsd"]).toBe(
+                formatUnits(gasCost() * 10n * 2000n, 18),
+            );
+            expect(extendObjectWithHeader).toHaveBeenCalledWith(
+                mockSimulator.spanAttributes,
+                {
+                    cached: true,
+                    gasLimit: gasLimit.toString(),
+                    totalCost: gasCost().toString(),
+                    gasPrice: mockSolver.state.gasPrice.toString(),
+                    totalCostUsd: formatUnits(gasCost() * 2000n, 18),
+                    minBountyExpected: minExpected().toString(),
+                    minBountyExpectedUsd: formatUnits(minExpected() * 2000n, 18),
+                    l1Cost: "500",
+                },
+                "gasEst.snap",
+            );
+        });
+
+        it("should not be eligible when the dryrun gas cache is disabled", async () => {
+            (mockSolver.appOptions as any).dryrunGasCache = false;
+
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isErr());
+            expect(result.error.reason).toBe(SimulationHaltReason.SnapTxNotEligible);
+            expect(result.error.type).toBe(TradeType.Router);
+            expect(result.error.spanAttributes["snapTxSkipped"]).toBe(
+                "dryrun gas cache is disabled or gas coverage is 0",
+            );
+            expect(mockSimulator.prepareTradeParams).not.toHaveBeenCalled();
+            expect(gasCache.get).not.toHaveBeenCalled();
+            expect(mockSimulator.setTransactionData).not.toHaveBeenCalled();
+        });
+
+        it("should not be eligible when gas coverage is 0", async () => {
+            (mockSolver.appOptions as any).gasCoveragePercentage = "0";
+
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isErr());
+            expect(result.error.reason).toBe(SimulationHaltReason.SnapTxNotEligible);
+            expect(gasCache.get).not.toHaveBeenCalled();
+            expect(mockSimulator.prepareTradeParams).not.toHaveBeenCalled();
+        });
+
+        it("should not be eligible for a non sushi route processor trade", async () => {
+            (mockSimulator.prepareTradeParams as Mock).mockResolvedValue(
+                Result.ok({ ...preparedParams, type: TradeType.Balancer }),
+            );
+
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isErr());
+            expect(result.error.reason).toBe(SimulationHaltReason.SnapTxNotEligible);
+            expect(result.error.type).toBe(TradeType.Balancer);
+            expect(result.error.spanAttributes["snapTxSkipped"]).toBe(
+                "not a sushi route processor trade",
+            );
+            expect(gasCache.get).toHaveBeenCalledWith(key);
+            expect(mockSimulator.setTransactionData).not.toHaveBeenCalled();
+        });
+
+        it("should not be eligible when the order pair has no cached gas", async () => {
+            gasCache.get.mockReturnValue(undefined);
+
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isErr());
+            expect(result.error.reason).toBe(SimulationHaltReason.SnapTxNotEligible);
+            expect(result.error.spanAttributes["snapTxSkipped"]).toBe(
+                "no cached dryrun gas for the order pair",
+            );
+            expect(mockSimulator.setTransactionData).not.toHaveBeenCalled();
+        });
+
+        it("should not be eligible when the gas token usd price is unknown", async () => {
+            (mockSolver.state as any).gasTokenUsdPrice = undefined;
+
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isErr());
+            expect(result.error.reason).toBe(SimulationHaltReason.SnapTxNotEligible);
+            expect(result.error.spanAttributes["snapTxSkipped"]).toBe(
+                "unknown gas token usd price",
+            );
+            expect(mockSimulator.setTransactionData).not.toHaveBeenCalled();
+        });
+
+        it("should not be eligible when the estimated profit is below the min expected bounty", async () => {
+            (mockSimulator.estimateProfit as Mock).mockReturnValue(minExpected() - 1n);
+
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isErr());
+            expect(result.error.reason).toBe(SimulationHaltReason.SnapTxNotEligible);
+            expect(result.error.spanAttributes["snapTxSkipped"]).toBe(
+                "estimated profit below the min expected bounty",
+            );
+            expect(result.error.spanAttributes["snapEstimatedProfit"]).toBe(
+                formatUnits(minExpected() - 1n, 18),
+            );
+            expect(mockSimulator.setTransactionData).not.toHaveBeenCalled();
+        });
+
+        it("should be eligible when the estimated profit equals the min expected bounty", async () => {
+            (mockSimulator.estimateProfit as Mock).mockReturnValue(minExpected());
+
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isOk());
+            expect(result.value.estimatedProfit).toBe(minExpected());
+        });
+
+        it("should not be eligible when the estimated profit usd is at or below the threshold", async () => {
+            // a tiny gas price keeps the min expected bounty far below the profit
+            (mockSolver.state as any).gasPrice = 1n;
+            // the profit is 10 gas token, so 20000 usd at the 2000 usd price
+            (mockSimulator.estimateProfit as Mock).mockReturnValue(10n * ONE18);
+            (mockSolver.appOptions as any).snapTxThresholdUsd = 20000n * ONE18;
+
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isErr());
+            expect(result.error.reason).toBe(SimulationHaltReason.SnapTxNotEligible);
+            expect(result.error.spanAttributes["snapTxSkipped"]).toBe(
+                "estimated profit usd below snapTxThresholdUsd",
+            );
+            expect(mockSimulator.setTransactionData).not.toHaveBeenCalled();
+        });
+
+        it("should be eligible when the estimated profit usd exceeds the threshold", async () => {
+            (mockSolver.state as any).gasPrice = 1n;
+            (mockSimulator.estimateProfit as Mock).mockReturnValue(10n * ONE18);
+            (mockSolver.appOptions as any).snapTxThresholdUsd = 20000n * ONE18 - 1n;
+
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isOk());
+            expect(result.value.rawtx.gas).toBe(gasLimit);
+        });
+
+        it("should return error if setTransactionData fails", async () => {
+            const error = {
+                type: TradeType.RouteProcessor,
+                spanAttributes: { error: "set tx data failed" },
+                reason: SimulationHaltReason.FailedToGetTaskBytecode,
+            };
+            (mockSimulator.setTransactionData as Mock).mockResolvedValue(Result.err(error));
+
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isErr());
+            expect(result.error).toEqual(error);
+        });
+
+        it("should boost the tx gas price when the estimated profit usd exceeds the gas boost threshold", async () => {
+            (mockSolver.appOptions as any).gasBoostMultiplier = 2.5;
+            (mockSolver.appOptions as any).gasBoostUsdThreshold = 1n;
+            preparedParams.rawtx.gasPrice = 1000n;
+
+            // the profit of 10 times the gas cost affords the full multiplier
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isOk());
+            expect(result.value.rawtx.gasPrice).toBe(2500n);
+            expect(result.value.spanAttributes["gasPriceBoosted"]).toBe(true);
+            expect(result.value.spanAttributes["gasBoostMultiplierApplied"]).toBe(2.5);
+        });
+
+        it("should settle on the last boost step whose gas cost fits in the estimated profit", async () => {
+            (mockSolver.appOptions as any).gasBoostMultiplier = 3;
+            (mockSolver.appOptions as any).gasBoostUsdThreshold = 1n;
+            preparedParams.rawtx.gasPrice = 1000n;
+            // the steps are 1.5, 2, 2.5 and 3, a profit of twice the gas cost
+            // affords the 2 step, the 2.5 step surpasses it
+            (mockSimulator.estimateProfit as Mock).mockReturnValue(gasCost() * 2n);
+
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isOk());
+            expect(result.value.rawtx.gasPrice).toBe(2000n);
+            expect(result.value.spanAttributes["gasPriceBoosted"]).toBe(true);
+            expect(result.value.spanAttributes["gasBoostMultiplierApplied"]).toBe(2);
+        });
+
+        it("should not boost the tx gas price when even the first boost step surpasses the estimated profit", async () => {
+            (mockSolver.appOptions as any).gasBoostMultiplier = 2;
+            (mockSolver.appOptions as any).gasBoostUsdThreshold = 1n;
+            preparedParams.rawtx.gasPrice = 1000n;
+            // the first step is 1.25, a profit of 1.1 times the gas cost cannot afford it
+            (mockSimulator.estimateProfit as Mock).mockReturnValue((gasCost() * 110n) / 100n);
+
+            const result = await mockSimulator.trySnapTrade();
+            assert(result.isOk());
+            expect(result.value.rawtx.gasPrice).toBe(1000n);
+            expect(result.value.spanAttributes["gasPriceBoosted"]).toBeUndefined();
+            expect(result.value.spanAttributes["gasBoostMultiplierApplied"]).toBeUndefined();
+        });
+
+        it("should not boost the tx gas price when the gas boost config fields are unset", async () => {
+            preparedParams.rawtx.gasPrice = 1000n;
+
+            const result = await mockSimulator.trySnapTrade();
             assert(result.isOk());
             expect(result.value.rawtx.gasPrice).toBe(1000n);
             expect(result.value.spanAttributes["gasPriceBoosted"]).toBeUndefined();

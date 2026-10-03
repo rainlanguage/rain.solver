@@ -712,6 +712,133 @@ describe("Test findBestRouterTrade", () => {
         });
     });
 
+    describe("snap tx", () => {
+        let trySnapTradeSpy: any;
+        const mockSnapSuccess = Result.ok({
+            type: TradeType.RouteProcessor,
+            spanAttributes: { foundOpp: true, snapTx: true },
+            estimatedProfit: 75n,
+            oppBlockNumber: 123,
+        });
+        const mockSnapNotEligible = Result.err({
+            type: TradeType.RouteProcessor,
+            reason: SimulationHaltReason.SnapTxNotEligible,
+            spanAttributes: { snapTxSkipped: "no cached dryrun gas for the order pair" },
+        });
+
+        beforeEach(() => {
+            mockRainSolver.appOptions.snapTx = true;
+            setFoundSize(500n);
+            trySnapTradeSpy = vi.spyOn(RouterTradeSimulator.prototype, "trySnapTrade");
+        });
+
+        it("should submit the found size as a snap tx and skip the batch when it qualifies", async () => {
+            (trySnapTradeSpy as Mock).mockResolvedValue(mockSnapSuccess);
+            const result = await run();
+
+            assert(result.isOk());
+            expect(result.value.estimatedProfit).toBe(75n);
+            expect(result.value.spanAttributes).toEqual({ foundOpp: true, snapTx: true });
+            expect(trySnapTradeSpy).toHaveBeenCalledTimes(1);
+            expect(trySimulateTradeSpy).not.toHaveBeenCalled();
+            // the snap sim is locked to the found route at the found size
+            expect(simulatorWithArgsSpy).toHaveBeenCalledTimes(1);
+            expect(simulatorWithArgsSpy).toHaveBeenCalledWith({
+                type: TradeType.Router,
+                solver: mockRainSolver,
+                orderDetails,
+                fromToken,
+                toToken,
+                signer,
+                maximumInputFixed: 500n,
+                ethPrice,
+                isPartial: true,
+                blockNumber: 123n,
+                excludeDexes: undefined,
+                ...lockedArgs,
+            });
+        });
+
+        it("should not flag the full size as partial", async () => {
+            setFoundSize(1000n);
+            (trySnapTradeSpy as Mock).mockResolvedValue(mockSnapSuccess);
+            const result = await run();
+
+            assert(result.isOk());
+            expect((simulatorWithArgsSpy as Mock).mock.calls[0][0]).toEqual(
+                expect.objectContaining({ maximumInputFixed: 1000n, isPartial: false }),
+            );
+        });
+
+        it("should run the batch with the snap attributes when the found size does not qualify", async () => {
+            (trySnapTradeSpy as Mock).mockResolvedValue(mockSnapNotEligible);
+            (trySimulateTradeSpy as Mock)
+                .mockResolvedValueOnce(mockSuccess) // 500n
+                .mockResolvedValue(mockViolationError); // halved sizes
+            const result = await run();
+
+            assert(result.isOk());
+            expect(result.value.estimatedProfit).toBe(25n);
+            expect(trySnapTradeSpy).toHaveBeenCalledTimes(1);
+            expect(simulatedSizes()).toEqual([500n, 500n, 375n, 250n, 125n, 62n, 31n]);
+            expect(extendObjectWithHeader).toHaveBeenCalledWith(
+                expect.any(Object),
+                { snapTxSkipped: "no cached dryrun gas for the order pair" },
+                "snap",
+            );
+        });
+
+        it("should carry the snap attributes into the batch failure", async () => {
+            (trySnapTradeSpy as Mock).mockResolvedValue(mockSnapNotEligible);
+            (trySimulateTradeSpy as Mock).mockResolvedValue(mockViolationError);
+            const result = await run();
+
+            assert(result.isErr());
+            expect(result.error.spanAttributes["snap.snapTxSkipped"]).toBe(
+                "no cached dryrun gas for the order pair",
+            );
+            expect(result.error.spanAttributes["step1.error"]).toContain(
+                "MinimalOutputBalanceViolation",
+            );
+        });
+
+        it("should not try a snap tx when disabled", async () => {
+            mockRainSolver.appOptions.snapTx = false;
+            (trySimulateTradeSpy as Mock)
+                .mockResolvedValueOnce(mockSuccess) // 500n
+                .mockResolvedValue(mockViolationError); // halved sizes
+            const result = await run();
+
+            assert(result.isOk());
+            expect(trySnapTradeSpy).not.toHaveBeenCalled();
+            expect(simulatedSizes()).toEqual([500n, 375n, 250n, 125n, 62n, 31n]);
+        });
+
+        it("should try a snap tx ahead of the dust check and still bail out on a dust found size", async () => {
+            (mockRainSolver.state.isDustTrade as Mock).mockReturnValue(true);
+            (trySnapTradeSpy as Mock).mockResolvedValue(mockSnapNotEligible);
+            const result = await run();
+
+            assert(result.isErr());
+            expect(result.error.reason).toBe(SimulationHaltReason.DustTradeSize);
+            expect(trySnapTradeSpy).toHaveBeenCalledTimes(1);
+            expect(trySimulateTradeSpy).not.toHaveBeenCalled();
+            expect(result.error.spanAttributes["snap.snapTxSkipped"]).toBe(
+                "no cached dryrun gas for the order pair",
+            );
+        });
+
+        it("should submit a dust found size as a snap tx when it qualifies", async () => {
+            (mockRainSolver.state.isDustTrade as Mock).mockReturnValue(true);
+            (trySnapTradeSpy as Mock).mockResolvedValue(mockSnapSuccess);
+            const result = await run();
+
+            assert(result.isOk());
+            expect(result.value.estimatedProfit).toBe(75n);
+            expect(mockRainSolver.state.isDustTrade).not.toHaveBeenCalled();
+        });
+    });
+
     it("should return early if ethPrice is unknown", async () => {
         const result: SimulationResult = await findBestRouterTrade.call(
             mockRainSolver,

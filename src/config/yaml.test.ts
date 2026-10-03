@@ -49,6 +49,8 @@ dryrunGasCache: true
 dryrunGasCacheResetTime: 30
 dustGasCostMultiplier: 1.5
 dustUsdThreshold: 0.25
+snapTx: true
+snapTxThresholdUsd: 1.5
 dustOrderCheck: false
 strictMaxOwnerProfileCheck: true
 strictMaxOwnerProfilePartialTradeSizeCheck: true
@@ -190,6 +192,8 @@ orderbookTradeTypes:
             dryrunGasCacheResetTime: 30,
             dustGasCostMultiplier: 1.5,
             dustUsdThreshold: 0.25,
+            snapTx: true,
+            snapTxThresholdUsd: 1_500000000000000000n,
             dustOrderCheck: false,
             strictMaxOwnerProfileCheck: true,
             strictMaxOwnerProfilePartialTradeSizeCheck: true,
@@ -415,6 +419,8 @@ orderbookTradeTypes:
         assert.equal(result.dryrunGasCacheResetTime, 60); // should be default 60
         assert.equal(result.dustGasCostMultiplier, 1); // should be default 1
         assert.equal(result.dustUsdThreshold, 0); // should be default 0
+        assert.equal(result.snapTx, false); // should be default false
+        assert.equal(result.snapTxThresholdUsd, 0n); // should be default 0
         assert.equal(result.dustOrderCheck, true); // should be default true
         assert.equal(result.strictMaxOwnerProfileCheck, false); // should be default false
         assert.equal(result.strictMaxOwnerProfilePartialTradeSizeCheck, false); // should be default false
