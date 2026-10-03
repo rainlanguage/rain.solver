@@ -11,27 +11,51 @@ import {
     ROUTE_PROCESSOR_3_2_ADDRESS,
 } from "sushi/config";
 
-vi.mock("sushi/config", async (importOriginal) => ({
-    ...(await importOriginal()),
-    ROUTE_PROCESSOR_3_ADDRESS: {
-        [ChainId.ETHEREUM]: `0xrp3`,
-        [ChainId.FLARE]: `0xrp3`,
-        [ChainId.POLYGON]: `0xrp3`,
-    },
-    ROUTE_PROCESSOR_4_ADDRESS: {
-        [ChainId.ETHEREUM]: `0xrp4`,
-        [ChainId.FLARE]: `0xrp4`,
-    },
-    ROUTE_PROCESSOR_3_1_ADDRESS: {
-        [ChainId.ETHEREUM]: `0xrp3.1`,
-        [ChainId.POLYGON]: `0xrp3.1`,
-    },
-    ROUTE_PROCESSOR_3_2_ADDRESS: {
-        [ChainId.ETHEREUM]: `0xrp3.2`,
-        [ChainId.FLARE]: `0xrp3.2`,
-        [ChainId.POLYGON]: `0xrp3.2`,
-    },
+// a usd base token for a chain with no stables entry, stands in for USDG on
+// Robinhood, hoisted as the mock factory below runs before this file's top level
+const usdgBaseToken = vi.hoisted(() => ({
+    chainId: 14, // flare
+    address: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    decimals: 6,
+    symbol: "USDG",
+    name: "Global Dollar",
 }));
+
+vi.mock("sushi/config", async (importOriginal) => {
+    const original = await importOriginal<typeof import("sushi/config")>();
+    return {
+        ...original,
+        // flare stands in for a chain with no stables entry whose
+        // dollar token is a base token, like USDG on robinhood
+        STABLES: { ...original.STABLES, [ChainId.FLARE]: undefined },
+        BASES_TO_CHECK_TRADES_AGAINST: {
+            ...original.BASES_TO_CHECK_TRADES_AGAINST,
+            [ChainId.FLARE]: [
+                { symbol: "WFLR" },
+                { symbol: "cUSDX" }, // not a usd token, no USDC or USDT in its symbol
+                usdgBaseToken,
+            ],
+        },
+        ROUTE_PROCESSOR_3_ADDRESS: {
+            [ChainId.ETHEREUM]: `0xrp3`,
+            [ChainId.FLARE]: `0xrp3`,
+            [ChainId.POLYGON]: `0xrp3`,
+        },
+        ROUTE_PROCESSOR_4_ADDRESS: {
+            [ChainId.ETHEREUM]: `0xrp4`,
+            [ChainId.FLARE]: `0xrp4`,
+        },
+        ROUTE_PROCESSOR_3_1_ADDRESS: {
+            [ChainId.ETHEREUM]: `0xrp3.1`,
+            [ChainId.POLYGON]: `0xrp3.1`,
+        },
+        ROUTE_PROCESSOR_3_2_ADDRESS: {
+            [ChainId.ETHEREUM]: `0xrp3.2`,
+            [ChainId.FLARE]: `0xrp3.2`,
+            [ChainId.POLYGON]: `0xrp3.2`,
+        },
+    };
+});
 
 describe("Test getChainConfig", () => {
     it("should return correct config for a supported chain", () => {
@@ -55,6 +79,25 @@ describe("Test getChainConfig", () => {
                 ],
             );
         }
+    });
+
+    it("should fall back to a usd base token for a chain with no stables entry", () => {
+        const chainId = ChainId.FLARE;
+        const configResult = getChainConfig(chainId);
+        assert(configResult.isOk());
+        const config = configResult.value;
+
+        expect(config.stableTokens).toBeUndefined();
+        expect(config.usdToken).toBe(usdgBaseToken);
+    });
+
+    it("should keep the stables usd token when both a stable and a base usd token exist", () => {
+        // ethereum has USDC in its stables, any base usd token must not override it
+        const configResult = getChainConfig(ChainId.ETHEREUM);
+        assert(configResult.isOk());
+        expect(configResult.value.usdToken).toBe(
+            STABLES[ChainId.ETHEREUM].find((t) => t.symbol === "USDC"),
+        );
     });
 
     it("should throw if chain is not supported", () => {
@@ -106,13 +149,18 @@ describe("Test findUsdToken", () => {
     const usdcVariant = { symbol: "USDC.e" } as any;
     const usdtVariant = { symbol: "USDT0" } as any;
     const dai = { symbol: "DAI" } as any;
+    const usdg = { symbol: "USDG" } as any;
 
     it("should prefer exact USDC over all others", () => {
-        expect(findUsdToken([dai, usdtVariant, usdt, usdcVariant, usdc])).toBe(usdc);
+        expect(findUsdToken([dai, usdtVariant, usdg, usdt, usdcVariant, usdc])).toBe(usdc);
     });
 
     it("should pick exact USDT when there is no exact USDC", () => {
-        expect(findUsdToken([dai, usdcVariant, usdt])).toBe(usdt);
+        expect(findUsdToken([dai, usdcVariant, usdg, usdt])).toBe(usdt);
+    });
+
+    it("should pick exact USDG when there is no exact USDC or USDT", () => {
+        expect(findUsdToken([dai, usdcVariant, usdtVariant, usdg])).toBe(usdg);
     });
 
     it("should fall back to a USDC variant when there is no exact match", () => {

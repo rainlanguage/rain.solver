@@ -515,6 +515,92 @@ describe("test SushiRouter methods", () => {
         });
     });
 
+    describe("test requoteRoute method", () => {
+        const poolCode1 = { pool: { address: "0xpool1" }, liquidityProvider: "SushiSwapV2" };
+        const poolCode2 = { pool: { address: "0xpool2" }, liquidityProvider: "UniswapV3" };
+        const quote = {
+            type: RouterType.Sushi as const,
+            status: RouteStatus.Success,
+            price: 2000n * ONE18, // for 2 WETH in
+            route: {
+                route: {
+                    status: "Success",
+                    legs: [{ uniqueId: "pool1" }],
+                    amountOutBI: 4000000000n,
+                },
+                pcMap: new Map([
+                    ["pool1", poolCode1],
+                    ["pool2", poolCode2],
+                ]),
+            } as any,
+            amountOut: 4000000000n,
+        };
+
+        it("should requote the same route pools only for the new amount", () => {
+            const newRoute = {
+                status: "Success",
+                legs: [{ uniqueId: "pool1" }],
+                amountOutBI: 2100000000n,
+            };
+            (Router.findBestRoute as Mock).mockReturnValue(newRoute);
+
+            const result = router.requoteRoute(
+                quote,
+                mockSwapAmount, // 1 WETH
+                mockTokenIn,
+                mockTokenOut,
+                gasPrice,
+                "single",
+            );
+
+            // only the route leg pool is offered to the route finder
+            expect(Router.findBestRoute).toHaveBeenCalledWith(
+                new Map([["pool1", poolCode1]]),
+                chainId,
+                mockTokenIn,
+                mockSwapAmount,
+                mockTokenOut,
+                0,
+                undefined,
+                expect.any(Function),
+                undefined,
+                "single",
+            );
+            // price and amount out belong to the new amount, the full pool map is kept
+            expect(result).toEqual({
+                type: RouterType.Sushi,
+                status: RouteStatus.Success,
+                price: 2100n * ONE18,
+                route: { route: newRoute, pcMap: quote.route.pcMap },
+                amountOut: 2100000000n,
+            });
+        });
+
+        it("should return the given quote as is when the route cannot be quoted for the new amount", () => {
+            (Router.findBestRoute as Mock).mockReturnValueOnce({ status: "NoWay" });
+            expect(
+                router.requoteRoute(quote, mockSwapAmount, mockTokenIn, mockTokenOut, gasPrice),
+            ).toBe(quote);
+
+            (Router.findBestRoute as Mock).mockReturnValueOnce({
+                status: "Success",
+                legs: [{ uniqueId: "pool1" }],
+                amountOutBI: -1n,
+            });
+            expect(
+                router.requoteRoute(quote, mockSwapAmount, mockTokenIn, mockTokenOut, gasPrice),
+            ).toBe(quote);
+        });
+
+        it("should return the given quote as is when it has no route legs", () => {
+            const legless = { ...quote, route: { ...quote.route, route: { legs: [] } } } as any;
+            expect(
+                router.requoteRoute(legless, mockSwapAmount, mockTokenIn, mockTokenOut, gasPrice),
+            ).toBe(legless);
+            expect(Router.findBestRoute).not.toHaveBeenCalled();
+        });
+    });
+
     describe("test update method", () => {
         it("should update pools without block number", async () => {
             (mockDataFetcher.updatePools as Mock).mockResolvedValue(undefined);
@@ -871,6 +957,78 @@ describe("test SushiRouter methods", () => {
 
             visSpy.mockRestore();
             tryQuoteSpy.mockRestore();
+            routeProcessor4ParamsSpy.mockRestore();
+        });
+
+        it("should requote a locked route for the given maximum input", async () => {
+            const lockedQuote = {
+                type: RouterType.Sushi as const,
+                status: RouteStatus.Success,
+                price: 3000n * ONE18, // found for a bigger size
+                route: {
+                    route: { status: "Success", legs: [{ uniqueId: "pool1" }] },
+                    pcMap: new Map([["pool1", { pool: { address: "0xpool1" } }]]),
+                } as any,
+                amountOut: 6000000000n,
+            };
+            const requoted = { ...lockedQuote, price: 3100n * ONE18, amountOut: 3100000000n };
+            const tryQuoteSpy = vi.spyOn(router, "tryQuote");
+            const requoteSpy = vi.spyOn(router, "requoteRoute").mockReturnValue(requoted);
+            const visSpy = vi.spyOn(SushiRouter, "visualizeRoute").mockReturnValue(["route"]);
+            const routeProcessor4ParamsSpy = vi
+                .spyOn(Router, "routeProcessor4Params")
+                .mockReturnValue({ routeCode: "0xrouteCode" as `0x${string}` } as any);
+
+            const result = await router.getTradeParams({
+                ...mockGetTradeParamsArgs,
+                sushiQuote: lockedQuote,
+                lockRoute: true,
+            });
+
+            assert(result.isOk());
+            expect(tryQuoteSpy).not.toHaveBeenCalled();
+            expect(requoteSpy).toHaveBeenCalledWith(
+                lockedQuote,
+                mockGetTradeParamsArgs.maximumInput,
+                mockTokenIn,
+                mockTokenOut,
+                mockGetTradeParamsArgs.state.gasPrice,
+                mockGetTradeParamsArgs.state.appOptions.route,
+            );
+            // the requoted price and amount out are the ones used
+            expect(result.value.quote).toEqual(requoted);
+
+            visSpy.mockRestore();
+            tryQuoteSpy.mockRestore();
+            requoteSpy.mockRestore();
+            routeProcessor4ParamsSpy.mockRestore();
+        });
+
+        it("should not requote a given quote when the route is not locked", async () => {
+            const givenQuote = {
+                type: RouterType.Sushi as const,
+                status: RouteStatus.Success,
+                price: 3000n * ONE18,
+                route: { route: { status: "Success", legs: [] }, pcMap: new Map() } as any,
+                amountOut: 3000000000n,
+            };
+            const requoteSpy = vi.spyOn(router, "requoteRoute");
+            const visSpy = vi.spyOn(SushiRouter, "visualizeRoute").mockReturnValue(["route"]);
+            const routeProcessor4ParamsSpy = vi
+                .spyOn(Router, "routeProcessor4Params")
+                .mockReturnValue({ routeCode: "0xrouteCode" as `0x${string}` } as any);
+
+            const result = await router.getTradeParams({
+                ...mockGetTradeParamsArgs,
+                sushiQuote: givenQuote,
+            });
+
+            assert(result.isOk());
+            expect(requoteSpy).not.toHaveBeenCalled();
+            expect(result.value.quote).toEqual(givenQuote);
+
+            visSpy.mockRestore();
+            requoteSpy.mockRestore();
             routeProcessor4ParamsSpy.mockRestore();
         });
 
