@@ -7,6 +7,7 @@ import { AppOptions } from "../../config";
 import { Command, Option } from "commander";
 import { sleep, TokenDetails } from "../../common";
 import { getChainConfig } from "../../state/chain";
+import { OracleMarketHours } from "../../oracle/types";
 import { RainSolverRouter } from "../../router/router";
 import { SolverContracts } from "../../state/contracts";
 import { rainSolverTransport, RpcState } from "../../rpc";
@@ -144,6 +145,7 @@ export async function sweepFunds(opts: SweepOptions) {
         rotateMultiWallet: false,
         checkWalletBalanceTime: 0,
         defaultOwnerLimit: 5,
+        oracleMarketHours: { ...OracleMarketHours.DEFAULT },
     };
 
     // prepare state config fields

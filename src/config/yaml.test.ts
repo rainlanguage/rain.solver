@@ -60,6 +60,7 @@ strictMaxOwnerProfilePartialTradeSizeCheck: true
 checkWalletBalanceTime: 30
 gasBoostMultiplier: 3.5
 gasBoostUsdThreshold: 5.5
+oracleMarketHours: 08:30-23:59
 gasLimitMultiplier: 90
 timeout: 20000
 maxRatio: true
@@ -206,6 +207,7 @@ orderbookTradeTypes:
             checkWalletBalanceTime: 30,
             gasBoostMultiplier: 3.5,
             gasBoostUsdThreshold: 5_500000000000000000n,
+            oracleMarketHours: { open: 510, close: 1439 },
         };
 
         // AppOptions returned from fromYaml() should match expected
@@ -442,6 +444,7 @@ orderbookTradeTypes:
         assert.equal(result.callBlockTag, undefined); // no block tag when unset
         assert.equal(result.gasBoostMultiplier, undefined); // no boost when unset
         assert.equal(result.gasBoostUsdThreshold, undefined); // no boost when unset
+        assert.deepEqual(result.oracleMarketHours, { open: 480, close: 1439 }); // should be default 08:00-23:59
     });
 });
 

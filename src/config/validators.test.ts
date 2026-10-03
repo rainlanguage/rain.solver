@@ -307,6 +307,76 @@ describe("Test yaml Validator methods", async function () {
         );
     });
 
+    it("test Validator resolveOracleMarketHours", async function () {
+        // default
+        for (const input of [undefined, null, ""]) {
+            assert.deepEqual(Validator.resolveOracleMarketHours(input), {
+                open: 480,
+                close: 1439,
+            });
+        }
+
+        // happy
+        assert.deepEqual(Validator.resolveOracleMarketHours("08:30-23:59"), {
+            open: 510,
+            close: 1439,
+        });
+        assert.deepEqual(Validator.resolveOracleMarketHours(" 13:30-20:15 "), {
+            open: 810,
+            close: 1215,
+        });
+        assert.deepEqual(Validator.resolveOracleMarketHours("00:00-23:59"), {
+            open: 0,
+            close: 1439,
+        });
+        assert.deepEqual(Validator.resolveOracleMarketHours("00:00-00:01"), {
+            open: 0,
+            close: 1,
+        });
+
+        // happy from env
+        process.env.ORACLE_MARKET_HOURS_TEST = "09:30-16:00";
+        assert.deepEqual(Validator.resolveOracleMarketHours("$ORACLE_MARKET_HOURS_TEST"), {
+            open: 570,
+            close: 960,
+        });
+
+        // default for unset env
+        delete process.env.ORACLE_MARKET_HOURS_TEST;
+        assert.deepEqual(Validator.resolveOracleMarketHours("$ORACLE_MARKET_HOURS_TEST"), {
+            open: 480,
+            close: 1439,
+        });
+
+        // unhappy
+        for (const input of [
+            "8-24",
+            "8:30-23:59",
+            "08:30-9:00",
+            "08:30",
+            "08:30-",
+            "-23:59",
+            "08-23",
+            "08:30 - 23:59",
+            "08:30:00-23:59:00",
+            "08:60-23:59",
+            "08:30-23:60",
+            "08:30-24:00",
+            "24:00-23:59",
+            "10:00-08:00",
+            "08:30-08:30",
+            "aa:bb-cc:dd",
+            8,
+            true,
+            {},
+        ]) {
+            assert.throws(
+                () => Validator.resolveOracleMarketHours(input),
+                /invalid oracleMarketHours value/,
+            );
+        }
+    });
+
     it("test Validator resolveRouteType", async function () {
         // happy
         let input: any = "full";
