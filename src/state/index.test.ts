@@ -55,6 +55,10 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             rpc: [{ url: "http://example.com" }],
             writeRpc: undefined,
             gasPriceMultiplier: 123,
+            txTimeThreshold: 4000,
+            gasIncreasePointsPerStep: 5,
+            gasIncreaseStepTime: 3,
+            maxGasPriceMultiplier: 300,
             liquidityProviders: ["UniswapV2"],
             timeout: 1000,
             txGas: "120%",
@@ -138,6 +142,11 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             },
             client: mockClient,
             baseGasPriceMultiplier: 123,
+            txTimeThreshold: 4000,
+            gasIncreasePointsPerStep: 5,
+            // the step time is configured in minutes and handed over in ms
+            gasIncreaseStepTime: 3 * 60_000,
+            maxGasPriceMultiplier: 300,
         });
         expect(spy).toHaveBeenCalledWith({
             chainId: 1,

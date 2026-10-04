@@ -257,6 +257,9 @@ export namespace SharedStateConfig {
                 chainConfig,
                 baseGasPriceMultiplier: options.gasPriceMultiplier,
                 txTimeThreshold: options.txTimeThreshold,
+                gasIncreasePointsPerStep: options.gasIncreasePointsPerStep,
+                gasIncreaseStepTime: options.gasIncreaseStepTime * 60_000,
+                maxGasPriceMultiplier: options.maxGasPriceMultiplier,
             }),
         };
 

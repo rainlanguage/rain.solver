@@ -1,6 +1,6 @@
 import { RainSolver } from "..";
 import { Pair } from "../../order";
-import { Result, withBigintSerializer } from "../../common";
+import { Result } from "../../common";
 import { toNumber, toUsdValue, toEthValue } from "../../math";
 import { Token } from "sushi/currency";
 import { SpanWithContext } from "../../logger";
@@ -63,20 +63,13 @@ export async function processOrder(
     spanAttributes["details.pair"] = tokenPair;
     spanAttributes["details.orderbook"] = orderDetails.orderbook;
     spanAttributes["details.owner"] = orderDetails.takeOrder.struct.order.owner.toLowerCase();
-    spanAttributes["details.startBlockNumber"] = dataFetcherBlockNumber.toString();
+    spanAttributes["details.startBlockNumber"] = Number(dataFetcherBlockNumber);
     if (orderDetails.oracleUrl) {
         spanAttributes["details.oracle.url"] = orderDetails.oracleUrl;
     }
 
     const quoteOrderTime = performance.now();
     try {
-        // record the signed context of the previous round (if any) so it can
-        // be compared against the newly fetched one on quote failures
-        if (orderDetails.oracleUrl) {
-            spanAttributes["details.oracle.prev"] = orderDetails.takeOrder.struct.signedContext
-                ? JSON.stringify(orderDetails.takeOrder.struct.signedContext, withBigintSerializer)
-                : "N/A";
-        }
         await this.orderManager.quoteOrder(orderDetails, spanAttributes, spanEvents);
         if (orderDetails.takeOrder.quote?.maxOutput === 0n) {
             // remove from pair maps if quote fails, to keep the pair map list free

@@ -190,7 +190,18 @@ describe("Test findBestRouterTrade", () => {
         const result = await run();
 
         assert(result.isOk());
-        expect(result.value.spanAttributes).toEqual({ foundOpp: true });
+        // the passing sim carries the sizes tried
+        expect(result.value.spanAttributes).toEqual({
+            foundOpp: true,
+            tradeSizes: [
+                "0.000000000000001",
+                "0.00000000000000075",
+                "0.0000000000000005",
+                "0.00000000000000025",
+                "0.000000000000000125",
+                "0.000000000000000062",
+            ],
+        });
         expect(result.value.estimatedProfit).toBe(25n);
         expect(trySimulateTradeSpy).toHaveBeenCalledTimes(6);
         expect(simulatedSizes()).toEqual([1000n, 750n, 500n, 250n, 125n, 62n]);
@@ -259,9 +270,14 @@ describe("Test findBestRouterTrade", () => {
         const result = await run();
 
         assert(result.isOk());
-        expect(result.value.spanAttributes).toEqual({ size: "big" });
+        expect(result.value.spanAttributes).toEqual(
+            expect.objectContaining({ size: "big", tradeSizes: expect.any(Array) }),
+        );
         expect(result.value.estimatedProfit).toBe(50n);
         expect(trySimulateTradeSpy).toHaveBeenCalledTimes(6);
+        // the shared success fixtures are left untouched
+        assert(mockBigSuccess.isOk());
+        expect(mockBigSuccess.value.spanAttributes).toEqual({ size: "big" });
     });
 
     it("should run as many halved sizes as configured by routerPartialFallbackSteps", async () => {
@@ -569,7 +585,10 @@ describe("Test findBestRouterTrade", () => {
             const result = await run();
 
             assert(result.isOk());
-            expect(result.value.spanAttributes).toEqual({ foundOpp: true });
+            expect(result.value.spanAttributes).toEqual({
+                foundOpp: true,
+                tradeSizes: ["0.000000000000001"],
+            });
             expect(result.value.estimatedProfit).toBe(50n);
             expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
             // the size finder runs again with the dexes excluded
@@ -665,7 +684,9 @@ describe("Test findBestRouterTrade", () => {
             expect(result.error.noneNodeError).toBe("full failed");
             expect(result.error.type).toBe(TradeType.RouteProcessor);
             expect(result.error.spanAttributes).toEqual({
+                tradeSizes: ["0.000000000000001"],
                 "step1.error": "dryrun failed",
+                "secondary.tradeSizes": ["0.000000000000001"],
                 "secondary.step1.error": "retry dryrun failed",
             });
             expect(trySimulateTradeSpy).toHaveBeenCalledTimes(2);
@@ -786,6 +807,7 @@ describe("Test findBestRouterTrade", () => {
                 { snapTxSkipped: "no cached dryrun gas for the order pair" },
                 "snap",
             );
+            expect(result.value.spanAttributes["snapTx"]).toBeUndefined();
         });
 
         it("should carry the snap attributes into the batch failure", async () => {

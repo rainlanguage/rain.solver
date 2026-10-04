@@ -3,6 +3,7 @@ import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
 import { AppOptions } from "../../../config";
 import { LiquidityProviders } from "sushi";
+import { formatUnits } from "viem";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { RouterTradeSimulator } from "./simulate";
@@ -363,9 +364,11 @@ export async function snapTradeSize(
  * and are all awaited, the sims are all locked to the route of the given quote instead
  * of quoting again and skip the offchain price match check to go straight to dryrun,
  * since the onchain dryrun is the judge of the sizes, a size below the order's max
- * output counts as a partial trade, when none of the sizes pass, their span attributes
- * get merged into the given attributes indexed by size order and the biggest size
- * failure represents the batch in the returned error, with the given attributes as its own
+ * output counts as a partial trade, the sizes tried get recorded on the passing sim
+ * and in the given attributes alike, when none of the sizes pass, their span
+ * attributes get merged into the given attributes indexed by size order and the
+ * biggest size failure represents the batch in the returned error, with the given
+ * attributes as its own
  * @param this - RainSolver instance
  * @param orderDetails - The details of the order to be processed
  * @param signer - The signer to be used for the trade
@@ -412,11 +415,18 @@ export async function simulateTradeSizes(
     );
     // wait for all sims and take the biggest size that passed, not the first
     // one that resolved, the sims run concurrently so this only costs the
-    // slowest sim's latency, which is paid anyway when all of them fail
+    // slowest sim's latency, which is paid anyway when all of them fail, the
+    // sizes tried get recorded on the failure and the passing sim alike, so the
+    // span tells which of them the trade came from
+    const triedSizes = tradeSizes.map((size) => formatUnits(size, 18));
+    spanAttributes["tradeSizes"] = triedSizes;
     const results = await Promise.all(sims);
     const pick = results.find((result) => result.isOk());
-    if (pick) {
-        return pick;
+    if (pick?.isOk()) {
+        return Result.ok({
+            ...pick.value,
+            spanAttributes: { ...pick.value.spanAttributes, tradeSizes: triedSizes },
+        });
     }
 
     // merge the failed sims attributes indexed by size order

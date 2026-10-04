@@ -123,6 +123,12 @@ export type AppOptions = {
     rotateMultiWallet: boolean;
     /** Time threshold (in ms) for a transaction mine time before it counts as a trigger to increase gas price multiplier for future transactions, default is 15 seconds */
     txTimeThreshold: number;
+    /** Points added to the gas price multiplier on each step up, default is 10 */
+    gasIncreasePointsPerStep: number;
+    /** Time (in minutes) of one gas price multiplier step, at most one step up per this time and one step down per this time once the last step up is that old, default is 6 */
+    gasIncreaseStepTime: number;
+    /** Optional ceiling of the gas price multiplier, never below gasPriceMultiplier, defaults to gasPriceMultiplier plus 1000 points (ten times the rpc gas price) when unset */
+    maxGasPriceMultiplier?: number;
     /** The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher and the transaction receipt wait, required */
     blockTime: number;
     /** Subscribes the block number watcher to flashblocks heads instead of new heads over the ws rpc, only supported on Base chain, requires wsRpc, default is false */
@@ -432,6 +438,42 @@ export namespace AppOptions {
                         assert(
                             txTimeThreshold > 0,
                             "invalid txTimeThreshold value, must be an integer greater than 0",
+                        ),
+                ),
+                gasIncreasePointsPerStep: Validator.resolveNumericValue(
+                    input.gasIncreasePointsPerStep,
+                    INT_PATTERN,
+                    "invalid gasIncreasePointsPerStep value, must be an integer greater than 0",
+                    "10",
+                    undefined,
+                    (gasIncreasePointsPerStep) =>
+                        assert(
+                            gasIncreasePointsPerStep > 0,
+                            "invalid gasIncreasePointsPerStep value, must be an integer greater than 0",
+                        ),
+                ),
+                gasIncreaseStepTime: Validator.resolveNumericValue(
+                    input.gasIncreaseStepTime,
+                    INT_PATTERN,
+                    "invalid gasIncreaseStepTime value, must be an integer greater than 0",
+                    "6",
+                    undefined,
+                    (gasIncreaseStepTime) =>
+                        assert(
+                            gasIncreaseStepTime > 0,
+                            "invalid gasIncreaseStepTime value, must be an integer greater than 0",
+                        ),
+                ),
+                maxGasPriceMultiplier: Validator.resolveNumericValue(
+                    input.maxGasPriceMultiplier,
+                    INT_PATTERN,
+                    "invalid maxGasPriceMultiplier value, must be an integer greater than 0",
+                    undefined,
+                    undefined,
+                    (maxGasPriceMultiplier) =>
+                        assert(
+                            maxGasPriceMultiplier === undefined || maxGasPriceMultiplier > 0,
+                            "invalid maxGasPriceMultiplier value, must be an integer greater than 0",
                         ),
                 ),
                 blockTime: Validator.resolveNumericValue(

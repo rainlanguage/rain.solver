@@ -120,7 +120,19 @@ botMinBalance: 0.5
 gasPriceMultiplier: 107
 
 # Time threshold (in ms) for a transaction mine time before it counts as a trigger to increase gas price multiplier for future transactions, default is 15000ms (15 seconds)
+# A timed out receipt wait does not count, only a mined transaction does. Set this to at least two block times, one missed block is normal.
 txTimeThreshold: 15000
+
+# Points added to the gas price multiplier on each step up, default is 10
+gasIncreasePointsPerStep: 10
+
+# Time (in minutes) of one gas price multiplier step, the multiplier steps up at most once per this time,
+# and steps down once per this time after the last step up, default is 6
+gasIncreaseStepTime: 6
+
+# Optional ceiling of the gas price multiplier, never below gasPriceMultiplier, when unset it is
+# gasPriceMultiplier plus 1000 points, ie ten times the rpc gas price
+# maxGasPriceMultiplier: 200
 
 # The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher
 # and the transaction receipt wait, required

@@ -38,6 +38,9 @@ quoteGas: 2000000
 botMinBalance: 50.5
 gasPriceMultiplier: 150
 txTimeThreshold: 4000
+gasIncreasePointsPerStep: 5
+gasIncreaseStepTime: 3
+maxGasPriceMultiplier: 300
 blockTime: 3000
 flashblocks: true
 multiBroadcast: true
@@ -134,6 +137,9 @@ orderbookTradeTypes:
             botMinBalance: "50.5",
             gasPriceMultiplier: 150,
             txTimeThreshold: 4000,
+            gasIncreasePointsPerStep: 5,
+            gasIncreaseStepTime: 3,
+            maxGasPriceMultiplier: 300,
             blockTime: 3000,
             flashblocks: true,
             multiBroadcast: true,
@@ -352,6 +358,10 @@ orderbookTradeTypes:
         assert.deepEqual(result.botMinBalance, "50.5");
         assert.deepEqual(result.gasPriceMultiplier, 150);
         assert.deepEqual(result.txTimeThreshold, 4000);
+        // the gas price multiplier step options take their defaults, no ceiling when unset
+        assert.deepEqual(result.gasIncreasePointsPerStep, 10);
+        assert.deepEqual(result.gasIncreaseStepTime, 6);
+        assert.deepEqual(result.maxGasPriceMultiplier, undefined);
         assert.deepEqual(result.blockTime, 2000);
         assert.deepEqual(result.gasLimitMultiplier, 90);
         assert.deepEqual(result.timeout, 20000);
