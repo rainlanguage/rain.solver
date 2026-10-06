@@ -20,13 +20,10 @@ const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http")
 const { SEMRESATTRS_SERVICE_NAME } = require("@opentelemetry/semantic-conventions");
 const { BasicTracerProvider, BatchSpanProcessor } = require("@opentelemetry/sdk-trace-base");
 const { OrderManager } = require("../../src/order");
+const { waitUntilFree, estimateGasCost } = require("../../src/signer/actions");
 const {
     sendTx,
-    waitUntilFree,
-    estimateGasCost,
     tryGetReceipt,
-} = require("../../src/signer/actions");
-const {
     arbDeploy,
     encodeMeta,
     getEventArgs,
@@ -726,7 +723,7 @@ for (let i = 0; i < testData.length; i++) {
                     };
                     config.orderbookTradeTypes = {
                         router: new Set(),
-                        interOrderbook: new Set(),
+                        interOrderbook: new Set([orderbook1.address.toLowerCase()]),
                         intraOrderbook: new Set(),
                         raindexRouter: new Set(),
                     };
@@ -962,10 +959,10 @@ for (let i = 0; i < testData.length; i++) {
                         if (i === 0) {
                             tokens[0].vaultIds = [];
                             for (let j = 0; j < tokens.length - 1; j++) {
-                                tokens[0].vaultIds.push(ethers.BigNumber.from(randomUint256()));
+                                tokens[0].vaultIds.push(randomUint256());
                             }
                         }
-                        tokens[i].vaultId = ethers.BigNumber.from(randomUint256());
+                        tokens[i].vaultId = randomUint256();
                         i > 0
                             ? (tokens[i].depositAmount = ethers.utils.parseUnits(
                                   deposits[i] ?? "100",
@@ -1143,7 +1140,7 @@ for (let i = 0; i < testData.length; i++) {
                     };
                     config.orderbookTradeTypes = {
                         router: new Set(),
-                        interOrderbook: new Set(),
+                        interOrderbook: new Set([orderbook1.address.toLowerCase()]),
                         intraOrderbook: new Set(),
                         raindexRouter: new Set(),
                     };
@@ -1541,7 +1538,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.orderbookTradeTypes = {
                         router: new Set(),
                         interOrderbook: new Set(),
-                        intraOrderbook: new Set(),
+                        intraOrderbook: new Set([orderbook.address.toLowerCase()]),
                         raindexRouter: new Set(),
                     };
 
@@ -2596,7 +2593,7 @@ for (let i = 0; i < testData.length; i++) {
                     };
                     config.orderbookTradeTypes = {
                         router: new Set(),
-                        interOrderbook: new Set(),
+                        interOrderbook: new Set([orderbook1.address.toLowerCase()]),
                         intraOrderbook: new Set(),
                         raindexRouter: new Set(),
                     };
@@ -3006,7 +3003,7 @@ for (let i = 0; i < testData.length; i++) {
                     };
                     config.orderbookTradeTypes = {
                         router: new Set(),
-                        interOrderbook: new Set(),
+                        interOrderbook: new Set([orderbook1.address.toLowerCase()]),
                         intraOrderbook: new Set(),
                         raindexRouter: new Set(),
                     };
@@ -3422,7 +3419,7 @@ for (let i = 0; i < testData.length; i++) {
                     config.orderbookTradeTypes = {
                         router: new Set(),
                         interOrderbook: new Set(),
-                        intraOrderbook: new Set(),
+                        intraOrderbook: new Set([orderbook.address.toLowerCase()]),
                         raindexRouter: new Set(),
                     };
 

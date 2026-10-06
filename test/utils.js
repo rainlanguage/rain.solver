@@ -1,6 +1,7 @@
 const { assert } = require("chai");
 const { ethers } = require("hardhat");
 const { ABI } = require("../src/common");
+const { sendTx } = require("../src/signer/actions");
 const OrderbookArtifact = require("./abis/OrderBook.json");
 const RainterpreterNPE2Artifact = require("./abis/RainterpreterNPE2.json");
 const RainterpreterStoreNPE2Artifact = require("./abis/RainterpreterStoreNPE2.json");
@@ -590,4 +591,31 @@ exports.assertError = async function (f, s, e) {
 
 exports.encodeQuoteResponse = function (quoteResult) {
     return ethers.utils.defaultAbiCoder.encode(["(bool,uint256,uint256)"], [quoteResult]);
+};
+
+/**
+ * Sends the tx with src sendTx for an impersonated signer, such a signer cannot sign
+ * locally, so the gas price is dropped to send the tx through the node
+ * (eth_sendTransaction) instead of signing it for broadcast
+ *
+ * @param signer - The impersonated signer
+ * @param tx - The transaction to send
+ */
+exports.sendTx = (signer, tx) => sendTx(signer, { ...tx, gasPrice: undefined });
+
+/**
+ * Waits for the tx receipt through the node and frees the signer after, the test
+ * state does not watch the block number that the src receipt lookup follows
+ *
+ * @param signer - The signer that sent the tx
+ * @param hash - The transaction hash
+ * @param timeout - The timeout in ms
+ * @param pollingInterval - The polling interval in ms
+ */
+exports.tryGetReceipt = async (signer, hash, timeout, pollingInterval) => {
+    try {
+        return await signer.waitForTransactionReceipt({ hash, timeout, pollingInterval });
+    } finally {
+        signer.busy = false;
+    }
 };
