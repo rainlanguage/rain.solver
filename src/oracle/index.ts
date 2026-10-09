@@ -1,10 +1,11 @@
 import { Result } from "../common";
-import { OracleError } from "./error";
 import { SharedState } from "../state";
 import { AppOptions } from "../config";
 import { Order, Pair } from "../order/types";
 import { fetchSignedContext } from "./fetch";
 import { Attributes } from "@opentelemetry/api";
+import { OracleError, OracleErrorType } from "./error";
+import { OracleConstants, OracleMarketHours } from "./types";
 
 /**
  * If the order has an oracle URL, fetch signed context and inject it
@@ -24,6 +25,20 @@ export async function fetchOracleContext(
     // Oracle signed context only supported for V4 orders
     const order = orderDetails.takeOrder.struct.order;
     if (order.type !== Order.Type.V4) return Result.ok(undefined);
+
+    // known oracles serve signed context only inside their market hours,
+    // so skip the fetch out of market hours as it can only fail
+    if (
+        OracleConstants.isKnown(oracleUrl) &&
+        !OracleMarketHours.isOpen(this.appOptions.oracleMarketHours)
+    ) {
+        return Result.err(
+            new OracleError(
+                `Oracle ${oracleUrl} is out of market hours, skipping`,
+                OracleErrorType.OutOfMarketHours,
+            ),
+        );
+    }
 
     const isMaxOwnerProfile = AppOptions.isMaxOwnerProfile(
         orderDetails.takeOrder.struct.order.owner,

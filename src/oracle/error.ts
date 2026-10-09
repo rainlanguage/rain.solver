@@ -7,6 +7,7 @@ export enum OracleErrorType {
     RequestFailed,
     FetchError,
     InvalidResponseType,
+    OutOfMarketHours,
 }
 
 /**

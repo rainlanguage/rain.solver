@@ -46,6 +46,41 @@ export namespace OracleConstants {
     }
 }
 
+/**
+ * Daily market hours (UTC) of the known oracles, as minutes from 00:00 UTC, the known
+ * oracles serve signed context only inside these hours on weekdays (monday to friday),
+ * weekends are always closed, from saturday 00:00 UTC until sunday 23:59 UTC
+ */
+export type OracleMarketHours = {
+    /** Minute of the day (UTC) the market opens at, inclusive */
+    open: number;
+    /** Minute of the day (UTC) the market closes at, inclusive, so the market is open until the end of this minute */
+    close: number;
+};
+export namespace OracleMarketHours {
+    /** Default daily market hours, from 08:00 UTC until 23:59 UTC */
+    export const DEFAULT: Readonly<OracleMarketHours> = { open: 8 * 60, close: 23 * 60 + 59 };
+
+    /**
+     * Determines if the known oracles market is open at the given time, that is a
+     * weekday inside the daily market hours, weekends are always closed
+     * @param hours - The daily market hours
+     * @param time - The time (ms) to check at, defaults to now
+     */
+    export function isOpen(hours: OracleMarketHours, time = Date.now()): boolean {
+        const date = new Date(time);
+        const day = date.getUTCDay();
+        if (day === 0 || day === 6) return false; // sunday or saturday
+
+        // convert the open and close times to the current day times (UTC),
+        // the close time is inclusive so the market is open for its whole minute
+        const dayStart = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+        const open = dayStart + hours.open * 60_000;
+        const close = dayStart + (hours.close + 1) * 60_000;
+        return time >= open && time < close;
+    }
+}
+
 /** Represents the health state of an oracle for an owner */
 export type OracleHealthState = {
     /** Number of consecutive failed fetches */

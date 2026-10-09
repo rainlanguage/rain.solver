@@ -4,6 +4,7 @@ import { AppOptionsContracts, SelfFundVault } from ".";
 import { RpcConfig } from "../rpc";
 import { isBigNumberish } from "../math";
 import { SgFilter } from "../subgraph/filter";
+import { OracleMarketHours } from "../oracle/types";
 import { AppOptionsError, AppOptionsErrorType } from "./error";
 
 /** Integer pattern */
@@ -215,6 +216,28 @@ export namespace Validator {
             validationError("expected either of all, max or off for routerSecondaryRouteTry"),
         );
         return mode;
+    }
+
+    /**
+     * Resolves config's oracle daily market hours from a range of two standard UTC
+     * times of the current day in form of HH:MM-HH:MM, e.g. 08:30-23:59, the close
+     * time is inclusive and the open time must be before the close time
+     */
+    export function resolveOracleMarketHours(input: any): OracleMarketHours {
+        const exception =
+            "invalid oracleMarketHours value, must be a range of two UTC times in form of HH:MM-HH:MM, e.g. 08:30-23:59, with the open time before the close time";
+        const range = readValue(input).value;
+        if (range === undefined || range === null || range === "") {
+            return { ...OracleMarketHours.DEFAULT };
+        }
+        assert(typeof range === "string", validationError(exception));
+        const match = range.trim().match(/^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/);
+        assert(match, validationError(exception));
+        const [, openHour, openMinute, closeHour, closeMinute] = match;
+        const open = Number(openHour) * 60 + Number(openMinute);
+        const close = Number(closeHour) * 60 + Number(closeMinute);
+        assert(open < close, validationError(exception));
+        return { open, close };
     }
 
     /** Resolves config's rpcs */

@@ -5,6 +5,7 @@ import { RpcConfig } from "../rpc";
 import { parseUnits } from "viem";
 import { Result } from "../common";
 import { SgFilter } from "../subgraph/filter";
+import { OracleMarketHours } from "../oracle/types";
 import { AppOptionsError, AppOptionsErrorType } from "./error";
 import { FLOAT_PATTERN, INT_PATTERN, Validator, readValue } from "./validators";
 
@@ -167,6 +168,8 @@ export type AppOptions = {
     gasBoostMultiplier?: number;
     /** Optional threshold for the estimated profit USD value that if exceeded boosts the tx gas price, kept as 18 point decimals, no boost applies if unset */
     gasBoostUsdThreshold?: bigint;
+    /** Daily market hours (UTC) of the known oracles, orders with a known oracle skip the oracle fetch out of these hours and all day on weekends (saturday and sunday), default is 08:00-23:59 */
+    oracleMarketHours: OracleMarketHours;
 };
 
 /** Provides methods to instantiate and validate AppOptions */
@@ -615,6 +618,7 @@ export namespace AppOptions {
                         ? undefined
                         : parseUnits(gasBoostUsdThreshold, 18);
                 })(),
+                oracleMarketHours: Validator.resolveOracleMarketHours(input.oracleMarketHours),
             } as AppOptions);
         } catch (error: any) {
             if (error instanceof AppOptionsError) {
