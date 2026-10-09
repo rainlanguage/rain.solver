@@ -239,6 +239,7 @@ describe("Test RainSolverCli", () => {
         rainSolverCli.roundCount = 1;
         rainSolverCli.avgGasCost = 1000000000000000000n;
         (rainSolverCli as any).nextDatafetcherReset = Date.now() + 60000;
+        rainSolverCli.pendingRoundFinalizations = new Set();
     });
 
     describe("Test init static method", () => {
@@ -1070,6 +1071,54 @@ describe("Test RainSolverCli", () => {
             expect(sleep).toHaveBeenCalledWith(1000);
 
             // Restore process.env
+            process.env = originalEnv;
+        });
+
+        it("should wait for every round finalization before shutdown", async () => {
+            const originalEnv = process.env;
+            process.env = {
+                ...originalEnv,
+                IS_PREVIEW: "true",
+                PREVIEW_ROUNDS: "2",
+            };
+
+            const mockSpan = {
+                setAttribute: vi.fn(),
+                setAttributes: vi.fn(),
+                setStatus: vi.fn(),
+                recordException: vi.fn(),
+                end: vi.fn(),
+            };
+            (mockLogger.tracer.startSpan as Mock).mockReturnValue(mockSpan);
+            (trace.setSpan as Mock).mockReturnValue({ test: "context" });
+            (context.active as Mock).mockReturnValue({ test: "active" });
+            (mockRainSolver.processNextRound as Mock).mockResolvedValue({
+                results: [],
+                reports: [],
+                checkpointReports: [],
+            });
+            (mockSubgraphManager.getOrderbooks as Mock).mockResolvedValue(new Set());
+            (mockOrderManager.sync as Mock).mockResolvedValue({ name: "sync" });
+            (sleep as Mock).mockResolvedValue(undefined);
+
+            // the first round finalizes slower than the second one
+            let finishFirstRound!: () => void;
+            const finalizeSpy = vi
+                .spyOn(rainSolverCli, "finalizeRound")
+                .mockReturnValueOnce(new Promise<void>((resolve) => (finishFirstRound = resolve)))
+                .mockResolvedValueOnce(undefined);
+
+            const runPromise = rainSolverCli.run();
+            await vi.waitFor(() => expect(finalizeSpy).toHaveBeenCalledTimes(2));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            expect(mockLogger.shutdown).not.toHaveBeenCalled();
+
+            finishFirstRound();
+            await runPromise;
+            expect(mockLogger.shutdown).toHaveBeenCalledTimes(1);
+            expect(rainSolverCli.pendingRoundFinalizations.size).toBe(0);
+
+            finalizeSpy.mockRestore();
             process.env = originalEnv;
         });
 
