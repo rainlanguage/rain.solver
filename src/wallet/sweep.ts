@@ -1,6 +1,7 @@
 import { TokenDetails } from "../common";
 import { ChainId, Router } from "sushi";
 import { RainSolverSigner } from "../signer";
+import { resetNonce } from "../signer/actions";
 import { Native, Token } from "sushi/currency";
 import { poolFilter } from "../router/sushi/blacklist";
 import { encodeFunctionData, erc20Abi, maxUint256 } from "viem";
@@ -59,6 +60,7 @@ export async function transferTokenFrom(
         functionName: "transfer",
         args: [to.account.address, balance],
     });
+    resetNonce(from); // viem took the nonce over rpc, out of the nonce cache
     const receipt = await from.waitForReceipt({ hash });
     if (receipt.status === "success") {
         return { amount: balance, txHash: hash };
@@ -157,6 +159,7 @@ export async function convertToGas(
             functionName: "approve",
             args: [rp4Address, maxUint256],
         });
+        resetNonce(from); // viem took the nonce over rpc, out of the nonce cache
         await from.waitForReceipt({ hash });
     }
 

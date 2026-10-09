@@ -1,7 +1,7 @@
 const { assert } = require("chai");
 const { ethers } = require("hardhat");
 const { ABI } = require("../src/common");
-const { sendTx } = require("../src/signer/actions");
+const { sendTx, resetNonce } = require("../src/signer/actions");
 const OrderbookArtifact = require("./abis/OrderBook.json");
 const RainterpreterNPE2Artifact = require("./abis/RainterpreterNPE2.json");
 const RainterpreterStoreNPE2Artifact = require("./abis/RainterpreterStoreNPE2.json");
@@ -596,12 +596,16 @@ exports.encodeQuoteResponse = function (quoteResult) {
 /**
  * Sends the tx with src sendTx for an impersonated signer, such a signer cannot sign
  * locally, so the gas price is dropped to send the tx through the node
- * (eth_sendTransaction) instead of signing it for broadcast
+ * (eth_sendTransaction) instead of signing it for broadcast, the cached nonce is
+ * dropped first, since the fork resets between tests while the state is shared
  *
  * @param signer - The impersonated signer
  * @param tx - The transaction to send
  */
-exports.sendTx = (signer, tx) => sendTx(signer, { ...tx, gasPrice: undefined });
+exports.sendTx = (signer, tx) => {
+    resetNonce(signer);
+    return sendTx(signer, { ...tx, gasPrice: undefined });
+};
 
 /**
  * Waits for the tx receipt through the node and frees the signer after, the test

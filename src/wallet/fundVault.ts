@@ -2,6 +2,7 @@ import { Router } from "sushi";
 import { ABI } from "../common";
 import { SelfFundVault } from "../config";
 import { RainSolverSigner } from "../signer";
+import { resetNonce } from "../signer/actions";
 import { Native, Token } from "sushi/currency";
 import { erc20Abi, maxUint256, parseUnits } from "viem";
 import { findMultiRouteExactOut, RToken } from "sushi/tines";
@@ -143,6 +144,7 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
                 functionName: "approve",
                 args: [details.orderbook as `0x${string}`, maxUint256],
             });
+            resetNonce(signer); // viem took the nonce over rpc, out of the nonce cache
             const receipt = await signer.waitForReceipt({ hash });
             if (receipt.status === "reverted") {
                 throw new Error(
@@ -158,6 +160,7 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
             functionName: "deposit2",
             args: [vaultToken.address, BigInt(details.vaultId), topupAmount, []],
         });
+        resetNonce(signer); // viem took the nonce over rpc, out of the nonce cache
         const receipt = await signer.waitForReceipt({ hash });
         if (receipt.status === "success") {
             return { txHash: hash };

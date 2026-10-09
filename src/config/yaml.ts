@@ -82,7 +82,7 @@ export type AppOptions = {
     sleep: number;
     /** Gas coverage percentage for each transaction to be considered profitable to be submitted, default is 100 */
     gasCoveragePercentage: string;
-    /** Optional seconds to wait for the transaction to mine before disregarding it, default is 15 */
+    /** Optional timeout (in ms) of the rpc and subgraph requests, default is 15000 */
     timeout: number;
     /** Option to specify time (in minutes) between pools data resets, default is 0 minutes */
     poolUpdateInterval: number;
@@ -122,7 +122,7 @@ export type AppOptions = {
     convertToGasTime: number;
     /** Determines if multi wallets should be rotated at runtime, meaning new ones to replace older ones once they runs out of gas, default is false */
     rotateMultiWallet: boolean;
-    /** Time threshold (in ms) for a transaction mine time before it counts as a trigger to increase gas price multiplier for future transactions, default is 15 seconds */
+    /** Time threshold (in ms) for a transaction mine time before it counts as a trigger to increase gas price multiplier for future transactions, default is 15 seconds, must be below the receipt wait (3 block times) for a transaction to count as slow */
     txTimeThreshold: number;
     /** Points added to the gas price multiplier on each step up, default is 10 */
     gasIncreasePointsPerStep: number;
@@ -130,7 +130,7 @@ export type AppOptions = {
     gasIncreaseStepTime: number;
     /** Optional ceiling of the gas price multiplier, never below gasPriceMultiplier, defaults to gasPriceMultiplier plus 1000 points (ten times the rpc gas price) when unset */
     maxGasPriceMultiplier?: number;
-    /** The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher and the transaction receipt wait, required */
+    /** The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher and the transaction receipt wait, a receipt wait times out after 3 block times, required */
     blockTime: number;
     /** Subscribes the block number watcher to flashblocks heads instead of new heads over the ws rpc, only supported on Base chain, requires wsRpc, default is false */
     flashblocks: boolean;
