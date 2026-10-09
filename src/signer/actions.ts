@@ -108,7 +108,7 @@ export type RainSolverSignerActions<
      * block number watcher.
      * This method does not leak memory as the viem's default `waitForTransactionReceipt` method.
      * @param hash - The transaction hash to get the receipt for
-     * @param timeout - The timeout in ms (default 60 sec)
+     * @param timeout - The timeout in ms (default is 3 times the configured block time)
      * @param pollingInterval - The interval (in ms) the block number is checked at a fifth of (default is the configured block time)
      * @returns Resolves with the transaction receipt or rejects with timeout error
      */
@@ -171,7 +171,9 @@ export function hasExplicitGasParams(
  * state while the transaction is being sent ensuring proper busy state management,
  * a tx with explicit gas limit and gas price is signed locally and broadcasted as
  * a raw tx (see broadcastTx), otherwise it is sent through viem sendTransaction
- * which populates the missing fields over rpc before signing
+ * which populates the missing fields over rpc before signing, the nonce comes from
+ * the state's nonce cache and is read over rpc only when the cache does not hold
+ * it, a failed send drops the cached nonce so the retry reads it over rpc
  *
  * @param signer - The RainSolverSigner instance to use for sending the transaction
  * @param tx - The transaction parameters to send
@@ -191,7 +193,6 @@ export async function sendTx(
 
     // start sending tranaction process
     signer.busy = true;
-    let nonce: number | undefined = undefined;
 
     // set tx gas
     if (typeof tx.gas === "bigint") {
@@ -203,29 +204,21 @@ export async function sendTx(
     const canBroadcast = hasExplicitGasParams(tx);
 
     async function send() {
-        if (typeof nonce !== "number") {
-            await signer
-                .getTransactionCount({
-                    address: signer.account.address,
-                    blockTag: "latest",
-                })
-                .then((n) => (nonce = n))
-                .catch((e) => {
-                    nonce = undefined;
-                    throw e;
-                });
-        }
-        if (canBroadcast) {
-            return await broadcastTx(signer, { ...(tx as any), nonce });
-        } else {
-            return await signer.sendTransaction({ ...(tx as any), nonce });
-        }
+        const nonce = await getNextNonce(signer);
+        const hash = canBroadcast
+            ? await broadcastTx(signer, { ...(tx as any), nonce })
+            : await signer.sendTransaction({ ...(tx as any), nonce });
+        // the tx took the nonce, so cache the next one for the next tx of this wallet
+        signer.state.nonceCache.set(signer.account.address.toLowerCase(), nonce + 1);
+        return hash;
     }
     try {
         const hash = await send();
         const wait = () => tryGetReceipt(signer, hash);
         return { hash, wait };
     } catch (error) {
+        // the cached nonce may be stale, so drop it to read the nonce over rpc for the retry
+        resetNonce(signer);
         await sleep(retryDelay); // wait for retryDelay time and retry once more
         try {
             const hash = await send();
@@ -236,6 +229,30 @@ export async function sendTx(
             throw error;
         }
     }
+}
+
+/**
+ * Gets the nonce of the next transaction of the signer, from the state's nonce cache
+ * when it holds one for the signer's address, otherwise it is read over rpc
+ * @param signer - The RainSolverSigner instance
+ */
+export async function getNextNonce(signer: RainSolverSigner): Promise<number> {
+    const cached = signer.state.nonceCache.get(signer.account.address.toLowerCase());
+    if (typeof cached === "number") return cached;
+    return await signer.getTransactionCount({
+        address: signer.account.address,
+        blockTag: "latest",
+    });
+}
+
+/**
+ * Drops the cached nonce of the signer's address so its next transaction reads the
+ * nonce over rpc, for when the cached nonce can be stale, ie after a failed send, a
+ * transaction that did not get mined or one sent outside of sendTx (eg writeContract)
+ * @param signer - The RainSolverSigner instance
+ */
+export function resetNonce(signer: RainSolverSigner) {
+    signer.state.nonceCache.delete(signer.account.address.toLowerCase());
 }
 
 /**
@@ -390,13 +407,20 @@ export async function broadcastTx(
 
 /**
  * Get the associated write signer from the given signer and state, that is
- * basically the same signer wallet but configured with app's write rpc
+ * basically the same signer wallet but configured with app's write rpc, the write
+ * signer shares the busy state of the given signer, so a send through it marks the
+ * wallet busy for the signer picking (eg getRandomSigner) and for other sends
  * @param signer - A RainSolverSigner instance
  * */
 export function getWriteSignerFrom(signer: RainSolverSigner): RainSolverSigner {
     // if state doesnt have write rpc configured, return the signer as is
     if (!signer.state.writeRpc) return signer;
-    return RainSolverSigner.create(signer.account, signer.state, true);
+    const writeSigner = RainSolverSigner.create(signer.account, signer.state, true);
+    Object.defineProperty(writeSigner, "busy", {
+        get: () => signer.busy,
+        set: (busy: boolean) => (signer.busy = busy),
+    });
+    return writeSigner;
 }
 
 /**
@@ -405,16 +429,17 @@ export function getWriteSignerFrom(signer: RainSolverSigner): RainSolverSigner {
  * method, the receipt is looked up once per new block, that is whenever the state's
  * block number (kept up-to-date by the block number watcher) has advanced since the
  * last lookup, the block number is checked at a fifth of the polling interval, so a
- * lookup follows a new block by that much at most
+ * lookup follows a new block by that much at most, a failed wait drops the signer's
+ * cached nonce, since the tx may have been dropped and its nonce be free again
  * @param signer - The RainSolverSigner instance
  * @param hash - The transaction hash
- * @param timeout - The timeout in ms (default 60 sec)
+ * @param timeout - The timeout in ms (default is 3 times the configured block time)
  * @param pollingInterval - The interval (in ms) the block number is checked at a fifth of (default is the configured block time)
  */
 export async function tryGetReceipt(
     signer: RainSolverSigner,
     hash: `0x${string}`,
-    timeout = 60_000,
+    timeout = 3 * signer.state.appOptions.blockTime,
     pollingInterval = signer.state.appOptions.blockTime,
 ): Promise<TransactionReceipt> {
     const start = Date.now();
@@ -452,6 +477,9 @@ export async function tryGetReceipt(
         signer.state.gasManager.onTransactionMine({ didMine: true, length: Date.now() - start });
         return result;
     } catch (error) {
+        // the tx may have been dropped, which frees its nonce again, so
+        // drop the cached nonce to read it over rpc for the next tx
+        resetNonce(signer);
         // free the signer after transaction state is concluded (to not cause nonce conflicts)
         signer.busy = false;
         // capture tx mine record

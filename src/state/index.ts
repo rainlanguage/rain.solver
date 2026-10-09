@@ -310,6 +310,8 @@ export class SharedState {
     writeRpc?: RpcState;
     /** List of latest successful transactions gas costs */
     gasCosts: bigint[] = [];
+    /** The nonce of the next transaction of each wallet (by lowercase address), so a send does not read the nonce over rpc every time */
+    readonly nonceCache: Map<string, number> = new Map();
     /** Oracle endpoint health tracking for cooloff */
     oracleHealth: OracleHealthMap = new Map();
     /** The current native gas token to USD price (18 decimals fixed point number as decimal string), updated once per round */

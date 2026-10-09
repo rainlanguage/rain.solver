@@ -9,7 +9,9 @@ import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 import {
     sendTx,
     getTxGas,
+    resetNonce,
     broadcastTx,
+    getNextNonce,
     hasExplicitGasParams,
     tryGetReceipt,
     waitUntilFree,
@@ -71,6 +73,7 @@ describe("Test sendTx", () => {
                     isSpecialL2: false,
                 },
                 l1GasPrice: undefined,
+                nonceCache: new Map(),
             },
             waitUntilFree: vi.fn().mockResolvedValue(undefined),
             getTransactionCount: vi.fn().mockResolvedValue(5),
@@ -377,6 +380,96 @@ describe("Test sendTx", () => {
             }),
             expect.anything(),
         );
+    });
+
+    describe("nonce cache", () => {
+        it("should cache the next nonce and send the next tx without reading it over rpc", async () => {
+            (mockSigner.account as any).address = "0xSender";
+
+            await sendTx(mockSigner, { ...mockTx });
+            expect(mockSigner.state.nonceCache.get("0xsender")).toBe(6);
+
+            mockSigner.busy = false;
+            await sendTx(mockSigner, { ...mockTx });
+
+            // read over rpc only for the first tx
+            expect(mockSigner.getTransactionCount).toHaveBeenCalledTimes(1);
+            expect((mockSigner.account.signTransaction as Mock).mock.calls[0][0].nonce).toBe(5);
+            expect((mockSigner.account.signTransaction as Mock).mock.calls[1][0].nonce).toBe(6);
+            expect(mockSigner.state.nonceCache.get("0xsender")).toBe(7);
+        });
+
+        it("should cache the next nonce for a tx sent through viem sendTransaction", async () => {
+            (mockSigner.sendTransaction as Mock).mockResolvedValue("0xviemhash");
+            mockSigner.state.nonceCache.set("0xsender", 9);
+
+            await sendTx(mockSigner, { to: mockTx.to, value: 1n } as any);
+
+            expect(mockSigner.getTransactionCount).not.toHaveBeenCalled();
+            expect(mockSigner.sendTransaction).toHaveBeenCalledWith(
+                expect.objectContaining({ nonce: 9 }),
+            );
+            expect(mockSigner.state.nonceCache.get("0xsender")).toBe(10);
+        });
+
+        it("should drop a stale cached nonce on a failed send and retry with the rpc nonce", async () => {
+            mockSigner.state.nonceCache.set("0xsender", 3);
+            (mockSigner.sendRawTransaction as Mock)
+                .mockRejectedValueOnce(new Error("nonce too low"))
+                .mockResolvedValueOnce("0xhash");
+
+            const { hash } = await sendTx(mockSigner, mockTx, 10);
+
+            expect(hash).toBe("0xhash");
+            expect(mockSigner.getTransactionCount).toHaveBeenCalledTimes(1);
+            expect((mockSigner.account.signTransaction as Mock).mock.calls[0][0].nonce).toBe(3);
+            expect((mockSigner.account.signTransaction as Mock).mock.calls[1][0].nonce).toBe(5);
+            expect(mockSigner.state.nonceCache.get("0xsender")).toBe(6);
+        });
+
+        it("should leave no cached nonce when both attempts fail", async () => {
+            mockSigner.state.nonceCache.set("0xsender", 3);
+            mockSigner.sendRawTransaction = vi.fn().mockRejectedValue(new Error("failed"));
+
+            await expect(sendTx(mockSigner, mockTx, 10)).rejects.toThrow("failed");
+
+            expect(mockSigner.state.nonceCache.has("0xsender")).toBe(false);
+            expect(mockSigner.busy).toBe(false);
+        });
+    });
+});
+
+describe("Test getNextNonce and resetNonce", () => {
+    let mockSigner: RainSolverSigner;
+
+    beforeEach(() => {
+        mockSigner = {
+            account: { address: "0xSender" },
+            state: { nonceCache: new Map() },
+            getTransactionCount: vi.fn().mockResolvedValue(5),
+        } as unknown as RainSolverSigner;
+    });
+
+    it("should read the nonce over rpc when the cache does not hold one", async () => {
+        expect(await getNextNonce(mockSigner)).toBe(5);
+        expect(mockSigner.getTransactionCount).toHaveBeenCalledWith({
+            address: "0xSender",
+            blockTag: "latest",
+        });
+    });
+
+    it("should return the cached nonce by lowercase address without reading it over rpc", async () => {
+        mockSigner.state.nonceCache.set("0xsender", 0);
+        expect(await getNextNonce(mockSigner)).toBe(0);
+        expect(mockSigner.getTransactionCount).not.toHaveBeenCalled();
+    });
+
+    it("should drop only the signer's cached nonce", () => {
+        mockSigner.state.nonceCache.set("0xsender", 8);
+        mockSigner.state.nonceCache.set("0xother", 2);
+        resetNonce(mockSigner);
+        expect(mockSigner.state.nonceCache.has("0xsender")).toBe(false);
+        expect(mockSigner.state.nonceCache.get("0xother")).toBe(2);
     });
 });
 
@@ -978,6 +1071,63 @@ describe("Test getWriteSignerFrom", () => {
 
         spySigner.mockRestore();
     });
+
+    describe("shared busy state", () => {
+        let mockState: SharedState;
+        let signer: RainSolverSigner;
+
+        beforeEach(() => {
+            mockState = new SharedState({
+                rpcState: new RpcState([{ url: "https://example.com" }]),
+                writeRpcState: new RpcState([{ url: "https://example-write.com" }]),
+                chainConfig: {
+                    id: 1,
+                    isSpecialL2: false,
+                },
+            } as any);
+            signer = RainSolverSigner.create(account, mockState);
+        });
+
+        it("should share the busy state of the signer with each of its write signers", () => {
+            const writeSigner1 = getWriteSignerFrom(signer);
+            const writeSigner2 = getWriteSignerFrom(signer);
+            expect(writeSigner1).not.toBe(signer);
+
+            // a send through a write signer marks the wallet busy
+            writeSigner1.busy = true;
+            expect(signer.busy).toBe(true);
+            expect(writeSigner2.busy).toBe(true);
+
+            // the receipt wait frees the wallet through the signer
+            signer.busy = false;
+            expect(writeSigner1.busy).toBe(false);
+            expect(writeSigner2.busy).toBe(false);
+        });
+
+        it("should make a send through another write signer of the wallet wait until the wallet is free", async () => {
+            mockState.nonceCache.set(account.address.toLowerCase(), 5);
+            const sendTransaction = vi.fn().mockResolvedValue("0xhash");
+            const writeSigner1 = getWriteSignerFrom(signer);
+            const writeSigner2 = getWriteSignerFrom(signer);
+            (writeSigner1 as any).sendTransaction = sendTransaction;
+            (writeSigner2 as any).sendTransaction = sendTransaction;
+
+            await sendTx(writeSigner1, { to: account.address, value: 1n } as any);
+            expect(signer.busy).toBe(true);
+
+            // the second send waits while the first tx is not settled
+            const second = sendTx(writeSigner2, { to: account.address, value: 1n } as any);
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            expect(sendTransaction).toHaveBeenCalledTimes(1);
+
+            // the receipt wait of the first tx frees the wallet
+            signer.busy = false;
+            await second;
+            expect(sendTransaction).toHaveBeenCalledTimes(2);
+            expect(sendTransaction.mock.calls[0][0].nonce).toBe(5);
+            expect(sendTransaction.mock.calls[1][0].nonce).toBe(6);
+        });
+    });
 });
 
 describe("Test tryGetReceipt", () => {
@@ -988,6 +1138,7 @@ describe("Test tryGetReceipt", () => {
     beforeEach(() => {
         mockSigner = {
             busy: true,
+            account: { address: "0xSender" },
             state: {
                 appOptions: { blockTime: 150 },
                 blockNumber: 100n,
@@ -997,6 +1148,7 @@ describe("Test tryGetReceipt", () => {
                 gasManager: {
                     onTransactionMine: vi.fn(),
                 },
+                nonceCache: new Map([["0xsender", 7]]),
             },
         } as unknown as RainSolverSigner;
 
@@ -1042,7 +1194,7 @@ describe("Test tryGetReceipt", () => {
         expect(mockSigner.state.client.getTransactionReceipt).not.toHaveBeenCalled();
     });
 
-    it("should default the polling interval to the configured block time", async () => {
+    it("should default the polling interval to the block time and the timeout to 3 block times", async () => {
         (mockSigner.state.appOptions as any).blockTime = 500;
         (mockSigner.state.client.getTransactionReceipt as Mock).mockResolvedValue({
             status: "success",
@@ -1052,8 +1204,13 @@ describe("Test tryGetReceipt", () => {
         const start = Date.now();
         await tryGetReceipt(mockSigner, "0xhash");
 
-        // the tick is a fifth of the block time
+        // the tick is a fifth of the block time and the timeout is 3 block times
         expect(sleepSpy).toHaveBeenCalledWith(100);
+        expect(promiseTimeoutSpy).toHaveBeenCalledWith(
+            expect.any(Promise),
+            1_500,
+            expect.any(Object),
+        );
         expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalledTimes(1);
         expect(Date.now() - start).toBeLessThan(400);
     });
@@ -1122,6 +1279,8 @@ describe("Test tryGetReceipt", () => {
             length: expect.any(Number),
         });
         expect(mockSigner.busy).toBe(false);
+        // a mined tx keeps the cached nonce
+        expect(mockSigner.state.nonceCache.get("0xsender")).toBe(7);
     });
 
     it("should hit timeout", async () => {
@@ -1151,5 +1310,7 @@ describe("Test tryGetReceipt", () => {
             length: expect.any(Number),
         });
         expect(mockSigner.busy).toBe(false);
+        // the tx may have been dropped, so the cached nonce is dropped too
+        expect(mockSigner.state.nonceCache.has("0xsender")).toBe(false);
     });
 });

@@ -71,6 +71,7 @@ describe("Test fundVault", () => {
                     },
                 },
                 watchedTokens: new Map(),
+                nonceCache: new Map(),
                 watchToken: vi.fn(),
                 router: {
                     sushi: {
@@ -114,6 +115,7 @@ describe("Test fundVault", () => {
 
         (mockSigner.writeContract as Mock).mockResolvedValue("0xdeposit");
         (mockSigner.waitForReceipt as Mock).mockResolvedValue({ status: "success" });
+        mockSigner.state.nonceCache.set("0xwallet", 4);
 
         const result = await fundVault(vaultDetails, mockSigner);
 
@@ -130,6 +132,8 @@ describe("Test fundVault", () => {
             ],
         });
         expect(mockSigner.sendTx as Mock).not.toHaveBeenCalled(); // No swap should occur
+        // viem took the nonce over rpc, so the cached one is dropped
+        expect(mockSigner.state.nonceCache.has("0xwallet")).toBe(false);
     });
 
     it("should successfully fund vault with gas swap when signer has insufficient token balance", async () => {
@@ -336,10 +340,14 @@ describe("Test fundVault", () => {
 
         (mockSigner.writeContract as Mock).mockResolvedValue("0xapprove");
         (mockSigner.waitForReceipt as Mock).mockResolvedValue({ status: "reverted" });
+        mockSigner.state.nonceCache.set("0xwallet", 4);
 
         await expect(fundVault(vaultDetails, mockSigner)).rejects.toThrow(
             "Failed to approve token spend cap for depositing",
         );
+        // the approve tx alone took a nonce over rpc, so the cached one is dropped
+        expect(mockSigner.writeContract).toHaveBeenCalledTimes(1);
+        expect(mockSigner.state.nonceCache.has("0xwallet")).toBe(false);
     });
 
     it("should throw error object when deposit transaction reverts", async () => {
