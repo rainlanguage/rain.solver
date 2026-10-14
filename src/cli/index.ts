@@ -10,6 +10,7 @@ import { sleep, withBigintSerializer } from "../common";
 import { ErrorSeverity, errorSnapshot } from "../error";
 import { SharedState, SharedStateConfig } from "../state";
 import { SubgraphConfig, SubgraphManager } from "../subgraph";
+import { EventSyncManager } from "../events/manager";
 import { PreAssembledSpan, RainSolverLogger } from "../logger";
 import { Context, context, Span, SpanStatusCode, trace } from "@opentelemetry/api";
 
@@ -57,6 +58,12 @@ export class RainSolverCli {
     readonly rainSolver: RainSolver;
     /** The logger instance */
     readonly logger: RainSolverLogger;
+    /**
+     * The log sync of every orderbook that the subgraphs index. The orders and
+     * the vault balances follow the chain logs, and the subgraphs only give the
+     * startup snapshot.
+     */
+    eventSync?: EventSyncManager;
 
     /** The average gas cost across rounds */
     avgGasCost: bigint | undefined;
@@ -142,11 +149,6 @@ export class RainSolverCli {
                 }
                 const state = new SharedState(stateConfig.value);
 
-                // watch block number during runtime, so the current block number
-                // is always available in the state without repeated rpc calls,
-                // polled at the chain's block time cadence
-                state.watchBlockNumber(appOptions.blockTime);
-
                 report.setStatus({ code: SpanStatusCode.OK });
                 report.end();
                 logger.exportPreAssembledSpan(report);
@@ -180,35 +182,107 @@ export class RainSolverCli {
             throw new Error("All subgraphs have indexing error");
         }
 
-        // init order manager
-        const orderManagerResult = await OrderManager.init(state, subgraphManager);
-        if (orderManagerResult.isErr()) {
-            // export the report and throw
-            logger.exportPreAssembledSpan(orderManagerResult.error);
-            throw new Error("Failed to get order details from subgraphs");
-        }
-        const { orderManager, report } = orderManagerResult.value;
-        logger.exportPreAssembledSpan(report);
-
-        await orderManager.downscaleProtection();
-
-        // init wallet manager
-        const { walletManager, reports } = await WalletManager.init(state);
-        reports.forEach((statusReport) => logger.exportPreAssembledSpan(statusReport));
-
-        // init rain solver
-        const rainSolver = new RainSolver(state, appOptions, orderManager, walletManager, logger);
-
-        return new RainSolverCli(
+        // init order manager. The orders of every orderbook that the subgraphs
+        // index follow the chain logs, see the events module. The subgraphs only
+        // give the startup snapshot
+        const orderManager = new OrderManager(state, subgraphManager);
+        const eventSync = await EventSyncManager.init({
             state,
-            appOptions,
             orderManager,
-            walletManager,
             subgraphManager,
-            rainSolver,
-            logger,
-            Date.now() + appOptions.poolUpdateInterval * 60 * 1000,
-        );
+            filters: sgManagerConfig.filters,
+        });
+
+        // the orderbooks of a subgraph that does not answer are left out, the
+        // bot runs with the others, it fails when no subgraph answers
+        if (eventSync.failedSubgraphs.length) {
+            const failedReport = new PreAssembledSpan("log-sync-subgraphs");
+            failedReport.setAttr("failedSubgraphs", eventSync.failedSubgraphs);
+            failedReport.setAttr("severity", ErrorSeverity.HIGH);
+            failedReport.setStatus({
+                code: SpanStatusCode.ERROR,
+                message: "Some subgraphs did not give their orderbooks, those are not synced",
+            });
+            failedReport.end();
+            logger.exportPreAssembledSpan(failedReport);
+            if (eventSync.failedSubgraphs.length === subgraphManager.subgraphs.length) {
+                throw new Error("Failed to get the orderbooks from the subgraphs");
+            }
+        }
+
+        // nothing of the log sync or of the block watcher outlives an init
+        // that fails from here on
+        try {
+            // the log stream opens before the block watcher starts. The block
+            // watcher keeps the current block number in the state without repeated
+            // rpc calls. Without a ws rpc, it polls at the block time of the chain
+            eventSync.open();
+            state.watchBlockNumber(appOptions.blockTime);
+
+            // start the log sync, it fetches the snapshot from the subgraphs once
+            // enough blocks are buffered, and it goes live after that. An orderbook
+            // that does not go live in time tries again in the background, also
+            // when none goes live, so the bot does not exit behind a subgraph
+            // that lags
+            const startReport = new PreAssembledSpan("log-sync-start");
+            startReport.setAttr("mode", eventSync.mode);
+            startReport.setAttr("orderbooks", eventSync.orderbooks);
+            const { reports: syncReports, failed } = await eventSync.start();
+            for (const [orderbook, report] of syncReports) {
+                startReport.setAttr(
+                    `sync.${orderbook}`,
+                    JSON.stringify(report, withBigintSerializer),
+                );
+            }
+            for (const [orderbook, error] of failed) {
+                startReport.setAttr(`failed.${orderbook}`, error);
+            }
+            if (failed.size) {
+                startReport.setAttr("severity", ErrorSeverity.HIGH);
+                startReport.setStatus({
+                    code: SpanStatusCode.ERROR,
+                    message: syncReports.size
+                        ? "Some orderbooks did not go live, they try again in the background"
+                        : "No orderbook went live, they try again in the background",
+                });
+            } else {
+                startReport.setStatus({ code: SpanStatusCode.OK });
+            }
+            startReport.end();
+            logger.exportPreAssembledSpan(startReport);
+
+            await orderManager.downscaleProtection();
+
+            // init wallet manager
+            const { walletManager, reports } = await WalletManager.init(state);
+            reports.forEach((statusReport) => logger.exportPreAssembledSpan(statusReport));
+
+            // init rain solver
+            const rainSolver = new RainSolver(
+                state,
+                appOptions,
+                orderManager,
+                walletManager,
+                logger,
+            );
+
+            const cli = new RainSolverCli(
+                state,
+                appOptions,
+                orderManager,
+                walletManager,
+                subgraphManager,
+                rainSolver,
+                logger,
+                Date.now() + appOptions.poolUpdateInterval * 60 * 1000,
+            );
+            cli.eventSync = eventSync;
+            return cli;
+        } catch (error) {
+            eventSync.close();
+            state.unwatchBlockNumber();
+            throw error;
+        }
     }
 
     /**
@@ -227,8 +301,7 @@ export class RainSolverCli {
             const roundCtx = trace.setSpan(context.active(), roundSpan);
 
             // report meta info, it runs alongside the round and the round finalization
-            // awaits it before ending the span, so the meta attributes are not lost on
-            // a round that ends before the report's subgraph query answers
+            // awaits it before ending the span, so the meta attributes are not lost
             const metaInfoPromise = this.reportMetaInfoForRound(roundSpan).catch(async (err) => {
                 roundSpan.setAttribute(
                     "meta.error",
@@ -303,17 +376,10 @@ export class RainSolverCli {
                 roundSpan.setStatus({ code: SpanStatusCode.ERROR, message: snapshot });
             }
 
-            // start syncing orders to upstream right away, it runs alongside the
-            // rest of the round finalization, but the next round waits for it to
-            // finish, so no round ever processes orders while a sync is in flight
-            const syncOrdersPromise = this.orderManager
-                .sync()
-                .then((report) => this.logger.exportPreAssembledSpan(report, roundCtx))
-                .catch(() => {
-                    roundSpan.addEvent(
-                        "Failed to sync orders to upstream, will try again next round",
-                    );
-                });
+            // the log sync keeps the orders in step all the time, so the round
+            // only reports where the sync stands, it runs alongside the rest of
+            // the round finalization
+            const syncOrdersPromise = this.reportLogSyncForRound(roundCtx).catch(() => {});
 
             // finalize the round in the background, the round span ends once all
             // the finalization operations settle, so the next round starts on time
@@ -346,6 +412,8 @@ export class RainSolverCli {
 
         // let the latest round finalize before flushing and closing the connection
         await this.pendingRoundFinalization;
+        // close the log sync, its subscription, block listener and timers
+        this.eventSync?.close();
         await this.logger.shutdown();
     }
 
@@ -361,7 +429,7 @@ export class RainSolverCli {
      * @param checkMainWalletBalancePromise - The pending main wallet balance check, if any
      * @param getWorkerWalletsBalancePromise - The pending worker wallets balance read, if any
      * @param metaInfoPromise - The in flight round meta info report, if any, it sets the round
-     * span meta attributes once its subgraph query answers, so the span must not end before it
+     * span meta attributes, so the span must not end before it
      */
     async finalizeRound(
         roundSpan: Span,
@@ -541,6 +609,60 @@ export class RainSolverCli {
     }
 
     /**
+     * Reports where the log stream and the log sync of every orderbook stand for
+     * the round, as a sync-orders span. An error of the stream, or an orderbook
+     * that is not live, that has an error, or that failed an order or a log
+     * since the previous round, marks the span as an error. A subgraph that did
+     * not give its orderbooks at the start, or an order that the bot dropped
+     * since the previous round because it could not read its token or vault
+     * balance, marks the span with a high severity, those orders are not traded
+     * until a restart. Does nothing when there is no log sync
+     * @param roundCtx - The otel context for the current round
+     */
+    async reportLogSyncForRound(roundCtx: Context): Promise<void> {
+        if (!this.eventSync) return;
+        const { mode, stream, orderbooks, failedSubgraphs } = this.eventSync.report();
+        const report = new PreAssembledSpan("sync-orders");
+        report.setAttr("mode", mode);
+        report.setAttr("stream", JSON.stringify(stream));
+        let healthy = !stream.lastError;
+        let givenUp = false;
+        for (const sync of orderbooks) {
+            report.setAttr(`sync.${sync.orderbook}`, JSON.stringify(sync, withBigintSerializer));
+            if (sync.phase !== "live" || sync.lastError || sync.startError) healthy = false;
+            // the counts are totals since the start, a new failure, bad log or
+            // given up order marks the round once
+            if (sync.newFailures || sync.newBadLogs) healthy = false;
+            if (sync.newGivenUp) givenUp = true;
+        }
+        // the orders of these are not synced until a restart
+        const lost: string[] = [];
+        if (failedSubgraphs.length) {
+            report.setAttr("failedSubgraphs", failedSubgraphs);
+            lost.push("some subgraphs did not give their orderbooks, those are not synced");
+        }
+        if (givenUp) {
+            lost.push(
+                "the bot dropped some orders because it could not read their token or vault balance",
+            );
+        }
+        if (lost.length) {
+            report.setAttr("severity", ErrorSeverity.HIGH);
+            report.setStatus({ code: SpanStatusCode.ERROR, message: lost.join(", and ") });
+        } else if (healthy) {
+            report.setStatus({ code: SpanStatusCode.OK });
+        } else {
+            report.setAttr("severity", ErrorSeverity.MEDIUM);
+            report.setStatus({
+                code: SpanStatusCode.ERROR,
+                message: "an orderbook log sync is not live or reported an error",
+            });
+        }
+        report.end();
+        this.logger.exportPreAssembledSpan(report, roundCtx);
+    }
+
+    /**
      * Reports RPC metrics for the current round
      * @param roundCtx - The otel context for the current round
      */
@@ -608,7 +730,7 @@ export class RainSolverCli {
             "meta.contracts.v6": this.state.contracts.v6
                 ? JSON.stringify(this.state.contracts.v6)
                 : "N/A",
-            "meta.orderbooks": Array.from(await this.subgraphManager.getOrderbooks()),
+            "meta.orderbooks": this.eventSync?.orderbooks ?? [],
             "meta.mainAccount": this.walletManager.mainWallet.address,
             "meta.gitCommitHash": process?.env?.GIT_COMMIT ?? "N/A",
             "meta.dockerTag": process?.env?.DOCKER_TAG ?? "N/A",

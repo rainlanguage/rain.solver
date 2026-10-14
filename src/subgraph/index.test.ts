@@ -39,6 +39,7 @@ describe("Test SubgraphManager", () => {
             filters: undefined,
             requestTimeout: 1000,
         });
+        expect(_manager.subgraphs).toEqual([url1, url2]);
         expect(_manager.syncState[url1]).toBeDefined();
         expect(_manager.syncState[url1].skip).toBe(0);
         expect(_manager.syncState[url1].lastFetchTimestamp).toBe(0);
@@ -48,6 +49,8 @@ describe("Test SubgraphManager", () => {
         expect(_manager.syncState[url2].skip).toBe(0);
         expect(_manager.syncState[url2].lastFetchTimestamp).toBe(0);
         expect(_manager.versions.v6).toEqual(new Set([url2]));
+        expect(_manager.getSubgraphVersion(url1)).toBe(SubgraphVersions.LEGACY);
+        expect(_manager.getSubgraphVersion(url2)).toBe(SubgraphVersions.V6);
     });
 
     it("should initialize syncState for each subgraph", () => {
@@ -69,6 +72,98 @@ describe("Test SubgraphManager", () => {
         expect(orders).toEqual([mockOrder]);
         expect(orders[0].__version).toBe(SubgraphVersions.LEGACY);
         expect(manager.syncState[subgraphUrl].lastFetchTimestamp).toBeGreaterThan(0);
+    });
+
+    it("test getOrderbooksByUrl: should map each subgraph of any version to the orderbooks it indexes", async () => {
+        (axios.post as Mock).mockReset();
+        const legacyUrl = "https://legacy.example";
+        const _manager = new SubgraphManager({
+            subgraphs: [`v6=${subgraphUrl}`, legacyUrl],
+        } as any);
+        (axios.post as Mock)
+            .mockResolvedValueOnce({
+                data: { data: { orderbooks: [{ id: "0xAbC" }, { id: "0xdef" }] } },
+            })
+            .mockResolvedValueOnce({ data: { data: { orderbooks: [{ id: "0x123" }] } } });
+        const byUrl = await _manager.getOrderbooksByUrl();
+        // each subgraph is asked with the query of its version
+        expect(axios.post).toHaveBeenCalledTimes(2);
+        expect((axios.post as Mock).mock.calls[0][0]).toBe(subgraphUrl);
+        expect((axios.post as Mock).mock.calls[0][1].query).toContain("raindices");
+        expect((axios.post as Mock).mock.calls[1][0]).toBe(legacyUrl);
+        expect((axios.post as Mock).mock.calls[1][1].query).not.toContain("raindices");
+        expect(byUrl).toEqual(
+            new Map([
+                [subgraphUrl, new Set(["0xabc", "0xdef"])],
+                [legacyUrl, new Set(["0x123"])],
+            ]),
+        );
+    });
+
+    it("test getOrderbooksByUrl: should leave out a subgraph that fails or gives an invalid response", async () => {
+        (axios.post as Mock).mockReset();
+        const v6Manager = new SubgraphManager({
+            subgraphs: [`v6=${subgraphUrl}`, "v6=https://down.example", "v6=https://bad.example"],
+        } as any);
+        (axios.post as Mock)
+            .mockResolvedValueOnce({ data: { data: { orderbooks: [] } } })
+            .mockRejectedValueOnce(new Error("down"))
+            .mockResolvedValueOnce({ data: { errors: ["bad query"] } });
+        const byUrl = await v6Manager.getOrderbooksByUrl();
+        expect(byUrl).toEqual(new Map([[subgraphUrl, new Set()]]));
+    });
+
+    it("test getIndexedBlock: should read the block the subgraph has indexed", async () => {
+        (axios.post as Mock).mockReset();
+        (axios.post as Mock).mockResolvedValueOnce({
+            data: { data: { _meta: { block: { number: 4242 }, hasIndexingErrors: false } } },
+        });
+        expect(await manager.getIndexedBlock(subgraphUrl)).toBe(4242);
+        expect((axios.post as Mock).mock.calls[0][1].query).toContain("_meta");
+    });
+
+    it("test getIndexedBlock: should throw when the subgraph block is not served", async () => {
+        (axios.post as Mock).mockReset();
+        (axios.post as Mock).mockResolvedValueOnce({ data: { data: {} } });
+        await expect(manager.getIndexedBlock(subgraphUrl)).rejects.toContain("block");
+    });
+
+    it("test fetchSnapshotAt: should fetch the orders pinned at the given block", async () => {
+        (axios.post as Mock).mockReset();
+        (axios.post as Mock)
+            .mockResolvedValueOnce({ data: { data: { orders: [mockOrder] } } })
+            .mockResolvedValueOnce({ data: { data: { orders: [] } } });
+        const orders = await manager.fetchSnapshotAt(subgraphUrl, 555n);
+        expect(orders).toEqual([mockOrder]);
+        expect(orders[0].__version).toBe(SubgraphVersions.LEGACY);
+        // every page query carries the block pin
+        expect((axios.post as Mock).mock.calls[0][1].query).toContain("block: { number: 555 },");
+        expect((axios.post as Mock).mock.calls[1][1].query).toContain("block: { number: 555 },");
+        // a fetch of a past state does not move the sync state
+        expect(manager.syncState[subgraphUrl].lastFetchTimestamp).toBe(0);
+    });
+
+    it("test fetchSnapshotAt: should fetch the orders of the given orderbook only", async () => {
+        (axios.post as Mock).mockReset();
+        const v6Manager = new SubgraphManager({
+            subgraphs: [`v6=${subgraphUrl}`],
+            filters: { includeOwners: new Set(["0xowner"]) },
+        } as any);
+        (axios.post as Mock).mockResolvedValueOnce({ data: { data: { orders: [] } } });
+        await v6Manager.fetchSnapshotAt(subgraphUrl, 555n, "0xOB");
+        const query = (axios.post as Mock).mock.calls[0][1].query;
+        expect(query).toContain('raindex_in: ["0xob"]');
+        // the other filters still apply
+        expect(query).toContain('owner_in: ["0xowner"]');
+        expect(v6Manager.filters?.includeOrderbooks).toBeUndefined();
+    });
+
+    it("test fetchSnapshotAt: should throw on invalid response", async () => {
+        (axios.post as Mock).mockReset();
+        (axios.post as Mock).mockResolvedValueOnce({ data: {} });
+        await expect(manager.fetchSnapshotAt(subgraphUrl, 1)).rejects.toBe(
+            "Received invalid response",
+        );
     });
 
     it("test fetchSubgraphOrders: should fetch and paginate orders v6", async () => {

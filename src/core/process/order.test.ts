@@ -38,8 +38,8 @@ describe("Test processOrder", () => {
         vi.clearAllMocks();
         mockOrderManager = {
             quoteOrder: vi.fn(),
-            addToPairMaps: vi.fn(),
-            removeFromPairMaps: vi.fn(),
+            restoreToPairMaps: vi.fn(),
+            removeQuotedFromPairMaps: vi.fn(),
         } as any;
         mockState = {
             chainConfig: {
@@ -117,7 +117,9 @@ describe("Test processOrder", () => {
         expect(result.value.endTime).toBeTypeOf("number");
 
         // ensure pair maps are updated on quote 0
-        expect(mockOrderManager.removeFromPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
+        expect(mockOrderManager.removeQuotedFromPairMaps).toHaveBeenCalledWith(
+            mockArgs.orderDetails,
+        );
     });
 
     it("should return FailedToQuote if quoteOrder throws", async () => {
@@ -148,7 +150,9 @@ describe("Test processOrder", () => {
         });
 
         // ensure pair maps are updated on quote failure
-        expect(mockOrderManager.removeFromPairMaps).toHaveBeenCalledWith(mockArgs.orderDetails);
+        expect(mockOrderManager.removeQuotedFromPairMaps).toHaveBeenCalledWith(
+            mockArgs.orderDetails,
+        );
     });
 
     it("should pass span attributes and events to quoteOrder", async () => {

@@ -23,6 +23,12 @@ describe("Test getQueryPaginated", () => {
         expect(query).toContain("active: true");
         expect(query).toContain("orderbook {");
         expect(query).not.toContain("raindex");
+        expect(query).not.toContain("block:");
+    });
+
+    it("should pin the query at a block when given one", () => {
+        const query = getQueryPaginated(0, undefined, undefined, 12345);
+        expect(query).toContain("block: { number: 12345 },");
     });
 
     it("should use raindex entity aliased as orderbook for v6", () => {

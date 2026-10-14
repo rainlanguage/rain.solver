@@ -6,8 +6,9 @@ import { SharedState } from "../state";
 import { OrderManagerError } from "./error";
 import { SubgraphManager, SubgraphVersions } from "../subgraph";
 import { downscaleProtection } from "./protection";
+import { OracleConstants } from "../oracle/types";
 import { CounterpartySource, Order, Pair } from "./types";
-import { OrderManager, DEFAULT_OWNER_LIMIT, OrderbookVersions } from "./index";
+import { OrderManager, DEFAULT_OWNER_LIMIT, OrderbookVersions, vaultRef } from "./index";
 import { describe, it, expect, beforeEach, vi, Mock, assert } from "vitest";
 import { BASES_TO_CHECK_TRADES_AGAINST } from "sushi/config";
 
@@ -64,7 +65,13 @@ vi.mock("./types", async (importOriginal) => {
                     type: Order.Type.V3,
                     owner: value === "0xadminBytes" ? "0xadmin" : "0xowner",
                     validInputs: [{ token: "0xinput", decimals: 18, vaultId: 1n }],
-                    validOutputs: [{ token: "0xoutput", decimals: 18, vaultId: 1n }],
+                    validOutputs: [
+                        {
+                            token: "0xoutput",
+                            decimals: 18,
+                            vaultId: value === "0xvaultlessBytes" ? 0n : 1n,
+                        },
+                    ],
                 }),
             ),
         },
@@ -633,6 +640,69 @@ describe("Test OrderManager", () => {
         expect(result.nonZeroOutput.length).toBe(0);
         expect(result.zeroOutput.length).toBe(1);
         expect(result.zeroOutput[0].takeOrder.id).toBe("0xhash");
+    });
+
+    it("should give the pairs the balances that the log sync wrote to the ledger", async () => {
+        (state as any).appOptions = {};
+        orderManager.logSyncedOrderbooks.add("0xorderbook");
+        const mockOrder = {
+            orderHash: "0xhash",
+            orderbook: { id: "0xorderbook" },
+            orderBytes: "0xbytes",
+            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 1n }],
+            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 2n }],
+        };
+        await orderManager.addOrder(mockOrder as any);
+        const [pair] = orderManager.getNextRoundOrders().nonZeroOutput;
+        const { order, inputIOIndex, outputIOIndex } = pair.takeOrder.struct;
+        // the ledger does not know the balances yet, the pair keeps the ones it came with
+        expect(pair.sellTokenVaultBalance).toBe(1n);
+        expect(pair.buyTokenVaultBalance).toBe(2n);
+
+        const owner = order.owner;
+        const outputVault = vaultRef(
+            "0xorderbook",
+            owner,
+            "0xoutput",
+            order.validOutputs[outputIOIndex].vaultId,
+        );
+        const inputVault = vaultRef(
+            "0xorderbook",
+            owner,
+            "0xinput",
+            order.validInputs[inputIOIndex].vaultId,
+        );
+        orderManager.ledger.setBaseline(outputVault, 0n, 10n);
+        orderManager.ledger.setBaseline(inputVault, 9n, 10n);
+
+        const result = orderManager.getNextRoundOrders();
+        expect(result.nonZeroOutput.length).toBe(0);
+        expect(result.zeroOutput.length).toBe(1);
+        expect(result.zeroOutput[0].sellTokenVaultBalance).toBe(0n);
+        expect(result.zeroOutput[0].buyTokenVaultBalance).toBe(9n);
+    });
+
+    it("should not gate a vaultless output of a v6 orderbook on its balance", async () => {
+        (state as any).appOptions = {};
+        const mockOrder = {
+            orderHash: "0xhash",
+            orderbook: { id: "0xorderbook" },
+            orderBytes: "0xvaultlessBytes",
+            outputs: [{ token: { address: "0xoutput", symbol: "OUT" }, balance: 0n }],
+            inputs: [{ token: { address: "0xinput", symbol: "IN" }, balance: 2n }],
+        };
+        await orderManager.addOrder(mockOrder as any);
+        // vault id 0 is a vault of its own on an orderbook that is not v6
+        expect(orderManager.isVaultless("0xorderbook", 0n)).toBe(false);
+        expect(orderManager.getNextRoundOrders().zeroOutput.length).toBe(1);
+
+        orderManager.vaultlessOrderbooks.add("0xorderbook");
+        expect(orderManager.isVaultless("0xOrderbook", 0n)).toBe(true);
+        expect(orderManager.isVaultless("0xorderbook", 1n)).toBe(false);
+        const result = orderManager.getNextRoundOrders();
+        expect(result.zeroOutput.length).toBe(0);
+        expect(result.nonZeroOutput.length).toBe(1);
+        expect(result.nonZeroOutput[0].takeOrder.id).toBe("0xhash");
     });
 
     it("should put zero output balance pair of max owner in nonZeroOutput list when enabled", async () => {
@@ -1290,6 +1360,50 @@ describe("Test OrderManager", () => {
         removeFromPairMapSpy.mockRestore();
     });
 
+    it("should restore a quoted pair only while it is still a pair of a known order", () => {
+        const pair = getPair("0xorderbook", "0xhash", "0xtkn1", "0xtkn2");
+        (pair.takeOrder as any).struct = { order: { owner: "0xOwner" } };
+        const setOrder = (takeOrders: Pair[]) =>
+            orderManager.ownersMap.set(
+                "0xorderbook",
+                new Map([
+                    [
+                        "0xowner",
+                        {
+                            limit: 1,
+                            lastIndex: 0,
+                            orders: new Map([["0xhash", { active: true, takeOrders }]]),
+                        } as any,
+                    ],
+                ]),
+            );
+        const pairsOf = () =>
+            orderManager.oiPairMap.get("0xorderbook")?.get("0xtkn1")?.get("0xtkn2");
+
+        // the order is known with this pair
+        setOrder([pair]);
+        orderManager.restoreToPairMaps(pair);
+        expect(pairsOf()?.get("0xhash")).toBe(pair);
+
+        // the order was removed while the quote was out
+        orderManager.removeFromPairMaps(pair);
+        orderManager.ownersMap.clear();
+        orderManager.restoreToPairMaps(pair);
+        expect(pairsOf()?.get("0xhash")).toBeUndefined();
+
+        // the order was removed and added again, the new pair stays
+        const newPair = getPair("0xorderbook", "0xhash", "0xtkn1", "0xtkn2");
+        setOrder([newPair]);
+        orderManager.addToPairMaps(newPair);
+        orderManager.restoreToPairMaps(pair);
+        expect(pairsOf()?.get("0xhash")).toBe(newPair);
+        // and a zero quote of the old pair does not take the new one out
+        orderManager.removeQuotedFromPairMaps(pair);
+        expect(pairsOf()?.get("0xhash")).toBe(newPair);
+        orderManager.removeQuotedFromPairMaps(newPair);
+        expect(pairsOf()?.get("0xhash")).toBeUndefined();
+    });
+
     it("should return undefined when balance is invalid float", () => {
         const orderbook = "0xorderbook1";
         const owner = "0xowner1";
@@ -1441,6 +1555,92 @@ describe("Test OrderManager", () => {
         expect(updatedVault?.balance).toBe(newBalance);
         expect(updatedVault?.id).toBe(vaultId);
         expect(updatedVault?.token).toEqual(token);
+    });
+
+    it("should only register the vault of a log synced orderbook, the logs set its balance", () => {
+        const orderbook = "0xorderbook1";
+        const owner = "0xowner1";
+        const token = { address: "0xtoken1", symbol: "TOKEN1", decimals: 18 };
+        const vault = { orderbook, owner, token: token.address, vaultId: 123n } as any;
+        orderManager.logSyncedOrderbooks.add(orderbook);
+
+        orderManager.updateVault(orderbook, owner, token, 123n, 5n);
+        expect(orderManager.ledger.isTracked(vault)).toBe(true);
+        expect(orderManager.ledger.hasToken(token.address as `0x${string}`)).toBe(true);
+        expect(orderManager.ledger.balance(vault)).toBeUndefined();
+        expect(orderManager.ownerTokenVaultMap.get(orderbook)).toBeUndefined();
+
+        // the balance the log sync writes is the one the map shows
+        orderManager.ledger.setBaseline(vault, 7n, 10n);
+        orderManager.updateVault(orderbook, owner, token, 123n, 5n);
+        expect(
+            orderManager.ownerTokenVaultMap
+                .get(orderbook)
+                ?.get(owner)
+                ?.get(token.address)
+                ?.get(123n)?.balance,
+        ).toBe(7n);
+    });
+
+    it("should register only the token of a vaultless io, it has no vault", () => {
+        const orderbook = "0xorderbook1";
+        const owner = "0xowner1";
+        const token = { address: "0xtoken1", symbol: "TOKEN1", decimals: 18 };
+        const vault = { orderbook, owner, token: token.address, vaultId: 0n } as any;
+        orderManager.vaultlessOrderbooks.add(orderbook);
+
+        orderManager.updateVault(orderbook, owner, token, 0n, 5n);
+        expect(orderManager.ledger.hasToken(token.address as `0x${string}`)).toBe(true);
+        expect(orderManager.ledger.isTracked(vault)).toBe(false);
+        expect(orderManager.ledger.balance(vault)).toBeUndefined();
+        expect(orderManager.ownerTokenVaultMap.get(orderbook)).toBeUndefined();
+    });
+
+    it("should keep the first details of a token in the ledger", () => {
+        const orderbook = "0xorderbook1";
+        const owner = "0xowner1";
+        const token = { address: "0xtoken1", symbol: "TOKEN1", decimals: 18 };
+
+        orderManager.updateVault(orderbook, owner, token, 1n, 5n);
+        // an order that declares other decimals for the same token does not change them
+        orderManager.updateVault(orderbook, owner, { ...token, decimals: 6 }, 2n, 5n);
+        expect(orderManager.ledger.tokens.get(token.address as `0x${string}`)?.decimals).toBe(18);
+        expect(
+            orderManager.ownerTokenVaultMap.get(orderbook)?.get(owner)?.get(token.address)?.size,
+        ).toBe(2);
+    });
+
+    it("should give the pairs of an added order the oracle url of a meta that comes later", () => {
+        const url = "https://oracle.example.com";
+        // the meta as the oracle tests build it: <prefix><url><end marker><magic>
+        const meta =
+            "0xa200" +
+            Buffer.from(url).toString("hex") +
+            "011b" +
+            OracleConstants.RaindexSignedContextOracleV1;
+        const pairs = [{ oracleUrl: undefined }, { oracleUrl: undefined }] as any[];
+        orderManager.ownersMap.set(
+            "0xorderbook",
+            new Map([
+                [
+                    "0xowner",
+                    {
+                        limit: 1,
+                        lastIndex: 0,
+                        orders: new Map([["0xhash", { active: true, takeOrders: pairs }]]),
+                    } as any,
+                ],
+            ]),
+        );
+
+        // the keys are looked up lower cased, an unknown order is left alone
+        orderManager.updateOrderMeta("0xORDERBOOK", "0xOwner", "0xHASH", meta);
+        expect(pairs.map((pair) => pair.oracleUrl)).toEqual([url, url]);
+        orderManager.updateOrderMeta("0xorderbook", "0xowner", "0xother", "0x");
+        expect(pairs.map((pair) => pair.oracleUrl)).toEqual([url, url]);
+        // a meta with no oracle url clears it
+        orderManager.updateOrderMeta("0xorderbook", "0xowner", "0xhash", "0x1234");
+        expect(pairs.map((pair) => pair.oracleUrl)).toEqual([undefined, undefined]);
     });
 
     it("should handle multiple vaults for same owner and token", () => {
