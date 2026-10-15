@@ -16,44 +16,64 @@ export type SgFilter = {
     excludeOrderbooks?: Set<string>;
 };
 
+/** The fields of an order the filters read, known before an order is decoded any further */
+export type OrderFilterKeys = {
+    /** The orderbook address */
+    orderbook: string;
+    orderHash: string;
+    owner: string;
+};
+
 /**
  * Applies the given filters to the given order and returns true if it passes, otherwise returns false
  * @param order - The order
  * @param filters - The subgraph filters
  */
 export function applyFilters(order: SgOrder, filters?: SgFilter): boolean {
+    return passesFilters(
+        { orderbook: order.orderbook.id, orderHash: order.orderHash, owner: order.owner },
+        filters,
+    );
+}
+
+/**
+ * Applies the given filters to the keys of an order and returns true if it passes, otherwise returns false
+ * @param keys - The orderbook, hash and owner of the order
+ * @param filters - The subgraph filters
+ */
+export function passesFilters(keys: OrderFilterKeys, filters?: SgFilter): boolean {
     if (!filters) return true;
     else {
         // apply include filter
         if (filters.includeOrderbooks) {
-            if (!filters.includeOrderbooks.has(order.orderbook.id)) {
+            if (!filters.includeOrderbooks.has(keys.orderbook)) {
                 return false;
             }
         }
         if (filters.includeOrders) {
-            if (!filters.includeOrders.has(order.orderHash)) {
+            if (!filters.includeOrders.has(keys.orderHash)) {
                 return false;
             }
         }
         if (filters.includeOwners) {
-            if (!filters.includeOwners.has(order.owner)) {
+            if (!filters.includeOwners.has(keys.owner)) {
                 return false;
             }
         }
 
         // apply exclude filters
         if (filters.excludeOrderbooks) {
-            if (filters.excludeOrderbooks.has(order.orderbook.id)) {
+            if (filters.excludeOrderbooks.has(keys.orderbook)) {
                 return false;
             }
         }
         if (filters.excludeOrders) {
-            if (filters.excludeOrders.has(order.orderHash)) {
+            if (filters.excludeOrders.has(keys.orderHash)) {
                 return false;
             }
         }
         if (filters.excludeOwners) {
-            if (filters.excludeOwners.has(order.owner)) {
+            if (filters.excludeOwners.has(keys.owner)) {
                 return false;
             }
         }

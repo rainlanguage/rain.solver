@@ -24,6 +24,9 @@ import {
 import { AppOptions } from "../config";
 import { Attributes } from "@opentelemetry/api";
 import { OrderSpanEvents } from "../core/types";
+import { VaultLedger } from "../events/ledger";
+import { extractOracleUrl } from "../oracle/fetch";
+import { Hex, VaultRef } from "../events/types";
 
 export * from "./types";
 export * from "./quote";
@@ -31,9 +34,10 @@ export * from "./error";
 export * from "./config";
 
 /**
- * OrderManager is responsible for managing orders state for Rainsolver during runtime, it
- * extends SubgraphManager to fetch and sync order details from subgraphs as well as providing
- * list of orders for next round and scaling owner limits for protection against order spam
+ * OrderManager is responsible for managing orders state for Rainsolver during runtime, the log
+ * sync of the events module keeps it in step with the chain, it also fetches order details from
+ * subgraphs for the commands that need them, and it provides the list of orders for next round
+ * and scales owner limits for protection against order spam
  */
 export class OrderManager {
     /** Quote gas limit */
@@ -63,16 +67,50 @@ export class OrderManager {
      */
     ioPairMap: OrderbooksPairMap;
     /**
-     * Keeps a map of owner token vaults details, this is used to evaluate
-     * owners limits and to keep track of vault balance changes throughout
-     * the runtime, helping us to avoid running order pairs with empty vault
-     * balances.
-     * Vault balances are updated on each order sync operation when the recent
-     * transactions are processed and those that have vault balance changes
-     * are updated in this map.
-     * orderbook -> owner -> token -> vaultsId -> vaultDetails
+     * The vault balances of the orders, the one store of them. A subgraph fetch
+     * writes absolute balances into it, the log sync of the events module
+     * shares it and writes the changes the chain logs report, either way the
+     * round reads it for every pair it gates, so a pair always trades on the
+     * balance as of the last change applied
      */
-    ownerTokenVaultMap: OrderbookOwnerTokenVaultsMap;
+    readonly ledger = new VaultLedger();
+    /**
+     * The orderbooks that the log sync of the events module keeps, lower cased.
+     * The logs own the vault balances of these orderbooks, so an update from an
+     * order of one of them only registers the vault and its token. The subgraph
+     * sets the balances of all other orderbooks.
+     */
+    readonly logSyncedOrderbooks = new Set<string>();
+    /**
+     * The v6 orderbooks, lower cased. On a v6 orderbook vault id 0 is a
+     * vaultless io, it draws from and pays to the owner's wallet, so no log
+     * tells its balance, see isVaultless
+     */
+    readonly vaultlessOrderbooks = new Set<string>();
+
+    /**
+     * The vault balances as a nested map, orderbook -> owner -> token -> vault
+     * id -> vault details, built from the ledger on each read, for the owner
+     * limit protection and the reports, only the vaults with a known balance
+     * and token are in it
+     */
+    get ownerTokenVaultMap(): OrderbookOwnerTokenVaultsMap {
+        const map: OrderbookOwnerTokenVaultsMap = new Map();
+        for (const state of this.ledger.vaults.values()) {
+            const balance = this.ledger.balance(state.ref);
+            const token = this.ledger.tokens.get(state.ref.token);
+            if (balance === undefined || !token) continue;
+            const { orderbook, owner, token: tokenAddress } = state.ref;
+            if (!map.has(orderbook)) map.set(orderbook, new Map());
+            const owners = map.get(orderbook)!;
+            if (!owners.has(owner)) owners.set(owner, new Map());
+            const tokens = owners.get(owner)!;
+            if (!tokens.has(tokenAddress)) tokens.set(tokenAddress, new Map());
+            const id = state.ref.vaultId;
+            tokens.get(tokenAddress)!.set(id, { id, token, balance });
+        }
+        return map;
+    }
 
     /** Metadata details about orders currently being processed */
     metadata = {
@@ -92,7 +130,6 @@ export class OrderManager {
         this.oiPairMap = new Map();
         this.ownersMap = new Map();
         this.ioPairMap = new Map();
-        this.ownerTokenVaultMap = new Map();
         this.quoteGas = state.orderManagerConfig.quoteGas;
         this.ownerLimits = state.orderManagerConfig.ownerLimits;
         this.defaultOwnerLimit = state.orderManagerConfig.defaultOwnerLimit ?? DEFAULT_OWNER_LIMIT;
@@ -137,7 +174,10 @@ export class OrderManager {
         return Result.ok(report);
     }
 
-    /** Syncs orders to upstream subgraphs */
+    /**
+     * Syncs orders to upstream subgraphs. The bot round does not call it, the
+     * log sync of the events module keeps the orders in step with the chain
+     */
     async sync(): Promise<PreAssembledSpan> {
         return await syncOrders.call(this);
     }
@@ -222,9 +262,52 @@ export class OrderManager {
     }
 
     /**
-     * Adds the given order pair vault details to the token vaults map, since
-     * vaults dont get destroyed, there is no need to have any remove operation
-     * for this this map
+     * Whether the vault is a vaultless io, vault id 0 on a v6 orderbook. Its
+     * balance is the owner's wallet balance up to the allowance, which no log
+     * tells, so the ledger does not keep it
+     * @param orderbook - The orderbook address
+     * @param vaultId - The vault id
+     */
+    isVaultless(orderbook: string, vaultId: bigint): boolean {
+        return vaultId === 0n && this.vaultlessOrderbooks.has(orderbook.toLowerCase());
+    }
+
+    /**
+     * Adds a pair of the round back to the pair maps after its quote, only when
+     * the pair is still a pair of a known order. The log sync can remove the
+     * order, or remove and add it again, while the quote is out, and then the
+     * pair stays out
+     * @param pair - The order pair object
+     */
+    restoreToPairMaps(pair: Pair) {
+        const profile = this.ownersMap
+            .get(pair.orderbook.toLowerCase())
+            ?.get(pair.takeOrder.struct.order.owner.toLowerCase())
+            ?.orders.get(pair.takeOrder.id.toLowerCase());
+        if (!(profile?.takeOrders as Pair[] | undefined)?.includes(pair)) return;
+        this.addToPairMaps(pair);
+    }
+
+    /**
+     * Removes a pair of the round from the pair maps after its quote, only when
+     * the pair maps hold that same pair. The log sync can remove the order and
+     * add it again while the quote is out, and then the new pair stays
+     * @param pair - The order pair object
+     */
+    removeQuotedFromPairMaps(pair: Pair) {
+        const held = this.oiPairMap
+            .get(pair.orderbook.toLowerCase())
+            ?.get(pair.sellToken.toLowerCase())
+            ?.get(pair.buyToken.toLowerCase())
+            ?.get(pair.takeOrder.id.toLowerCase());
+        if (held !== pair) return;
+        this.removeFromPairMaps(pair);
+    }
+
+    /**
+     * Registers the input and output vaults of the given order pair in the
+     * ledger, see updateVault, since vaults dont get destroyed, there is no
+     * remove operation for them
      * @param pair - The order pair object
      */
     addToTokenVaultsMap(pair: Pair) {
@@ -260,7 +343,10 @@ export class OrderManager {
     }
 
     /**
-     * Updates the vault balance in the ownerTokenVaultMap
+     * Registers the vault and its token in the ledger, and sets the given
+     * balance as the vault baseline, except for an orderbook in
+     * logSyncedOrderbooks, the logs own those balances, so the given balance
+     * is ignored. A vaultless io registers its token only, see isVaultless
      * @param orderbook - The orderbook address
      * @param owner - The owner address
      * @param token - The token details
@@ -288,33 +374,38 @@ export class OrderManager {
             normalizedBalance = balance;
         }
 
-        // get or create the empty map to store orderbook owner vaults
-        if (!this.ownerTokenVaultMap.has(orderbook)) {
-            this.ownerTokenVaultMap.set(orderbook, new Map());
+        // the vault and its token are always registered, the balance is set only
+        // when the subgraph is the source, with the logs the ledger holds it already.
+        // The ledger keeps the first details of a token, since an order can declare
+        // other decimals than the token has, the log sync sets the details it reads
+        const vault = vaultRef(orderbook, owner, token.address, vaultId);
+        if (!this.ledger.hasToken(vault.token)) this.ledger.setToken(token);
+        // a vaultless io has no vault, the round does not gate on its balance
+        if (this.isVaultless(orderbook, vaultId)) return;
+        this.ledger.track(vault);
+        if (!this.logSyncedOrderbooks.has(orderbook.toLowerCase())) {
+            this.ledger.setBaseline(vault, normalizedBalance, this.state.blockNumber ?? 0n);
         }
-        const ownersTokenVaultsMap = this.ownerTokenVaultMap.get(orderbook)!;
+    }
 
-        // get or create the empty map to store owner vaults
-        if (!ownersTokenVaultsMap.has(owner)) {
-            ownersTokenVaultsMap.set(owner, new Map());
-        }
-        const tokenVaultMap = ownersTokenVaultsMap.get(owner)!;
-
-        // get or create the empty map to store output vault details
-        if (!tokenVaultMap.has(token.address)) {
-            tokenVaultMap.set(token.address, new Map());
-        }
-        const vaultsMap = tokenVaultMap.get(token.address)!;
-        const vault = vaultsMap.get(vaultId);
-        if (!vault) {
-            vaultsMap.set(vaultId, {
-                id: vaultId,
-                balance: normalizedBalance,
-                token,
-            });
-        } else {
-            vault.balance = normalizedBalance;
-        }
+    /**
+     * Gives an added order the meta that came after its add. The oracle url of
+     * each pair of the order comes from the meta. The pair maps keep the same
+     * pair objects, so they get the update too. Does nothing for an order that
+     * is not known
+     * @param orderbook - The orderbook address
+     * @param owner - The owner of the order
+     * @param orderHash - The hash of the order
+     * @param meta - The meta bytes of the order
+     */
+    updateOrderMeta(orderbook: string, owner: string, orderHash: string, meta: string) {
+        const profile = this.ownersMap
+            .get(orderbook.toLowerCase())
+            ?.get(owner.toLowerCase())
+            ?.orders.get(orderHash.toLowerCase());
+        if (!profile) return;
+        const oracleUrl = meta ? extractOracleUrl(meta) : undefined;
+        for (const pair of profile.takeOrders as Pair[]) pair.oracleUrl = oracleUrl;
     }
 
     /**
@@ -473,36 +564,28 @@ export class OrderManager {
                     consumingOrders.push(...remainingConsumingOrders);
                 }
 
-                // get updated balance for the pairs from owner vaults map
+                // the pairs take the balances the ledger holds now, as of the last
+                // change applied, a vault the ledger does not know keeps the last
+                // balance the pair had
                 for (const pair of consumingOrders) {
+                    const { order, inputIOIndex, outputIOIndex } = pair.takeOrder.struct;
+                    const outputVaultId = order.validOutputs[outputIOIndex].vaultId;
+                    const inputVaultId = order.validInputs[inputIOIndex].vaultId;
                     pair.sellTokenVaultBalance =
-                        this.ownerTokenVaultMap
-                            .get(pair.orderbook)
-                            ?.get(owner)
-                            ?.get(pair.sellToken)
-                            ?.get(
-                                BigInt(
-                                    pair.takeOrder.struct.order.validOutputs[
-                                        pair.takeOrder.struct.outputIOIndex
-                                    ].vaultId,
-                                ),
-                            )?.balance ?? pair.sellTokenVaultBalance;
+                        this.ledger.balance(
+                            vaultRef(pair.orderbook, owner, pair.sellToken, outputVaultId),
+                        ) ?? pair.sellTokenVaultBalance;
                     pair.buyTokenVaultBalance =
-                        this.ownerTokenVaultMap
-                            .get(pair.orderbook)
-                            ?.get(owner)
-                            ?.get(pair.buyToken)
-                            ?.get(
-                                BigInt(
-                                    pair.takeOrder.struct.order.validInputs[
-                                        pair.takeOrder.struct.inputIOIndex
-                                    ].vaultId,
-                                ),
-                            )?.balance ?? pair.buyTokenVaultBalance;
+                        this.ledger.balance(
+                            vaultRef(pair.orderbook, owner, pair.buyToken, inputVaultId),
+                        ) ?? pair.buyTokenVaultBalance;
 
                     // zero output balance pairs are skipped, unless they belong to a max
-                    // profile owner and including them is explicitly enabled by config
+                    // profile owner and including them is explicitly enabled by config.
+                    // A vaultless output pays from the owner's wallet, no log tells its
+                    // balance, so the quote decides
                     if (
+                        !this.isVaultless(pair.orderbook, BigInt(outputVaultId)) &&
                         pair.sellTokenVaultBalance <= 0n &&
                         !(
                             this.state.appOptions.strictMaxOwnerProfileCheck &&
@@ -713,4 +796,22 @@ async function handleToken(
         decimals,
     });
     return Result.ok({ symbol, decimals, balance: sgOrderIO.balance });
+}
+
+/**
+ * The ledger ref of a vault, the id as a bigint the ledger keys by, from a
+ * number or a hex string alike
+ */
+export function vaultRef(
+    orderbook: string,
+    owner: string,
+    token: string,
+    vaultId: bigint | string,
+): VaultRef {
+    return {
+        orderbook: orderbook as Hex,
+        owner: owner as Hex,
+        token: token as Hex,
+        vaultId: typeof vaultId === "bigint" ? vaultId : BigInt(vaultId),
+    };
 }

@@ -3,6 +3,7 @@ import { SushiRouter, TradeSizeStatus } from "../router";
 import { Token } from "sushi/currency";
 import { getChainConfig } from "./chain";
 import { createPublicClient } from "viem";
+import { getWebSocketRpcClient, socketClientCache } from "viem/utils";
 import { LiquidityProviders } from "sushi";
 import { SolverContracts } from "./contracts";
 import { RainSolverRouter } from "../router/router";
@@ -33,6 +34,12 @@ vi.mock("viem", async (importOriginal) => ({
         getChainId: vi.fn().mockResolvedValue(1),
         readContract: vi.fn(),
     })),
+}));
+
+vi.mock("viem/utils", async (importOriginal) => ({
+    ...(await importOriginal()),
+    getWebSocketRpcClient: vi.fn().mockResolvedValue({}),
+    socketClientCache: new Map(),
 }));
 
 vi.mock("./chain", () => ({
@@ -373,6 +380,18 @@ describe("Test SharedState", () => {
             expect(sharedState.blockNumber).toBe(110n);
         });
 
+        it("should tell the block listeners a new block that the http read gives", async () => {
+            const listener = vi.fn();
+            sharedState.onBlockNumber(listener);
+            await sharedState.updateBlockNumber();
+            await sharedState.updateBlockNumber();
+            (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+            await sharedState.updateBlockNumber();
+            expect(listener.mock.calls).toEqual([[100n], [101n]]);
+            // a block read over http is not a ws head
+            expect(sharedState.wsBlockNumber).toBe(0n);
+        });
+
         it("should watch block number with an immediate update and periodic updates", async () => {
             expect(sharedState.isWatchingBlockNumber).toBe(false);
             sharedState.watchBlockNumber(5000);
@@ -442,15 +461,138 @@ describe("Test SharedState", () => {
                 onBlockNumber(105n);
                 expect(sharedState.blockNumber).toBe(105n);
                 expect(sharedState.canonicalBlockNumber).toBe(105n);
+                expect(sharedState.wsBlockNumber).toBe(105n);
 
                 // should not move backwards
                 onBlockNumber(101n);
                 expect(sharedState.blockNumber).toBe(105n);
                 expect(sharedState.canonicalBlockNumber).toBe(105n);
+                expect(sharedState.wsBlockNumber).toBe(105n);
 
                 // no polling should be active
                 await vi.advanceTimersByTimeAsync(15000);
                 expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+            });
+
+            it("should tell the block listeners every sealed block once, in order, and let them leave", async () => {
+                sharedState.watchBlockNumber(5000);
+                await vi.advanceTimersByTimeAsync(0);
+                const first = vi.fn();
+                const second = vi.fn(() => {
+                    throw new Error("a listener's failure is its own");
+                });
+                const leave = sharedState.onBlockNumber(first);
+                sharedState.onBlockNumber(second);
+
+                onBlockNumber(105n);
+                onBlockNumber(105n); // the same block again is not a new one
+                onBlockNumber(104n); // nor is one behind
+                expect(first.mock.calls).toEqual([[105n]]);
+                expect(second.mock.calls).toEqual([[105n]]);
+
+                leave();
+                onBlockNumber(106n);
+                expect(first).toHaveBeenCalledTimes(1);
+                expect(second).toHaveBeenCalledTimes(2);
+            });
+
+            it("should hand out one ws client for every subscription, and none without a ws rpc", () => {
+                const created = (createPublicClient as Mock).mock.calls.length;
+                const client = sharedState.getWsClient();
+                expect(client).toBeDefined();
+                expect(sharedState.getWsClient()).toBe(client);
+                sharedState.watchBlockNumber(5000);
+                // the watcher subscribed through the same client, one was created
+                expect(createPublicClient).toHaveBeenCalledTimes(created + 1);
+                expect(watchBlockNumberSpy).toHaveBeenCalledTimes(1);
+
+                config.appOptions.wsRpc = undefined;
+                expect(new SharedState(config).getWsClient()).toBeUndefined();
+            });
+
+            it("should open the socket with no reconnect before the subscription, and drop a closed one", async () => {
+                const key = `socket:${config.appOptions.wsRpc}`;
+                (getWebSocketRpcClient as Mock).mockClear();
+                sharedState.watchBlockNumber(5000);
+                // the socket is opened in the same tick as the subscription
+                expect(getWebSocketRpcClient).toHaveBeenCalledWith(config.appOptions.wsRpc, {
+                    keepAlive: true,
+                    reconnect: false,
+                });
+                expect((getWebSocketRpcClient as Mock).mock.invocationCallOrder[0]).toBeLessThan(
+                    watchBlockNumberSpy.mock.invocationCallOrder[0],
+                );
+                // a subscription in the same tick joins the opening
+                expect(sharedState.openWsSocket()).toBeUndefined();
+                await vi.advanceTimersByTimeAsync(0);
+                expect(getWebSocketRpcClient).toHaveBeenCalledTimes(1);
+
+                // an open socket stays, a closed one is dropped and a new one opens
+                const cached = { socket: { readyState: 1 }, close: vi.fn() };
+                socketClientCache.set(key, cached as any);
+                expect(sharedState.openWsSocket()).toBeUndefined();
+                expect(cached.close).not.toHaveBeenCalled();
+                expect(getWebSocketRpcClient).toHaveBeenCalledTimes(1);
+                cached.socket.readyState = 3;
+                socketClientCache.set(key, cached as any);
+                expect(sharedState.openWsSocket()).toBeUndefined();
+                expect(cached.close).toHaveBeenCalledTimes(1);
+                expect(getWebSocketRpcClient).toHaveBeenCalledTimes(2);
+                socketClientCache.delete(key);
+                await vi.advanceTimersByTimeAsync(0);
+
+                // a subscription after the opening left its batch waits for it,
+                // and no second socket opens
+                let open!: () => void;
+                (getWebSocketRpcClient as Mock).mockImplementationOnce(
+                    () => new Promise<void>((resolve) => (open = resolve)),
+                );
+                expect(sharedState.openWsSocket()).toBeUndefined();
+                await vi.advanceTimersByTimeAsync(0);
+                const waiting = sharedState.openWsSocket();
+                expect(waiting).toBeInstanceOf(Promise);
+                expect(getWebSocketRpcClient).toHaveBeenCalledTimes(3);
+                open();
+                await waiting;
+                // the opening is over, the next call opens again with no cached socket
+                expect(sharedState.openWsSocket()).toBeUndefined();
+                expect(getWebSocketRpcClient).toHaveBeenCalledTimes(4);
+
+                // a socket that does not open is left to the subscription that takes it
+                await vi.advanceTimersByTimeAsync(0);
+                (getWebSocketRpcClient as Mock).mockRejectedValueOnce(new Error("refused"));
+                await vi.advanceTimersByTimeAsync(0);
+                expect(() => sharedState.openWsSocket()).not.toThrow();
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            it("should subscribe to the heads once a socket that is opening is open, and not after an unwatch", async () => {
+                let open!: () => void;
+                (getWebSocketRpcClient as Mock).mockImplementationOnce(
+                    () => new Promise<void>((resolve) => (open = resolve)),
+                );
+                sharedState.openWsSocket();
+                // the opening is past the point a subscription can join it
+                await vi.advanceTimersByTimeAsync(0);
+                sharedState.watchBlockNumber(5000);
+                expect(sharedState.isWatchingBlockNumber).toBe(true);
+                expect(watchBlockNumberSpy).not.toHaveBeenCalled();
+                open();
+                await vi.advanceTimersByTimeAsync(0);
+                expect(watchBlockNumberSpy).toHaveBeenCalledTimes(1);
+
+                // an unwatch while the socket opens leaves no subscription behind
+                sharedState.unwatchBlockNumber();
+                (getWebSocketRpcClient as Mock).mockImplementationOnce(
+                    () => new Promise<void>((resolve) => (open = resolve)),
+                );
+                sharedState.openWsSocket();
+                await vi.advanceTimersByTimeAsync(0);
+                sharedState.watchBlockNumber(5000);
+                sharedState.unwatchBlockNumber();
+                open();
+                await vi.advanceTimersByTimeAsync(0);
+                expect(watchBlockNumberSpy).toHaveBeenCalledTimes(1);
             });
 
             it("should fall back to polling on subscription error and stop it on recovery", async () => {
@@ -464,10 +606,13 @@ describe("Test SharedState", () => {
                 await vi.advanceTimersByTimeAsync(5000);
                 expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
                 expect(sharedState.blockNumber).toBe(101n);
+                // a polled block never moves the ws head
+                expect(sharedState.wsBlockNumber).toBe(0n);
 
                 // subscription recovery stops the polling fallback
                 onBlockNumber(102n);
                 expect(sharedState.blockNumber).toBe(102n);
+                expect(sharedState.wsBlockNumber).toBe(102n);
                 await vi.advanceTimersByTimeAsync(15000);
                 expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
             });

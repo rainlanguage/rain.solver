@@ -74,7 +74,7 @@ export async function processOrder(
         if (orderDetails.takeOrder.quote?.maxOutput === 0n) {
             // remove from pair maps if quote fails, to keep the pair map list free
             // of orders with 0 maxoutput this will make counterparty lookups faster
-            this.orderManager.removeFromPairMaps(orderDetails);
+            this.orderManager.removeQuotedFromPairMaps(orderDetails);
             const endTime = performance.now();
             const quoteOrderDuration = endTime - quoteOrderTime;
             spanAttributes["events.duration.quoteOrder"] = quoteOrderDuration;
@@ -88,9 +88,9 @@ export async function processOrder(
             };
         }
         // include in pair maps if quote passes to keep the list of orders with quote clean,
-        this.orderManager.addToPairMaps(orderDetails);
+        this.orderManager.restoreToPairMaps(orderDetails);
     } catch (e) {
-        this.orderManager.removeFromPairMaps(orderDetails);
+        this.orderManager.removeQuotedFromPairMaps(orderDetails);
         const endTime = performance.now();
         const quoteOrderDuration = endTime - quoteOrderTime;
         spanAttributes["events.duration.quoteOrder"] = quoteOrderDuration;

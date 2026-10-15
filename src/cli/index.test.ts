@@ -7,12 +7,17 @@ import { WalletManager, WalletType } from "../wallet";
 import { SharedState, SharedStateConfig } from "../state";
 import { SubgraphConfig, SubgraphManager } from "../subgraph";
 import { Result, sleep } from "../common";
+import { EventSyncManager } from "../events/manager";
 import { SpanStatusCode, trace, context } from "@opentelemetry/api";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 
 // mocks
 vi.mock("../order", () => ({
-    OrderManager: {
+    OrderManager: vi.fn(),
+}));
+
+vi.mock("../events/manager", () => ({
+    EventSyncManager: {
         init: vi.fn(),
     },
 }));
@@ -89,6 +94,7 @@ describe("Test RainSolverCli", () => {
     let mockSubgraphManager: SubgraphManager;
     let mockRainSolver: RainSolver;
     let mockLogger: RainSolverLogger;
+    let mockEventSync: any;
     let rainSolverCli: RainSolverCli;
     const contracts = {
         v4: {
@@ -175,13 +181,13 @@ describe("Test RainSolverCli", () => {
             liquidityProviders: ["uniswap"],
             client: {},
             watchBlockNumber: vi.fn(),
+            unwatchBlockNumber: vi.fn(),
             avgGasCost: 1000000000000000000n,
             gasCosts: [500000000000000000n, 1500000000000000000n],
             contracts,
         } as any;
 
         mockOrderManager = {
-            sync: vi.fn(),
             downscaleProtection: vi.fn(),
             getCurrentMetadata: vi.fn().mockReturnValue({ key: "value" }),
             metadata: { key: "value" },
@@ -211,7 +217,6 @@ describe("Test RainSolverCli", () => {
         mockSubgraphManager = {
             subgraphs: ["subgraph1", "subgraph2"],
             statusCheck: vi.fn(),
-            getOrderbooks: vi.fn().mockResolvedValue(new Set(["orderbook1", "orderbook2"])),
         } as any;
 
         mockRainSolver = {
@@ -226,6 +231,23 @@ describe("Test RainSolverCli", () => {
             exportPreAssembledSpan: vi.fn(),
             shutdown: vi.fn(),
         } as any;
+
+        // a log sync of one orderbook, every subgraph answered
+        mockEventSync = {
+            mode: "http",
+            orderbooks: ["0xorderbook"],
+            failedSubgraphs: [],
+            open: vi.fn(),
+            start: vi.fn().mockResolvedValue({ reports: new Map(), failed: new Map() }),
+            close: vi.fn(),
+            report: vi.fn().mockReturnValue({
+                mode: "http",
+                stream: { drops: 0, backfilled: 0, reorged: 0 },
+                orderbooks: [],
+                failedSubgraphs: [],
+            }),
+        };
+        (EventSyncManager.init as Mock).mockResolvedValue(mockEventSync);
 
         // create RainSolverCli instance manually for testing
         rainSolverCli = Object.create(RainSolverCli.prototype);
@@ -246,10 +268,6 @@ describe("Test RainSolverCli", () => {
             const mockCmdOptions = { config: "config.yaml" };
             const mockStateConfig = { test: "config" };
             const mockSgManagerConfig = { test: "sg_config" };
-            const mockOrderManagerResult = {
-                orderManager: mockOrderManager,
-                report: { name: "order-init" },
-            };
             const mockWalletManagerResult = {
                 walletManager: mockWalletManager,
                 reports: [{ name: "wallet-init" }],
@@ -265,7 +283,7 @@ describe("Test RainSolverCli", () => {
             (mockSubgraphManager.statusCheck as Mock).mockResolvedValue(
                 Result.ok([{ name: "sg-status" }]),
             );
-            (OrderManager.init as Mock).mockResolvedValue(Result.ok(mockOrderManagerResult));
+            (OrderManager as unknown as Mock).mockImplementation(() => mockOrderManager);
             (WalletManager.init as Mock).mockResolvedValue(mockWalletManagerResult);
             (RainSolver as Mock).mockImplementation(() => mockRainSolver);
             (RainSolverLogger as Mock).mockImplementation(() => mockLogger);
@@ -279,7 +297,16 @@ describe("Test RainSolverCli", () => {
             expect(SubgraphConfig.tryFromAppOptions).toHaveBeenCalledWith(mockAppOptions);
             expect(SubgraphManager).toHaveBeenCalledWith(mockSgManagerConfig);
             expect(mockSubgraphManager.statusCheck).toHaveBeenCalledTimes(1);
-            expect(OrderManager.init).toHaveBeenCalledWith(mockState, mockSubgraphManager);
+            expect(OrderManager).toHaveBeenCalledWith(mockState, mockSubgraphManager);
+            expect(EventSyncManager.init).toHaveBeenCalledWith({
+                state: mockState,
+                orderManager: mockOrderManager,
+                subgraphManager: mockSubgraphManager,
+                filters: undefined,
+            });
+            expect(mockEventSync.open).toHaveBeenCalledTimes(1);
+            expect(mockEventSync.start).toHaveBeenCalledTimes(1);
+            expect(result.eventSync).toBe(mockEventSync);
             expect(WalletManager.init).toHaveBeenCalledWith(mockState);
             expect(RainSolver).toHaveBeenCalledWith(
                 mockState,
@@ -292,7 +319,6 @@ describe("Test RainSolverCli", () => {
                 expect.objectContaining({ name: "startup" }),
             );
             expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith({ name: "sg-status" });
-            expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith({ name: "order-init" });
             expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith({ name: "wallet-init" });
 
             expect(result).toBeInstanceOf(RainSolverCli);
@@ -368,33 +394,306 @@ describe("Test RainSolverCli", () => {
             expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith({ name: "sg-error" });
         });
 
-        it("should handle order manager init errors", async () => {
+        describe("with the log sync", () => {
             const mockCmdOptions = { config: "config.yaml" };
-            const mockStateConfig = { test: "config" };
-            const mockSgManagerConfig = { test: "sg_config" };
 
-            (AppOptions.tryFromYamlPath as Mock).mockReturnValue(Result.ok(mockAppOptions));
-            (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(
-                Result.ok(mockStateConfig),
+            beforeEach(() => {
+                (AppOptions.tryFromYamlPath as Mock).mockReturnValue(Result.ok(mockAppOptions));
+                (SharedStateConfig.tryFromAppOptions as Mock).mockResolvedValue(
+                    Result.ok({ test: "config" }),
+                );
+                (SharedState as Mock).mockImplementation(() => mockState);
+                (SubgraphConfig.tryFromAppOptions as Mock).mockReturnValue({
+                    filters: { includeOwners: new Set(["0xowner"]) },
+                });
+                (SubgraphManager as Mock).mockImplementation(() => mockSubgraphManager);
+                (mockSubgraphManager.statusCheck as Mock).mockResolvedValue(Result.ok([]));
+                (OrderManager as unknown as Mock).mockImplementation(() => mockOrderManager);
+                (WalletManager.init as Mock).mockResolvedValue({
+                    walletManager: mockWalletManager,
+                    reports: [],
+                });
+                (RainSolver as Mock).mockImplementation(() => mockRainSolver);
+                (RainSolverLogger as Mock).mockImplementation(() => mockLogger);
+            });
+
+            it("should open the log sync before the block watcher and start it", async () => {
+                mockEventSync.start.mockResolvedValue({
+                    reports: new Map([["0xorderbook", { snapshotBlock: 103n }]]),
+                    failed: new Map(),
+                });
+
+                const result = await RainSolverCli.init(mockCmdOptions);
+
+                expect(EventSyncManager.init).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        filters: { includeOwners: new Set(["0xowner"]) },
+                    }),
+                );
+                expect(mockEventSync.open).toHaveBeenCalledTimes(1);
+                expect(mockEventSync.open.mock.invocationCallOrder[0]).toBeLessThan(
+                    (mockState.watchBlockNumber as Mock).mock.invocationCallOrder[0],
+                );
+                expect(mockEventSync.start).toHaveBeenCalledTimes(1);
+                expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        name: "log-sync-start",
+                        status: { code: SpanStatusCode.OK },
+                        attributes: expect.objectContaining({
+                            mode: "http",
+                            orderbooks: ["0xorderbook"],
+                            "sync.0xorderbook": JSON.stringify({ snapshotBlock: "103" }),
+                        }),
+                    }),
+                );
+                expect(result.eventSync).toBe(mockEventSync);
+            });
+
+            it("should report the orderbooks that did not go live and go on with the others", async () => {
+                mockEventSync.start.mockResolvedValue({
+                    reports: new Map([["0xorderbook", { snapshotBlock: 103n }]]),
+                    failed: new Map([["0xother", "orderbook 0xother: the subgraph is behind"]]),
+                });
+
+                const result = await RainSolverCli.init(mockCmdOptions);
+
+                expect(mockEventSync.close).not.toHaveBeenCalled();
+                expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        name: "log-sync-start",
+                        status: {
+                            code: SpanStatusCode.ERROR,
+                            message:
+                                "Some orderbooks did not go live, they try again in the background",
+                        },
+                        attributes: expect.objectContaining({
+                            severity: "HIGH",
+                            "sync.0xorderbook": JSON.stringify({ snapshotBlock: "103" }),
+                            "failed.0xother": "orderbook 0xother: the subgraph is behind",
+                        }),
+                    }),
+                );
+                expect(result.eventSync).toBe(mockEventSync);
+            });
+
+            it("should close the log sync and stop the block watcher when the start throws", async () => {
+                mockEventSync.start.mockRejectedValue(new Error("the subgraph is behind"));
+
+                await expect(RainSolverCli.init(mockCmdOptions)).rejects.toThrow(
+                    "the subgraph is behind",
+                );
+
+                expect(mockEventSync.close).toHaveBeenCalledTimes(1);
+                expect(mockState.unwatchBlockNumber).toHaveBeenCalledTimes(1);
+            });
+
+            it("should go on when no orderbook goes live, and say so", async () => {
+                mockEventSync.start.mockResolvedValue({
+                    reports: new Map(),
+                    failed: new Map([
+                        ["0xorderbook", "orderbook 0xorderbook: the subgraph is behind"],
+                    ]),
+                });
+
+                const result = await RainSolverCli.init(mockCmdOptions);
+
+                expect(mockEventSync.close).not.toHaveBeenCalled();
+                expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        name: "log-sync-start",
+                        status: {
+                            code: SpanStatusCode.ERROR,
+                            message: "No orderbook went live, they try again in the background",
+                        },
+                    }),
+                );
+                expect(result.eventSync).toBe(mockEventSync);
+            });
+
+            it("should close the log sync and stop the block watcher when a later init step fails", async () => {
+                (WalletManager.init as Mock).mockRejectedValue(new Error("no wallet"));
+
+                await expect(RainSolverCli.init(mockCmdOptions)).rejects.toThrow("no wallet");
+
+                expect(mockEventSync.close).toHaveBeenCalledTimes(1);
+                expect(mockState.unwatchBlockNumber).toHaveBeenCalledTimes(1);
+            });
+
+            it("should report the subgraphs that did not answer, and go on with the others", async () => {
+                mockEventSync.failedSubgraphs = ["subgraph2"];
+
+                const result = await RainSolverCli.init(mockCmdOptions);
+
+                expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        name: "log-sync-subgraphs",
+                        status: expect.objectContaining({ code: SpanStatusCode.ERROR }),
+                        attributes: expect.objectContaining({
+                            failedSubgraphs: ["subgraph2"],
+                            severity: "HIGH",
+                        }),
+                    }),
+                );
+                expect(mockEventSync.start).toHaveBeenCalledTimes(1);
+                expect(result.eventSync).toBe(mockEventSync);
+            });
+
+            it("should throw when no subgraph gives its orderbooks", async () => {
+                mockEventSync.failedSubgraphs = ["subgraph1", "subgraph2"];
+
+                await expect(RainSolverCli.init(mockCmdOptions)).rejects.toThrow(
+                    "Failed to get the orderbooks from the subgraphs",
+                );
+                expect(mockEventSync.open).not.toHaveBeenCalled();
+            });
+        });
+    });
+
+    describe("Test reportLogSyncForRound method", () => {
+        const roundCtx = { test: "context" } as any;
+
+        it("should do nothing without a log sync", async () => {
+            await rainSolverCli.reportLogSyncForRound(roundCtx);
+            expect(mockLogger.exportPreAssembledSpan).not.toHaveBeenCalled();
+        });
+
+        it("should report the stream and every orderbook, and mark an error of either", async () => {
+            rainSolverCli.eventSync = mockEventSync;
+            const stream = { drops: 0, backfilled: 0, reorged: 0 };
+            const healthy = { orderbook: "0xa", phase: "live" };
+            mockEventSync.report.mockReturnValue({
+                mode: "ws",
+                stream,
+                orderbooks: [healthy],
+                failedSubgraphs: [],
+            });
+            await rainSolverCli.reportLogSyncForRound(roundCtx);
+            expect(mockLogger.exportPreAssembledSpan).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    name: "sync-orders",
+                    status: { code: SpanStatusCode.OK },
+                    attributes: {
+                        mode: "ws",
+                        stream: JSON.stringify(stream),
+                        "sync.0xa": JSON.stringify(healthy),
+                    },
+                }),
+                roundCtx,
             );
-            (SharedState as Mock).mockImplementation(() => mockState);
-            (SubgraphConfig.tryFromAppOptions as Mock).mockReturnValue(mockSgManagerConfig);
-            (SubgraphManager as Mock).mockImplementation(() => mockSubgraphManager);
-            (mockSubgraphManager.statusCheck as Mock).mockResolvedValue(
-                Result.ok([{ name: "sg-status" }]),
-            );
-            (OrderManager.init as Mock).mockResolvedValue(Result.err({ name: "order-error" }));
-            const mockLogger = {
-                exportPreAssembledSpan: vi.fn(),
-                shutdown: vi.fn(),
+
+            const unhealthy = {
+                message: "an orderbook log sync is not live or reported an error",
             };
-            (RainSolverLogger as Mock).mockImplementation(() => mockLogger);
-
-            await expect(RainSolverCli.init(mockCmdOptions)).rejects.toThrow(
-                "Failed to get order details from subgraphs",
+            mockEventSync.report.mockReturnValue({
+                mode: "ws",
+                stream,
+                orderbooks: [healthy, { orderbook: "0xb", phase: "live", lastError: "reverted" }],
+                failedSubgraphs: [],
+            });
+            await rainSolverCli.reportLogSyncForRound(roundCtx);
+            expect(mockLogger.exportPreAssembledSpan).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    name: "sync-orders",
+                    status: { code: SpanStatusCode.ERROR, ...unhealthy },
+                    attributes: expect.objectContaining({ severity: "MEDIUM" }),
+                }),
+                roundCtx,
             );
 
-            expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith({ name: "order-error" });
+            // an error of the stream marks the span too
+            mockEventSync.report.mockReturnValue({
+                mode: "ws",
+                stream: { ...stream, lastError: "socket closed" },
+                orderbooks: [healthy],
+                failedSubgraphs: [],
+            });
+            await rainSolverCli.reportLogSyncForRound(roundCtx);
+            expect(mockLogger.exportPreAssembledSpan).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    name: "sync-orders",
+                    status: { code: SpanStatusCode.ERROR, ...unhealthy },
+                }),
+                roundCtx,
+            );
+
+            // a failure or a bad log since the previous round marks it once
+            for (const counts of [{ newFailures: 1 }, { newBadLogs: 1 }]) {
+                mockEventSync.report.mockReturnValue({
+                    mode: "ws",
+                    stream,
+                    orderbooks: [{ ...healthy, ...counts }],
+                    failedSubgraphs: [],
+                });
+                await rainSolverCli.reportLogSyncForRound(roundCtx);
+                expect(mockLogger.exportPreAssembledSpan).toHaveBeenLastCalledWith(
+                    expect.objectContaining({
+                        name: "sync-orders",
+                        status: { code: SpanStatusCode.ERROR, ...unhealthy },
+                    }),
+                    roundCtx,
+                );
+            }
+
+            // a subgraph that did not give its orderbooks marks every round as high
+            mockEventSync.report.mockReturnValue({
+                mode: "ws",
+                stream,
+                orderbooks: [healthy],
+                failedSubgraphs: ["subgraph2"],
+            });
+            await rainSolverCli.reportLogSyncForRound(roundCtx);
+            expect(mockLogger.exportPreAssembledSpan).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    name: "sync-orders",
+                    status: {
+                        code: SpanStatusCode.ERROR,
+                        message:
+                            "some subgraphs did not give their orderbooks, those are not synced",
+                    },
+                    attributes: expect.objectContaining({
+                        failedSubgraphs: ["subgraph2"],
+                        severity: "HIGH",
+                    }),
+                }),
+                roundCtx,
+            );
+
+            // an order dropped since the previous round marks it as high once
+            const dropped =
+                "the bot dropped some orders because it could not read their token or vault balance";
+            mockEventSync.report.mockReturnValue({
+                mode: "ws",
+                stream,
+                orderbooks: [{ ...healthy, newGivenUp: 1 }],
+                failedSubgraphs: [],
+            });
+            await rainSolverCli.reportLogSyncForRound(roundCtx);
+            expect(mockLogger.exportPreAssembledSpan).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    name: "sync-orders",
+                    status: { code: SpanStatusCode.ERROR, message: dropped },
+                    attributes: expect.objectContaining({ severity: "HIGH" }),
+                }),
+                roundCtx,
+            );
+
+            // both at once name both
+            mockEventSync.report.mockReturnValue({
+                mode: "ws",
+                stream,
+                orderbooks: [{ ...healthy, newGivenUp: 1 }],
+                failedSubgraphs: ["subgraph2"],
+            });
+            await rainSolverCli.reportLogSyncForRound(roundCtx);
+            expect(mockLogger.exportPreAssembledSpan).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    status: {
+                        code: SpanStatusCode.ERROR,
+                        message: `some subgraphs did not give their orderbooks, those are not synced, and ${dropped}`,
+                    },
+                }),
+                roundCtx,
+            );
         });
     });
 
@@ -437,6 +736,7 @@ describe("Test RainSolverCli", () => {
 
     describe("Test reportMetaInfoForRound method", () => {
         it("should report all meta information attributes", async () => {
+            rainSolverCli.eventSync = mockEventSync;
             const mockRoundSpan = {
                 setAttributes: vi.fn(),
                 setAttribute: vi.fn(),
@@ -456,7 +756,7 @@ describe("Test RainSolverCli", () => {
                 "meta.contracts.v4": JSON.stringify(contracts.v4),
                 "meta.contracts.v5": "N/A",
                 "meta.contracts.v6": "N/A",
-                "meta.orderbooks": ["orderbook1", "orderbook2"],
+                "meta.orderbooks": ["0xorderbook"],
                 "meta.mainAccount": "0xMainWallet",
                 "meta.gitCommitHash": "N/A",
                 "meta.dockerTag": "N/A",
@@ -476,8 +776,20 @@ describe("Test RainSolverCli", () => {
             });
 
             expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("avgGasCost", "1");
+        });
 
-            expect(mockSubgraphManager.getOrderbooks).toHaveBeenCalledTimes(1);
+        it("should report no orderbooks without a log sync", async () => {
+            rainSolverCli.eventSync = undefined;
+            const mockRoundSpan = {
+                setAttributes: vi.fn(),
+                setAttribute: vi.fn(),
+            };
+
+            await rainSolverCli.reportMetaInfoForRound(mockRoundSpan as any);
+
+            expect(mockRoundSpan.setAttributes).toHaveBeenCalledWith(
+                expect.objectContaining({ "meta.orderbooks": [] }),
+            );
         });
 
         it("should handle single wallet mode (no worker balances)", async () => {
@@ -1043,9 +1355,8 @@ describe("Test RainSolverCli", () => {
             (mockWalletManager.retryPendingAddWorkers as Mock).mockResolvedValue([]);
             (mockWalletManager.assessWorkers as Mock).mockResolvedValue([]);
             (mockWalletManager.getWorkerWalletsBalance as Mock).mockResolvedValue({});
-            (mockSubgraphManager.getOrderbooks as Mock).mockResolvedValue(new Set());
-            (mockOrderManager.sync as Mock).mockResolvedValue({ name: "sync" });
             (sleep as Mock).mockResolvedValue(undefined);
+            rainSolverCli.eventSync = mockEventSync;
             const finalizeSpy = vi.spyOn(rainSolverCli, "finalizeRound");
 
             const runPromise = rainSolverCli.run();
@@ -1065,8 +1376,18 @@ describe("Test RainSolverCli", () => {
             expect(mockWalletManager.checkMainWalletBalance).toHaveBeenCalledTimes(1);
             expect(mockWalletManager.fundOwnedVaults).toHaveBeenCalledTimes(1);
             expect(mockRainSolver.processNextRound).toHaveBeenCalledTimes(1);
-            expect(mockOrderManager.sync).toHaveBeenCalledTimes(1);
+            // the round reports where the log sync stands, there is no subgraph sync
+            expect(mockEventSync.report).toHaveBeenCalledTimes(1);
+            expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith(
+                expect.objectContaining({ name: "sync-orders" }),
+                { test: "context" },
+            );
             expect(mockLogger.shutdown).toHaveBeenCalledTimes(1);
+            // the log sync closes before the logger shuts down
+            expect(mockEventSync.close).toHaveBeenCalledTimes(1);
+            expect(mockEventSync.close.mock.invocationCallOrder[0]).toBeLessThan(
+                (mockLogger.shutdown as Mock).mock.invocationCallOrder[0],
+            );
             expect(sleep).toHaveBeenCalledWith(1000);
 
             // Restore process.env
@@ -1105,22 +1426,23 @@ describe("Test RainSolverCli", () => {
             (mockWalletManager.fundOwnedVaults as Mock).mockRejectedValue(
                 new Error("Fund vault failed"),
             );
-            (mockSubgraphManager.getOrderbooks as Mock).mockResolvedValue(new Set());
-            (mockOrderManager.sync as Mock).mockRejectedValue({ name: "sync" });
             (sleep as Mock).mockResolvedValue(undefined);
+            // a log sync report that throws does not stop the loop
+            rainSolverCli.eventSync = mockEventSync;
+            mockEventSync.report.mockImplementation(() => {
+                throw new Error("report failed");
+            });
 
             await rainSolverCli.run();
 
             expect(mockSpan.setAttribute).toHaveBeenCalledWith("severity", "HIGH");
             expect(mockSpan.setAttribute).toHaveBeenCalledWith("didClear", false);
             expect(mockSpan.recordException).toHaveBeenCalledWith(expect.any(Error));
-            expect(mockSpan.addEvent).toHaveBeenCalledWith(
-                "Failed to sync orders to upstream, will try again next round",
-            );
             expect(mockSpan.setStatus).toHaveBeenCalledWith({
                 code: SpanStatusCode.ERROR,
                 message: expect.any(String),
             });
+            expect(mockLogger.shutdown).toHaveBeenCalledTimes(1);
 
             process.env = originalEnv;
         });

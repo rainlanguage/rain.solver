@@ -70,7 +70,13 @@ export type AppOptions = {
     rpc: RpcConfig[];
     /** List of write rpc configs used explicitly for write transactions */
     writeRpc?: RpcConfig[];
-    /** Optional websocket rpc url used explicitly for the block number watcher new heads subscription */
+    /**
+     * Optional websocket rpc url. The block number watcher subscribes to new
+     * heads over it. The log sync subscribes to the logs of all orderbooks over
+     * it, with one subscription. While that logs subscription is down, the log
+     * sync reads the logs over http with one query on each new block. Without
+     * this url, the log sync always reads the logs that way
+     */
     wsRpc?: string;
     /** List of subgraph urls */
     subgraph: string[];

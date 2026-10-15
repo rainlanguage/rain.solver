@@ -1,4 +1,4 @@
-import { parseAbi, parseAbiParameters } from "viem";
+import { encodeEventTopics, parseAbi, parseAbiParameters } from "viem";
 
 namespace _v4 {
     // structs
@@ -46,6 +46,15 @@ namespace _v4 {
         `function arb2(${TakeOrdersConfigV3} calldata takeOrders, uint256 minimumSenderOutput, ${EvaluableV3} calldata evaluable) external payable`,
         `function arb3(address orderBook, ${TakeOrdersConfigV3} calldata takeOrders, ${TaskV1} calldata task) external payable`,
         "function iRouteProcessor() external view returns (address)",
+    ] as const;
+    export const OrderbookSyncEvents = [
+        `event AddOrderV2(address sender, bytes32 orderHash, ${OrderV3} order)`,
+        `event RemoveOrderV2(address sender, bytes32 orderHash, ${OrderV3} order)`,
+        `event AfterClear(address sender, ${ClearStateChange} clearStateChange)`,
+        `event TakeOrderV2(address sender, ${TakeOrderConfigV3} config, uint256 input, uint256 output)`,
+        `event ClearV2(address sender, ${OrderV3} alice, ${OrderV3} bob, ${ClearConfig} clearConfig)`,
+        `event Deposit(address sender, address token, uint256 vaultId, uint256 amount)`,
+        `event Withdraw(address sender, address token, uint256 vaultId, uint256 targetAmount, uint256 amount)`,
     ] as const;
 }
 
@@ -155,6 +164,16 @@ export namespace _v6 {
         `function arb5(address orderBook, ${TakeOrdersConfigV5} calldata takeOrders, ${TaskV2} calldata task) external payable`,
         `function arb4(address orderBook, ${TakeOrdersConfigV5}[] calldata startTakeOrders, bytes calldata exchangeData, ${TaskV2} calldata task) external payable`,
     ] as const;
+    export const OrderbookSyncEvents = [
+        `event AddOrderV3(address sender, bytes32 orderHash, ${OrderV4} order)` as const,
+        `event RemoveOrderV3(address sender, bytes32 orderHash, ${OrderV4} order)` as const,
+        `event AfterClearV2(address sender, ${ClearStateChangeV2} clearStateChange)` as const,
+        `event DepositV2(address sender, address token, bytes32 vaultId, uint256 depositAmountUint256)` as const,
+        `event ClearV3(address sender, ${OrderV4} alice, ${OrderV4} bob, ${ClearConfigV2} clearConfig)` as const,
+        `event TakeOrderV3(address sender, ${TakeOrderConfigV4} config, ${Float} input, ${Float} output)` as const,
+        `event WithdrawV2(address sender, address token, bytes32 vaultId, ${Float} targetAmount, ${Float} withdrawAmount, uint256 withdrawAmountUint256)` as const,
+        `event MetaV1_2(address sender, bytes32 subject, bytes meta)` as const,
+    ] as const;
 }
 
 /** Keeps Orderbook v4 and v5 related ABIs */
@@ -167,6 +186,14 @@ export namespace OrderbookAbi {
 
             /** Orderbook v4 contract ABI */
             export const Orderbook = parseAbi(_v4.Orderbook);
+
+            /** Orderbook v4 contract events ABIs used for syncing on log stream, the meta event has the same signature on all versions, so the v6 events decode it */
+            export const OrderbookSyncEvents = parseAbi(_v4.OrderbookSyncEvents);
+
+            /** Event topics used for syncing */
+            export const OrderbookSyncEventTopics = OrderbookSyncEvents.flatMap((event) =>
+                encodeEventTopics({ abi: OrderbookSyncEvents, eventName: event.name }),
+            );
 
             /** Order v3 struct ABI */
             export const OrderStructAbi = parseAbiParameters(_v4.OrderV3);
@@ -258,6 +285,14 @@ export namespace OrderbookAbi {
 
             /** Orderbook v6 contract ABI */
             export const Orderbook = parseAbi(_v6.Orderbook);
+
+            /** Orderbook v6 contract events ABIs used for syncing on log stream */
+            export const OrderbookSyncEvents = parseAbi(_v6.OrderbookSyncEvents);
+
+            /** Event topics used for syncing */
+            export const OrderbookSyncEventTopics = OrderbookSyncEvents.flatMap((event) =>
+                encodeEventTopics({ abi: OrderbookSyncEvents, eventName: event.name }),
+            );
 
             /** Order v4 (for orderbook v6) struct ABI */
             export const OrderStructAbi = parseAbiParameters(_v6.OrderV4);

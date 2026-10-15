@@ -29,6 +29,7 @@ import {
     createPublicClient,
     ReadContractErrorType,
 } from "viem";
+import { getWebSocketRpcClient, socketClientCache } from "viem/utils";
 
 /** Delay (in ms) before an errored ws new heads subscription is re-established */
 export const WS_RESUBSCRIBE_DELAY = 15_000;
@@ -320,6 +321,13 @@ export class SharedState {
     blockNumber = 0n;
     /** The latest sealed (canonical) block number of the operating chain, one below the observed block number when subscribed to flashblocks, equal to it otherwise */
     canonicalBlockNumber = 0n;
+    /**
+     * The latest sealed block number that came over the ws subscription, never
+     * from the http polling, so it stops moving the moment the socket goes
+     * silent, a proof of the last block the socket was alive at, the log sync
+     * poll starts from it after a drop
+     */
+    wsBlockNumber = 0n;
     /** Set when a pool update observed a newly created pool, cleared by the consumer once acted on */
     newPoolCreated = false;
     /** Whether a pool update is in flight, a new block does not start another one meanwhile */
@@ -328,6 +336,12 @@ export class SharedState {
     private blockNumberWatcher: ReturnType<typeof setInterval> | undefined;
     private wsBlockNumberUnwatcher: (() => void) | undefined;
     private wsResubscribeTimer: ReturnType<typeof setTimeout> | undefined;
+    /** The ws client every subscription goes through, one socket, created on first use from the ws rpc */
+    private wsClient: PublicClient | undefined;
+    /** The socket that openWsSocket is opening, and whether a subscription can still join it in this tick */
+    private wsSocketOpening?: { joinable: boolean; promise: Promise<void> };
+    /** The listeners of sealed block numbers, see onBlockNumber */
+    private readonly blockListeners = new Set<(blockNumber: bigint) => void>();
 
     constructor(config: SharedStateConfig) {
         this.appOptions = config.appOptions;
@@ -504,7 +518,8 @@ export class SharedState {
 
     /**
      * Sets the observed and the canonical block numbers, each only ever moves up,
-     * a canonical block number advance triggers a pool update up to it
+     * a canonical block number advance triggers a pool update up to it and calls
+     * the block listeners, see onBlockNumber
      * @param blockNumber - The observed block number
      * @param canonicalBlockNumber - The sealed block number
      */
@@ -515,7 +530,95 @@ export class SharedState {
         if (canonicalBlockNumber > this.canonicalBlockNumber) {
             this.canonicalBlockNumber = canonicalBlockNumber;
             this.updatePools();
+            for (const listener of this.blockListeners) {
+                try {
+                    listener(canonicalBlockNumber);
+                } catch {
+                    // a listener's failure is its own
+                }
+            }
         }
+    }
+
+    /**
+     * Registers a listener of the sealed block number, called on each advance
+     * of the sealed block number with the new number, in the order the
+     * listeners registered, a jump of more than one block calls it once
+     * @param listener - The listener
+     * @returns A function that removes the listener
+     */
+    onBlockNumber(listener: (blockNumber: bigint) => void): () => void {
+        this.blockListeners.add(listener);
+        return () => {
+            this.blockListeners.delete(listener);
+        };
+    }
+
+    /**
+     * Opens the socket of the ws client with no reconnect of its own, and drops
+     * a closed one first. Call it right before a subscription of the ws client,
+     * in the same tick, the subscription then takes this socket. The ws
+     * transport opens a socket that reconnects a few times only, and its
+     * reconnect timers can open sockets that nothing uses, so each subscription
+     * opens again after an error instead, through this. A subscription joins
+     * the opening only in the tick it began, after that the opening is past
+     * the point a subscription can join it, so this returns it, the
+     * subscription waits for it and calls this again, and no second socket
+     * opens. The socket cache key is the one of the viem ws transport, "socket:"
+     * and the url
+     * @returns The socket that is opening, when the subscription must wait for it
+     */
+    openWsSocket(): Promise<void> | undefined {
+        const url = this.appOptions.wsRpc;
+        if (!url) return undefined;
+        const opening = this.wsSocketOpening;
+        if (opening) return opening.joinable ? undefined : opening.promise;
+        const cached = socketClientCache.get(`socket:${url}`);
+        const readyState = (cached?.socket as { readyState?: number } | undefined)?.readyState;
+        if (cached) {
+            // 2 is CLOSING and 3 is CLOSED, a socket with no reconnect stays closed
+            if (readyState !== 2 && readyState !== 3) return undefined;
+            cached.close();
+        }
+        // a socket that does not open fails the subscription that takes it, the
+        // subscription opens again after its delay
+        const entry = { joinable: true, promise: Promise.resolve() };
+        // the ws transport runs the batch of the opening on a timer it sets in
+        // the call below, this timer is set first, so a subscription never
+        // finds the opening joinable once the batch ran, at worst it waits for
+        // a socket it could have joined
+        setTimeout(() => (entry.joinable = false), 0);
+        entry.promise = getWebSocketRpcClient(url, { keepAlive: true, reconnect: false })
+            .then(
+                () => {},
+                () => {},
+            )
+            .finally(() => {
+                if (this.wsSocketOpening === entry) this.wsSocketOpening = undefined;
+            });
+        this.wsSocketOpening = entry;
+        return undefined;
+    }
+
+    /**
+     * The ws client, one socket for every subscription, created on first use,
+     * undefined when no ws rpc is configured. The transport options apply to
+     * its requests only, a subscription takes the socket that openWsSocket
+     * opens with no reconnect of its own, each subscription opens again after
+     * an error instead
+     */
+    getWsClient(): PublicClient | undefined {
+        if (!this.appOptions.wsRpc) return undefined;
+        if (!this.wsClient) {
+            this.wsClient = createPublicClient({
+                chain: this.chainConfig,
+                transport: webSocket(this.appOptions.wsRpc, {
+                    keepAlive: true,
+                    reconnect: false,
+                }),
+            });
+        }
+        return this.wsClient;
     }
 
     /**
@@ -551,14 +654,8 @@ export class SharedState {
     watchBlockNumber(interval: number) {
         if (this.isWatchingBlockNumber) return;
         this.updateBlockNumber();
-        if (this.appOptions.wsRpc) {
-            const wsClient = createPublicClient({
-                chain: this.chainConfig,
-                transport: webSocket(this.appOptions.wsRpc, {
-                    keepAlive: true,
-                    reconnect: true,
-                }),
-            });
+        const wsClient = this.getWsClient();
+        if (wsClient) {
             this.subscribeToBlockNumber(wsClient, interval);
         } else {
             this.startPollingBlockNumber(interval);
@@ -577,8 +674,8 @@ export class SharedState {
      * Establishes the ws subscription for block number updates, new heads by
      * default, or flashblocks heads (newFlashblocks) when enabled by config,
      * an errored subscription degrades to polling and schedules a fresh
-     * subscription after a delay, since viem reconnects the dropped socket
-     * but does not replay its subscriptions, when the ws endpoint is still
+     * subscription after a delay, on a new socket when the old one is closed,
+     * see openWsSocket, when the ws endpoint is still
      * down, the fresh subscription errors again and re-enters this path,
      * which forms a retry loop paced by the delay, with polling covering
      * the block number updates for the whole outage
@@ -587,10 +684,9 @@ export class SharedState {
         const onBlockNumber = (blockNumber: bigint) => {
             // a flashblock head belongs to the block being built, so the
             // sealed block is the one below it, a new head is sealed itself
-            this.setBlockNumbers(
-                blockNumber,
-                this.appOptions.flashblocks ? blockNumber - 1n : blockNumber,
-            );
+            const sealed = this.appOptions.flashblocks ? blockNumber - 1n : blockNumber;
+            if (sealed > this.wsBlockNumber) this.wsBlockNumber = sealed;
+            this.setBlockNumbers(blockNumber, sealed);
             // subscription is healthy, so stop the polling fallback
             // and cancel any pending resubscribe if active
             this.stopPollingBlockNumber();
@@ -606,6 +702,17 @@ export class SharedState {
                 }, WS_RESUBSCRIBE_DELAY);
             }
         };
+        // the subscription below takes the socket this opens, in the same tick,
+        // or waits for a socket that is opening and then subscribes
+        const opening = this.openWsSocket();
+        if (opening) {
+            let waiting = true;
+            this.wsBlockNumberUnwatcher = () => (waiting = false);
+            void opening.then(() => {
+                if (waiting) this.subscribeToBlockNumber(wsClient, interval);
+            });
+            return;
+        }
         if (this.appOptions.flashblocks) {
             this.wsBlockNumberUnwatcher = subscribeToFlashblocks(wsClient, onBlockNumber, onError);
         } else {
