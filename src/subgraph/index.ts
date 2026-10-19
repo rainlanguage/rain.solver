@@ -23,10 +23,11 @@ export type SubgraphVersionList = {
 };
 
 /**
- * Manages multiple subgraph endpoints, providing methods to fetch, sync, and monitor order edtails.
+ * Manages multiple subgraph endpoints, providing methods to fetch, sync, and monitor order details.
  * It handles communication with a set of subgraph URLs, supporting operations such as fetching
- * active orders, syncing order changes, retrieving orderbook addresses, and checking subgraph
- * indexing status. It maintains internal state for each subgraph to track synchronization progress.
+ * active orders, fetching the orders pinned at a block for the startup snapshot of the log
+ * sync, syncing order changes, retrieving orderbook addresses, and checking subgraph indexing
+ * status. It maintains internal state for each subgraph to track synchronization progress.
  */
 export class SubgraphManager {
     /** List of subgraph urls */
@@ -37,7 +38,7 @@ export class SubgraphManager {
     };
     /** Subgraph filters */
     readonly filters?: SgFilter;
-    /** Subgraphs sync state */
+    /** Subgraphs sync state, see getUpstreamEvents */
     readonly syncState: Record<string, SubgraphSyncState> = {};
 
     /** Optional query timeout */
@@ -81,6 +82,32 @@ export class SubgraphManager {
             (res: any) => res?.value?.data?.data?.orderbooks?.map((v: any) => v.id) ?? [],
         );
         return new Set(addresses);
+    }
+
+    /**
+     * Returns the orderbook addresses each subgraph indexes, by subgraph url,
+     * lower cased, a subgraph that fails to answer or gives an invalid response
+     * is left out
+     * @param urls - (optional) The subgraphs to ask, all of them by default
+     */
+    async getOrderbooksByUrl(urls = this.subgraphs): Promise<Map<string, Set<string>>> {
+        const results = await Promise.allSettled(
+            urls.map((url) =>
+                axios.post(
+                    url,
+                    { query: getOrderbooksQuery(this.getSubgraphVersion(url)) },
+                    { headers, timeout: this.requestTimeout },
+                ),
+            ),
+        );
+        const byUrl = new Map<string, Set<string>>();
+        results.forEach((result, i) => {
+            if (result.status !== "fulfilled") return;
+            const orderbooks: any[] | undefined = result.value?.data?.data?.orderbooks;
+            if (!Array.isArray(orderbooks)) return;
+            byUrl.set(urls[i], new Set(orderbooks.map((v) => String(v.id).toLowerCase())));
+        });
+        return byUrl;
     }
 
     /**
@@ -146,8 +173,17 @@ export class SubgraphManager {
     /**
      * Fetches details of all orders that are active from the given subgraph url
      * @param url - The subgraph url
+     * @param version - The subgraph version
+     * @param block - (optional) The block to pin every page at, a pinned fetch reads a
+     * past state, so it does not move the sync state, see getUpstreamEvents
+     * @param filters - (optional) The filters of the query, default is the subgraph filters
      */
-    async fetchSubgraphOrders(url: string, version: SubgraphVersions): Promise<SgOrder[]> {
+    async fetchSubgraphOrders(
+        url: string,
+        version: SubgraphVersions,
+        block?: number,
+        filters: SgFilter | undefined = this.filters,
+    ): Promise<SgOrder[]> {
         const result: SgOrder[] = [];
         let skip = 0;
         let timestamp = Date.now();
@@ -156,7 +192,7 @@ export class SubgraphManager {
             const res = await axios.post(
                 url,
                 {
-                    query: getQueryPaginated(skip, this.filters, version),
+                    query: getQueryPaginated(skip, filters, version, block),
                 },
                 { headers, timeout: this.requestTimeout },
             );
@@ -177,8 +213,45 @@ export class SubgraphManager {
                 throw "Received invalid response";
             }
         }
-        this.syncState[url].lastFetchTimestamp = Math.floor(timestamp / 1000);
+        if (block === undefined) {
+            this.syncState[url].lastFetchTimestamp = Math.floor(timestamp / 1000);
+        }
         return result;
+    }
+
+    /**
+     * Reads the block the given subgraph has indexed up to
+     * @param url - The subgraph url
+     */
+    async getIndexedBlock(url: string): Promise<number> {
+        const meta = await axios.post(
+            url,
+            { query: statusCheckQuery },
+            { headers, timeout: this.requestTimeout },
+        );
+        const block = Number(meta?.data?.data?._meta?.block?.number);
+        if (!Number.isInteger(block) || block < 0) {
+            throw "Received invalid response for the subgraph block";
+        }
+        return block;
+    }
+
+    /**
+     * Fetches the active orders of the given subgraph pinned at the given block,
+     * the block must be one the subgraph has indexed, see getIndexedBlock
+     * @param url - The subgraph url
+     * @param block - The block to pin every page at
+     * @param orderbook - (optional) Fetches the orders of this orderbook only
+     */
+    async fetchSnapshotAt(
+        url: string,
+        block: number | bigint,
+        orderbook?: string,
+    ): Promise<SgOrder[]> {
+        const filters: SgFilter | undefined = orderbook
+            ? { ...this.filters, includeOrderbooks: new Set([orderbook]) }
+            : this.filters;
+        return this.fetchSubgraphOrders(url, this.getSubgraphVersion(url), Number(block), filters);
     }
 
     /**
@@ -225,6 +298,8 @@ export class SubgraphManager {
     /**
      * Fetches the upstream events from subgraphs since the last fetch,
      * events include order additions, removals, vault operations, and trades.
+     * The bot round does not call it, the log sync of the events module keeps
+     * the orders in step with the chain, see OrderManager.sync
      * @returns A Promise that resolves with the status report and the list of fetched events
      */
     async getUpstreamEvents() {

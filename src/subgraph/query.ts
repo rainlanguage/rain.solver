@@ -29,15 +29,18 @@ function getOrderbookField(version: SubgraphVersions): string {
  * @param skip - Number of results to skip
  * @param filters - Applies the filters for query
  * @param version - The subgraph version, defaults to legacy
+ * @param block - (optional) The block to pin the query at, so every page holds at the same block
  * @returns the query string
  */
 export function getQueryPaginated(
     skip: number,
     filters?: SgFilter,
     version: SubgraphVersions = SubgraphVersions.LEGACY,
+    block?: number,
 ): string {
     const getFilterVar = (header: string, f?: Set<string>) =>
         f ? `${header}: [${[...f].map((v) => `"${v.toLowerCase()}"`).join(", ")}], ` : "";
+    const blockArg = typeof block === "number" ? `block: { number: ${block} },` : "";
 
     const orderbookEntity = getOrderbookEntityName(version);
     const orderbookField = getOrderbookField(version);
@@ -50,6 +53,7 @@ export function getQueryPaginated(
 
     return `{
     orders(
+        ${blockArg}
         first: ${DEFAULT_PAGE_SIZE},
         skip: ${skip},
         orderBy: timestampAdded,
