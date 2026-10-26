@@ -106,7 +106,7 @@ jobs:
             hardhat-fork-cache-${{ matrix.chain }}-
 
       - name: Set Chain Rpc Key
-        run: echo "RPC=CI_DEPLOY_${{ matrix.chain }}_RPC_URL" >> $GITHUB_ENV
+        run: echo "RPC=RPC_URL_${{ matrix.chain == 'ETH' && 'ETHEREUM' || matrix.chain }}_FORK" >> $GITHUB_ENV
       
       - name: Run Tests
         run: TEST_${{ matrix.chain }}_RPC=${{ secrets[env.RPC] }} nix develop -c npm run e2e-test
