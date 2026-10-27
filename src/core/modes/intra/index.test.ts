@@ -655,7 +655,11 @@ describe("Test findBestIntraOrderbookTrade", () => {
 
         assert(result.isErr());
         expect(result.error.noneNodeError).toBeUndefined();
+        expect(result.error.spanAttributes.error).toBe(
+            "no counterparties found for intra-orderbook trade",
+        );
         expect(trySimulateTradeSpy).not.toHaveBeenCalled();
+        expect(mockRainSolver.state.client.readContract).not.toHaveBeenCalled();
         expect(result.error.type).toBe("intraOrderbook");
     });
 

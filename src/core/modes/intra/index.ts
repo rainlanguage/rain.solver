@@ -58,6 +58,16 @@ export async function findBestIntraOrderbookTrade(
                 (v.takeOrder.quote.ratio * orderDetails.takeOrder.quote!.ratio) / ONE18 < ONE18,
         );
 
+    // exit early if there is nothing to trade against, before reading the signer
+    // balances, as most orders have no counterparty and those reads are wasted rpc calls
+    if (!counterpartyOrders.length) {
+        spanAttributes["error"] = "no counterparties found for intra-orderbook trade";
+        return Result.err({
+            type: TradeType.IntraOrderbook,
+            spanAttributes,
+        });
+    }
+
     // get input token balance of signer with handling errors
     const inputBalanceResult: Result<bigint, FailedSimulation> = await this.state.client
         .readContract({
@@ -164,9 +174,6 @@ export async function findBestIntraOrderbookTrade(
             assert(res.isErr()); // for type check as we know all results are errors
             extendObjectWithHeader(spanAttributes, res.error.spanAttributes, i.toString());
             allNoneNodeErrors.push(res.error.noneNodeError);
-        }
-        if (!results.length) {
-            spanAttributes["error"] = "no counterparties found for intra-orderbook trade";
         }
         return Result.err({
             type: TradeType.IntraOrderbook,
