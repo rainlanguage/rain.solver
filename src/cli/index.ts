@@ -612,11 +612,12 @@ export class RainSolverCli {
      * Reports where the log stream and the log sync of every orderbook stand for
      * the round, as a sync-orders span. An error of the stream, or an orderbook
      * that is not live, that has an error, or that failed an order or a log
-     * since the previous round, marks the span as an error. A subgraph that did
-     * not give its orderbooks at the start, or an order that the bot dropped
-     * since the previous round because it could not read its token or vault
-     * balance, marks the span with a high severity, those orders are not traded
-     * until a restart. Does nothing when there is no log sync
+     * since the previous round, marks the span as an error. A high severity
+     * marks what needs the operator: a subgraph that did not give its
+     * orderbooks at the start, an order that the bot dropped since the previous
+     * round because it could not read its token or vault balance, and a log
+     * sync that is out of sync for too long, see EventSyncManager.report. Does
+     * nothing when there is no log sync
      * @param roundCtx - The otel context for the current round
      */
     async reportLogSyncForRound(roundCtx: Context): Promise<void> {
@@ -627,6 +628,7 @@ export class RainSolverCli {
         report.setAttr("stream", JSON.stringify(stream));
         let healthy = !stream.lastError;
         let givenUp = false;
+        let outOfSync = stream.outOfSync;
         for (const sync of orderbooks) {
             report.setAttr(`sync.${sync.orderbook}`, JSON.stringify(sync, withBigintSerializer));
             if (sync.phase !== "live" || sync.lastError || sync.startError) healthy = false;
@@ -634,8 +636,9 @@ export class RainSolverCli {
             // given up order marks the round once
             if (sync.newFailures || sync.newBadLogs) healthy = false;
             if (sync.newGivenUp) givenUp = true;
+            if (sync.outOfSync) outOfSync = true;
         }
-        // the orders of these are not synced until a restart
+        // each of these needs the operator
         const lost: string[] = [];
         if (failedSubgraphs.length) {
             report.setAttr("failedSubgraphs", failedSubgraphs);
@@ -644,6 +647,11 @@ export class RainSolverCli {
         if (givenUp) {
             lost.push(
                 "the bot dropped some orders because it could not read their token or vault balance",
+            );
+        }
+        if (outOfSync) {
+            lost.push(
+                "the log sync is out of sync for too long, an orderbook is not live or the logs do not come in",
             );
         }
         if (lost.length) {

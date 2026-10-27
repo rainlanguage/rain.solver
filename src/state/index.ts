@@ -328,6 +328,14 @@ export class SharedState {
      * poll starts from it after a drop
      */
     wsBlockNumber = 0n;
+    /**
+     * When (in ms) a block number was last read, over http or over the ws
+     * subscription, also when it did not move, 0 before the first read. Over
+     * http it moves on each poll and stops when the rpc is down, over ws it
+     * moves only with a new block, see isPollingBlockNumber and
+     * EventSyncManager.report
+     */
+    blockNumberReadAt = 0;
     /** Set when a pool update observed a newly created pool, cleared by the consumer once acted on */
     newPoolCreated = false;
     /** Whether a pool update is in flight, a new block does not start another one meanwhile */
@@ -505,6 +513,15 @@ export class SharedState {
     }
 
     /**
+     * Whether the block number is polled over http, on an interval, also while
+     * it does not move. Over ws a head comes only with a new block, see
+     * blockNumberReadAt
+     */
+    get isPollingBlockNumber(): boolean {
+        return this.blockNumberWatcher !== undefined;
+    }
+
+    /**
      * Updates the block number by reading it from the rpc once,
      * keeps the previous value if the call fails
      */
@@ -519,11 +536,13 @@ export class SharedState {
     /**
      * Sets the observed and the canonical block numbers, each only ever moves up,
      * a canonical block number advance triggers a pool update up to it and calls
-     * the block listeners, see onBlockNumber
+     * the block listeners, see onBlockNumber. Each call is a read, so it moves
+     * blockNumberReadAt
      * @param blockNumber - The observed block number
      * @param canonicalBlockNumber - The sealed block number
      */
     private setBlockNumbers(blockNumber: bigint, canonicalBlockNumber: bigint) {
+        this.blockNumberReadAt = Date.now();
         if (blockNumber > this.blockNumber) {
             this.blockNumber = blockNumber;
         }

@@ -694,6 +694,26 @@ describe("Test RainSolverCli", () => {
                 }),
                 roundCtx,
             );
+
+            // a log sync that is out of sync for too long, the stream or an
+            // orderbook, marks it as high
+            const stale =
+                "the log sync is out of sync for too long, an orderbook is not live or the logs do not come in";
+            for (const state of [
+                { stream: { ...stream, outOfSync: true }, orderbooks: [healthy] },
+                { stream, orderbooks: [{ ...healthy, phase: "buffering", outOfSync: true }] },
+            ]) {
+                mockEventSync.report.mockReturnValue({ mode: "ws", ...state, failedSubgraphs: [] });
+                await rainSolverCli.reportLogSyncForRound(roundCtx);
+                expect(mockLogger.exportPreAssembledSpan).toHaveBeenLastCalledWith(
+                    expect.objectContaining({
+                        name: "sync-orders",
+                        status: { code: SpanStatusCode.ERROR, message: stale },
+                        attributes: expect.objectContaining({ severity: "HIGH" }),
+                    }),
+                    roundCtx,
+                );
+            }
         });
     });
 
