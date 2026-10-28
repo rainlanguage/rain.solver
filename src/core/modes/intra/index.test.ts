@@ -49,10 +49,11 @@ describe("Test findBestIntraOrderbookTrade", () => {
             state: {
                 client: {
                     getBlockNumber: vi.fn().mockResolvedValue(123n),
-                    readContract: vi
-                        .fn()
-                        .mockResolvedValueOnce(5000000000000000000n) // input balance
-                        .mockResolvedValueOnce(3000000000000000000n), // output balance
+                    // the input and the output balances in one multicall
+                    multicall: vi.fn().mockResolvedValue([
+                        { status: "success", result: 5000000000000000000n },
+                        { status: "success", result: 3000000000000000000n },
+                    ]),
                 },
                 contracts: {
                     getAddressesForTrade: vi.fn().mockReturnValue({
@@ -624,6 +625,13 @@ describe("Test findBestIntraOrderbookTrade", () => {
             inputBalance: 5000000000000000000n,
             outputBalance: 3000000000000000000n,
         });
+        // both balances come from one multicall, the input token first
+        expect(mockRainSolver.state.client.multicall).toHaveBeenCalledTimes(1);
+        const [{ contracts }] = (mockRainSolver.state.client.multicall as Mock).mock.calls[0];
+        expect(contracts.map((c: any) => [c.address, c.functionName, c.args])).toEqual([
+            [orderDetails.buyToken, "balanceOf", [signer.account.address]],
+            [orderDetails.sellToken, "balanceOf", [signer.account.address]],
+        ]);
     });
 
     it("should handle empty counterparty orders after filtering", async () => {
@@ -655,7 +663,11 @@ describe("Test findBestIntraOrderbookTrade", () => {
 
         assert(result.isErr());
         expect(result.error.noneNodeError).toBeUndefined();
+        expect(result.error.spanAttributes.error).toBe(
+            "no counterparties found for intra-orderbook trade",
+        );
         expect(trySimulateTradeSpy).not.toHaveBeenCalled();
+        expect(mockRainSolver.state.client.multicall).not.toHaveBeenCalled();
         expect(result.error.type).toBe("intraOrderbook");
     });
 
@@ -726,11 +738,28 @@ describe("Test findBestIntraOrderbookTrade", () => {
         (mockRainSolver.orderManager.getCounterpartyOrders as Mock).mockReturnValue(
             mockCounterpartyOrders,
         );
-        mockRainSolver.state.client.readContract = vi
+        mockRainSolver.state.client.multicall = vi
             .fn()
-            .mockRejectedValueOnce(new Error("some error")) // reject input call
-            .mockResolvedValueOnce(5000000000000000000n) // pass input balance
-            .mockRejectedValueOnce(new Error("some error")); /// reject output call
+            // the input read fails
+            .mockResolvedValueOnce([
+                { status: "failure", error: new Error("some error") },
+                { status: "success", result: 3000000000000000000n },
+            ])
+            // the output read fails
+            .mockResolvedValueOnce([
+                { status: "success", result: 5000000000000000000n },
+                { status: "failure", error: new Error("some error") },
+            ])
+            // the multicall fails as a whole
+            .mockRejectedValueOnce(new Error("no multicall3 on this chain"))
+            // the rpc refuses the batch, each read gets the same error
+            .mockImplementationOnce(async () => {
+                const error = new Error("rpc refused the batch");
+                return [
+                    { status: "failure", error },
+                    { status: "failure", error },
+                ];
+            });
 
         const inputResult: SimulationResult = await findBestIntraOrderbookTrade.call(
             mockRainSolver,
@@ -757,6 +786,35 @@ describe("Test findBestIntraOrderbookTrade", () => {
         expect(outputResult.error.noneNodeError).toContain("some error");
         expect(outputResult.error.noneNodeError).toContain("Failed to get output token balance");
         expect(outputResult.error.type).toBe("intraOrderbook");
+
+        const batchResult: SimulationResult = await findBestIntraOrderbookTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            inputToEthPrice,
+            outputToEthPrice,
+            blockNumber,
+        );
+        assert(batchResult.isErr());
+        expect(batchResult.error.noneNodeError).toContain("no multicall3 on this chain");
+        expect(batchResult.error.noneNodeError).toContain(
+            "Failed to get input and output token balances",
+        );
+        expect(batchResult.error.type).toBe("intraOrderbook");
+
+        const refusedResult: SimulationResult = await findBestIntraOrderbookTrade.call(
+            mockRainSolver,
+            orderDetails,
+            signer,
+            inputToEthPrice,
+            outputToEthPrice,
+            blockNumber,
+        );
+        assert(refusedResult.isErr());
+        expect(refusedResult.error.noneNodeError).toContain("rpc refused the batch");
+        expect(refusedResult.error.noneNodeError).toContain(
+            "Failed to get input and output token balances",
+        );
     });
 
     it("should return error when trade addresses are not configured", async () => {
