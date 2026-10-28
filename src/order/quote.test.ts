@@ -224,11 +224,12 @@ describe("Test quoteSingleOrderV4", () => {
         );
     });
 
-    it("should record the used rpc url in span attributes when the quote call fails", async () => {
+    it("should record the used rpc url, masked, in span attributes when the quote call fails", async () => {
         const spanAttributes: Attributes = {};
         const error = new Error("execution reverted: InvalidSignature");
         (state.client.call as Mock).mockRejectedValueOnce(error);
-        (state as any).rpc = { lastUsedUrl: "https://rpc.example.com" };
+        // the rpc url carries the api key in its path
+        (state as any).rpc = { lastUsedUrl: "https://rpc.example.com/v2/secretkey/" };
         orderDetails.takeOrder.quote = { maxOutput: 1n, ratio: 1n };
 
         await expect(quoteSingleOrderV4(orderDetails, state, spanAttributes, {})).rejects.toBe(
@@ -236,7 +237,9 @@ describe("Test quoteSingleOrderV4", () => {
         );
 
         expect(orderDetails.takeOrder.quote).toBeUndefined();
-        expect(spanAttributes["details.oracle.quoteRpcUrl"]).toBe("https://rpc.example.com");
+        const recorded = String(spanAttributes["details.oracle.quoteRpcUrl"]);
+        expect(recorded).toMatch(/^https:\/\/rpc\.example\.com\/\[redacted:[0-9a-f]{8}\]$/);
+        expect(recorded).not.toContain("secretkey");
     });
 });
 

@@ -6,6 +6,7 @@ import { SharedState } from "../state";
 import { SgFilter } from "../subgraph/filter";
 import { SubgraphManager, SubgraphVersions } from "../subgraph";
 import { erc20Abi, PublicClient } from "viem";
+import { redactUrls } from "../logger/redact";
 import { DEFAULT_START_TIMEOUT, OrderbookSyncer, SnapshotReport } from "./syncer";
 import { ABI, normalizeFloat, Result, sleep, TokenDetails } from "../common";
 import { fetchOrderbookLogs, subscribeToOrderbookLogs } from "./stream";
@@ -1019,8 +1020,11 @@ function groupByBlock(logs: RawLog[]): Map<bigint, PolledBlock> {
     return blocks;
 }
 
-/** A short text of an error for a span, undefined for none */
+/**
+ * A short text of an error for a span, undefined for none, the urls in it are
+ * masked, as the message of a failed rpc call carries the rpc url with its key
+ */
 function describe(error: unknown): string | undefined {
     if (error === undefined || error === null) return undefined;
-    return error instanceof Error ? error.message : String(error);
+    return redactUrls(error instanceof Error ? error.message : String(error));
 }
