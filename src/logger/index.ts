@@ -1,4 +1,5 @@
 import { sleep } from "../common";
+import { redactException, redactUrls } from "./redact";
 import { Resource } from "@opentelemetry/resources";
 import { CompressionAlgorithm } from "@opentelemetry/otlp-exporter-base";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -25,6 +26,8 @@ import {
     AttributeValue,
     DiagConsoleLogger,
 } from "@opentelemetry/api";
+
+export * from "./redact";
 
 /**
  * Represents a container for an OpenTelemetry span and its associated context.
@@ -144,13 +147,17 @@ export class RainSolverLogger {
                 span.addEvent(event.name, event.attributes, event.startTime);
             }
         }
-        // handle exception
+        // handle exception, an rpc error message carries the rpc url with its key
         if (exception) {
-            span.recordException(exception.exception, exception.time);
+            span.recordException(redactException(exception.exception), exception.time);
         }
-        // handle span status
+        // handle span status, its message is built from the error too
         if (status) {
-            span.setStatus(status);
+            span.setStatus(
+                status.message === undefined
+                    ? status
+                    : { ...status, message: redactUrls(status.message) },
+            );
         }
         // end the span with the given end time
         span.end(endTime);

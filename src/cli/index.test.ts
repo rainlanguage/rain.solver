@@ -2,7 +2,7 @@ import { AppOptions } from "../config";
 import { RainSolver } from "../core";
 import { OrderManager } from "../order";
 import { RainSolverCli } from "./index";
-import { RainSolverLogger } from "../logger";
+import { RainSolverLogger, redactUrl } from "../logger";
 import { WalletManager, WalletType } from "../wallet";
 import { SharedState, SharedStateConfig } from "../state";
 import { SubgraphConfig, SubgraphManager } from "../subgraph";
@@ -103,6 +103,8 @@ describe("Test RainSolverCli", () => {
             sleep: 1000,
             poolUpdateInterval: 60,
             gasCoveragePercentage: "100",
+            rpc: [{ url: "https://rpc1.com/v2/key1" }],
+            writeRpc: [{ url: "https://writerpc.com/key2" }],
         } as any;
 
         mockState = {
@@ -425,6 +427,25 @@ describe("Test RainSolverCli", () => {
 
             expect(mockLogger.tracer.startActiveSpan).toHaveBeenCalledTimes(2); // only read RPCs
         });
+
+        it("should report the rpc url with its api key masked", async () => {
+            const mockSpan = { setAttributes: vi.fn(), end: vi.fn() };
+            (mockLogger.tracer.startActiveSpan as Mock).mockImplementation(
+                (_name, _options, _ctx, callback) => callback(mockSpan),
+            );
+            const url = "https://base-mainnet.g.alchemy.com/v2/secretkey";
+            rainSolverCli.state.writeRpc = undefined;
+            (rainSolverCli.state.rpc as any).metrics = {
+                [url]: { ...mockState.rpc.metrics["https://rpc1.com"], reset: vi.fn() },
+            };
+
+            await rainSolverCli.reportRpcMetricsForRound({} as any);
+
+            const reported = (mockSpan.setAttributes as Mock).mock.calls[0][0]["rpc-url"];
+            expect(reported).toBe(redactUrl(url));
+            expect(reported).toMatch(/^https:\/\/base-mainnet\.g\.alchemy\.com\/\[redacted:/);
+            expect(reported).not.toContain("secretkey");
+        });
     });
 
     describe("Test reportMetaInfoForRound method", () => {
@@ -459,6 +480,8 @@ describe("Test RainSolverCli", () => {
                     sleep: 1000,
                     poolUpdateInterval: 60,
                     gasCoveragePercentage: "100",
+                    rpc: [{ url: redactUrl("https://rpc1.com/v2/key1") }],
+                    writeRpc: [{ url: redactUrl("https://writerpc.com/key2") }],
                     key: "N/A",
                     mnemonic: "N/A",
                 }),
@@ -850,6 +873,55 @@ describe("Test RainSolverCli", () => {
                 code: SpanStatusCode.ERROR,
                 message: expect.any(String),
             });
+
+            process.env = originalEnv;
+        });
+
+        it("should mask the rpc url in a round failure it records on the span", async () => {
+            const originalEnv = process.env;
+            process.env = {
+                ...originalEnv,
+                IS_PREVIEW: "true",
+                PREVIEW_ROUNDS: "1",
+            };
+
+            const mockSpan = {
+                setAttribute: vi.fn(),
+                setAttributes: vi.fn(),
+                setStatus: vi.fn(),
+                recordException: vi.fn(),
+                addEvent: vi.fn(),
+                end: vi.fn(),
+            };
+
+            (mockLogger.tracer.startSpan as Mock).mockReturnValue(mockSpan);
+            (trace.setSpan as Mock).mockReturnValue({ test: "context" });
+            (context.active as Mock).mockReturnValue({ test: "active" });
+
+            (mockWalletManager.checkMainWalletBalance as Mock).mockResolvedValue({
+                name: "check-balance",
+            });
+            // a failed rpc call carries the rpc url with its key in the message
+            (mockWalletManager.fundOwnedVaults as Mock).mockRejectedValue(
+                new Error("HTTP request failed.\n\nURL: https://rpc.example.com/v2/secretkey"),
+            );
+            (mockSubgraphManager.getOrderbooks as Mock).mockResolvedValue(new Set());
+            (mockOrderManager.sync as Mock).mockRejectedValue({ name: "sync" });
+            (sleep as Mock).mockResolvedValue(undefined);
+
+            await rainSolverCli.run();
+
+            const recorded = mockSpan.recordException.mock.calls
+                .map(([exception]: any[]) => exception)
+                .find((exception: any) => String(exception?.message).includes("rpc.example.com"));
+            expect(recorded).toBeDefined();
+            expect(recorded.message).toContain("URL: https://rpc.example.com/[redacted:");
+            expect(recorded.message).not.toContain("secretkey");
+            expect(recorded.stack).not.toContain("secretkey");
+            // the status message is built from the same error
+            for (const [status] of mockSpan.setStatus.mock.calls) {
+                expect(String(status.message ?? "")).not.toContain("secretkey");
+            }
 
             process.env = originalEnv;
         });

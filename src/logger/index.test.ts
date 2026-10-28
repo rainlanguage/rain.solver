@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 import { SpanStatusCode } from "@opentelemetry/api";
-import { describe, it, assert } from "vitest";
+import { describe, it, assert, vi } from "vitest";
 import { PreAssembledSpan, RainSolverLogger } from ".";
 
 describe("Test RainSolverLogger", async function () {
@@ -189,5 +189,41 @@ describe("Test PreAssembledSpan", async function () {
         span.end(now + 500);
         expected.endTime = now + 500;
         assert.deepEqual(span, expected);
+    });
+});
+
+describe("Test RainSolverLogger exception masking", async function () {
+    it("should mask the rpc urls in the exception of an exported span", async function () {
+        const logger = new RainSolverLogger();
+        const recordException = vi.fn();
+        const span = {
+            setAttributes: vi.fn(),
+            addEvent: vi.fn(),
+            recordException,
+            setStatus: vi.fn(),
+            end: vi.fn(),
+        };
+        vi.spyOn(logger, "startSpan").mockReturnValue({ span, context: {} } as any);
+
+        // a failed rpc call carries the rpc url with its key in the message
+        const report = new PreAssembledSpan("span-test");
+        report.recordException(
+            new Error("HTTP request failed.\n\nURL: https://rpc.example.com/v2/secretkey"),
+        );
+        report.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: "Reason: HTTP request failed.\n\nURL: https://rpc.example.com/v2/secretkey",
+        });
+        logger.exportPreAssembledSpan(report);
+
+        const [exception] = recordException.mock.calls[0];
+        assert.include(exception.message, "URL: https://rpc.example.com/[redacted:");
+        assert.notInclude(exception.message, "secretkey");
+        assert.notInclude(exception.stack, "secretkey");
+        // the status message is built from the same error
+        const [status] = span.setStatus.mock.calls[0];
+        assert.equal(status.code, SpanStatusCode.ERROR);
+        assert.include(status.message, "URL: https://rpc.example.com/[redacted:");
+        assert.notInclude(status.message, "secretkey");
     });
 });
