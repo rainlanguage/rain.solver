@@ -1194,6 +1194,18 @@ describe("Test EventSyncManager", () => {
         expect(second.orderbooks[0].lastError).toBeUndefined();
     });
 
+    it("should mask the rpc urls in the errors it reports", async () => {
+        const manager = await init({ includeOrderbooks: new Set([ORDERBOOK]) });
+        // a failed rpc call carries the rpc url with its key in the message
+        const leak = "HTTP request failed.\n\nURL: https://rpc.example.com/v2/secretkey";
+        manager.stream.lastError = new Error(leak);
+        manager.syncs.get(ORDERBOOK)!.lastError = new Error(leak);
+        const { stream, orderbooks } = manager.report();
+        expect(stream.lastError).toContain("URL: https://rpc.example.com/[redacted:");
+        expect(stream.lastError).not.toContain("secretkey");
+        expect(orderbooks[0].lastError).not.toContain("secretkey");
+    });
+
     it("should report the bad logs, and the failures and bad logs since the previous report", async () => {
         const manager = await init({ includeOrderbooks: new Set([ORDERBOOK]) });
         const { syncer } = manager.syncs.get(ORDERBOOK)!;
