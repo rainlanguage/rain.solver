@@ -11,7 +11,7 @@ import { ErrorSeverity, errorSnapshot } from "../error";
 import { SharedState, SharedStateConfig } from "../state";
 import { SubgraphConfig, SubgraphManager } from "../subgraph";
 import { EventSyncManager } from "../events/manager";
-import { PreAssembledSpan, RainSolverLogger } from "../logger";
+import { PreAssembledSpan, RainSolverLogger, redactException, redactUrl } from "../logger";
 import { Context, context, Span, SpanStatusCode, trace } from "@opentelemetry/api";
 
 config();
@@ -372,7 +372,7 @@ export class RainSolverCli {
                 const snapshot = await errorSnapshot("", err);
                 roundSpan.setAttribute("severity", ErrorSeverity.HIGH);
                 roundSpan.setAttribute("didClear", false);
-                roundSpan.recordException(err);
+                roundSpan.recordException(redactException(err));
                 roundSpan.setStatus({ code: SpanStatusCode.ERROR, message: snapshot });
             }
 
@@ -451,7 +451,7 @@ export class RainSolverCli {
                 this.runWalletOpsForRound(roundCtx).catch(async (err) => {
                     const snapshot = await errorSnapshot("", err);
                     roundSpan.setAttribute("severity", ErrorSeverity.HIGH);
-                    roundSpan.recordException(err);
+                    roundSpan.recordException(redactException(err));
                     roundSpan.setStatus({ code: SpanStatusCode.ERROR, message: snapshot });
                 }),
 
@@ -679,7 +679,7 @@ export class RainSolverCli {
             await this.logger.tracer.startActiveSpan("rpc-report", {}, roundCtx, async (span) => {
                 const record = this.state.rpc.metrics[rpc];
                 span.setAttributes({
-                    "rpc-url": rpc,
+                    "rpc-url": redactUrl(rpc),
                     "request-count": record.req,
                     "success-count": record.success,
                     "failure-count": record.failure,
@@ -703,7 +703,7 @@ export class RainSolverCli {
                         const record = this.state.writeRpc!.metrics[rpc];
                         span.setAttributes({
                             "isWriteRpc:": "true",
-                            "rpc-url": rpc,
+                            "rpc-url": redactUrl(rpc),
                             "request-count": record.req,
                             "success-count": record.success,
                             "failure-count": record.failure,
@@ -748,6 +748,13 @@ export class RainSolverCli {
                     ...this.appOptions,
                     key: this.appOptions.key ? "***" : "N/A",
                     mnemonic: this.appOptions.mnemonic ? "***" : "N/A",
+                    // rpc providers put the api keys in the urls
+                    rpc: this.appOptions.rpc?.map((v) => ({ ...v, url: redactUrl(v.url) })),
+                    writeRpc: this.appOptions.writeRpc?.map((v) => ({
+                        ...v,
+                        url: redactUrl(v.url),
+                    })),
+                    wsRpc: this.appOptions.wsRpc && redactUrl(this.appOptions.wsRpc),
                 },
                 withBigintSerializer,
             ),

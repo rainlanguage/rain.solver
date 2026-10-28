@@ -1,4 +1,4 @@
-import { BaseError } from "viem";
+import { BaseError, HttpRequestError } from "viem";
 import { AxiosError } from "axios";
 import { RainSolverBaseError } from "./types";
 import { evaluateGasSufficiency, parseRevertError } from "./revert";
@@ -180,6 +180,19 @@ describe("Test common error utilities", () => {
 
             expect(result).toContain("String Error");
             expect(result).toContain("Reason: Simple error message");
+        });
+
+        it("should mask the rpc urls in the snapshot, an error text can carry the key", async () => {
+            const url = "https://rpc.example.com/v2/secretkey";
+            for (const error of [
+                new Error(`fetch failed for ${url}`),
+                new RainSolverBaseError(`failed at ${url}`),
+                new HttpRequestError({ url, status: 404, details: `Cannot POST at ${url}` }),
+            ]) {
+                const result = await errorSnapshot("Failed", error);
+                expect(result).toContain("https://rpc.example.com/[redacted:");
+                expect(result).not.toContain("secretkey");
+            }
         });
 
         it("should handle unknown error types", async () => {

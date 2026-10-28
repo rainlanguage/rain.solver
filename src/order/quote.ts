@@ -3,6 +3,7 @@ import { SharedState } from "../state";
 import { fetchOracleContext } from "../oracle";
 import { AppOptions, CallBlockTag } from "../config";
 import { ABI, normalizeFloat } from "../common";
+import { redactUrl } from "../logger/redact";
 import { BundledOrders, Pair, TakeOrder } from "./types";
 import { decodeFunctionResult, encodeFunctionData } from "viem";
 import { Attributes } from "@opentelemetry/api";
@@ -144,7 +145,9 @@ export async function quoteSingleOrderV4(
         })
         .catch((error) => {
             orderDetails.takeOrder.quote = undefined;
-            spanAttributes["details.oracle.quoteRpcUrl"] = state.rpc?.lastUsedUrl;
+            // the rpc url carries the api key
+            const rpcUrl = state.rpc?.lastUsedUrl;
+            spanAttributes["details.oracle.quoteRpcUrl"] = rpcUrl && redactUrl(rpcUrl);
             throw error;
         });
     if (typeof data !== "undefined") {

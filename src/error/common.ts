@@ -1,5 +1,6 @@
 import { AxiosError } from "axios";
 import { getRpcError } from "../rpc/helpers";
+import { redactUrls } from "../logger/redact";
 import { RainSolverBaseError } from "./types";
 import { withBigintSerializer, RawTransaction } from "../common";
 import { evaluateGasSufficiency, parseRevertError } from "./revert";
@@ -16,7 +17,8 @@ import {
 } from "viem";
 
 /**
- * Constructs a snapshot from the given error which is mainly used for reporting
+ * Constructs a snapshot from the given error which is mainly used for reporting,
+ * the urls in it are masked, see redactUrls
  * @param header - The header to include in the snapshot
  * @param err - The error to construct snapshot from
  * @param context - Additional context about the error
@@ -95,7 +97,9 @@ export async function errorSnapshot(
             message.push("Reason: unknown error type");
         }
     }
-    return message.join("\n");
+    // the snapshot goes to span statuses and attributes alike, and an error text
+    // can carry an rpc url with its key
+    return redactUrls(message.join("\n"));
 }
 
 /**
