@@ -40,6 +40,19 @@ export type SpanWithContext = {
 };
 
 /**
+ * Builds the startup warning for a logger that has no OTLP trace endpoint, so a
+ * deployment that lost its endpoint does not stop sending traces without notice
+ */
+export function noEndpointWarning(): string {
+    const msg =
+        "No OTLP trace endpoint is set (OTEL_EXPORTER_OTLP_TRACES_ENDPOINT or OTEL_EXPORTER_OTLP_ENDPOINT), spans print to the console and are not exported";
+    if (process.env.HYPERDX_API_KEY?.trim()) {
+        return `${msg}. HYPERDX_API_KEY is set but no longer used, set an OTLP endpoint instead`;
+    }
+    return msg;
+}
+
+/**
  * RainSolverLogger sets up OpenTelemetry tracing for the RainSolver service.
  *
  * This class configures a tracer provider with either a remote OTLP exporter
@@ -54,7 +67,6 @@ export type SpanWithContext = {
  */
 export class RainSolverLogger {
     tracer: Tracer;
-    exporter: OTLPTraceExporter | ConsoleSpanExporter;
     private readonly provider: BasicTracerProvider;
 
     constructor() {
@@ -79,15 +91,15 @@ export class RainSolverLogger {
             if (hasHeaders && new URL(endpoint).protocol !== "https:") {
                 throw new Error("OTLP headers require an HTTPS trace endpoint");
             }
-            const exporter = new OTLPTraceExporter({
-                compression: CompressionAlgorithm.GZIP,
-            });
-            this.exporter = exporter;
-            provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+            provider.addSpanProcessor(
+                new BatchSpanProcessor(
+                    new OTLPTraceExporter({ compression: CompressionAlgorithm.GZIP }),
+                ),
+            );
         } else {
-            const consoleExporter = new ConsoleSpanExporter();
-            this.exporter = consoleExporter;
-            provider.addSpanProcessor(new SimpleSpanProcessor(consoleExporter));
+            // eslint-disable-next-line no-console
+            console.warn(noEndpointWarning());
+            provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
         }
 
         // register the tracer
