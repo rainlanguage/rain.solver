@@ -58,57 +58,72 @@ export async function findBestIntraOrderbookTrade(
                 (v.takeOrder.quote.ratio * orderDetails.takeOrder.quote!.ratio) / ONE18 < ONE18,
         );
 
-    // get input token balance of signer with handling errors
-    const inputBalanceResult: Result<bigint, FailedSimulation> = await this.state.client
-        .readContract({
-            address: orderDetails.buyToken as `0x${string}`,
-            abi: erc20Abi,
-            functionName: "balanceOf",
-            args: [signer.account.address],
-        })
-        .then((v) => Result.ok(v) as Result<bigint, FailedSimulation>)
-        .catch(async (err) => {
-            const errMsg = await errorSnapshot("Failed to get input token balance", err);
-            const isNodeError = await containsNodeError(err as BaseError);
-            const result: FailedSimulation = {
-                type: TradeType.IntraOrderbook,
-                spanAttributes: { error: errMsg } as Attributes,
-            };
-            if (!isNodeError) {
-                result.noneNodeError = errMsg;
-            }
-            return Result.err(result);
+    // exit early if there is nothing to trade against, before reading the signer
+    // balances, as most orders have no counterparty and those reads are wasted rpc calls
+    if (!counterpartyOrders.length) {
+        spanAttributes["error"] = "no counterparties found for intra-orderbook trade";
+        return Result.err({
+            type: TradeType.IntraOrderbook,
+            spanAttributes,
         });
-    if (inputBalanceResult.isErr()) {
-        return Result.err(inputBalanceResult.error);
     }
-    const inputBalance = scaleTo18(inputBalanceResult.value, orderDetails.buyTokenDecimals);
 
-    // get output token balance of signer with handling errors
-    const outputBalanceResult: Result<bigint, FailedSimulation> = await this.state.client
-        .readContract({
-            address: orderDetails.sellToken as `0x${string}`,
-            abi: erc20Abi,
-            functionName: "balanceOf",
-            args: [signer.account.address],
+    // the failed balance read as a failed simulation, an error that is not from
+    // the node is kept as the none node error
+    const balanceFailure = async (header: string, err: unknown) => {
+        const errMsg = await errorSnapshot(header, err);
+        const isNodeError = await containsNodeError(err as BaseError);
+        const result: FailedSimulation = {
+            type: TradeType.IntraOrderbook,
+            spanAttributes: { error: errMsg } as Attributes,
+        };
+        if (!isNodeError) {
+            result.noneNodeError = errMsg;
+        }
+        return Result.err(result) as Result<[bigint, bigint], FailedSimulation>;
+    };
+
+    // get the input and output token balances of the signer in one multicall
+    const balancesResult = await this.state.client
+        .multicall({
+            allowFailure: true,
+            contracts: [
+                {
+                    address: orderDetails.buyToken as `0x${string}`,
+                    abi: erc20Abi,
+                    functionName: "balanceOf",
+                    args: [signer.account.address],
+                },
+                {
+                    address: orderDetails.sellToken as `0x${string}`,
+                    abi: erc20Abi,
+                    functionName: "balanceOf",
+                    args: [signer.account.address],
+                },
+            ],
         })
-        .then((v) => Result.ok(v) as Result<bigint, FailedSimulation>)
-        .catch(async (err) => {
-            const errMsg = await errorSnapshot("Failed to get output token balance", err);
-            const isNodeError = await containsNodeError(err as BaseError);
-            const result: FailedSimulation = {
-                type: TradeType.IntraOrderbook,
-                spanAttributes: { error: errMsg } as Attributes,
-            };
-            if (!isNodeError) {
-                result.noneNodeError = errMsg;
+        .then(([input, output]) => {
+            // a batch the rpc refused gives each read the same error
+            if (input.status === "failure" && output.status === "failure") {
+                return balanceFailure("Failed to get input and output token balances", input.error);
             }
-            return Result.err(result);
-        });
-    if (outputBalanceResult.isErr()) {
-        return Result.err(outputBalanceResult.error);
+            if (input.status === "failure") {
+                return balanceFailure("Failed to get input token balance", input.error);
+            }
+            if (output.status === "failure") {
+                return balanceFailure("Failed to get output token balance", output.error);
+            }
+            return Result.ok([input.result, output.result]) as Result<
+                [bigint, bigint],
+                FailedSimulation
+            >;
+        })
+        .catch((err) => balanceFailure("Failed to get input and output token balances", err));
+    if (balancesResult.isErr()) {
+        return Result.err(balancesResult.error);
     }
-    const outputBalance = scaleTo18(outputBalanceResult.value, orderDetails.sellTokenDecimals);
+    const inputBalance = scaleTo18(balancesResult.value[0], orderDetails.buyTokenDecimals);
+    const outputBalance = scaleTo18(balancesResult.value[1], orderDetails.sellTokenDecimals);
 
     // run simulations for top 3 counterparty orders
     const promises = counterpartyOrders.slice(0, 3).map((counterparty) => {
@@ -158,9 +173,6 @@ export async function findBestIntraOrderbookTrade(
             assert(res.isErr()); // for type check as we know all results are errors
             extendObjectWithHeader(spanAttributes, res.error.spanAttributes, "intraOrderbook." + i);
             allNoneNodeErrors.push(res.error.noneNodeError);
-        }
-        if (!results.length) {
-            spanAttributes["error"] = "no counterparties found for intra-orderbook trade";
         }
         return Result.err({
             type: TradeType.IntraOrderbook,
