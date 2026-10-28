@@ -1,5 +1,5 @@
-import { sleep } from "../common";
-import { OrderSpanEvents } from "../core/types";
+import { redactException, redactUrls } from "./redact";
+import type { OrderSpanEvents } from "../core/types";
 import { Resource } from "@opentelemetry/resources";
 import { CompressionAlgorithm } from "@opentelemetry/otlp-exporter-base";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -27,6 +27,8 @@ import {
     DiagConsoleLogger,
 } from "@opentelemetry/api";
 
+export * from "./redact";
+
 /**
  * Represents a container for an OpenTelemetry span and its associated context.
  * This class is useful for passing both the span and its context together, which
@@ -46,13 +48,14 @@ export type SpanWithContext = {
  *
  * @remarks
  * - Uses OpenTelemetry SDK for Node.js.
- * - Supports exporting traces to HyperDX if the API key is provided.
+ * - Exports traces to the configured OTLP HTTP endpoint.
  * - Automatically configures the service name from the `TRACER_SERVICE_NAME`
  * environment variable or defaults to "rain-solver".
  */
 export class RainSolverLogger {
     tracer: Tracer;
     exporter: OTLPTraceExporter | ConsoleSpanExporter;
+    private readonly provider: BasicTracerProvider;
 
     constructor() {
         // enable diag
@@ -64,12 +67,19 @@ export class RainSolverLogger {
             }),
         });
 
-        if (process.env.HYPERDX_API_KEY) {
+        this.provider = provider;
+
+        const endpoint =
+            process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ||
+            process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+        if (endpoint) {
+            const hasHeaders =
+                !!process.env.OTEL_EXPORTER_OTLP_TRACES_HEADERS?.trim() ||
+                !!process.env.OTEL_EXPORTER_OTLP_HEADERS?.trim();
+            if (hasHeaders && new URL(endpoint).protocol !== "https:") {
+                throw new Error("OTLP headers require an HTTPS trace endpoint");
+            }
             const exporter = new OTLPTraceExporter({
-                url: "https://in-otel.hyperdx.io/v1/traces",
-                headers: {
-                    authorization: process?.env?.HYPERDX_API_KEY,
-                },
                 compression: CompressionAlgorithm.GZIP,
             });
             this.exporter = exporter;
@@ -145,13 +155,17 @@ export class RainSolverLogger {
                 span.addEvent(event.name, event.attributes, event.startTime);
             }
         }
-        // handle exception
+        // handle exception, an rpc error message carries the rpc url with its key
         if (exception) {
-            span.recordException(exception.exception, exception.time);
+            span.recordException(redactException(exception.exception), exception.time);
         }
-        // handle span status
+        // handle span status, its message is built from the error too
         if (status) {
-            span.setStatus(status);
+            span.setStatus(
+                status.message === undefined
+                    ? status
+                    : { ...status, message: redactUrls(status.message) },
+            );
         }
         // end the span with the given end time
         span.end(endTime);
@@ -163,8 +177,7 @@ export class RainSolverLogger {
      */
     async shutdown() {
         // flush and close the connection
-        await this.exporter.shutdown();
-        await sleep(3000);
+        await this.provider.shutdown();
     }
 }
 

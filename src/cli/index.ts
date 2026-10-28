@@ -11,7 +11,7 @@ import { ErrorSeverity, errorSnapshot } from "../error";
 import { SharedState, SharedStateConfig } from "../state";
 import { SubgraphConfig, SubgraphManager } from "../subgraph";
 import { EventSyncManager } from "../events/manager";
-import { PreAssembledSpan, RainSolverLogger } from "../logger";
+import { PreAssembledSpan, RainSolverLogger, redactException, redactUrl } from "../logger";
 import { Context, context, Span, SpanStatusCode, trace } from "@opentelemetry/api";
 
 config();
@@ -85,8 +85,8 @@ export class RainSolverCli {
     prevMainWalletBalanceReport?: PreAssembledSpan;
     /** The last worker wallets balances, re-reported on rounds that skip the check */
     prevMultiWalletBalanceReports?: Record<string, bigint>;
-    /** The finalization of the latest round, runs in the background while the next round starts */
-    pendingRoundFinalization?: Promise<void>;
+    /** The in flight round finalizations, they run in the background while the next rounds start */
+    pendingRoundFinalizations = new Set<Promise<void>>();
 
     private constructor(
         state: SharedState,
@@ -372,7 +372,7 @@ export class RainSolverCli {
                 const snapshot = await errorSnapshot("", err);
                 roundSpan.setAttribute("severity", ErrorSeverity.HIGH);
                 roundSpan.setAttribute("didClear", false);
-                roundSpan.recordException(err);
+                roundSpan.recordException(redactException(err));
                 roundSpan.setStatus({ code: SpanStatusCode.ERROR, message: snapshot });
             }
 
@@ -383,14 +383,17 @@ export class RainSolverCli {
 
             // finalize the round in the background, the round span ends once all
             // the finalization operations settle, so the next round starts on time
-            this.pendingRoundFinalization = this.finalizeRound(
+            const finalization: Promise<void> = this.finalizeRound(
                 roundSpan,
                 roundCtx,
                 syncOrdersPromise,
                 checkMainWalletBalancePromise,
                 getWorkerWalletsBalancePromise,
                 metaInfoPromise,
-            ).catch(() => {});
+            )
+                .catch(() => {})
+                .finally(() => this.pendingRoundFinalizations.delete(finalization));
+            this.pendingRoundFinalizations.add(finalization);
 
             // eslint-disable-next-line no-console
             console.log(`Starting next round in ${this.appOptions.sleep / 1000} seconds...`, "\n");
@@ -410,8 +413,9 @@ export class RainSolverCli {
             }
         }
 
-        // let the latest round finalize before flushing and closing the connection
-        await this.pendingRoundFinalization;
+        // let every round finalize before flushing and closing the connection, as
+        // spans that end after shutdown are dropped
+        await Promise.allSettled(this.pendingRoundFinalizations);
         // close the log sync, its subscription, block listener and timers
         this.eventSync?.close();
         await this.logger.shutdown();
@@ -451,7 +455,7 @@ export class RainSolverCli {
                 this.runWalletOpsForRound(roundCtx).catch(async (err) => {
                     const snapshot = await errorSnapshot("", err);
                     roundSpan.setAttribute("severity", ErrorSeverity.HIGH);
-                    roundSpan.recordException(err);
+                    roundSpan.recordException(redactException(err));
                     roundSpan.setStatus({ code: SpanStatusCode.ERROR, message: snapshot });
                 }),
 
@@ -612,11 +616,12 @@ export class RainSolverCli {
      * Reports where the log stream and the log sync of every orderbook stand for
      * the round, as a sync-orders span. An error of the stream, or an orderbook
      * that is not live, that has an error, or that failed an order or a log
-     * since the previous round, marks the span as an error. A subgraph that did
-     * not give its orderbooks at the start, or an order that the bot dropped
-     * since the previous round because it could not read its token or vault
-     * balance, marks the span with a high severity, those orders are not traded
-     * until a restart. Does nothing when there is no log sync
+     * since the previous round, marks the span as an error. A high severity
+     * marks what needs the operator: a subgraph that did not give its
+     * orderbooks at the start, an order that the bot dropped since the previous
+     * round because it could not read its token or vault balance, and a log
+     * sync that is out of sync for too long, see EventSyncManager.report. Does
+     * nothing when there is no log sync
      * @param roundCtx - The otel context for the current round
      */
     async reportLogSyncForRound(roundCtx: Context): Promise<void> {
@@ -627,6 +632,7 @@ export class RainSolverCli {
         report.setAttr("stream", JSON.stringify(stream));
         let healthy = !stream.lastError;
         let givenUp = false;
+        let outOfSync = stream.outOfSync;
         for (const sync of orderbooks) {
             report.setAttr(`sync.${sync.orderbook}`, JSON.stringify(sync, withBigintSerializer));
             if (sync.phase !== "live" || sync.lastError || sync.startError) healthy = false;
@@ -634,8 +640,9 @@ export class RainSolverCli {
             // given up order marks the round once
             if (sync.newFailures || sync.newBadLogs) healthy = false;
             if (sync.newGivenUp) givenUp = true;
+            if (sync.outOfSync) outOfSync = true;
         }
-        // the orders of these are not synced until a restart
+        // each of these needs the operator
         const lost: string[] = [];
         if (failedSubgraphs.length) {
             report.setAttr("failedSubgraphs", failedSubgraphs);
@@ -644,6 +651,11 @@ export class RainSolverCli {
         if (givenUp) {
             lost.push(
                 "the bot dropped some orders because it could not read their token or vault balance",
+            );
+        }
+        if (outOfSync) {
+            lost.push(
+                "the log sync is out of sync for too long, an orderbook is not live or the logs do not come in",
             );
         }
         if (lost.length) {
@@ -671,7 +683,7 @@ export class RainSolverCli {
             await this.logger.tracer.startActiveSpan("rpc-report", {}, roundCtx, async (span) => {
                 const record = this.state.rpc.metrics[rpc];
                 span.setAttributes({
-                    "rpc-url": rpc,
+                    "rpc-url": redactUrl(rpc),
                     "request-count": record.req,
                     "success-count": record.success,
                     "failure-count": record.failure,
@@ -695,7 +707,7 @@ export class RainSolverCli {
                         const record = this.state.writeRpc!.metrics[rpc];
                         span.setAttributes({
                             "isWriteRpc:": "true",
-                            "rpc-url": rpc,
+                            "rpc-url": redactUrl(rpc),
                             "request-count": record.req,
                             "success-count": record.success,
                             "failure-count": record.failure,
@@ -740,6 +752,13 @@ export class RainSolverCli {
                     ...this.appOptions,
                     key: this.appOptions.key ? "***" : "N/A",
                     mnemonic: this.appOptions.mnemonic ? "***" : "N/A",
+                    // rpc providers put the api keys in the urls
+                    rpc: this.appOptions.rpc?.map((v) => ({ ...v, url: redactUrl(v.url) })),
+                    writeRpc: this.appOptions.writeRpc?.map((v) => ({
+                        ...v,
+                        url: redactUrl(v.url),
+                    })),
+                    wsRpc: this.appOptions.wsRpc && redactUrl(this.appOptions.wsRpc),
                 },
                 withBigintSerializer,
             ),

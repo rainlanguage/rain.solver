@@ -367,6 +367,24 @@ describe("Test SharedState", () => {
             expect(sharedState.blockNumber).toBe(100n);
         });
 
+        it("should record each block number read, also one that does not move, and not a failed one", async () => {
+            expect(sharedState.blockNumberReadAt).toBe(0);
+            await sharedState.updateBlockNumber();
+            const first = sharedState.blockNumberReadAt;
+            expect(first).toBe(Date.now());
+
+            // the same block number again, a quiet chain
+            vi.advanceTimersByTime(1_000);
+            await sharedState.updateBlockNumber();
+            expect(sharedState.blockNumberReadAt).toBe(first + 1_000);
+
+            // a failed read leaves it
+            (config.client.getBlockNumber as Mock).mockRejectedValue(new Error("rpc failed"));
+            vi.advanceTimersByTime(1_000);
+            await sharedState.updateBlockNumber();
+            expect(sharedState.blockNumberReadAt).toBe(first + 1_000);
+        });
+
         it("should not move block number backwards", async () => {
             await sharedState.updateBlockNumber();
             expect(sharedState.blockNumber).toBe(100n);
@@ -394,8 +412,11 @@ describe("Test SharedState", () => {
 
         it("should watch block number with an immediate update and periodic updates", async () => {
             expect(sharedState.isWatchingBlockNumber).toBe(false);
+            expect(sharedState.isPollingBlockNumber).toBe(false);
             sharedState.watchBlockNumber(5000);
             expect(sharedState.isWatchingBlockNumber).toBe(true);
+            // with no ws rpc the block number is polled over http
+            expect(sharedState.isPollingBlockNumber).toBe(true);
 
             // immediate update on start
             await vi.advanceTimersByTimeAsync(0);
@@ -421,6 +442,7 @@ describe("Test SharedState", () => {
 
             sharedState.unwatchBlockNumber();
             expect(sharedState.isWatchingBlockNumber).toBe(false);
+            expect(sharedState.isPollingBlockNumber).toBe(false);
 
             // no more updates after unwatch
             await vi.advanceTimersByTimeAsync(15000);
@@ -602,6 +624,7 @@ describe("Test SharedState", () => {
 
                 // subscription error starts the polling fallback
                 onError(new Error("ws failed"));
+                expect(sharedState.isPollingBlockNumber).toBe(true);
                 (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
                 await vi.advanceTimersByTimeAsync(5000);
                 expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
@@ -611,6 +634,7 @@ describe("Test SharedState", () => {
 
                 // subscription recovery stops the polling fallback
                 onBlockNumber(102n);
+                expect(sharedState.isPollingBlockNumber).toBe(false);
                 expect(sharedState.blockNumber).toBe(102n);
                 expect(sharedState.wsBlockNumber).toBe(102n);
                 await vi.advanceTimersByTimeAsync(15000);

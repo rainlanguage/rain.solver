@@ -103,8 +103,8 @@ liquidityProviders:
 # Specifies the routing mode 'multi' or 'single' or 'full', default is single
 route: single
 
-# Seconds to wait between each arb round, default is 10
-sleep: 10
+# Milliseconds to wait between each arb round, default is 10000
+sleep: 10000
 
 # Option to specify time (in minutes) between pools updates, default is 0 minutes
 poolUpdateInterval: 10

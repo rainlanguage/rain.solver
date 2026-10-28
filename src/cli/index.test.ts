@@ -2,7 +2,7 @@ import { AppOptions } from "../config";
 import { RainSolver } from "../core";
 import { OrderManager } from "../order";
 import { DAY, RainSolverCli } from "./index";
-import { RainSolverLogger } from "../logger";
+import { RainSolverLogger, redactUrl } from "../logger";
 import { WalletManager, WalletType } from "../wallet";
 import { SharedState, SharedStateConfig } from "../state";
 import { SubgraphConfig, SubgraphManager } from "../subgraph";
@@ -110,6 +110,9 @@ describe("Test RainSolverCli", () => {
             poolUpdateInterval: 60,
             gasCoveragePercentage: "100",
             blockTime: 2000,
+            rpc: [{ url: "https://rpc1.com/v2/key1" }],
+            writeRpc: [{ url: "https://writerpc.com/key2" }],
+            wsRpc: "wss://ws.example.com/key3",
         } as any;
 
         mockState = {
@@ -261,6 +264,7 @@ describe("Test RainSolverCli", () => {
         rainSolverCli.roundCount = 1;
         rainSolverCli.avgGasCost = 1000000000000000000n;
         (rainSolverCli as any).nextDatafetcherReset = Date.now() + 60000;
+        rainSolverCli.pendingRoundFinalizations = new Set();
     });
 
     describe("Test init static method", () => {
@@ -694,6 +698,26 @@ describe("Test RainSolverCli", () => {
                 }),
                 roundCtx,
             );
+
+            // a log sync that is out of sync for too long, the stream or an
+            // orderbook, marks it as high
+            const stale =
+                "the log sync is out of sync for too long, an orderbook is not live or the logs do not come in";
+            for (const state of [
+                { stream: { ...stream, outOfSync: true }, orderbooks: [healthy] },
+                { stream, orderbooks: [{ ...healthy, phase: "buffering", outOfSync: true }] },
+            ]) {
+                mockEventSync.report.mockReturnValue({ mode: "ws", ...state, failedSubgraphs: [] });
+                await rainSolverCli.reportLogSyncForRound(roundCtx);
+                expect(mockLogger.exportPreAssembledSpan).toHaveBeenLastCalledWith(
+                    expect.objectContaining({
+                        name: "sync-orders",
+                        status: { code: SpanStatusCode.ERROR, message: stale },
+                        attributes: expect.objectContaining({ severity: "HIGH" }),
+                    }),
+                    roundCtx,
+                );
+            }
         });
     });
 
@@ -732,6 +756,25 @@ describe("Test RainSolverCli", () => {
 
             expect(mockLogger.tracer.startActiveSpan).toHaveBeenCalledTimes(2); // only read RPCs
         });
+
+        it("should report the rpc url with its api key masked", async () => {
+            const mockSpan = { setAttributes: vi.fn(), end: vi.fn() };
+            (mockLogger.tracer.startActiveSpan as Mock).mockImplementation(
+                (_name, _options, _ctx, callback) => callback(mockSpan),
+            );
+            const url = "https://base-mainnet.g.alchemy.com/v2/secretkey";
+            rainSolverCli.state.writeRpc = undefined;
+            (rainSolverCli.state.rpc as any).metrics = {
+                [url]: { ...mockState.rpc.metrics["https://rpc1.com"], reset: vi.fn() },
+            };
+
+            await rainSolverCli.reportRpcMetricsForRound({} as any);
+
+            const reported = (mockSpan.setAttributes as Mock).mock.calls[0][0]["rpc-url"];
+            expect(reported).toBe(redactUrl(url));
+            expect(reported).toMatch(/^https:\/\/base-mainnet\.g\.alchemy\.com\/\[redacted:/);
+            expect(reported).not.toContain("secretkey");
+        });
     });
 
     describe("Test reportMetaInfoForRound method", () => {
@@ -769,6 +812,9 @@ describe("Test RainSolverCli", () => {
                     poolUpdateInterval: 60,
                     gasCoveragePercentage: "100",
                     blockTime: 2000,
+                    rpc: [{ url: redactUrl("https://rpc1.com/v2/key1") }],
+                    writeRpc: [{ url: redactUrl("https://writerpc.com/key2") }],
+                    wsRpc: redactUrl("wss://ws.example.com/key3"),
                     key: "N/A",
                     mnemonic: "N/A",
                 }),
@@ -1248,6 +1294,41 @@ describe("Test RainSolverCli", () => {
             rpcSpy.mockRestore();
         });
 
+        it("should mask the rpc url in a failure it records on the span", async () => {
+            // a failed rpc call carries the rpc url with its key in the message
+            const walletOpsSpy = vi
+                .spyOn(rainSolverCli, "runWalletOpsForRound")
+                .mockRejectedValue(
+                    new Error("HTTP request failed.\n\nURL: https://rpc.example.com/v2/secretkey"),
+                );
+            const rpcSpy = vi
+                .spyOn(rainSolverCli, "reportRpcMetricsForRound")
+                .mockResolvedValue(undefined);
+
+            await rainSolverCli.finalizeRound(
+                mockSpan,
+                mockRoundCtx as any,
+                Promise.resolve(),
+                Promise.reject(new Error("balance check failed")),
+                Promise.reject(new Error("worker balances failed")),
+            );
+
+            const recorded = mockSpan.recordException.mock.calls
+                .map(([exception]: any[]) => exception)
+                .find((exception: any) => String(exception?.message).includes("rpc.example.com"));
+            expect(recorded).toBeDefined();
+            expect(recorded.message).toContain("URL: https://rpc.example.com/[redacted:");
+            expect(recorded.message).not.toContain("secretkey");
+            expect(recorded.stack).not.toContain("secretkey");
+            // the status message is built from the same error
+            for (const [status] of mockSpan.setStatus.mock.calls) {
+                expect(String(status.message ?? "")).not.toContain("secretkey");
+            }
+
+            walletOpsSpy.mockRestore();
+            rpcSpy.mockRestore();
+        });
+
         it("should keep the span open until the pending meta info report settles", async () => {
             const walletOpsSpy = vi
                 .spyOn(rainSolverCli, "runWalletOpsForRound")
@@ -1391,6 +1472,53 @@ describe("Test RainSolverCli", () => {
             expect(sleep).toHaveBeenCalledWith(1000);
 
             // Restore process.env
+            process.env = originalEnv;
+        });
+
+        it("should wait for every round finalization before shutdown", async () => {
+            const originalEnv = process.env;
+            process.env = {
+                ...originalEnv,
+                IS_PREVIEW: "true",
+                PREVIEW_ROUNDS: "2",
+            };
+
+            const mockSpan = {
+                setAttribute: vi.fn(),
+                setAttributes: vi.fn(),
+                setStatus: vi.fn(),
+                recordException: vi.fn(),
+                end: vi.fn(),
+            };
+            (mockLogger.tracer.startSpan as Mock).mockReturnValue(mockSpan);
+            (trace.setSpan as Mock).mockReturnValue({ test: "context" });
+            (context.active as Mock).mockReturnValue({ test: "active" });
+            (mockRainSolver.processNextRound as Mock).mockResolvedValue({
+                results: [],
+                reports: [],
+                checkpointReports: [],
+            });
+            (sleep as Mock).mockResolvedValue(undefined);
+            rainSolverCli.eventSync = mockEventSync;
+
+            // the first round finalizes slower than the second one
+            let finishFirstRound!: () => void;
+            const finalizeSpy = vi
+                .spyOn(rainSolverCli, "finalizeRound")
+                .mockReturnValueOnce(new Promise<void>((resolve) => (finishFirstRound = resolve)))
+                .mockResolvedValueOnce(undefined);
+
+            const runPromise = rainSolverCli.run();
+            await vi.waitFor(() => expect(finalizeSpy).toHaveBeenCalledTimes(2));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            expect(mockLogger.shutdown).not.toHaveBeenCalled();
+
+            finishFirstRound();
+            await runPromise;
+            expect(mockLogger.shutdown).toHaveBeenCalledTimes(1);
+            expect(rainSolverCli.pendingRoundFinalizations.size).toBe(0);
+
+            finalizeSpy.mockRestore();
             process.env = originalEnv;
         });
 

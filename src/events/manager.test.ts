@@ -363,6 +363,7 @@ describe("Test EventSyncManager", () => {
             resubscribeDelay: 10,
             startTimeout: 50,
             startAttemptInterval: 0,
+            outOfSyncAfter: 20,
         });
         try {
             manager.open();
@@ -376,6 +377,15 @@ describe("Test EventSyncManager", () => {
             const other = manager.syncs.get(OTHER_ORDERBOOK)!.syncer;
             expect(other.phase).toBe("buffering");
             expect(other.firstBlock).toBeUndefined();
+            // the orderbook that is not live since the start, for longer than
+            // outOfSyncAfter, is out of sync, the live one is not
+            const outOfSync = () =>
+                Object.fromEntries(
+                    manager.report().orderbooks.map((s) => [s.orderbook, s.outOfSync]),
+                );
+            expect(outOfSync()).toEqual({ [ORDERBOOK]: false, [OTHER_ORDERBOOK]: true });
+            // the ws stream is the log source, it is never out of sync
+            expect(manager.report().stream.outOfSync).toBe(false);
 
             down = false;
             let n = 107n;
@@ -384,6 +394,7 @@ describe("Test EventSyncManager", () => {
                 expect(other.phase).toBe("live");
             });
             expect(other.snapshotBlock).toBeGreaterThan(106n);
+            expect(outOfSync()).toEqual({ [ORDERBOOK]: false, [OTHER_ORDERBOOK]: false });
         } finally {
             manager.close();
         }
@@ -692,6 +703,88 @@ describe("Test EventSyncManager", () => {
         ).toBe(7n);
     });
 
+    it("should mark the stream out of sync when the poll that stands in for a dropped subscription keeps failing", async () => {
+        vi.useFakeTimers();
+        try {
+            const manager = await EventSyncManager.init({
+                state,
+                orderManager,
+                subgraphManager,
+                filters: { includeOrderbooks: new Set([ORDERBOOK]) },
+                resubscribeDelay: 10,
+                subgraphRetryDelay: 0,
+                outOfSyncAfter: 30,
+            });
+            manager.open();
+            await vi.waitFor(() => expect(subs).toHaveLength(1));
+            const started = manager.start();
+            for (let n = 100n; n <= 106n; n++) block(n);
+            await started;
+            // the open subscription is the log source
+            expect(manager.report().stream.outOfSync).toBe(false);
+
+            // the subscription drops, the poll stands in and its reads fail
+            state.client.getLogs.mockRejectedValue(new Error("rpc down"));
+            subs[0].onError(new Error("socket closed"));
+            block(107n, true);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(manager.stream.fallback).toBe(true);
+            expect(manager.report().stream.outOfSync).toBe(false);
+            await vi.advanceTimersByTimeAsync(31);
+            expect(manager.report().stream.outOfSync).toBe(true);
+
+            // a poll that goes through clears it
+            state.client.getLogs.mockResolvedValue([]);
+            block(108n, true);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(manager.report().stream.outOfSync).toBe(false);
+            manager.close();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("should not mark a caught up stand in poll out of sync on a quiet chain while the heads come over ws", async () => {
+        vi.useFakeTimers();
+        try {
+            const manager = await EventSyncManager.init({
+                state,
+                orderManager,
+                subgraphManager,
+                filters: { includeOrderbooks: new Set([ORDERBOOK]) },
+                resubscribeDelay: 10,
+                subgraphRetryDelay: 0,
+                outOfSyncAfter: 30,
+            });
+            manager.open();
+            await vi.waitFor(() => expect(subs).toHaveLength(1));
+            const started = manager.start();
+            for (let n = 100n; n <= 106n; n++) block(n);
+            await started;
+
+            // the subscription drops and the poll catches up with the head
+            subs[0].onError(new Error("socket closed"));
+            block(107n);
+            await vi.advanceTimersByTimeAsync(0);
+            expect(manager.stream.fallback).toBe(true);
+            expect(manager.stream.behindSince).toBeUndefined();
+
+            // a quiet chain, the ws heads stop with no new block, the block
+            // number is not polled over http
+            state.blockNumberReadAt = Date.now();
+            state.isPollingBlockNumber = false;
+            await vi.advanceTimersByTimeAsync(31);
+            expect(manager.report().stream.outOfSync).toBe(false);
+
+            // the same while the block number is polled over http is an rpc that is down
+            state.isPollingBlockNumber = true;
+            expect(manager.report().stream.outOfSync).toBe(true);
+            manager.close();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("should read the logs with the poll while the subscription is down, and hand over to the reopened stream", async () => {
         vi.useFakeTimers();
         try {
@@ -859,12 +952,12 @@ describe("Test EventSyncManager", () => {
             for (let n = 501n; n <= 520n; n++) block(n, true);
             subs[0].onError(new Error("socket closed"));
 
-            block(521n, true);
+            // the drop reads at once up to the head, it does not wait for a block
             await vi.waitFor(() => expect(state.client.getLogs).toHaveBeenCalledTimes(1));
             // from the last ws head less the lookback, and the blocks below
             // that again, the polled heads do not count
             expect(state.client.getLogs).toHaveBeenCalledWith(
-                expect.objectContaining({ fromBlock: 484n, toBlock: 521n }),
+                expect.objectContaining({ fromBlock: 484n, toBlock: 520n }),
             );
             manager.close();
         } finally {
@@ -882,27 +975,26 @@ describe("Test EventSyncManager", () => {
             for (let n = 100n; n <= 106n; n++) block(n);
             await started;
 
-            subs[0].onError(new Error("socket closed"));
-            // the provider refuses the first query
+            // the provider refuses the first query, the one the drop starts at once
             state.client.getLogs.mockRejectedValueOnce(new Error("range too large"));
-            block(107n, true);
+            subs[0].onError(new Error("socket closed"));
             await vi.waitFor(() =>
                 expect(manager.report().stream.lastError).toBe("range too large"),
             );
             expect(state.client.getLogs).toHaveBeenCalledWith(
-                expect.objectContaining({ fromBlock: 90n, toBlock: 107n }),
+                expect.objectContaining({ fromBlock: 90n, toBlock: 106n }),
             );
 
             // the next block reads from the same block again, up to the new head
             state.client.getLogs.mockResolvedValue([
-                logs.deposit(OWNER, USDC, VAULT_1, 20n, { blockNumber: 108n, logIndex: 0 }),
+                logs.deposit(OWNER, USDC, VAULT_1, 20n, { blockNumber: 107n, logIndex: 0 }),
             ]);
-            block(108n, true);
+            block(107n, true);
             await vi.waitFor(() => expect(manager.report().stream.backfilled).toBe(1));
             expect(state.client.getLogs).toHaveBeenLastCalledWith(
-                expect.objectContaining({ fromBlock: 90n, toBlock: 108n }),
+                expect.objectContaining({ fromBlock: 90n, toBlock: 107n }),
             );
-            expect(manager.stream.pollFrom).toBe(109n);
+            expect(manager.stream.pollFrom).toBe(108n);
             manager.close();
         } finally {
             vi.useRealTimers();
@@ -981,20 +1073,22 @@ describe("Test EventSyncManager", () => {
                 await vi.waitFor(() => expect(subs).toHaveLength(1));
                 const started = manager.start();
                 for (let n = 100n; n <= 102n; n++) block(n);
-                subs[0].onError(new Error("socket closed"));
-                expect(manager.stream.pollFrom).toBe(94n);
-
                 state.client.getLogs.mockResolvedValue([
                     logs.deposit(OWNER, USDC, VAULT_1, 7n, { blockNumber: 101n, logIndex: 0 }),
                 ]);
+                subs[0].onError(new Error("socket closed"));
+                expect(manager.stream.pollFrom).toBe(94n);
+                // the drop reads at once from the proof of the socket alive, and
+                // the blocks below again, up to the head
+                await vi.advanceTimersByTimeAsync(0);
+                expect(state.client.getLogs).toHaveBeenCalledWith(
+                    expect.objectContaining({ fromBlock: 86n, toBlock: 102n }),
+                );
+
                 for (let n = 103n; n <= 106n; n++) {
                     block(n, true);
                     await vi.advanceTimersByTimeAsync(0);
                 }
-                // the first poll reads from the proof of the socket alive, and the blocks below again
-                expect(state.client.getLogs).toHaveBeenCalledWith(
-                    expect.objectContaining({ fromBlock: 86n, toBlock: 103n }),
-                );
                 expect(sync.syncer.newestBlock).toBe(106n);
                 const { reports } = await started;
                 expect(reports.get(ORDERBOOK)?.snapshotBlock).toBe(103n);
@@ -1194,6 +1288,18 @@ describe("Test EventSyncManager", () => {
         expect(second.orderbooks[0].lastError).toBeUndefined();
     });
 
+    it("should mask the rpc urls in the errors it reports", async () => {
+        const manager = await init({ includeOrderbooks: new Set([ORDERBOOK]) });
+        // a failed rpc call carries the rpc url with its key in the message
+        const leak = "HTTP request failed.\n\nURL: https://rpc.example.com/v2/secretkey";
+        manager.stream.lastError = new Error(leak);
+        manager.syncs.get(ORDERBOOK)!.lastError = new Error(leak);
+        const { stream, orderbooks } = manager.report();
+        expect(stream.lastError).toContain("URL: https://rpc.example.com/[redacted:");
+        expect(stream.lastError).not.toContain("secretkey");
+        expect(orderbooks[0].lastError).not.toContain("secretkey");
+    });
+
     it("should report the bad logs, and the failures and bad logs since the previous report", async () => {
         const manager = await init({ includeOrderbooks: new Set([ORDERBOOK]) });
         const { syncer } = manager.syncs.get(ORDERBOOK)!;
@@ -1296,6 +1402,125 @@ describe("Test EventSyncManager", () => {
             expect(report.mode).toBe("http");
             expect(report.stream.reorged).toBe(0);
             expect(report.orderbooks[0]).toMatchObject({ orderbook: ORDERBOOK, phase: "live" });
+        });
+
+        /**
+         * A manager in http mode, with outOfSyncAfter at 30ms, that went live
+         * and read up to 106, and a clock for Date.now that moves only when the
+         * test moves it, set after the start so the start runs on real time
+         */
+        const liveWithClock = async () => {
+            const manager = await EventSyncManager.init({
+                state,
+                orderManager,
+                subgraphManager,
+                filters: { includeOrderbooks: new Set([ORDERBOOK]) },
+                outOfSyncAfter: 30,
+            });
+            manager.open();
+            const started = manager.start();
+            for (let n = 100n; n <= 106n; n++) await sealed(manager, n);
+            await started;
+            let now = Date.now();
+            const spy = vi.spyOn(Date, "now").mockImplementation(() => now);
+            const tick = (ms: number) => (now += ms);
+            const close = () => {
+                spy.mockRestore();
+                manager.close();
+            };
+            return { manager, tick, close };
+        };
+
+        it("should mark the stream out of sync while a new head stays unread for too long", async () => {
+            const { manager, tick, close } = await liveWithClock();
+            try {
+                expect(manager.report().stream.outOfSync).toBe(false);
+
+                // the rpc refuses the reads, the heads 107 to 110 stay unread
+                state.client.getLogs.mockClear();
+                state.client.getLogs.mockRejectedValue(new Error("rpc down"));
+                for (let n = 107n; n <= 110n; n++) {
+                    block(n, true);
+                    await new Promise((resolve) => setTimeout(resolve, 1));
+                }
+                expect(manager.stream.pollFrom).toBe(107n);
+                // a failed read waits for the next block, it does not try again at once
+                expect(state.client.getLogs).toHaveBeenCalledTimes(4);
+                expect(manager.report().stream.outOfSync).toBe(false);
+                tick(31);
+                expect(manager.report().stream.outOfSync).toBe(true);
+
+                // the rpc is back, the next poll reads up to the head
+                state.client.getLogs.mockImplementation(async () => []);
+                await sealed(manager, 111n);
+                expect(manager.report().stream.outOfSync).toBe(false);
+            } finally {
+                close();
+            }
+        });
+
+        it("should not mark the stream out of sync while no new block comes, only when the block number reads stop", async () => {
+            const { manager, tick, close } = await liveWithClock();
+            try {
+                // a quiet chain, no new block for longer than outOfSyncAfter
+                tick(31);
+                expect(manager.stream.pollFrom).toBe(107n);
+                expect(manager.report().stream.outOfSync).toBe(false);
+
+                // the block number polled over http is not read anymore, an rpc that is down
+                state.isPollingBlockNumber = true;
+                state.blockNumberReadAt = Date.now() - 31;
+                expect(manager.report().stream.outOfSync).toBe(true);
+            } finally {
+                close();
+            }
+        });
+
+        it("should not mark the stream out of sync while the first head after a quiet time is read", async () => {
+            const { manager, tick, close } = await liveWithClock();
+            try {
+                // a quiet chain for longer than outOfSyncAfter, then a new head
+                // whose read is still running when the round reports
+                tick(31);
+                state.client.getLogs.mockImplementationOnce(() => new Promise(() => {}));
+                block(107n, true);
+                await vi.waitFor(() => expect(manager.stream.polling).toBe(true));
+                expect(manager.report().stream.outOfSync).toBe(false);
+                // the read stays pending for longer than outOfSyncAfter
+                tick(31);
+                expect(manager.report().stream.outOfSync).toBe(true);
+            } finally {
+                close();
+            }
+        });
+
+        it("should not let a slow poll that ends behind the new head reset the clock, and read the new head at once", async () => {
+            const { manager, tick, close } = await liveWithClock();
+            try {
+                // reads that take longer than outOfSyncAfter, the head moves on meanwhile
+                let release: (() => void) | undefined;
+                const hold = () => new Promise((resolve) => (release = () => resolve([])));
+                state.client.getLogs.mockImplementationOnce(hold).mockImplementationOnce(hold);
+                block(107n, true);
+                await vi.waitFor(() => expect(release).toBeDefined());
+                tick(31);
+                block(108n, true);
+                const first = release!;
+                release = undefined;
+                first();
+
+                // the read of 107 is done, the poll reads 108 at once, with no new block
+                await vi.waitFor(() => expect(release).toBeDefined());
+                expect(manager.stream.pollFrom).toBe(108n);
+                // the poll was caught up only to 107, from 31ms ago, 108 is not read yet
+                expect(manager.report().stream.outOfSync).toBe(true);
+
+                release!();
+                await vi.waitFor(() => expect(manager.stream.pollFrom).toBe(109n));
+                expect(manager.report().stream.outOfSync).toBe(false);
+            } finally {
+                close();
+            }
         });
 
         it("should undo the logs of a block that a reorg replaced", async () => {
