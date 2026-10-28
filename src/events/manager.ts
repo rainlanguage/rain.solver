@@ -79,6 +79,8 @@ export type EventSyncManagerConfig = {
     startAttemptInterval?: number;
     /** The wait (in ms) before init asks a subgraph that did not answer again, default is INIT_SUBGRAPH_RETRY_DELAY */
     subgraphRetryDelay?: number;
+    /** How long (in ms) an orderbook may stay not live, or the poll may stay behind, before the report marks it out of sync, default is the start timeout */
+    outOfSyncAfter?: number;
 };
 
 /** The logs of one recent block, as the poll read them or as the ws stream delivered them */
@@ -129,6 +131,13 @@ export type LogStream = {
     polledBlocks: Map<bigint, PolledBlock>;
     /** The last error of the subscription or of a poll, for the report */
     lastError?: unknown;
+    /**
+     * When (in ms) the stream fell behind the head: the first sealed head the
+     * poll has not read came then, or a drop left blocks for the poll to read.
+     * A failed or slow poll keeps it, a poll that catches up with the head
+     * clears it, see EventSyncManager.report
+     */
+    behindSince?: number;
     /** How many times the subscription dropped */
     drops: number;
     /** How many new logs the poll read while it stood in for the subscription */
@@ -162,6 +171,8 @@ export type OrderbookSync = {
     reported: { failed: number; badLogs: number; givenUp: number };
     /** The last error of a token or a vault read, for the report */
     lastError?: unknown;
+    /** When (in ms) the start began, while the orderbook is not live, see EventSyncManager.report */
+    notLiveSince?: number;
 };
 
 /** What the manager reports for an orderbook, for the round span */
@@ -182,6 +193,8 @@ export type OrderbookSyncReport = {
     newBadLogs: number;
     /** How many orders were dropped since the previous report, parked or active, as a read they need gave up */
     newGivenUp: number;
+    /** The orderbook is not live since the start for longer than outOfSyncAfter */
+    outOfSync: boolean;
     startError?: string;
     lastError?: string;
 };
@@ -194,6 +207,8 @@ export type EventSyncReport = {
         drops: number;
         backfilled: number;
         reorged: number;
+        /** The poll reads the logs, and it is behind the head, or the block number polled over http is not read, for longer than outOfSyncAfter */
+        outOfSync: boolean;
         lastError?: string;
     };
     orderbooks: OrderbookSyncReport[];
@@ -242,6 +257,8 @@ export class EventSyncManager {
     readonly resubscribeDelay: number;
     readonly startTimeout: number;
     readonly startAttemptInterval: number;
+    /** How long (in ms) an orderbook may stay not live, or the poll may stay behind, see report */
+    readonly outOfSyncAfter: number;
     /** Where the logs come from, a subscription over the ws rpc or a range query over http */
     readonly mode: "ws" | "http";
     readonly syncs = new Map<Hex, OrderbookSync>();
@@ -277,6 +294,7 @@ export class EventSyncManager {
                 START_TIMEOUT_BLOCKS * (Number(config.state.appOptions.blockTime) || 0),
             );
         this.startAttemptInterval = config.startAttemptInterval ?? START_ATTEMPT_INTERVAL;
+        this.outOfSyncAfter = config.outOfSyncAfter ?? this.startTimeout;
         this.mode = config.state.appOptions.wsRpc ? "ws" : "http";
         this.failedSubgraphs = failedSubgraphs;
         for (const [orderbook, url] of orderbooks) {
@@ -363,6 +381,8 @@ export class EventSyncManager {
         this.stopBlocks = this.state.onBlockNumber((blockNumber) => {
             // the poll hands the heads to the syncers once their logs are in
             if (this.mode === "http" || this.stream.fallback) {
+                // a new sealed head is a head the poll has not read yet
+                this.stream.behindSince ??= Date.now();
                 void this.poll();
                 return;
             }
@@ -406,6 +426,10 @@ export class EventSyncManager {
     async start(): Promise<{ reports: Map<Hex, SnapshotReport>; failed: Map<Hex, string> }> {
         const reports = new Map<Hex, SnapshotReport>();
         const failed = new Map<Hex, string>();
+        const now = Date.now();
+        for (const sync of this.syncs.values()) {
+            if (sync.syncer.phase !== "live") sync.notLiveSince = now;
+        }
         await Promise.all(
             [...this.syncs.values()].map(async (sync) => {
                 try {
@@ -491,21 +515,40 @@ export class EventSyncManager {
     /**
      * The state of the stream and of every orderbook, for the round span. The
      * last errors, the new failures and the new bad logs are the ones since the
-     * previous report, the report clears them
+     * previous report, the report clears them. The stream is out of sync when
+     * the poll reads the logs and it is behind the head for longer than
+     * outOfSyncAfter, see LogStream.behindSince, or the block number polled
+     * over http is not read for longer than that, an rpc that is down say. A
+     * quiet chain with no new block is not out of sync. An orderbook is out of
+     * sync when it is not live for longer than outOfSyncAfter since the start
      */
     report(): EventSyncReport {
-        const streamError = describe(this.stream.lastError);
-        this.stream.lastError = undefined;
+        const { stream } = this;
+        const now = Date.now();
+        const streamError = describe(stream.lastError);
+        stream.lastError = undefined;
+        const polls = this.mode === "http" || stream.fallback;
+        const behind =
+            stream.behindSince !== undefined && now - stream.behindSince > this.outOfSyncAfter;
+        // the http polling reads the block number on an interval, a ws head comes
+        // only with a new block, so only the http reads stop when the rpc is down
+        const { blockNumberReadAt, isPollingBlockNumber } = this.state;
+        const headsStopped =
+            !!isPollingBlockNumber &&
+            blockNumberReadAt > 0 &&
+            now - blockNumberReadAt > this.outOfSyncAfter;
         return {
             mode: this.mode,
             failedSubgraphs: this.failedSubgraphs,
             stream: {
-                drops: this.stream.drops,
-                backfilled: this.stream.backfilled,
-                reorged: this.stream.reorged,
+                drops: stream.drops,
+                backfilled: stream.backfilled,
+                reorged: stream.reorged,
+                outOfSync: polls && (behind || headsStopped),
                 lastError: streamError,
             },
             orderbooks: [...this.syncs.values()].map((sync) => {
+                if (sync.syncer.phase === "live") sync.notLiveSince = undefined;
                 const needs = sync.syncer.needs();
                 const lastError = describe(sync.lastError);
                 sync.lastError = undefined;
@@ -528,6 +571,9 @@ export class EventSyncManager {
                     newFailures,
                     newBadLogs,
                     newGivenUp,
+                    outOfSync:
+                        sync.notLiveSince !== undefined &&
+                        now - sync.notLiveSince > this.outOfSyncAfter,
                     startError: describe(sync.syncer.startError),
                     lastError,
                 };
@@ -595,6 +641,8 @@ export class EventSyncManager {
             // stands in already, a drop during the handover say, goes on
             if (!stream.fallback) {
                 stream.fallback = true;
+                // the blocks since the last proof of the socket wait for the poll
+                stream.behindSince = Date.now();
                 const from = this.backfillStart();
                 stream.pollFrom = from;
                 stream.pollStart =
@@ -603,6 +651,8 @@ export class EventSyncManager {
                         : from > POLL_REREAD_BLOCKS
                           ? from - POLL_REREAD_BLOCKS
                           : 0n;
+                // the blocks since then are read now, a quiet chain gives no head to wait for
+                this.pollSoon();
             }
             if (stream.resubscribeTimer !== undefined) return;
             stream.resubscribeTimer = setTimeout(() => {
@@ -729,7 +779,8 @@ export class EventSyncManager {
      * Once the poll has read past the block a reopened subscription started at,
      * the syncers apply the stream logs that waited, and the stream takes over.
      * A poll that fails is tried again on the next block, from the same block.
-     * One poll runs at a time
+     * A poll that ends behind a head that came during its read polls again at
+     * once. One poll runs at a time
      */
     private async poll() {
         const { stream } = this;
@@ -738,7 +789,11 @@ export class EventSyncManager {
         if (stream.polling || head < from) return;
         const start = stream.pollStart ?? from;
         const rereadFrom = from - POLL_REREAD_BLOCKS > start ? from - POLL_REREAD_BLOCKS : start;
+        // a slow read can end behind a newer head, the poll was caught up only
+        // to the head as it was when the read started
+        const startedAt = Date.now();
         stream.polling = true;
+        let succeeded = false;
         try {
             // the logs go to the syncers only once the whole range is read, a
             // poll that fails half way hands over nothing
@@ -758,6 +813,7 @@ export class EventSyncManager {
             this.pruneBlocks(head);
             stream.pollStart = start;
             stream.pollFrom = head + 1n;
+            stream.behindSince = this.state.canonicalBlockNumber > head ? startedAt : undefined;
             for (const sync of this.syncs.values()) this.onBlock(sync, head);
             if (stream.handoverAt !== undefined && head >= stream.handoverAt) {
                 stream.handoverAt = undefined;
@@ -765,11 +821,25 @@ export class EventSyncManager {
                 // a subscription that dropped again during the handover leaves the poll on
                 if (stream.open) stream.fallback = false;
             }
+            succeeded = true;
         } catch (error) {
             stream.lastError = error;
         } finally {
             stream.polling = false;
         }
+        // a head that came during the read does not wait for the next block, a
+        // quiet chain would leave it unread, a failed read waits for it though
+        if (succeeded && this.state.canonicalBlockNumber > head) this.pollSoon();
+    }
+
+    /**
+     * Polls now, when the poll reads the logs, the sync is open and a head is
+     * known, a poll before the first head would read from the first block of
+     * the chain
+     */
+    private pollSoon() {
+        if (this.stopBlocks === undefined || this.state.canonicalBlockNumber <= 0n) return;
+        if (this.mode === "http" || this.stream.fallback) void this.poll();
     }
 
     /**
