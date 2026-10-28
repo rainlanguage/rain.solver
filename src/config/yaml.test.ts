@@ -29,7 +29,7 @@ liquidityProviders:
  - lp1
  - lp2
 route: multi
-sleep: 20
+sleep: 20000
 poolUpdateInterval: 30
 gasCoveragePercentage: 110
 headroom: 2.5
@@ -130,7 +130,7 @@ orderbookTradeTypes:
             },
             liquidityProviders: ["lp1", "lp2"],
             route: "multi",
-            sleep: 20 * 1000,
+            sleep: 20000,
             poolUpdateInterval: 30,
             gasCoveragePercentage: "110",
             txGas: "15000",
@@ -236,7 +236,7 @@ orderbookTradeTypes:
             },
             liquidityProviders: ["lp1", "lp2"],
             route: "multi",
-            sleep: "20",
+            sleep: "20000",
             poolUpdateInterval: "30",
             gasCoveragePercentage: "110",
             txGas: "15000",
@@ -347,8 +347,8 @@ orderbookTradeTypes:
         assert.deepEqual(result.liquidityProviders, ["lp1", "lp2"]);
         assert.deepEqual(result.route, "multi");
 
-        // sleep is multiplied by 1000 in init()
-        assert.deepEqual(result.sleep, 20 * 1000);
+        // sleep is in milliseconds as given
+        assert.deepEqual(result.sleep, 20000);
         assert.deepEqual(result.poolUpdateInterval, 30);
         // gasCoveragePercentage was resolved with returnAsString
         assert.deepEqual(result.gasCoveragePercentage, "110");

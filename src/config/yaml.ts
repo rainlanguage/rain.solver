@@ -84,7 +84,7 @@ export type AppOptions = {
     maxRatio: boolean;
     /** list of liquidity providers names, default includes all liquidity providers */
     liquidityProviders?: string[];
-    /** Seconds to wait between each arb round, default is 10 */
+    /** Milliseconds to wait between each arb round, default is 10000 */
     sleep: number;
     /** Gas coverage percentage for each transaction to be considered profitable to be submitted, default is 100 */
     gasCoveragePercentage: string;
@@ -285,13 +285,11 @@ export namespace AppOptions {
                     "expected a boolean value for maxRatio",
                     true,
                 ),
-                sleep: Math.floor(
-                    Validator.resolveNumericValue(
-                        input.sleep,
-                        FLOAT_PATTERN,
-                        "invalid sleep value, must be an float greater than equal to 0",
-                        "10",
-                    ) * 1000,
+                sleep: Validator.resolveNumericValue(
+                    input.sleep,
+                    INT_PATTERN,
+                    "invalid sleep value, must be an integer greater than equal to 0",
+                    "10000",
                 ),
                 poolUpdateInterval: Validator.resolveNumericValue(
                     input.poolUpdateInterval,
