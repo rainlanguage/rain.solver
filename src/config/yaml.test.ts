@@ -1,4 +1,4 @@
-import { AppOptions, CallBlockTag } from "./yaml";
+import { AppOptions, CallBlockTag, RpcSelectionMode } from "./yaml";
 import { describe, it, assert, expect } from "vitest";
 import { writeFileSync, unlinkSync } from "fs";
 
@@ -17,6 +17,7 @@ walletCount: 10
 topupAmount: 0.5
 writeRpc:
     - url: http://write-rpc.example.com
+rpcSelection: Throttled
 wsRpc: wss://ws-rpc.example.com
 subgraph: ["http://subgraph.example.com"]
 contracts:
@@ -117,6 +118,7 @@ orderbookTradeTypes:
             walletCount: 10,
             topupAmount: "0.5",
             writeRpc: [{ url: "http://write-rpc.example.com" }],
+            rpcSelection: RpcSelectionMode.Throttled,
             wsRpc: "wss://ws-rpc.example.com",
             subgraph: ["http://subgraph.example.com"],
             contracts: {
@@ -438,6 +440,7 @@ orderbookTradeTypes:
         assert.equal(result.strictMaxOwnerProfilePartialTradeSizeCheck, false); // should be default false
         assert.equal(result.checkWalletBalanceTime, 15); // should be default 15
         assert.equal(result.defaultOwnerLimit, 5); // should be default 5
+        assert.equal(result.rpcSelection, RpcSelectionMode.Immediate); // should be default immediate
         assert.equal(result.wsRpc, undefined); // no ws rpc when unset
         assert.equal(result.flashblocks, false); // should be default false
         assert.equal(result.multiBroadcast, false); // should be default false
@@ -445,6 +448,56 @@ orderbookTradeTypes:
         assert.equal(result.gasBoostMultiplier, undefined); // no boost when unset
         assert.equal(result.gasBoostUsdThreshold, undefined); // no boost when unset
         assert.deepEqual(result.oracleMarketHours, { open: 480, close: 1439 }); // should be default 08:00-23:59
+    });
+
+    it("test AppOptions rpcSelection", async function () {
+        const yaml = (rpcSelection: string) => `
+rpc:
+  - url: http://rpc.example.com
+subgraph: ["http://subgraph.example.com"]
+key: "0x${"1".repeat(64)}"
+botMinBalance: 1
+blockTime: 1000
+contracts:
+  v4:
+    dispair: "0x2222222222222222222222222222222222222222"
+${rpcSelection}
+`;
+        const resolve = (rpcSelection: string) => {
+            const res = AppOptions.tryFromYamlString(yaml(rpcSelection));
+            assert(res.isOk());
+            return res.value.rpcSelection;
+        };
+
+        // default
+        assert.equal(resolve(""), RpcSelectionMode.Immediate);
+        assert.equal(resolve("rpcSelection:"), RpcSelectionMode.Immediate);
+
+        // happy, case insensitive
+        assert.equal(resolve("rpcSelection: immediate"), RpcSelectionMode.Immediate);
+        assert.equal(resolve("rpcSelection: THROTTLED"), RpcSelectionMode.Throttled);
+
+        // happy from env, default for unset env
+        process.env.RPC_SELECTION_YAML_TEST = "throttled";
+        assert.equal(
+            resolve('rpcSelection: "$RPC_SELECTION_YAML_TEST"'),
+            RpcSelectionMode.Throttled,
+        );
+        delete process.env.RPC_SELECTION_YAML_TEST;
+        assert.equal(
+            resolve('rpcSelection: "$RPC_SELECTION_YAML_TEST"'),
+            RpcSelectionMode.Immediate,
+        );
+
+        // unhappy
+        for (const bad of ["rpcSelection: fast", "rpcSelection: true", "rpcSelection: 1"]) {
+            const res = AppOptions.tryFromYamlString(yaml(bad));
+            assert(res.isErr());
+            assert.include(
+                String((res.error as any).cause?.message ?? res.error.message),
+                "expected either of immediate, throttled for rpcSelection",
+            );
+        }
     });
 });
 

@@ -30,6 +30,14 @@ writeRpc:
   - url: https://rpc-url2.com
     weight: 0.5
 
+# How the rpc of a request is picked among the rpc list.
+# immediate: a draw over the rpcs' recent success rates that always lands on one of them, a healthier rpc more
+# often, so a request never waits for a pick, with one rpc every request goes to it at once.
+# throttled: the draw leaves room for no pick, the share the rpcs' failures take, a miss waits and draws again
+# for up to 10 seconds, so requests are held back while the rpcs fail, and fail with "No RPC available" after that.
+# Default is immediate.
+rpcSelection: immediate
+
 # Optional websocket rpc url, used explicitly for the block number watcher
 # new heads subscription for the earliest possible block updates, when unset
 # the block number is polled over http at blockTime intervals instead.
