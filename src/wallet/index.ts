@@ -6,7 +6,7 @@ import { RainSolverSigner } from "../signer";
 import { PreAssembledSpan } from "../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { ErrorSeverity, errorSnapshot } from "../error";
-import { shuffleArray, sleep, ABI, Result, TokenDetails } from "../common";
+import { shuffleArray, ABI, Result, TokenDetails } from "../common";
 import { WalletConfig, WalletType, MainAccountDerivationIndex } from "./config";
 import { transferTokenFrom, transferRemainingGasFrom, convertToGas } from "./sweep";
 import {
@@ -111,6 +111,9 @@ export class WalletManager {
     ): Promise<{ walletManager: WalletManager; reports: PreAssembledSpan[] }> {
         const walletManager = new WalletManager(state);
 
+        // cache the next nonce of every wallet before any tx goes out
+        await walletManager.syncNonces();
+
         // topup workers if this is a multiwallet setup
         const reports = [];
         if (walletManager.config.type === WalletType.Mnemonic) {
@@ -125,6 +128,24 @@ export class WalletManager {
         }
 
         return { walletManager, reports };
+    }
+
+    /**
+     * Caches the next nonce of the main wallet and every active worker by fetching
+     * their tx counts, so their sends do not fetch it every time, best effort, a
+     * wallet whose fetch fails gets its nonce fetched at its first send instead
+     */
+    async syncNonces() {
+        const signers = [this.mainSigner, ...this.workers.signers.values()];
+        await Promise.all(signers.map((signer) => this.syncNonce(signer)));
+    }
+
+    /**
+     * Caches the next nonce of the given wallet, best effort, see syncNonces
+     * @param signer - The wallet signer
+     */
+    async syncNonce(signer: RainSolverSigner) {
+        await this.state.nonceCache.sync(signer).catch(() => {});
     }
 
     /**
@@ -237,10 +258,9 @@ export class WalletManager {
         const report = fundWalletResult.isOk() ? fundWalletResult.value : fundWalletResult.error;
         report.name = "add-wallet";
 
-        this.workers.signers.set(
-            wallet.address.toLowerCase(),
-            RainSolverSigner.create(wallet, this.state),
-        );
+        const signer = RainSolverSigner.create(wallet, this.state);
+        await this.syncNonce(signer);
+        this.workers.signers.set(wallet.address.toLowerCase(), signer);
         return report;
     }
 
@@ -515,6 +535,7 @@ export class WalletManager {
     async tryAddWorker(worker: RainSolverSigner): Promise<PreAssembledSpan> {
         const fundWalletResult = await this.fundWallet(worker.account.address);
         if (fundWalletResult.isOk()) {
+            await this.syncNonce(worker);
             this.workers.signers.set(worker.account.address.toLowerCase(), worker);
         } else {
             this.workers.pendingAdd.set(worker.account.address.toLowerCase(), worker);
@@ -665,25 +686,20 @@ export class WalletManager {
     }
 
     /**
-     * Returns the first available signer by polling the
-     * signers until first one becomes available
+     * Returns a signer for an order, right away, an order never waits on a wallet.
+     * The quotes, the dryrun and the tx of the order all run with it, so the tx goes
+     * out from the wallet its dryrun ran with. Picks at random among the workers with
+     * no tx in flight. When every worker has a tx in flight, returns a random one
+     * anyway, its tx goes out with the next nonce and queues behind the one in
+     * flight. Takes no lock, since an order may send no tx, the lock is taken when
+     * the tx goes out, see processTransaction. Returns the main wallet in single
+     * wallet mode.
      */
-    async getRandomSigner(shuffle = false): Promise<RainSolverSigner> {
-        if (!this.workers.signers.size) {
-            return this.mainSigner;
-        }
+    getFreeSigner(): RainSolverSigner {
+        if (!this.workers.signers.size) return this.mainSigner;
         const signers = Array.from(this.workers.signers.values());
-        if (shuffle) {
-            shuffleArray(signers);
-        }
-        for (;;) {
-            const acc = signers.find((v) => !v.busy);
-            if (acc) {
-                return acc;
-            } else {
-                await sleep(30);
-            }
-        }
+        shuffleArray(signers);
+        return signers.find((v) => !v.busy) ?? signers[0];
     }
 
     /** Returns ETH (gas token) balance of worker wallets by performing a multicall `getEthBalance` */

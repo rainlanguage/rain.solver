@@ -19,6 +19,7 @@ vi.mock("../signer", () => ({
             account: wallet,
             getSelfBalance: vi.fn(),
             getBalance: vi.fn().mockResolvedValue(0n),
+            getTransactionCount: vi.fn().mockResolvedValue(0),
             sendTx: vi.fn(),
             waitForReceipt: vi.fn(),
         })),
@@ -120,6 +121,125 @@ describe("Test WalletManager", () => {
             expect(walletManager.workers.signers.size).toBe(3);
             expect(reports).toHaveLength(3);
             expect(walletManager.workers.lastUsedDerivationIndex).toBe(3);
+        });
+
+        it("should cache the next nonce of the main wallet and every worker before funding", async () => {
+            const syncSpy = vi.spyOn(multiWalletState.nonceCache, "sync");
+            const fundWalletSpy = vi.spyOn(WalletManager.prototype, "fundWallet");
+            const { walletManager } = await WalletManager.init(multiWalletState);
+
+            // the main wallet and the 3 workers
+            expect(syncSpy).toHaveBeenCalledTimes(4);
+            expect(syncSpy).toHaveBeenCalledWith(walletManager.mainSigner);
+            expect(multiWalletState.nonceCache.get(walletManager.mainSigner.account.address)).toBe(
+                0,
+            );
+            for (const worker of walletManager.workers.signers.values()) {
+                expect(syncSpy).toHaveBeenCalledWith(worker);
+                expect(multiWalletState.nonceCache.get(worker.account.address)).toBe(0);
+            }
+            const lastSync = Math.max(...syncSpy.mock.invocationCallOrder);
+            const firstFund = Math.min(...fundWalletSpy.mock.invocationCallOrder);
+            expect(lastSync).toBeLessThan(firstFund);
+
+            syncSpy.mockRestore();
+            fundWalletSpy.mockRestore();
+        });
+
+        it("should init even when caching the nonces fails", async () => {
+            const syncSpy = vi
+                .spyOn(multiWalletState.nonceCache, "sync")
+                .mockRejectedValue(new Error("rpc down"));
+            const { walletManager, reports } = await WalletManager.init(multiWalletState);
+
+            expect(syncSpy).toHaveBeenCalledTimes(4);
+            expect(walletManager.workers.signers.size).toBe(3);
+            expect(reports).toHaveLength(3);
+            expect(
+                multiWalletState.nonceCache.get(walletManager.mainSigner.account.address),
+            ).toBeUndefined();
+
+            syncSpy.mockRestore();
+        });
+    });
+
+    describe("Test syncNonces", () => {
+        it("should cache the tx count of the main wallet and every worker", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const signers = [
+                walletManager.mainSigner,
+                ...Array.from(walletManager.workers.signers.values()),
+            ];
+            signers.forEach((signer, i) => {
+                (signer.getTransactionCount as Mock).mockResolvedValue(10 + i);
+            });
+
+            await walletManager.syncNonces();
+
+            signers.forEach((signer, i) => {
+                expect(signer.getTransactionCount).toHaveBeenCalledWith({
+                    address: signer.account.address,
+                    blockTag: "latest",
+                });
+                expect(multiWalletState.nonceCache.get(signer.account.address)).toBe(10 + i);
+            });
+        });
+
+        it("should cache the other wallets when the fetch of one wallet fails", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const workers = Array.from(walletManager.workers.signers.values());
+            multiWalletState.nonceCache.set(walletManager.mainSigner.account.address, 7);
+            (walletManager.mainSigner.getTransactionCount as Mock).mockRejectedValue(
+                new Error("rpc down"),
+            );
+            workers.forEach((worker) => {
+                (worker.getTransactionCount as Mock).mockResolvedValue(3);
+            });
+
+            await expect(walletManager.syncNonces()).resolves.toBeUndefined();
+
+            // the failed fetch keeps what was cached
+            expect(multiWalletState.nonceCache.get(walletManager.mainSigner.account.address)).toBe(
+                7,
+            );
+            workers.forEach((worker) => {
+                expect(multiWalletState.nonceCache.get(worker.account.address)).toBe(3);
+            });
+        });
+
+        it("should cache the tx count of the main wallet in single wallet mode", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+            (walletManager.mainSigner.getTransactionCount as Mock).mockResolvedValue(5);
+
+            await walletManager.syncNonces();
+
+            expect(walletManager.mainSigner.getTransactionCount).toHaveBeenCalledTimes(2);
+            expect(singleWalletState.nonceCache.get(walletManager.mainSigner.account.address)).toBe(
+                5,
+            );
+        });
+    });
+
+    describe("Test syncNonce", () => {
+        it("should cache the tx count of the given wallet", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+            (workerSigner.getTransactionCount as Mock).mockResolvedValue(9);
+
+            await walletManager.syncNonce(workerSigner);
+
+            expect(workerSigner.getTransactionCount).toHaveBeenCalledWith({
+                address: workerSigner.account.address,
+                blockTag: "latest",
+            });
+            expect(singleWalletState.nonceCache.get(workerSigner.account.address)).toBe(9);
+        });
+
+        it("should not throw when the fetch fails", async () => {
+            const { walletManager } = await WalletManager.init(singleWalletState);
+            (workerSigner.getTransactionCount as Mock).mockRejectedValue(new Error("rpc down"));
+
+            await expect(walletManager.syncNonce(workerSigner)).resolves.toBeUndefined();
+            expect(singleWalletState.nonceCache.get(workerSigner.account.address)).toBeUndefined();
         });
     });
 
@@ -244,12 +364,29 @@ describe("Test WalletManager", () => {
                 wait: waitForReceiptSpy.mockResolvedValue({ status: "success" }),
             });
 
+            const newAddress = mnemonicToAccount(testMnemonic, {
+                addressIndex: initialIndex + 1,
+            }).address.toLowerCase();
+            let addedBeforeSync: boolean | undefined;
+            const syncSpy = vi
+                .spyOn(multiWalletState.nonceCache, "sync")
+                .mockImplementation(async () => {
+                    addedBeforeSync = walletManager.workers.signers.has(newAddress);
+                    return 0;
+                });
+
             const report = await walletManager.addWallet();
 
             expect(report).toBeDefined();
             expect(walletManager.workers.signers.size).toBe(initialCount + 1);
             expect(walletManager.workers.lastUsedDerivationIndex).toBe(initialIndex + 1);
             expect(report!.name).toBe("add-wallet");
+
+            // the new worker gets its next nonce cached before it is added
+            expect(syncSpy).toHaveBeenCalledTimes(1);
+            expect(syncSpy).toHaveBeenCalledWith(walletManager.workers.signers.get(newAddress));
+            expect(addedBeforeSync).toBe(false);
+            syncSpy.mockRestore();
 
             expect(getSelfBalanceSpy).toHaveBeenCalledTimes(1);
             expect(sendTxSpy).toHaveBeenCalledTimes(1);
@@ -850,15 +987,50 @@ describe("Test WalletManager", () => {
                 } as any),
             );
 
+            const address = workerSigner.account.address.toLowerCase();
+            let addedBeforeSync: boolean | undefined;
+            const syncSpy = vi
+                .spyOn(multiWalletState.nonceCache, "sync")
+                .mockImplementation(async () => {
+                    addedBeforeSync = walletManager.workers.signers.has(address);
+                    return 0;
+                });
+
             const report = await walletManager.tryAddWorker(workerSigner);
 
             expect(report.name).toBe("add-wallet");
             expect(report.status?.code).toBe(SpanStatusCode.OK);
+            expect(walletManager.workers.signers.has(address)).toBe(true);
+            expect(walletManager.workers.pendingAdd.size).toBe(0);
+            expect(fundWalletSpy).toHaveBeenCalledWith(workerSigner.account.address);
+            // the worker gets its next nonce cached before it is added
+            expect(syncSpy).toHaveBeenCalledTimes(1);
+            expect(syncSpy).toHaveBeenCalledWith(workerSigner);
+            expect(addedBeforeSync).toBe(false);
+
+            fundWalletSpy.mockRestore();
+            syncSpy.mockRestore();
+        });
+
+        it("should add the worker even when caching its nonce fails", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const fundWalletSpy = vi.spyOn(walletManager, "fundWallet").mockResolvedValue(
+                common.Result.ok({
+                    name: "fund-wallet",
+                    status: { code: SpanStatusCode.OK },
+                    attributes: {},
+                    end: vi.fn(),
+                } as any),
+            );
+            (workerSigner.getTransactionCount as Mock).mockRejectedValue(new Error("rpc down"));
+
+            const report = await walletManager.tryAddWorker(workerSigner);
+
+            expect(report.status?.code).toBe(SpanStatusCode.OK);
             expect(
                 walletManager.workers.signers.has(workerSigner.account.address.toLowerCase()),
             ).toBe(true);
-            expect(walletManager.workers.pendingAdd.size).toBe(0);
-            expect(fundWalletSpy).toHaveBeenCalledWith(workerSigner.account.address);
+            expect(multiWalletState.nonceCache.get(workerSigner.account.address)).toBeUndefined();
 
             fundWalletSpy.mockRestore();
         });
@@ -874,6 +1046,8 @@ describe("Test WalletManager", () => {
                 } as any),
             );
 
+            const syncSpy = vi.spyOn(multiWalletState.nonceCache, "sync");
+
             const report = await walletManager.tryAddWorker(workerSigner);
 
             expect(report.name).toBe("add-wallet");
@@ -884,8 +1058,10 @@ describe("Test WalletManager", () => {
             expect(
                 walletManager.workers.signers.has(workerSigner.account.address.toLowerCase()),
             ).toBe(false);
+            expect(syncSpy).not.toHaveBeenCalled();
 
             fundWalletSpy.mockRestore();
+            syncSpy.mockRestore();
         });
     });
 
@@ -1412,103 +1588,85 @@ describe("Test WalletManager", () => {
         });
     });
 
-    describe("Test getRandomSigner", () => {
-        beforeEach(() => {
-            vi.clearAllMocks();
-        });
-
-        it("should return mainSigner when no workers available (single wallet mode)", async () => {
+    describe("Test getFreeSigner", () => {
+        it("should return mainSigner without locking it in single wallet mode", async () => {
             const { walletManager } = await WalletManager.init(singleWalletState);
-            const signer = await walletManager.getRandomSigner();
+            (walletManager.mainSigner as any).busy = false;
+            const signer = walletManager.getFreeSigner();
 
             expect(signer).toBe(walletManager.mainSigner);
+            expect(signer.busy).toBe(false);
         });
 
         it("should return mainSigner when workers map is empty (multi wallet mode)", async () => {
             const { walletManager } = await WalletManager.init(multiWalletState);
             walletManager.workers.signers.clear();
-            const signer = await walletManager.getRandomSigner();
+            const signer = walletManager.getFreeSigner();
 
             expect(signer).toBe(walletManager.mainSigner);
         });
 
-        it("should return available worker when not busy", async () => {
-            const { walletManager } = await WalletManager.init(multiWalletState);
-            // mock all workers as not busy
-            for (const [, worker] of walletManager.workers.signers) {
-                (worker as any).busy = false;
-            }
-            const signer = await walletManager.getRandomSigner();
-
-            expect(walletManager.workers.signers.has(signer.account.address.toLowerCase())).toBe(
-                true,
-            );
-            expect(signer).not.toBe(walletManager.mainSigner);
-        });
-
-        it("should wait and return first available worker when all initially busy", async () => {
+        it("should return a free worker without locking it", async () => {
             const { walletManager } = await WalletManager.init(multiWalletState);
             const workers = Array.from(walletManager.workers.signers.values());
-            // mock all workers as busy initially
             workers.forEach((worker) => {
-                (worker as any).busy = true;
+                (worker as any).busy = false;
             });
-            // make first worker available after some time
-            setTimeout(() => {
-                (workers[0] as any).busy = false;
-            }, 50);
-            const signer = await walletManager.getRandomSigner();
 
-            expect(signer).toBe(workers[0]);
+            const signer = walletManager.getFreeSigner();
+
+            // the lock is taken when the tx goes out, an order may send none
+            expect(workers).toContain(signer);
+            workers.forEach((worker) => expect(worker.busy).toBe(false));
         });
 
-        it("should shuffle workers when shuffle parameter is true", async () => {
+        it("should skip the busy workers", async () => {
             const { walletManager } = await WalletManager.init(multiWalletState);
-            // mock all workers as not busy
-            for (const [, worker] of walletManager.workers.signers) {
-                (worker as any).busy = false;
-            }
-            // spy on shuffleArray utility
-            const shuffleArraySpy = vi.spyOn(common, "shuffleArray");
-            await walletManager.getRandomSigner(true);
+            const workers = Array.from(walletManager.workers.signers.values());
+            (workers[0] as any).busy = true;
+            (workers[1] as any).busy = false;
+            (workers[2] as any).busy = true;
+
+            const signer = walletManager.getFreeSigner();
+
+            expect(signer).toBe(workers[1]);
+            expect(signer.busy).toBe(false);
+        });
+
+        it("should shuffle the workers and take the first free one", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const workers = Array.from(walletManager.workers.signers.values());
+            (workers[0] as any).busy = true;
+            (workers[1] as any).busy = false;
+            (workers[2] as any).busy = false;
+            const shuffleArraySpy = vi
+                .spyOn(common, "shuffleArray")
+                .mockImplementation((array: any[]) => array.reverse());
+
+            const signer = walletManager.getFreeSigner();
 
             expect(shuffleArraySpy).toHaveBeenCalledTimes(1);
-            expect(shuffleArraySpy).toHaveBeenCalledWith(expect.any(Array));
+            expect(signer).toBe(workers[2]);
 
             shuffleArraySpy.mockRestore();
         });
 
-        it("should return first available worker in order when shuffle is false", async () => {
+        it("should return the first worker after the shuffle right away when all are busy", async () => {
             const { walletManager } = await WalletManager.init(multiWalletState);
             const workers = Array.from(walletManager.workers.signers.values());
-            // make first two workers busy, third one available
-            (workers[0] as any).busy = true;
-            (workers[1] as any).busy = true;
-            (workers[2] as any).busy = false;
-
-            const signer = await walletManager.getRandomSigner(false);
-
-            expect(signer).toBe(workers[2]);
-        });
-
-        it("should handle scenario where worker becomes available during polling", async () => {
-            const { walletManager } = await WalletManager.init(multiWalletState);
-            const workers = Array.from(walletManager.workers.signers.values());
-            // mock all workers as busy initially
             workers.forEach((worker) => {
                 (worker as any).busy = true;
             });
-            // make second worker available after two polling cycles
-            setTimeout(() => {
-                (workers[1] as any).busy = false;
-            }, 70); // should be after 2-3 polling cycles (30ms each)
+            const shuffleArraySpy = vi
+                .spyOn(common, "shuffleArray")
+                .mockImplementation((array: any[]) => array.reverse());
 
-            const start = Date.now();
-            const signer = await walletManager.getRandomSigner();
-            const elapsed = Date.now() - start;
+            const signer = walletManager.getFreeSigner();
 
-            expect(signer).toBe(workers[1]);
-            expect(elapsed).toBeGreaterThanOrEqual(60); // at least 2 polling cycles
+            expect(signer).toBe(workers[2]);
+            workers.forEach((worker) => expect(worker.busy).toBe(true));
+
+            shuffleArraySpy.mockRestore();
         });
     });
 
