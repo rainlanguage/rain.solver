@@ -3,6 +3,7 @@ import { parseUnits } from "viem";
 import { fundVault } from "./fundVault";
 import { SelfFundVault } from "../config";
 import { RainSolverSigner } from "../signer";
+import { NonceCache } from "../signer/nonce";
 import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
 
 vi.mock("sushi", async (importOriginal) => ({
@@ -71,7 +72,7 @@ describe("Test fundVault", () => {
                     },
                 },
                 watchedTokens: new Map(),
-                nonceCache: new Map(),
+                nonceCache: new NonceCache(),
                 watchToken: vi.fn(),
                 router: {
                     sushi: {
@@ -133,7 +134,7 @@ describe("Test fundVault", () => {
         });
         expect(mockSigner.sendTx as Mock).not.toHaveBeenCalled(); // No swap should occur
         // viem took the nonce over rpc, so the cached one is dropped
-        expect(mockSigner.state.nonceCache.has("0xwallet")).toBe(false);
+        expect(mockSigner.state.nonceCache.get("0xwallet")).toBeUndefined();
     });
 
     it("should successfully fund vault with gas swap when signer has insufficient token balance", async () => {
@@ -347,7 +348,7 @@ describe("Test fundVault", () => {
         );
         // the approve tx alone took a nonce over rpc, so the cached one is dropped
         expect(mockSigner.writeContract).toHaveBeenCalledTimes(1);
-        expect(mockSigner.state.nonceCache.has("0xwallet")).toBe(false);
+        expect(mockSigner.state.nonceCache.get("0xwallet")).toBeUndefined();
     });
 
     it("should throw error object when deposit transaction reverts", async () => {

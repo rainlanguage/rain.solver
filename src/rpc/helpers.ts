@@ -107,24 +107,33 @@ export function isWebSocketUrl(url: string): boolean {
  * which are in 2 fixed point decimalss
  * @param ranges - The array of success rates as ranges to randomly select from
  * @param weights - The array of weights to adjust the probability of each item being picked, should be in [0, 1] range
+ * @param alwaysLands - (optional) Draws over the ranges alone, so every draw lands on an item, in proportion to the ranges, default is false, the weights then reserve room where a draw lands on nothing
  * @returns The index of the picked item from the array or NaN if out-of-range
  */
-export function probablyPicksFrom(ranges: number[], weights: number[]): number {
+export function probablyPicksFrom(
+    ranges: number[],
+    weights: number[],
+    alwaysLands = false,
+): number {
+    // the share of the draw each item takes: its range alone when every draw
+    // must land, else the room its weight reserves, the part of it above the
+    // range is where the draw lands on nothing
+    const span = (i: number) =>
+        alwaysLands ? ranges[i] : Math.max(ranges[i], Math.ceil(10_000 * weights[i]));
     // pick a random int from [1, max] range
-    const max = ranges.reduce((a, b, i) => a + Math.max(b, Math.ceil(10_000 * weights[i])), 0);
+    const max = ranges.reduce((a, _, i) => a + span(i), 0);
     const pick = Math.floor(Math.random() * max) + 1;
 
     // we now match the selection rates against
     // picked random int to get picked index
+    let offset = 0;
     for (let i = 0; i < ranges.length; i++) {
-        const offset = ranges
-            .slice(0, i)
-            .reduce((a, b, j) => a + Math.max(b, Math.ceil(10_000 * weights[j])), 0);
         const lowerBound = offset + 1;
         const upperBound = offset + ranges[i];
         if (lowerBound <= pick && pick <= upperBound) {
             return i;
         }
+        offset += span(i);
     }
 
     // out-of-range, picked value didnt match any of the items from the given list

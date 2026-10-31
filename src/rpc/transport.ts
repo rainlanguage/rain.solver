@@ -8,9 +8,9 @@ import { BaseError, createTransport, Transport, TransportConfig } from "viem";
  */
 export namespace RainSolverTransportDefaults {
     export const DEDUPE = true as const;
-    export const RETRY_COUNT = 1 as const;
+    export const RETRY_COUNT = 0 as const;
     export const TIMEOUT = 10_000 as const;
-    export const RETRY_DELAY = 50 as const;
+    export const RETRY_DELAY = 10 as const;
     export const RETRY_COUNT_NEXT = 1 as const;
     export const POLLING_INTERVAL = 50 as const;
     export const POLLING_TIMEOUT = 10_000 as const;
@@ -26,9 +26,9 @@ export type RainSolverTransportConfig = {
     name?: TransportConfig["name"];
     /** The request timeout in milliseconds, default: 10_000ms */
     timeout?: TransportConfig["timeout"];
-    /** The max number of times to retry, default: 1 */
+    /** The max number of times to retry, default: 0 */
     retryCount?: TransportConfig["retryCount"];
-    /** The base delay (in ms) between retries, defaukt: 150ms */
+    /** The base delay (in ms) between retries, default: 10ms */
     retryDelay?: TransportConfig["retryDelay"];
     /** The polling timeout in milliseconds when no rpc becomes available, default: 10_000ms */
     pollingTimeout?: number;
@@ -90,10 +90,12 @@ export function rainSolverTransport(
         // cached transport instance of each rpc url, an instance is created once
         // on first use and reused for all future requests to that url, a stable
         // instance keeps viem's dedupe id stable, so identical concurrent requests
-        // to the same rpc get deduplicated into a single wire request by viem
+        // to the same rpc get deduplicated into a single wire request by viem,
+        // the instance takes the configured timeout, so a read is bound by it
+        // the same way a send is, see broadcastTx
         const instances: Record<string, ReturnType<Transport>> = {};
         const getInstance = (transport: Transport, url: string) =>
-            (instances[url] ??= transport({ chain, retryCount: 0 }));
+            (instances[url] ??= transport({ chain, retryCount: 0, timeout }));
         return createTransport(
             {
                 key,

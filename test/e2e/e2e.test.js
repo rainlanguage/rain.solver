@@ -20,7 +20,7 @@ const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http")
 const { SEMRESATTRS_SERVICE_NAME } = require("@opentelemetry/semantic-conventions");
 const { BasicTracerProvider, BatchSpanProcessor } = require("@opentelemetry/sdk-trace-base");
 const { OrderManager } = require("../../src/order");
-const { waitUntilFree, estimateGasCost } = require("../../src/signer/actions");
+const { estimateGasCost } = require("../../src/signer/actions");
 const {
     sendTx,
     tryGetReceipt,
@@ -197,9 +197,6 @@ for (let i = 0; i < testData.length; i++) {
                     bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
-                    };
-                    bot.waitUntilFree = async () => {
-                        return await waitUntilFree(bot);
                     };
                     bot.estimateGasCost = async (tx) => {
                         return await estimateGasCost(bot, tx);
@@ -384,7 +381,7 @@ for (let i = 0; i < testData.length; i++) {
                         orderManager,
                         {
                             mainSigner: bot,
-                            getRandomSigner: () => bot,
+                            getFreeSigner: () => bot,
                         },
                         // config,
                     );
@@ -494,9 +491,6 @@ for (let i = 0; i < testData.length; i++) {
                     bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
-                    };
-                    bot.waitUntilFree = async () => {
-                        return await waitUntilFree(bot);
                     };
                     bot.estimateGasCost = async (tx) => {
                         return await estimateGasCost(bot, tx);
@@ -757,7 +751,7 @@ for (let i = 0; i < testData.length; i++) {
                         orderManager,
                         {
                             mainSigner: bot,
-                            getRandomSigner: () => bot,
+                            getFreeSigner: () => bot,
                         },
                         // config,
                     );
@@ -884,9 +878,6 @@ for (let i = 0; i < testData.length; i++) {
                     bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
-                    };
-                    bot.waitUntilFree = async () => {
-                        return await waitUntilFree(bot);
                     };
                     bot.estimateGasCost = async (tx) => {
                         return await estimateGasCost(bot, tx);
@@ -1174,7 +1165,7 @@ for (let i = 0; i < testData.length; i++) {
                         orderManager,
                         {
                             mainSigner: bot,
-                            getRandomSigner: () => bot,
+                            getFreeSigner: () => bot,
                         },
                         // config,
                     );
@@ -1299,9 +1290,6 @@ for (let i = 0; i < testData.length; i++) {
                     bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
-                    };
-                    bot.waitUntilFree = async () => {
-                        return await waitUntilFree(bot);
                     };
                     bot.estimateGasCost = async (tx) => {
                         return await estimateGasCost(bot, tx);
@@ -1571,7 +1559,7 @@ for (let i = 0; i < testData.length; i++) {
                         orderManager,
                         {
                             mainSigner: bot,
-                            getRandomSigner: () => bot,
+                            getFreeSigner: () => bot,
                         },
                         // config,
                     );
@@ -1720,9 +1708,6 @@ for (let i = 0; i < testData.length; i++) {
                     bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
-                    };
-                    bot.waitUntilFree = async () => {
-                        return await waitUntilFree(bot);
                     };
                     bot.estimateGasCost = async (tx) => {
                         return await estimateGasCost(bot, tx);
@@ -1914,7 +1899,7 @@ for (let i = 0; i < testData.length; i++) {
                         orderManager,
                         {
                             mainSigner: bot,
-                            getRandomSigner: () => bot,
+                            getFreeSigner: () => bot,
                         },
                         // config,
                     );
@@ -2025,9 +2010,6 @@ for (let i = 0; i < testData.length; i++) {
                     bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
-                    };
-                    bot.waitUntilFree = async () => {
-                        return await waitUntilFree(bot);
                     };
                     bot.estimateGasCost = async (tx) => {
                         return await estimateGasCost(bot, tx);
@@ -2224,7 +2206,7 @@ for (let i = 0; i < testData.length; i++) {
                         orderManager,
                         {
                             mainSigner: bot,
-                            getRandomSigner: () => bot,
+                            getFreeSigner: () => bot,
                         },
                         // config,
                     );
@@ -2344,9 +2326,6 @@ for (let i = 0; i < testData.length; i++) {
                     bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
-                    };
-                    bot.waitUntilFree = async () => {
-                        return await waitUntilFree(bot);
                     };
                     bot.estimateGasCost = async (tx) => {
                         return await estimateGasCost(bot, tx);
@@ -2627,7 +2606,7 @@ for (let i = 0; i < testData.length; i++) {
                         orderManager,
                         {
                             mainSigner: bot,
-                            getRandomSigner: () => bot,
+                            getFreeSigner: () => bot,
                         },
                         // config,
                     );
@@ -2748,9 +2727,6 @@ for (let i = 0; i < testData.length; i++) {
                     bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
-                    };
-                    bot.waitUntilFree = async () => {
-                        return await waitUntilFree(bot);
                     };
                     bot.estimateGasCost = async (tx) => {
                         return await estimateGasCost(bot, tx);
@@ -3037,7 +3013,7 @@ for (let i = 0; i < testData.length; i++) {
                         orderManager,
                         {
                             mainSigner: bot,
-                            getRandomSigner: () => bot,
+                            getFreeSigner: () => bot,
                         },
                         // config,
                     );
@@ -3158,9 +3134,6 @@ for (let i = 0; i < testData.length; i++) {
                     bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
-                    };
-                    bot.waitUntilFree = async () => {
-                        return await waitUntilFree(bot);
                     };
                     bot.estimateGasCost = async (tx) => {
                         return await estimateGasCost(bot, tx);
@@ -3452,7 +3425,7 @@ for (let i = 0; i < testData.length; i++) {
                         orderManager,
                         {
                             mainSigner: bot,
-                            getRandomSigner: () => bot,
+                            getFreeSigner: () => bot,
                         },
                         // config,
                     );
@@ -3611,9 +3584,6 @@ for (let i = 0; i < testData.length; i++) {
                     bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
-                    };
-                    bot.waitUntilFree = async () => {
-                        return await waitUntilFree(bot);
                     };
                     bot.estimateGasCost = async (tx) => {
                         return await estimateGasCost(bot, tx);
@@ -3818,7 +3788,7 @@ for (let i = 0; i < testData.length; i++) {
                         orderManager,
                         {
                             mainSigner: bot,
-                            getRandomSigner: () => bot,
+                            getFreeSigner: () => bot,
                         },
                         // config,
                     );
@@ -3944,9 +3914,6 @@ for (let i = 0; i < testData.length; i++) {
                     bot.busy = false;
                     bot.sendTx = async (tx) => {
                         return await sendTx(bot, tx);
-                    };
-                    bot.waitUntilFree = async () => {
-                        return await waitUntilFree(bot);
                     };
                     bot.estimateGasCost = async (tx) => {
                         return await estimateGasCost(bot, tx);
@@ -4151,7 +4118,7 @@ for (let i = 0; i < testData.length; i++) {
                         orderManager,
                         {
                             mainSigner: bot,
-                            getRandomSigner: () => bot,
+                            getFreeSigner: () => bot,
                         },
                         // config,
                     );

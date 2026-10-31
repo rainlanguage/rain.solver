@@ -2,7 +2,15 @@ import { sleep } from "../common";
 import { RainSolverTransportTimeoutError } from "./transport";
 import { Transport, TimeoutError, ExecutionRevertedError } from "viem";
 import { vi, describe, it, assert, Mock, beforeEach, expect } from "vitest";
-import { RpcState, RpcConfig, RpcMetrics, RpcProgress, RpcBufferType, withRpcMetrics } from "./rpc";
+import {
+    RpcState,
+    RpcConfig,
+    RpcMetrics,
+    RpcProgress,
+    RpcBufferType,
+    withRpcMetrics,
+    RpcSelectionMode,
+} from "./rpc";
 
 vi.mock("../common", async (importOriginal) => ({
     ...(await importOriginal()),
@@ -46,6 +54,11 @@ describe("Test RpcState", async function () {
         assert.deepEqual(result.lastUsedRpcIndex, expected.lastUsedRpcIndex);
         assert.deepEqual(result.metrics, expected.metrics);
         assert.deepEqual(result.lastUsedUrl, urls[3]);
+        assert.equal(result.selection, RpcSelectionMode.Immediate);
+        assert.equal(
+            new RpcState(configs, RpcSelectionMode.Throttled).selection,
+            RpcSelectionMode.Throttled,
+        );
 
         // unhappy init
         assert.throws(() => new RpcState([]), "empty list, expected at least one rpc");
@@ -53,60 +66,63 @@ describe("Test RpcState", async function () {
 
     it("test next rpc from state happy", async function () {
         const urls = configs.map((v) => v.url);
-        const state = new RpcState(configs);
+        // both modes pick in proportion to the success rates
+        for (const selection of [RpcSelectionMode.Immediate, RpcSelectionMode.Throttled]) {
+            const state = new RpcState(configs, selection);
 
-        // set arbitrary buffer and success for each rpc
-        const arr = Array(100).fill(RpcBufferType.Failure);
-        // 40% success rate
-        state.metrics[urls[0]].progress.buffer = arr;
-        state.metrics[urls[0]].progress.success = 40;
+            // set arbitrary buffer and success for each rpc
+            const arr = Array(100).fill(RpcBufferType.Failure);
+            // 40% success rate
+            state.metrics[urls[0]].progress.buffer = arr;
+            state.metrics[urls[0]].progress.success = 40;
 
-        // 30% success rate
-        state.metrics[urls[1]].progress.buffer = arr;
-        state.metrics[urls[1]].progress.success = 30;
+            // 30% success rate
+            state.metrics[urls[1]].progress.buffer = arr;
+            state.metrics[urls[1]].progress.success = 30;
 
-        // 20% success rate
-        state.metrics[urls[2]].progress.buffer = arr;
-        state.metrics[urls[2]].progress.success = 20;
+            // 20% success rate
+            state.metrics[urls[2]].progress.buffer = arr;
+            state.metrics[urls[2]].progress.success = 20;
 
-        // 10% success rate
-        state.metrics[urls[3]].progress.buffer = arr;
-        state.metrics[urls[3]].progress.success = 10;
+            // 10% success rate
+            state.metrics[urls[3]].progress.buffer = arr;
+            state.metrics[urls[3]].progress.success = 10;
 
-        const results = {
-            [urls[0]]: 0,
-            [urls[1]]: 0,
-            [urls[2]]: 0,
-            [urls[3]]: 0,
-        };
+            const results = {
+                [urls[0]]: 0,
+                [urls[1]]: 0,
+                [urls[2]]: 0,
+                [urls[3]]: 0,
+            };
 
-        // run next rpc 10000 times
-        for (let i = 0; i < 10000; i++) {
-            await state.nextRpc({ pollingInterval: 0, timeout: 600000 });
-            const next = state.lastUsedUrl;
-            if (next === urls[0]) results[urls[0]]++;
-            if (next === urls[1]) results[urls[1]]++;
-            if (next === urls[2]) results[urls[2]]++;
-            if (next === urls[3]) results[urls[3]]++;
+            // run next rpc 10000 times
+            for (let i = 0; i < 10000; i++) {
+                await state.nextRpc({ pollingInterval: 0, timeout: 600000 });
+                const next = state.lastUsedUrl;
+                if (next === urls[0]) results[urls[0]]++;
+                if (next === urls[1]) results[urls[1]]++;
+                if (next === urls[2]) results[urls[2]]++;
+                if (next === urls[3]) results[urls[3]]++;
+            }
+
+            // convert to percentage
+            results[urls[0]] /= 100;
+            results[urls[1]] /= 100;
+            results[urls[2]] /= 100;
+            results[urls[3]] /= 100;
+
+            // results for number of times each rpc was picked
+            // should be close to the success rate percentage
+            assert.closeTo(results[urls[0]], 40, 2.5); // close to 40%
+            assert.closeTo(results[urls[1]], 30, 2.5); // close to 30%
+            assert.closeTo(results[urls[2]], 20, 2.5); // close to 20%
+            assert.closeTo(results[urls[3]], 10, 2.5); // close to 10%
         }
-
-        // convert to percentage
-        results[urls[0]] /= 100;
-        results[urls[1]] /= 100;
-        results[urls[2]] /= 100;
-        results[urls[3]] /= 100;
-
-        // results for number of times each rpc was picked
-        // should be close to the success rate percentage
-        assert.closeTo(results[urls[0]], 40, 2.5); // close to 40%
-        assert.closeTo(results[urls[1]], 30, 2.5); // close to 30%
-        assert.closeTo(results[urls[2]], 20, 2.5); // close to 20%
-        assert.closeTo(results[urls[3]], 10, 2.5); // close to 10%
     });
 
     it("test next rpc from state unhappy", async function () {
         const urls = configs.map((v) => v.url);
-        const state = new RpcState(configs);
+        const state = new RpcState(configs, RpcSelectionMode.Throttled);
 
         // set arbitrary buffer count
         for (const url of urls) {
@@ -126,7 +142,7 @@ describe("Test RpcState", async function () {
 
     it("should stop picking once the wait has timed out", async function () {
         const urls = configs.map((v) => v.url);
-        const state = new RpcState(configs);
+        const state = new RpcState(configs, RpcSelectionMode.Throttled);
         for (const url of urls) {
             state.metrics[url].progress.buffer = Array(100).fill(RpcBufferType.Failure);
         }
@@ -149,6 +165,87 @@ describe("Test RpcState", async function () {
         await new Promise((resolve) => setTimeout(resolve, 30));
         expect((sleep as Mock).mock.calls.length).toBe(sleepCalls);
         expect(state.lastUsedRpcIndex).toBe(lastUsedRpcIndex);
+    });
+
+    it("should return the only rpc at once in the immediate mode", async function () {
+        const url = configs[0].url;
+        const state = new RpcState([configs[0]]);
+        // a zero success rate, the throttled mode would mostly time out here
+        state.metrics[url].progress.buffer = Array(100).fill(RpcBufferType.Failure);
+
+        for (let i = 0; i < 100; i++) {
+            const picked = await state.nextRpc({ pollingInterval: 5, timeout: 0 });
+            expect(picked.url).toBe(url);
+            expect(picked.transport).toBe(state.transports[url]);
+            expect(state.lastUsedRpcIndex).toBe(0);
+            expect(state.lastUsedUrl).toBe(url);
+        }
+        expect(sleep).not.toHaveBeenCalled();
+    });
+
+    it("should always land in the immediate mode, never wait nor time out", async function () {
+        const urls = configs.map((v) => v.url);
+        const state = new RpcState(configs);
+        // every rpc at a zero success rate, the throttled mode would wait and time out here
+        for (const url of urls) {
+            state.metrics[url].progress.buffer = Array(100).fill(RpcBufferType.Failure);
+        }
+
+        const picks: Record<string, number> = {};
+        for (let i = 0; i < 4000; i++) {
+            const { transport, url } = await state.nextRpc({ pollingInterval: 5, timeout: 0 });
+            expect(urls).toContain(url);
+            expect(transport).toBe(state.transports[url]);
+            expect(state.lastUsedRpcIndex).toBe(urls.indexOf(url));
+            expect(state.lastUsedUrl).toBe(url);
+            picks[url] = (picks[url] ?? 0) + 1;
+        }
+        expect(sleep).not.toHaveBeenCalled();
+
+        // the equal floor rates share the picks evenly
+        for (const url of urls) {
+            assert.closeTo(picks[url] / 40, 25, 4);
+        }
+    });
+
+    it("should update the last used rpc with each pick in the immediate mode", async function () {
+        const urls = configs.map((v) => v.url);
+        const state = new RpcState(configs);
+        expect(state.lastUsedRpcIndex).toBe(3);
+
+        // the default rates of 5000 each make a 20000 wide draw
+        const randomSpy = vi
+            .spyOn(Math, "random")
+            .mockReturnValueOnce(0) // pick 1 -> first rpc
+            .mockReturnValueOnce(0.6); // pick 12001 -> third rpc
+
+        let picked = await state.nextRpc({});
+        expect(picked.url).toBe(urls[0]);
+        expect(state.lastUsedRpcIndex).toBe(0);
+        expect(state.lastUsedUrl).toBe(urls[0]);
+
+        picked = await state.nextRpc({});
+        expect(picked.url).toBe(urls[2]);
+        expect(state.lastUsedRpcIndex).toBe(2);
+        expect(state.lastUsedUrl).toBe(urls[2]);
+
+        randomSpy.mockRestore();
+    });
+
+    it("should fall back to the first rpc when the immediate draw misses", async function () {
+        const urls = configs.map((v) => v.url);
+        const state = new RpcState(configs);
+        state.lastUsedRpcIndex = 2;
+        // the rates have a floor above zero, zero rates force the draw to miss
+        for (const url of urls) {
+            vi.spyOn(state.metrics[url].progress, "selectionRate", "get").mockReturnValue(0);
+        }
+
+        const { transport, url } = await state.nextRpc({ pollingInterval: 5, timeout: 0 });
+        expect(url).toBe(urls[0]);
+        expect(transport).toBe(state.transports[urls[0]]);
+        expect(state.lastUsedRpcIndex).toBe(0);
+        expect(sleep).not.toHaveBeenCalled();
     });
 
     it("should return the picked transport atomically paired with its url", async function () {
