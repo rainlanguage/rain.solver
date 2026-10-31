@@ -15,6 +15,7 @@ import {
     PrivateKeyAccount,
 } from "viem";
 
+export { NonceCache } from "./nonce";
 export { RainSolverSignerActions } from "./actions";
 
 /**
@@ -81,11 +82,6 @@ export namespace RainSolverSigner {
                 writeSigner ? (state.writeRpc ?? state.rpc) : state.rpc,
                 state.rainSolverTransportConfig,
             ),
-            batch: {
-                multicall: {
-                    batchSize: 36_000,
-                },
-            },
         })
             .extend(publicActions)
             .extend(walletActions)

@@ -31,12 +31,24 @@ const ALREADY_KNOWN_ERRORS = [
     "nonce too low",
 ];
 
+/** The send error messages that name the nonce of the tx, a stale cached nonce is the likely cause */
+const NONCE_ERRORS = ["nonce too low", "nonce too high", "invalid nonce"];
+
+/** The message of a send error, lowercased */
+function sendErrorMessage(error: any): string {
+    return String(error?.details ?? error?.shortMessage ?? error?.message ?? error).toLowerCase();
+}
+
 /** Determines if the given send error means the node already holds the transaction */
 export function isAlreadyKnownTxError(error: any): boolean {
-    const msg = String(
-        error?.details ?? error?.shortMessage ?? error?.message ?? error,
-    ).toLowerCase();
+    const msg = sendErrorMessage(error);
     return ALREADY_KNOWN_ERRORS.some((v) => msg.includes(v));
+}
+
+/** Determines if the given send error names the nonce of the tx */
+export function isNonceError(error: any): boolean {
+    const msg = sendErrorMessage(error);
+    return NONCE_ERRORS.some((v) => msg.includes(v));
 }
 
 /** Represents a sent transaction with hash and wait for receipt method */
@@ -71,11 +83,8 @@ export type RainSolverSignerActions<
     /** A SharedState instance containing shared configuration and state */
     state: SharedState;
 
-    /** Flag indicating if the signer is currently processing a transaction */
+    /** The lock of the wallet while a tx of it is in flight, taken by processTransaction when the tx goes out and released by the receipt wait or a send that fails for good, WalletManager.getFreeSigner prefers the wallets with no lock */
     busy: boolean;
-
-    /** Waits until the signer is free and ready to process new transactions (not busy) */
-    waitUntilFree: () => Promise<void>;
 
     /** Gets the current balance of the signer's account */
     getSelfBalance: () => Promise<bigint>;
@@ -127,9 +136,6 @@ export namespace RainSolverSignerActions {
             sendTx(tx) {
                 return sendTx(this as RainSolverSigner, tx);
             },
-            waitUntilFree() {
-                return waitUntilFree(this as RainSolverSigner);
-            },
             getSelfBalance() {
                 return getSelfBalance(this as RainSolverSigner);
             },
@@ -167,13 +173,16 @@ export function hasExplicitGasParams(
 }
 
 /**
- * A wrapper for viem sendTransactions that handles nonce and manages signer busy
- * state while the transaction is being sent ensuring proper busy state management,
+ * A wrapper for viem sendTransactions that handles the nonce and releases the signer
+ * lock when the send fails for good, the signer comes in locked by the caller, so
+ * nothing here waits on it,
  * a tx with explicit gas limit and gas price is signed locally and broadcasted as
  * a raw tx (see broadcastTx), otherwise it is sent through viem sendTransaction
- * which populates the missing fields over rpc before signing, the nonce comes from
- * the state's nonce cache and is read over rpc only when the cache does not hold
- * it, a failed send drops the cached nonce so the retry reads it over rpc
+ * which populates the missing fields over rpc before signing. The nonce is reserved
+ * from the state's nonce cache before the tx goes out (see NonceCache.consume). It is
+ * fetched from the rpc only when the wallet has none cached. A failed send gives its
+ * nonce back, so the retry sends the same one. The one exception is a send error that
+ * names the nonce, then the cache is dropped and the retry fetches it again.
  *
  * @param signer - The RainSolverSigner instance to use for sending the transaction
  * @param tx - The transaction parameters to send
@@ -186,13 +195,11 @@ export async function sendTx(
     tx: SendTransactionParameters<Chain, HDAccount | PrivateKeyAccount>,
     retryDelay = 3_000,
 ): Promise<SentTransaction> {
-    // make sure signer is free
-    if (signer.busy) {
-        await signer.waitUntilFree();
-    }
-
-    // start sending tranaction process
-    signer.busy = true;
+    // the signer is handed over locked by the caller (see processTransaction), so
+    // the send goes out right away, the lock is released here when the send fails
+    // for good, or by the receipt wait otherwise
+    const { nonceCache } = signer.state;
+    const address = signer.account.address;
 
     // set tx gas
     if (typeof tx.gas === "bigint") {
@@ -204,21 +211,27 @@ export async function sendTx(
     const canBroadcast = hasExplicitGasParams(tx);
 
     async function send() {
-        const nonce = await getNextNonce(signer);
-        const hash = canBroadcast
-            ? await broadcastTx(signer, { ...(tx as any), nonce })
-            : await signer.sendTransaction({ ...(tx as any), nonce });
-        // the tx took the nonce, so cache the next one for the next tx of this wallet
-        signer.state.nonceCache.set(signer.account.address.toLowerCase(), nonce + 1);
-        return hash;
+        // the nonce is reserved before the tx goes out, so the send yielding on the
+        // rpc cannot hand the same nonce to a concurrent send of the same wallet
+        const nonce = await nonceCache.consume(signer);
+        try {
+            return canBroadcast
+                ? await broadcastTx(signer, { ...(tx as any), nonce })
+                : await signer.sendTransaction({ ...(tx as any), nonce });
+        } catch (error) {
+            // a failed send did not use its nonce, so it goes back to the cache and
+            // the retry sends it again, unless the error names the nonce, then the
+            // cached one is off and the retry fetches it again
+            if (isNonceError(error)) nonceCache.invalidate(address);
+            else nonceCache.release(address, nonce);
+            throw error;
+        }
     }
     try {
         const hash = await send();
         const wait = () => tryGetReceipt(signer, hash);
         return { hash, wait };
     } catch (error) {
-        // the cached nonce may be stale, so drop it to read the nonce over rpc for the retry
-        resetNonce(signer);
         await sleep(retryDelay); // wait for retryDelay time and retry once more
         try {
             const hash = await send();
@@ -232,27 +245,13 @@ export async function sendTx(
 }
 
 /**
- * Gets the nonce of the next transaction of the signer, from the state's nonce cache
- * when it holds one for the signer's address, otherwise it is read over rpc
- * @param signer - The RainSolverSigner instance
- */
-export async function getNextNonce(signer: RainSolverSigner): Promise<number> {
-    const cached = signer.state.nonceCache.get(signer.account.address.toLowerCase());
-    if (typeof cached === "number") return cached;
-    return await signer.getTransactionCount({
-        address: signer.account.address,
-        blockTag: "latest",
-    });
-}
-
-/**
  * Drops the cached nonce of the signer's address so its next transaction reads the
- * nonce over rpc, for when the cached nonce can be stale, ie after a failed send, a
- * transaction that did not get mined or one sent outside of sendTx (eg writeContract)
+ * nonce over rpc, for when the cached nonce can be stale, ie after a transaction sent
+ * outside of sendTx (eg writeContract)
  * @param signer - The RainSolverSigner instance
  */
 export function resetNonce(signer: RainSolverSigner) {
-    signer.state.nonceCache.delete(signer.account.address.toLowerCase());
+    signer.state.nonceCache.invalidate(signer.account.address);
 }
 
 /**
@@ -321,20 +320,6 @@ export function getTxGas(state: SharedState, gas: bigint): bigint {
         }
     } else {
         return gas;
-    }
-}
-
-/**
- * Waits for a signer to become free (not busy) by polling its state.
- * This function polls the signer until it is no longer in a busy state, which typically
- * means it is not in the middle of sending a transaction or performing other operations.
- *
- * @param signer - The RainSolverSigner instance to wait for
- * @returns A Promise that resolves when the signer is free to use
- */
-export async function waitUntilFree(signer: RainSolverSigner) {
-    while (signer.busy) {
-        await sleep(30);
     }
 }
 
@@ -408,8 +393,9 @@ export async function broadcastTx(
 /**
  * Get the associated write signer from the given signer and state, that is
  * basically the same signer wallet but configured with app's write rpc, the write
- * signer shares the busy state of the given signer, so a send through it marks the
- * wallet busy for the signer picking (eg getRandomSigner) and for other sends
+ * signer shares the busy state of the given signer, so the lock the caller took on
+ * the wallet (see processTransaction) is the one a send through it releases when it
+ * fails for good
  * @param signer - A RainSolverSigner instance
  * */
 export function getWriteSignerFrom(signer: RainSolverSigner): RainSolverSigner {
@@ -429,8 +415,8 @@ export function getWriteSignerFrom(signer: RainSolverSigner): RainSolverSigner {
  * method, the receipt is looked up once per new block, that is whenever the state's
  * block number (kept up-to-date by the block number watcher) has advanced since the
  * last lookup, the block number is checked at a fifth of the polling interval, so a
- * lookup follows a new block by that much at most, a failed wait drops the signer's
- * cached nonce, since the tx may have been dropped and its nonce be free again
+ * lookup follows a new block by that much at most, a failed wait refreshes the
+ * signer's cached nonce from the chain, see NonceCache.refresh
  * @param signer - The RainSolverSigner instance
  * @param hash - The transaction hash
  * @param timeout - The timeout in ms (default is 3 times the configured block time)
@@ -477,9 +463,12 @@ export async function tryGetReceipt(
         signer.state.gasManager.onTransactionMine({ didMine: true, length: Date.now() - start });
         return result;
     } catch (error) {
-        // the tx may have been dropped, which frees its nonce again, so
-        // drop the cached nonce to read it over rpc for the next tx
-        resetNonce(signer);
+        // the tx did not mine, so the cached next nonce is off, refresh it from the
+        // chain before the wallet is freed, so the next send finds it ready, a tx
+        // still in the pool is stuck and the next send replaces it, see
+        // NonceCache.refresh, when the refresh fails the cache is dropped and the
+        // next send fetches it itself
+        await signer.state.nonceCache.refresh(signer).catch(() => resetNonce(signer));
         // free the signer after transaction state is concluded (to not cause nonce conflicts)
         signer.busy = false;
         // capture tx mine record

@@ -18,6 +18,7 @@ import { OrderManagerConfig } from "../order/config";
 import type { Pair } from "../order/types";
 import { toEthValue, toUsdValue } from "../math";
 import { RainSolverRouterError } from "../router/error";
+import { NonceCache } from "../signer/nonce";
 import { ChainConfig, ChainConfigError, getChainConfig } from "./chain";
 import { RpcState, rainSolverTransport, RainSolverTransportConfig } from "../rpc";
 import {
@@ -173,8 +174,10 @@ export namespace SharedStateConfig {
         options: AppOptions,
     ): Promise<Result<SharedStateConfig, SharedStateError>> {
         const rainSolverTransportConfig = { timeout: options.timeout };
-        const rpcState = new RpcState(options.rpc);
-        const writeRpcState = options.writeRpc ? new RpcState(options.writeRpc) : undefined;
+        const rpcState = new RpcState(options.rpc, options.rpcSelection);
+        const writeRpcState = options.writeRpc
+            ? new RpcState(options.writeRpc, options.rpcSelection)
+            : undefined;
 
         // use temp client to get chain id
         let client = createPublicClient({
@@ -311,8 +314,8 @@ export class SharedState {
     writeRpc?: RpcState;
     /** List of latest successful transactions gas costs */
     gasCosts: bigint[] = [];
-    /** The nonce of the next transaction of each wallet (by lowercase address), so a send does not read the nonce over rpc every time */
-    readonly nonceCache: Map<string, number> = new Map();
+    /** Keeps the next nonce of each wallet, so the sends do not fetch the tx count every time */
+    readonly nonceCache = new NonceCache();
     /** Oracle endpoint health tracking for cooloff */
     oracleHealth: OracleHealthMap = new Map();
     /** The current native gas token to USD price (18 decimals fixed point number as decimal string), updated once per round */

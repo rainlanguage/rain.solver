@@ -3,7 +3,7 @@ import assert from "assert";
 import { ChainId } from "sushi";
 import { GasManager } from "../../gas";
 import { createPublicClient } from "viem";
-import { AppOptions } from "../../config";
+import { AppOptions, RpcSelectionMode } from "../../config";
 import { Command, Option } from "commander";
 import { sleep, TokenDetails } from "../../common";
 import { getChainConfig } from "../../state/chain";
@@ -124,6 +124,7 @@ export async function sweepFunds(opts: SweepOptions) {
         dustOrderCheck: true,
         strictMaxOwnerProfileCheck: false,
         strictMaxOwnerProfilePartialTradeSizeCheck: false,
+        rpcSelection: RpcSelectionMode.Immediate,
         timeout: 15_000,
 
         // unused fields but need to be defined
@@ -150,7 +151,7 @@ export async function sweepFunds(opts: SweepOptions) {
 
     // prepare state config fields
     const rainSolverTransportConfig = { timeout: options.timeout };
-    const rpcState = new RpcState(options.rpc);
+    const rpcState = new RpcState(options.rpc, options.rpcSelection);
     // use temp client to get chain id
     let client = createPublicClient({
         transport: rainSolverTransport(rpcState, rainSolverTransportConfig),

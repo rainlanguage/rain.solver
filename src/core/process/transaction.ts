@@ -47,7 +47,9 @@ export type TransactionSettlementArgs = ProcessTransactionArgs & {
 /**
  * Handles the given transaction, starts by sending the transaction and
  * then tries to get the receipt and process that in async manner, returns
- * a function that resolves with the ProcessOrderResult type when called
+ * a function that resolves with the ProcessOrderResult type when called.
+ * The tx goes out from the signer of the order, the wallet its dryrun ran
+ * with, see WalletManager.getFreeSigner, locked at this point.
  * @param args - The arguments for processing the transaction
  * @returns A function that returns a promise resolving to the ProcessOrderResult
  */
@@ -66,8 +68,13 @@ export async function processTransaction(
         roundSpanCtx,
     }: ProcessTransactionArgs,
 ): Promise<() => Promise<Result<ProcessOrderSuccess, ProcessOrderFailure>>> {
-    // submit the tx
+    // the dryrun showed the tx goes through from this wallet, its gas funds and its
+    // balances that the intra orderbook task checks, so the tx goes out from it, the
+    // wallet is locked until the tx mines or times out, or the send fails for good
+    signer.busy = true;
     baseResult.spanAttributes["details.sender"] = signer.account.address;
+
+    // submit the tx
     let hash: `0x${string}`, txUrl: string;
     let txSendTime = 0;
     try {
@@ -79,7 +86,8 @@ export async function processTransaction(
         console.log("\x1b[33m%s\x1b[0m", txUrl, "\n");
         baseResult.spanAttributes["details.txUrl"] = txUrl;
 
-        // start getting tx receipt in background
+        // start getting tx receipt in background, the receipt wait releases the
+        // signer's lock once the tx mines or times out
         const txSettlement = transactionSettlement.call(this, {
             txhash: hash,
             signer,

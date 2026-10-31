@@ -1,4 +1,6 @@
 import { Validator } from "./validators";
+import { RpcSelectionMode } from "../rpc";
+import { AppOptionsError } from "./error";
 import { describe, it, assert } from "vitest";
 import { readValue, tryIntoArray, validateHash, validateAddress } from "./validators";
 
@@ -305,6 +307,51 @@ describe("Test yaml Validator methods", async function () {
             () => Validator.resolveRouterSecondaryRouteTry(input),
             /expected either of all, max or off for routerSecondaryRouteTry/,
         );
+    });
+
+    it("test Validator resolveRpcSelection", async function () {
+        // default
+        for (const input of [undefined, null, ""]) {
+            assert.equal(Validator.resolveRpcSelection(input), RpcSelectionMode.Immediate);
+        }
+
+        // happy, case insensitive
+        assert.equal(Validator.resolveRpcSelection("immediate"), RpcSelectionMode.Immediate);
+        assert.equal(Validator.resolveRpcSelection("IMMEDIATE"), RpcSelectionMode.Immediate);
+        assert.equal(Validator.resolveRpcSelection("throttled"), RpcSelectionMode.Throttled);
+        assert.equal(Validator.resolveRpcSelection("Throttled"), RpcSelectionMode.Throttled);
+        assert.equal(Validator.resolveRpcSelection("THROTTLED"), RpcSelectionMode.Throttled);
+
+        // happy from env
+        process.env.RPC_SELECTION_TEST = "Throttled";
+        assert.equal(
+            Validator.resolveRpcSelection("$RPC_SELECTION_TEST"),
+            RpcSelectionMode.Throttled,
+        );
+
+        // default for unset env
+        delete process.env.RPC_SELECTION_TEST;
+        assert.equal(
+            Validator.resolveRpcSelection("$RPC_SELECTION_TEST"),
+            RpcSelectionMode.Immediate,
+        );
+
+        // unhappy
+        for (const input of ["fast", "immediatee", "some", true, false, 0, 1, {}, []]) {
+            assert.throws(
+                () => Validator.resolveRpcSelection(input),
+                AppOptionsError,
+                /expected either of immediate, throttled for rpcSelection/,
+            );
+        }
+
+        // unhappy from env
+        process.env.RPC_SELECTION_TEST = "fast";
+        assert.throws(
+            () => Validator.resolveRpcSelection("$RPC_SELECTION_TEST"),
+            /expected either of immediate, throttled for rpcSelection/,
+        );
+        delete process.env.RPC_SELECTION_TEST;
     });
 
     it("test Validator resolveOracleMarketHours", async function () {
