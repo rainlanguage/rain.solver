@@ -1,7 +1,7 @@
 import assert from "assert";
 import { isAddress } from "viem";
 import { AppOptionsContracts, SelfFundVault } from ".";
-import { RpcConfig } from "../rpc";
+import { RpcConfig, RpcSelectionMode } from "../rpc";
 import { isBigNumberish } from "../math";
 import { SgFilter } from "../subgraph/filter";
 import { OracleMarketHours } from "../oracle/types";
@@ -238,6 +238,26 @@ export namespace Validator {
         const close = Number(closeHour) * 60 + Number(closeMinute);
         assert(open < close, validationError(exception));
         return { open, close };
+    }
+
+    /**
+     * Resolves config's rpc selection mode, case insensitive, immediate when
+     * unset, throws for an unknown mode, see RpcSelectionMode
+     */
+    export function resolveRpcSelection(input: any): RpcSelectionMode {
+        const all = Object.values(RpcSelectionMode).filter(
+            (v): v is RpcSelectionMode => typeof v === "string",
+        );
+        const value = readValue(input).value;
+        if (value === undefined || value === null || value === "") {
+            return RpcSelectionMode.Immediate;
+        }
+        const lowered = typeof value === "string" ? value.toLowerCase() : value;
+        assert(
+            typeof lowered === "string" && all.includes(lowered as RpcSelectionMode),
+            validationError(`expected either of ${all.join(", ")} for rpcSelection`),
+        );
+        return lowered as RpcSelectionMode;
     }
 
     /** Resolves config's rpcs */

@@ -213,8 +213,9 @@ export async function processOrderInit(
         };
     }
 
-    // await for first available random free signer
-    const signer = await this.walletManager.getRandomSigner(true);
+    // a free signer for the order, its quotes, its dryrun and its tx all run
+    // with it, see WalletManager.getFreeSigner
+    const signer = this.walletManager.getFreeSigner();
     report.setAttr("details.sender", signer.account.address);
 
     // call process pair and save the settlement fn

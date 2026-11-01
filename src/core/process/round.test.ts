@@ -59,7 +59,7 @@ describe("Test initializeRound", () => {
 
         // mock wallet manager
         mockWalletManager = {
-            getRandomSigner: vi.fn(),
+            getFreeSigner: vi.fn(),
         } as any;
 
         // mock state
@@ -118,7 +118,7 @@ describe("Test initializeRound", () => {
                 nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
             (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
 
             const result: initializeRoundType = await initializeRound.call(mockSolver);
@@ -157,7 +157,7 @@ describe("Test initializeRound", () => {
                 nonZeroOutput: [makeOrder("0xOrder1"), makeOrder("0xOrder2")],
                 zeroOutput: [],
             });
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
             const seenBlockNumbers: bigint[] = [];
             (mockSolver.processOrder as Mock).mockImplementation(async (args: any) => {
                 seenBlockNumbers.push(args.blockNumber);
@@ -211,7 +211,7 @@ describe("Test initializeRound", () => {
                 nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue({
                 account: { address: "0xSigner" },
             });
 
@@ -261,7 +261,7 @@ describe("Test initializeRound", () => {
 
             expect(result.settlements).toHaveLength(0);
             expect(result.checkpointReports).toHaveLength(0);
-            expect(mockWalletManager.getRandomSigner).not.toHaveBeenCalled();
+            expect(mockWalletManager.getFreeSigner).not.toHaveBeenCalled();
             expect(mockSolver.processOrder).not.toHaveBeenCalled();
         });
     });
@@ -282,7 +282,7 @@ describe("Test initializeRound", () => {
 
             expect(result.settlements).toHaveLength(0);
             expect(result.checkpointReports).toHaveLength(0);
-            expect(mockWalletManager.getRandomSigner).not.toHaveBeenCalled();
+            expect(mockWalletManager.getFreeSigner).not.toHaveBeenCalled();
             expect(mockSolver.processOrder).not.toHaveBeenCalled();
             expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledTimes(1);
             expect(mockSolver.logger?.exportPreAssembledSpan).toHaveBeenCalledWith(
@@ -323,7 +323,7 @@ describe("Test initializeRound", () => {
             expect(mockState.updateGasTokenUsdPrice).toHaveBeenCalledWith(123n);
         });
 
-        it("should call getRandomSigner for each order", async () => {
+        it("should call getFreeSigner for each order", async () => {
             const mockOrders = [
                 {
                     orderbook: "0x3333333333333333333333333333333333333333",
@@ -347,12 +347,12 @@ describe("Test initializeRound", () => {
                 nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
 
             await initializeRound.call(mockSolver);
 
-            expect(mockWalletManager.getRandomSigner).toHaveBeenCalledWith(true);
-            expect(mockWalletManager.getRandomSigner).toHaveBeenCalledTimes(2);
+            expect(mockWalletManager.getFreeSigner).toHaveBeenCalledWith();
+            expect(mockWalletManager.getFreeSigner).toHaveBeenCalledTimes(2);
         });
 
         it("should call processOrder with correct parameters structure", async () => {
@@ -372,7 +372,7 @@ describe("Test initializeRound", () => {
                 nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
 
             await initializeRound.call(mockSolver);
 
@@ -402,7 +402,7 @@ describe("Test initializeRound", () => {
                 nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue({
                 account: { address: "0xSignerDEF" },
             });
 
@@ -449,7 +449,7 @@ describe("Test initializeRound", () => {
                 nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
 
             const result: initializeRoundType = await initializeRound.call(
                 mockSolver,
@@ -494,7 +494,7 @@ describe("Test initializeRound", () => {
                 nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
 
             const result: initializeRoundType = await initializeRound.call(mockSolver);
 
@@ -520,7 +520,7 @@ describe("Test initializeRound", () => {
                 nonZeroOutput: mockOrders,
                 zeroOutput: mockOrders,
             });
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
             (mockSolver as any).logger = {
                 exportPreAssembledSpan: vi.fn(),
             } as any;
@@ -551,7 +551,7 @@ describe("Test initializeRound", () => {
                 nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
             const loggerExportReport = vi.spyOn(
                 RainSolverLogger.prototype,
                 "exportPreAssembledSpan",
@@ -598,7 +598,7 @@ describe("Test initializeRound", () => {
                 nonZeroOutput: mockOrders,
                 zeroOutput: [],
             });
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue({
                 account: { address: "0xSigner" },
             });
 
@@ -658,7 +658,7 @@ describe("Test initializeRound", () => {
             nonZeroOutput: mockOrders,
             zeroOutput: [],
         });
-        (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+        (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
         (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
         (mockState.contracts.getAddressesForTrade as Mock).mockReturnValue(undefined); // simulate missing trade addresses
 
@@ -1826,7 +1826,7 @@ describe("Test processOrderInit", () => {
 
         // mock wallet manager
         mockWalletManager = {
-            getRandomSigner: vi.fn(),
+            getFreeSigner: vi.fn(),
         } as any;
 
         // mock state
@@ -1872,7 +1872,7 @@ describe("Test processOrderInit", () => {
             };
 
             const mockSettleFn = vi.fn();
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
             (mockSolver.processOrder as Mock).mockResolvedValue(mockSettleFn);
 
             const result: processOrderInitType = await processOrderInit.call(
@@ -1900,19 +1900,19 @@ describe("Test processOrderInit", () => {
     });
 
     describe("method call verification", () => {
-        it("should call getRandomSigner for each order", async () => {
+        it("should call getFreeSigner for each order", async () => {
             const mockOrder: any = {
                 orderbook: "0x3333333333333333333333333333333333333333",
                 buyTokenSymbol: "ETH",
                 sellTokenSymbol: "USDC",
                 takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
             };
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
 
             await processOrderInit.call(mockSolver, mockOrder, 123n);
 
-            expect(mockWalletManager.getRandomSigner).toHaveBeenCalledWith(true);
-            expect(mockWalletManager.getRandomSigner).toHaveBeenCalledTimes(1);
+            expect(mockWalletManager.getFreeSigner).toHaveBeenCalledWith();
+            expect(mockWalletManager.getFreeSigner).toHaveBeenCalledTimes(1);
         });
 
         it("should call processOrder with correct parameters structure", async () => {
@@ -1926,7 +1926,7 @@ describe("Test processOrderInit", () => {
                 sellTokenDecimals: 6,
                 takeOrder: { id: "0xOrder123", struct: { order: { owner: "0xOwner123" } } },
             };
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
 
             await processOrderInit.call(mockSolver, orderDetails, 123n);
 
@@ -1947,7 +1947,7 @@ describe("Test processOrderInit", () => {
                 sellTokenSymbol: "DAI",
                 takeOrder: { id: "0xOrderABC", struct: { order: { owner: "0xOwnerXYZ" } } },
             };
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue({
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue({
                 account: { address: "0xSignerDEF" },
             });
 
@@ -1973,7 +1973,7 @@ describe("Test processOrderInit", () => {
                 sellTokenSymbol: "USDC",
                 takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
             };
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
 
             const result: processOrderInitType = await processOrderInit.call(
                 mockSolver,
@@ -1992,7 +1992,7 @@ describe("Test processOrderInit", () => {
                 sellTokenSymbol: "USDC",
                 takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
             };
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
 
             const result: processOrderInitType = await processOrderInit.call(
                 mockSolver,
@@ -2011,7 +2011,7 @@ describe("Test processOrderInit", () => {
                 sellTokenSymbol: "USDC",
                 takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
             };
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
             (mockSolver as any).logger = {
                 exportPreAssembledSpan: vi.fn(),
             } as any;
@@ -2037,7 +2037,7 @@ describe("Test processOrderInit", () => {
                 sellTokenSymbol: "USDC",
                 takeOrder: { id: "0xOrder1", struct: { order: { owner: "0xOwner1" } } },
             };
-            (mockWalletManager.getRandomSigner as Mock).mockResolvedValue(mockSigner);
+            (mockWalletManager.getFreeSigner as Mock).mockReturnValue(mockSigner);
             const loggerExportReport = vi.spyOn(
                 RainSolverLogger.prototype,
                 "exportPreAssembledSpan",

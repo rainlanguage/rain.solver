@@ -111,6 +111,9 @@ export class WalletManager {
     ): Promise<{ walletManager: WalletManager; reports: PreAssembledSpan[] }> {
         const walletManager = new WalletManager(state);
 
+        // cache the next nonce of every wallet before any tx goes out
+        await walletManager.syncNonces();
+
         // topup workers if this is a multiwallet setup
         const reports = [];
         if (walletManager.config.type === WalletType.Mnemonic) {
@@ -125,6 +128,24 @@ export class WalletManager {
         }
 
         return { walletManager, reports };
+    }
+
+    /**
+     * Caches the next nonce of the main wallet and every active worker by fetching
+     * their tx counts, so their sends do not fetch it every time, best effort, a
+     * wallet whose fetch fails gets its nonce fetched at its first send instead
+     */
+    async syncNonces() {
+        const signers = [this.mainSigner, ...this.workers.signers.values()];
+        await Promise.all(signers.map((signer) => this.syncNonce(signer)));
+    }
+
+    /**
+     * Caches the next nonce of the given wallet, best effort, see syncNonces
+     * @param signer - The wallet signer
+     */
+    async syncNonce(signer: RainSolverSigner) {
+        await this.state.nonceCache.sync(signer).catch(() => {});
     }
 
     /**
@@ -237,10 +258,9 @@ export class WalletManager {
         const report = fundWalletResult.isOk() ? fundWalletResult.value : fundWalletResult.error;
         report.name = "add-wallet";
 
-        this.workers.signers.set(
-            wallet.address.toLowerCase(),
-            RainSolverSigner.create(wallet, this.state),
-        );
+        const signer = RainSolverSigner.create(wallet, this.state);
+        await this.syncNonce(signer);
+        this.workers.signers.set(wallet.address.toLowerCase(), signer);
         return report;
     }
 
@@ -312,6 +332,9 @@ export class WalletManager {
      * @returns The report of the sweep process
      */
     async sweepWallet(wallet: RainSolverSigner, withdrawGas = true): Promise<PreAssembledSpan> {
+        // the sweep reads the wallet's balances, so its trade txs in flight settle first
+        await this.waitUntilFree(wallet);
+
         const report = new PreAssembledSpan("sweep-wallet");
         report.setAttr("details.wallet", wallet.account.address);
         report.setAttr("details.destination", this.mainWallet.address);
@@ -415,6 +438,9 @@ export class WalletManager {
      * @returns The report of the conversion process
      */
     async convertHoldingsToGas(swapCostMultiplier?: bigint): Promise<PreAssembledSpan> {
+        // the swaps read the main wallet's balances, so its txs in flight settle first
+        await this.waitUntilFree(this.mainSigner);
+
         const report = new PreAssembledSpan("convert-to-gas");
         report.setAttr("details.wallet", this.mainWallet.address);
 
@@ -513,11 +539,17 @@ export class WalletManager {
      * @returns The report of the addition process
      */
     async tryAddWorker(worker: RainSolverSigner): Promise<PreAssembledSpan> {
+        // out of the pending list while it is funded, so a retry pass that runs
+        // meanwhile or later does not fund it again, nor overwrite its cached nonce
+        // once a tx of it is in flight, it goes back to the list if the funding fails
+        const key = worker.account.address.toLowerCase();
+        this.workers.pendingAdd.delete(key);
         const fundWalletResult = await this.fundWallet(worker.account.address);
         if (fundWalletResult.isOk()) {
-            this.workers.signers.set(worker.account.address.toLowerCase(), worker);
+            await this.syncNonce(worker);
+            this.workers.signers.set(key, worker);
         } else {
-            this.workers.pendingAdd.set(worker.account.address.toLowerCase(), worker);
+            this.workers.pendingAdd.set(key, worker);
         }
         const report = fundWalletResult.isOk() ? fundWalletResult.value : fundWalletResult.error;
         report.name = "add-wallet";
@@ -531,7 +563,11 @@ export class WalletManager {
      */
     async retryPendingAddWorkers(): Promise<PreAssembledSpan[]> {
         const pendingAddReports = [];
-        for (const [, worker] of this.workers.pendingAdd) {
+        // a copy, so each pass tries each worker once, a failed funding puts the
+        // worker back at the end of the list, a live iteration would reach it again
+        for (const [key, worker] of Array.from(this.workers.pendingAdd)) {
+            // an overlapping pass took it out of the list and funds it
+            if (!this.workers.pendingAdd.has(key)) continue;
             pendingAddReports.push(await this.tryAddWorker(worker));
         }
 
@@ -665,25 +701,29 @@ export class WalletManager {
     }
 
     /**
-     * Returns the first available signer by polling the
-     * signers until first one becomes available
+     * Returns a signer for an order, right away, an order never waits on a wallet.
+     * The quotes, the dryrun and the tx of the order all run with it, so the tx goes
+     * out from the wallet its dryrun ran with. Picks at random among the workers with
+     * no tx in flight. When every worker has a tx in flight, returns a random one
+     * anyway, its tx goes out with the next nonce and queues behind the one in
+     * flight. Takes no lock, since an order may send no tx, the lock is taken when
+     * the tx goes out, see processTransaction. Returns the main wallet in single
+     * wallet mode.
      */
-    async getRandomSigner(shuffle = false): Promise<RainSolverSigner> {
-        if (!this.workers.signers.size) {
-            return this.mainSigner;
-        }
+    getFreeSigner(): RainSolverSigner {
+        if (!this.workers.signers.size) return this.mainSigner;
         const signers = Array.from(this.workers.signers.values());
-        if (shuffle) {
-            shuffleArray(signers);
-        }
-        for (;;) {
-            const acc = signers.find((v) => !v.busy);
-            if (acc) {
-                return acc;
-            } else {
-                await sleep(30);
-            }
-        }
+        shuffleArray(signers);
+        return signers.find((v) => !v.busy) ?? signers[0];
+    }
+
+    /**
+     * Waits until the given wallet has no tx in flight, the receipt wait of each tx
+     * frees it once it mines or times out
+     * @param signer - The wallet signer
+     */
+    async waitUntilFree(signer: RainSolverSigner) {
+        while (signer.busy) await sleep(30);
     }
 
     /** Returns ETH (gas token) balance of worker wallets by performing a multicall `getEthBalance` */

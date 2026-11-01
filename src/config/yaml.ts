@@ -1,13 +1,15 @@
 import assert from "assert";
 import { parse } from "yaml";
 import { readFileSync } from "fs";
-import { RpcConfig } from "../rpc";
+import { RpcConfig, RpcSelectionMode } from "../rpc";
 import { parseUnits } from "viem";
 import { Result } from "../common";
 import { SgFilter } from "../subgraph/filter";
 import { OracleMarketHours } from "../oracle/types";
 import { AppOptionsError, AppOptionsErrorType } from "./error";
 import { FLOAT_PATTERN, INT_PATTERN, Validator, readValue } from "./validators";
+
+export { RpcSelectionMode };
 
 /** Represents a type for self-funding vaults from config */
 export type SelfFundVault = {
@@ -70,6 +72,8 @@ export type AppOptions = {
     rpc: RpcConfig[];
     /** List of write rpc configs used explicitly for write transactions */
     writeRpc?: RpcConfig[];
+    /** How the rpc of a request is picked among the rpc list, see RpcSelectionMode: immediate, a draw over the rpcs' recent success rates that always lands, so a request never waits for a pick, or throttled, a draw that can land on nothing while the rpcs fail, which holds the request back and draws again, default is immediate */
+    rpcSelection: RpcSelectionMode;
     /**
      * Optional websocket rpc url. The block number watcher subscribes to new
      * heads over it. The log sync subscribes to the logs of all orderbooks over
@@ -240,6 +244,7 @@ export namespace AppOptions {
                 contracts: Validator.resolveContracts(input),
                 rpc: Validator.resolveRpc(input.rpc),
                 writeRpc: Validator.resolveRpc(input.writeRpc, true),
+                rpcSelection: Validator.resolveRpcSelection(input.rpcSelection),
                 wsRpc,
                 flashblocks,
                 multiBroadcast: Validator.resolveBool(
