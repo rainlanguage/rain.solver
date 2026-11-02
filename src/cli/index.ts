@@ -1,6 +1,6 @@
 import { config } from "dotenv";
 import { formatUnits } from "viem";
-import { AppOptions } from "../config";
+import { AppOptions, RoundTriggerMode } from "../config";
 import { RainSolver } from "../core";
 import { OrderManager } from "../order";
 import { OptionValues } from "commander";
@@ -25,6 +25,9 @@ export const MINUTE = 60 * 1000;
 
 /** Represents the duration of a day in milliseconds */
 export const DAY = 24 * 60 * MINUTE;
+
+/** How long (in ms) a wait for the next sealed block stands before it is reported, taken in whole block times, see RainSolverCli.waitForNextRound */
+export const HEAD_STALL_MS = 5 * MINUTE;
 
 /**
  * The `RainSolverCli` class serves as the main entry point and orchestrator for the
@@ -296,6 +299,8 @@ export class RainSolverCli {
     async run() {
         // eslint-disable-next-line no-constant-condition
         while (true) {
+            // the sealed block the round runs at, the block trigger waits for the next past it
+            const roundHead = this.state.canonicalBlockNumber;
             // start round span and get round ctx
             const roundSpan = this.logger.tracer.startSpan(`round-${this.roundCount}`);
             const roundCtx = trace.setSpan(context.active(), roundSpan);
@@ -395,9 +400,7 @@ export class RainSolverCli {
                 .finally(() => this.pendingRoundFinalizations.delete(finalization));
             this.pendingRoundFinalizations.add(finalization);
 
-            // eslint-disable-next-line no-console
-            console.log(`Starting next round in ${this.appOptions.sleep / 1000} seconds...`, "\n");
-            await sleep(this.appOptions.sleep);
+            await this.waitForNextRound(roundHead);
             await syncOrdersPromise;
 
             // increment round count
@@ -497,6 +500,65 @@ export class RainSolverCli {
             this.state.gasCosts = [];
         }
         this.avgGasCost = this.state.avgGasCost || this.avgGasCost;
+    }
+
+    /**
+     * Waits for the next round's turn, see AppOptions.roundTrigger: the
+     * interval in ms in the time mode, in the block mode the sealed block the
+     * interval past the one the round ran at, at once when it arrived during
+     * the round, so a round slower than the interval runs once more and then
+     * waits, never once per missed interval. A wait with no head for
+     * HEAD_STALL_MS, taken in whole block times, exports a block-watch error
+     * span and goes on waiting, one more span for every such stretch, the block
+     * number watcher reports nothing itself and no round runs to report the
+     * failing rpc calls meanwhile
+     * @param roundHead - The sealed block the round ran at
+     */
+    waitForNextRound(roundHead: bigint): Promise<void> {
+        const { mode, interval } = this.appOptions.roundTrigger;
+        if (mode !== RoundTriggerMode.Block) {
+            return sleep(interval).then(() => undefined);
+        }
+        const target = roundHead + BigInt(interval);
+        if (this.state.canonicalBlockNumber >= target) return Promise.resolve();
+        return new Promise((resolve) => {
+            const stallBlocks = Math.max(Math.ceil(HEAD_STALL_MS / this.appOptions.blockTime), 1);
+            const stall = stallBlocks * this.appOptions.blockTime;
+            let since = Date.now();
+            // the stall time counts from the last head, a wait of many blocks
+            // whose heads come in on time is no stall
+            const watch = () => {
+                const timer = setInterval(() => {
+                    const elapsed = Date.now() - since;
+                    const report = new PreAssembledSpan("block-watch");
+                    report.setAttr("severity", ErrorSeverity.HIGH);
+                    report.setAttr("details.lastBlock", Number(this.state.canonicalBlockNumber));
+                    report.setAttr("details.sinceMs", elapsed);
+                    report.setAttr("details.stallBlocks", stallBlocks);
+                    report.setStatus({
+                        code: SpanStatusCode.ERROR,
+                        message: `no sealed block for ${elapsed} ms, ${stallBlocks} block times, the last one is ${this.state.canonicalBlockNumber}`,
+                    });
+                    report.end();
+                    this.logger.exportPreAssembledSpan(report);
+                }, stall);
+                // the wait must not keep the process alive on its own
+                timer.unref?.();
+                return timer;
+            };
+            let timer = watch();
+            const off = this.state.onBlockNumber((blockNumber) => {
+                if (blockNumber < target) {
+                    since = Date.now();
+                    clearInterval(timer);
+                    timer = watch();
+                    return;
+                }
+                off();
+                clearInterval(timer);
+                resolve();
+            });
+        });
     }
 
     /** Resets the DataFetcher (sushi router cached pool data) by the given interval */

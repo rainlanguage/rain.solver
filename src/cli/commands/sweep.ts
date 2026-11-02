@@ -3,7 +3,7 @@ import assert from "assert";
 import { ChainId } from "sushi";
 import { GasManager } from "../../gas";
 import { createPublicClient } from "viem";
-import { AppOptions, RpcSelectionMode, TxType } from "../../config";
+import { AppOptions, RoundTriggerMode, RpcSelectionMode, TxType } from "../../config";
 import { Command, Option } from "commander";
 import { sleep, TokenDetails } from "../../common";
 import { getChainConfig } from "../../state/chain";
@@ -130,7 +130,7 @@ export async function sweepFunds(opts: SweepOptions) {
 
         // unused fields but need to be defined
         maxRatio: false,
-        sleep: 0,
+        roundTrigger: { mode: RoundTriggerMode.Time, interval: 0 },
         gasCoveragePercentage: "",
         botMinBalance: "0",
         poolUpdateInterval: 0,

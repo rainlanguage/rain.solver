@@ -1,4 +1,11 @@
-import { AppOptions, CallBlockTag, RpcSelectionMode, TxType } from "./yaml";
+import {
+    AppOptions,
+    CallBlockTag,
+    RoundTrigger,
+    RoundTriggerMode,
+    RpcSelectionMode,
+    TxType,
+} from "./yaml";
 import { describe, it, assert, expect } from "vitest";
 import { writeFileSync, unlinkSync } from "fs";
 
@@ -30,7 +37,9 @@ liquidityProviders:
  - lp1
  - lp2
 route: multi
-sleep: 20000
+roundTrigger:
+  mode: block
+  interval: 10
 poolUpdateInterval: 30
 gasCoveragePercentage: 110
 headroom: 2.5
@@ -130,7 +139,7 @@ orderbookTradeTypes:
             },
             liquidityProviders: ["lp1", "lp2"],
             route: "multi",
-            sleep: 20000,
+            roundTrigger: { mode: RoundTriggerMode.Block, interval: 10 },
             poolUpdateInterval: 30,
             gasCoveragePercentage: "110",
             txGas: "15000",
@@ -234,7 +243,7 @@ orderbookTradeTypes:
             },
             liquidityProviders: ["lp1", "lp2"],
             route: "multi",
-            sleep: "20000",
+            roundTrigger: { mode: "time", interval: "20000" },
             poolUpdateInterval: "30",
             gasCoveragePercentage: "110",
             txGas: "15000",
@@ -313,6 +322,15 @@ orderbookTradeTypes:
         const zeroBlockTimeRes = AppOptions.tryFrom({ ...input, blockTime: "0" });
         assert(zeroBlockTimeRes.isErr());
         assert.ok(String(zeroBlockTimeRes.error.cause).includes("blockTime is required"));
+        // the round trigger is required, both of its fields
+        const noTriggerRes = AppOptions.tryFrom({ ...input, roundTrigger: undefined });
+        assert(noTriggerRes.isErr());
+        assert.equal(
+            noTriggerRes.error.message,
+            "roundTrigger.mode is required, expected either of time, block",
+        );
+        const noIntervalRes = AppOptions.tryFrom({ ...input, roundTrigger: { mode: "time" } });
+        assert(noIntervalRes.isErr());
 
         const res = AppOptions.tryFrom(input);
         assert(res.isOk());
@@ -343,8 +361,8 @@ orderbookTradeTypes:
         assert.deepEqual(result.liquidityProviders, ["lp1", "lp2"]);
         assert.deepEqual(result.route, "multi");
 
-        // sleep is in milliseconds as given
-        assert.deepEqual(result.sleep, 20000);
+        // the round trigger as given, it has no default
+        assert.deepEqual(result.roundTrigger, { mode: RoundTriggerMode.Time, interval: 20000 });
         assert.deepEqual(result.poolUpdateInterval, 30);
         // gasCoveragePercentage was resolved with returnAsString
         assert.deepEqual(result.gasCoveragePercentage, "110");
@@ -450,6 +468,9 @@ subgraph: ["http://subgraph.example.com"]
 key: "0x${"1".repeat(64)}"
 botMinBalance: 1
 blockTime: 1000
+roundTrigger:
+  mode: time
+  interval: 0
 contracts:
   v4:
     dispair: "0x2222222222222222222222222222222222222222"
@@ -536,6 +557,9 @@ subgraph: ["http://subgraph.example.com"]
 key: "0x${"1".repeat(64)}"
 botMinBalance: 1
 blockTime: 1000
+roundTrigger:
+  mode: time
+  interval: 0
 contracts:
   v4:
     dispair: "0x2222222222222222222222222222222222222222"
@@ -592,5 +616,100 @@ describe("Test TxType", () => {
         assert.equal(TxType.resolve("$TEST_TX_TYPE"), TxType.Legacy);
         delete process.env.TEST_TX_TYPE;
         assert.equal(TxType.resolve("$TEST_TX_TYPE"), TxType.Eip1559);
+    });
+});
+
+describe("Test RoundTrigger", () => {
+    it("should list all round trigger modes", () => {
+        expect(RoundTriggerMode.all).toEqual(["time", "block"]);
+    });
+
+    it("resolve should throw when the mode is not set, it has no default", () => {
+        // a plain string is not the map, so it has no mode either
+        for (const input of [undefined, null, {}, { mode: "" }, { interval: "10" }, "block"]) {
+            assert.throws(
+                () => RoundTrigger.resolve(input),
+                "roundTrigger.mode is required, expected either of time, block",
+            );
+        }
+    });
+
+    it("resolve should throw when the interval is not set, it has no default", () => {
+        for (const mode of ["time", "block"]) {
+            for (const interval of [undefined, null, ""]) {
+                assert.throws(
+                    () => RoundTrigger.resolve({ mode, interval }),
+                    "roundTrigger.interval is required, the ms after the round in the time mode or the sealed blocks in the block mode",
+                );
+            }
+        }
+    });
+
+    it("resolve should accept each mode, case insensitive, with its interval", () => {
+        assert.deepEqual(RoundTrigger.resolve({ mode: "BLOCK", interval: "1" }), {
+            mode: RoundTriggerMode.Block,
+            interval: 1,
+        });
+        assert.deepEqual(RoundTrigger.resolve({ mode: "Block", interval: "10" }), {
+            mode: RoundTriggerMode.Block,
+            interval: 10,
+        });
+        assert.deepEqual(RoundTrigger.resolve({ mode: "time", interval: "2500" }), {
+            mode: RoundTriggerMode.Time,
+            interval: 2500,
+        });
+        // no wait at all between the rounds in the time mode
+        assert.deepEqual(RoundTrigger.resolve({ mode: "time", interval: "0" }), {
+            mode: RoundTriggerMode.Time,
+            interval: 0,
+        });
+    });
+
+    it("resolve should read the mode and the interval from env", () => {
+        process.env.TEST_ROUND_TRIGGER_MODE = "block";
+        process.env.TEST_ROUND_TRIGGER_INTERVAL = "5";
+        const input = {
+            mode: "$TEST_ROUND_TRIGGER_MODE",
+            interval: "$TEST_ROUND_TRIGGER_INTERVAL",
+        };
+        assert.deepEqual(RoundTrigger.resolve(input), {
+            mode: RoundTriggerMode.Block,
+            interval: 5,
+        });
+        // an unset env is a field not set
+        delete process.env.TEST_ROUND_TRIGGER_INTERVAL;
+        assert.throws(
+            () => RoundTrigger.resolve(input),
+            "roundTrigger.interval is required, the ms after the round in the time mode or the sealed blocks in the block mode",
+        );
+        delete process.env.TEST_ROUND_TRIGGER_MODE;
+        assert.throws(
+            () => RoundTrigger.resolve(input),
+            "roundTrigger.mode is required, expected either of time, block",
+        );
+    });
+
+    it("resolve should throw for an unknown mode", () => {
+        for (const bad of ["interval", "fast", true, 1]) {
+            assert.throws(
+                () => RoundTrigger.resolve({ mode: bad }),
+                "expected either of time, block for roundTrigger.mode",
+            );
+        }
+    });
+
+    it("resolve should throw for an interval that is not an integer in the mode's range", () => {
+        for (const bad of ["-1", "1.5", "abc"]) {
+            assert.throws(
+                () => RoundTrigger.resolve({ mode: "time", interval: bad }),
+                "invalid roundTrigger.interval value, must be an integer greater than equal to 0 in the time mode",
+            );
+        }
+        for (const bad of ["0", "-1", "1.5", "abc"]) {
+            assert.throws(
+                () => RoundTrigger.resolve({ mode: "block", interval: bad }),
+                "invalid roundTrigger.interval value, must be an integer greater than 0 in the block mode",
+            );
+        }
     });
 });
