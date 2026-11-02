@@ -22,7 +22,6 @@ vi.mock("../gas", () => ({
         init: vi.fn().mockReturnValue({
             gasPrice: 0n,
             l1GasPrice: 0n,
-            gasPriceMultiplier: 123,
             record: vi.fn(),
         }),
     },
@@ -61,11 +60,12 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             key: "0xkey",
             rpc: [{ url: "http://example.com" }],
             writeRpc: undefined,
-            gasPriceMultiplier: 123,
-            txTimeThreshold: 4000,
-            gasIncreasePointsPerStep: 5,
-            gasIncreaseStepTime: 3,
-            maxGasPriceMultiplier: 300,
+            txType: "eip1559",
+            gasFeeBlockInterval: 5,
+            priorityFeePercentiles: [60, 90],
+            maxFeeBaseFeeMultiplier: 1.5,
+            priorityFeeMultiplier: 1.1,
+            callBlockTag: "pending",
             liquidityProviders: ["UniswapV2"],
             timeout: 1000,
             txGas: "120%",
@@ -148,12 +148,13 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
                 stableTokens: [],
             },
             client: mockClient,
-            baseGasPriceMultiplier: 123,
-            txTimeThreshold: 4000,
-            gasIncreasePointsPerStep: 5,
-            // the step time is configured in minutes and handed over in ms
-            gasIncreaseStepTime: 3 * 60_000,
-            maxGasPriceMultiplier: 300,
+            txType: "eip1559",
+            gasFeeBlockInterval: 5,
+            priorityFeePercentiles: [60, 90],
+            maxFeeBaseFeeMultiplier: 1.5,
+            priorityFeeMultiplier: 1.1,
+            // the fee history ends at the configured call block tag
+            feeHistoryBlockTag: "pending",
         });
         expect(spy).toHaveBeenCalledWith({
             chainId: 1,
@@ -245,6 +246,9 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
     });
 });
 
+/** The latest block the poller reads, with the base fee it carries */
+const head = (number: bigint, baseFeePerGas: bigint | null = 7n) => ({ number, baseFeePerGas });
+
 describe("Test SharedState", () => {
     let config: any;
     let sharedState: SharedState;
@@ -276,7 +280,6 @@ describe("Test SharedState", () => {
             chainConfig: { id: 1, isSpecialL2: false },
             rpcState: {},
             writeRpcState: {},
-            gasPriceMultiplier: 123,
             initGasPrice: 1000n,
             initL1GasPrice: 0n,
             router: {
@@ -287,10 +290,11 @@ describe("Test SharedState", () => {
             gasManager: {
                 gasPrice: 1000n,
                 l1GasPrice: 0n,
-                gasPriceMultiplier: 123,
                 isWatchingGasPrice: true,
                 watchGasPrice: vi.fn(),
                 unwatchGasPrice: vi.fn(),
+                setBaseFee: vi.fn(),
+                onBlock: vi.fn(),
             },
         };
         sharedState = new SharedState(config);
@@ -302,7 +306,6 @@ describe("Test SharedState", () => {
             expect(sharedState.walletConfig).toEqual({ key: "0xkey" });
             expect(sharedState.chainConfig).toEqual(config.chainConfig);
             expect(sharedState.liquidityProviders).toEqual([LiquidityProviders.UniswapV2]);
-            expect(sharedState.gasPriceMultiplier).toBe(123);
             expect(sharedState.gasPrice).toBe(1000n);
             expect(sharedState.l1GasPrice).toBe(0n);
             expect(sharedState.rpc).toBe(config.rpcState);
@@ -340,7 +343,7 @@ describe("Test SharedState", () => {
     describe("Test block number watcher", () => {
         beforeEach(() => {
             vi.useFakeTimers();
-            config.client.getBlockNumber = vi.fn().mockResolvedValue(100n);
+            config.client.getBlock = vi.fn().mockResolvedValue(head(100n));
             sharedState = new SharedState(config);
         });
 
@@ -358,11 +361,35 @@ describe("Test SharedState", () => {
             expect(sharedState.canonicalBlockNumber).toBe(100n);
         });
 
+        it("should hand the read block's base fee and every new sealed block to the gas manager", async () => {
+            await sharedState.updateBlockNumber();
+            expect(config.gasManager.setBaseFee).toHaveBeenCalledWith(7n);
+            expect(config.gasManager.onBlock).toHaveBeenCalledWith(100n);
+
+            // the same block is no new one, its base fee is still taken
+            (config.client.getBlock as Mock).mockResolvedValue(head(100n, 8n));
+            await sharedState.updateBlockNumber();
+            expect(config.gasManager.setBaseFee).toHaveBeenLastCalledWith(8n);
+            expect(config.gasManager.onBlock).toHaveBeenCalledTimes(1);
+
+            // a chain with no base fee says so
+            (config.client.getBlock as Mock).mockResolvedValue(head(101n, null));
+            await sharedState.updateBlockNumber();
+            expect(config.gasManager.setBaseFee).toHaveBeenLastCalledWith(null);
+            expect(config.gasManager.onBlock).toHaveBeenLastCalledWith(101n);
+        });
+
+        it("should hand out the gas manager's fee fields", () => {
+            config.gasManager.txFees = vi.fn().mockReturnValue({ gasPrice: 1000n });
+            expect(sharedState.txFees()).toEqual({ gasPrice: 1000n });
+            expect(config.gasManager.txFees).toHaveBeenCalledTimes(1);
+        });
+
         it("should keep previous block number when the call fails", async () => {
             await sharedState.updateBlockNumber();
             expect(sharedState.blockNumber).toBe(100n);
 
-            (config.client.getBlockNumber as Mock).mockRejectedValue(new Error("rpc failed"));
+            (config.client.getBlock as Mock).mockRejectedValue(new Error("rpc failed"));
             await sharedState.updateBlockNumber();
             expect(sharedState.blockNumber).toBe(100n);
         });
@@ -379,7 +406,7 @@ describe("Test SharedState", () => {
             expect(sharedState.blockNumberReadAt).toBe(first + 1_000);
 
             // a failed read leaves it
-            (config.client.getBlockNumber as Mock).mockRejectedValue(new Error("rpc failed"));
+            (config.client.getBlock as Mock).mockRejectedValue(new Error("rpc failed"));
             vi.advanceTimersByTime(1_000);
             await sharedState.updateBlockNumber();
             expect(sharedState.blockNumberReadAt).toBe(first + 1_000);
@@ -389,11 +416,11 @@ describe("Test SharedState", () => {
             await sharedState.updateBlockNumber();
             expect(sharedState.blockNumber).toBe(100n);
 
-            (config.client.getBlockNumber as Mock).mockResolvedValue(90n);
+            (config.client.getBlock as Mock).mockResolvedValue(head(90n));
             await sharedState.updateBlockNumber();
             expect(sharedState.blockNumber).toBe(100n);
 
-            (config.client.getBlockNumber as Mock).mockResolvedValue(110n);
+            (config.client.getBlock as Mock).mockResolvedValue(head(110n));
             await sharedState.updateBlockNumber();
             expect(sharedState.blockNumber).toBe(110n);
         });
@@ -403,7 +430,7 @@ describe("Test SharedState", () => {
             sharedState.onBlockNumber(listener);
             await sharedState.updateBlockNumber();
             await sharedState.updateBlockNumber();
-            (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+            (config.client.getBlock as Mock).mockResolvedValue(head(101n));
             await sharedState.updateBlockNumber();
             expect(listener.mock.calls).toEqual([[100n], [101n]]);
             // a block read over http is not a ws head
@@ -420,19 +447,19 @@ describe("Test SharedState", () => {
 
             // immediate update on start
             await vi.advanceTimersByTimeAsync(0);
-            expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+            expect(config.client.getBlock).toHaveBeenCalledTimes(1);
             expect(sharedState.blockNumber).toBe(100n);
 
             // periodic updates
-            (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+            (config.client.getBlock as Mock).mockResolvedValue(head(101n));
             await vi.advanceTimersByTimeAsync(5000);
-            expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
+            expect(config.client.getBlock).toHaveBeenCalledTimes(2);
             expect(sharedState.blockNumber).toBe(101n);
 
             // should not start a second watcher
             sharedState.watchBlockNumber(5000);
             await vi.advanceTimersByTimeAsync(5000);
-            expect(config.client.getBlockNumber).toHaveBeenCalledTimes(3);
+            expect(config.client.getBlock).toHaveBeenCalledTimes(3);
         });
 
         it("should unwatch block number", async () => {
@@ -446,37 +473,72 @@ describe("Test SharedState", () => {
 
             // no more updates after unwatch
             await vi.advanceTimersByTimeAsync(15000);
-            expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+            expect(config.client.getBlock).toHaveBeenCalledTimes(1);
         });
 
         describe("websocket new heads subscription", () => {
-            let onBlockNumber: (blockNumber: bigint) => void;
+            let onBlockNumber: (blockNumber: bigint, baseFeePerGas?: string | null) => void;
             let onError: (error: Error) => void;
             let wsUnwatch: Mock;
+            /** The ws transport's subscribe, one call per new heads subscription */
             let watchBlockNumberSpy: Mock;
 
             beforeEach(() => {
                 config.appOptions.wsRpc = "wss://ws-rpc.example.com";
-                wsUnwatch = vi.fn();
+                wsUnwatch = vi.fn().mockResolvedValue(true);
+                let onData: (data: any) => void = () => {};
+                let onSubError: (error: Error) => void = () => {};
                 watchBlockNumberSpy = vi.fn().mockImplementation((args: any) => {
-                    onBlockNumber = args.onBlockNumber;
-                    onError = args.onError;
-                    return wsUnwatch;
+                    onData = args.onData;
+                    onSubError = args.onError;
+                    return Promise.resolve({ subscriptionId: "0x1", unsubscribe: wsUnwatch });
                 });
+                // a new head as the socket hands it over, a hex number and base fee
+                onBlockNumber = (blockNumber, baseFeePerGas) =>
+                    onData({
+                        result: {
+                            number: `0x${blockNumber.toString(16)}`,
+                            ...(baseFeePerGas !== undefined ? { baseFeePerGas } : {}),
+                        },
+                    });
+                onError = (error) => onSubError(error);
                 (createPublicClient as Mock).mockReturnValue({
-                    watchBlockNumber: watchBlockNumberSpy,
+                    transport: { subscribe: watchBlockNumberSpy },
                 });
                 sharedState = new SharedState(config);
+            });
+
+            it("should hand each new head's base fee to the gas manager", async () => {
+                sharedState.watchBlockNumber(5000);
+                await vi.advanceTimersByTimeAsync(0);
+                config.gasManager.setBaseFee.mockClear();
+                config.gasManager.onBlock.mockClear();
+
+                onBlockNumber(105n, "0x10");
+                expect(config.gasManager.setBaseFee).toHaveBeenCalledWith(16n);
+                expect(config.gasManager.onBlock).toHaveBeenCalledWith(105n);
+
+                // a head with no base fee field changes nothing
+                onBlockNumber(106n);
+                expect(config.gasManager.setBaseFee).toHaveBeenLastCalledWith(undefined);
+                expect(config.gasManager.onBlock).toHaveBeenLastCalledWith(106n);
+
+                // a chain without a base fee says so with null
+                onBlockNumber(107n, null);
+                expect(config.gasManager.setBaseFee).toHaveBeenLastCalledWith(null);
             });
 
             it("should subscribe to new heads and update block number", async () => {
                 sharedState.watchBlockNumber(5000);
                 expect(sharedState.isWatchingBlockNumber).toBe(true);
                 expect(watchBlockNumberSpy).toHaveBeenCalledTimes(1);
+                expect(watchBlockNumberSpy).toHaveBeenCalledWith(
+                    expect.objectContaining({ params: ["newHeads"] }),
+                );
 
                 // immediate update over http on start
                 await vi.advanceTimersByTimeAsync(0);
-                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                expect(config.client.getBlock).toHaveBeenCalledTimes(1);
                 expect(sharedState.blockNumber).toBe(100n);
 
                 // new heads push updates the block number, a new head is sealed
@@ -493,7 +555,7 @@ describe("Test SharedState", () => {
 
                 // no polling should be active
                 await vi.advanceTimersByTimeAsync(15000);
-                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                expect(config.client.getBlock).toHaveBeenCalledTimes(1);
             });
 
             it("should tell the block listeners every sealed block once, in order, and let them leave", async () => {
@@ -620,14 +682,14 @@ describe("Test SharedState", () => {
             it("should fall back to polling on subscription error and stop it on recovery", async () => {
                 sharedState.watchBlockNumber(5000);
                 await vi.advanceTimersByTimeAsync(0);
-                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                expect(config.client.getBlock).toHaveBeenCalledTimes(1);
 
                 // subscription error starts the polling fallback
                 onError(new Error("ws failed"));
                 expect(sharedState.isPollingBlockNumber).toBe(true);
-                (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+                (config.client.getBlock as Mock).mockResolvedValue(head(101n));
                 await vi.advanceTimersByTimeAsync(5000);
-                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
+                expect(config.client.getBlock).toHaveBeenCalledTimes(2);
                 expect(sharedState.blockNumber).toBe(101n);
                 // a polled block never moves the ws head
                 expect(sharedState.wsBlockNumber).toBe(0n);
@@ -638,7 +700,7 @@ describe("Test SharedState", () => {
                 expect(sharedState.blockNumber).toBe(102n);
                 expect(sharedState.wsBlockNumber).toBe(102n);
                 await vi.advanceTimersByTimeAsync(15000);
-                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
+                expect(config.client.getBlock).toHaveBeenCalledTimes(2);
             });
 
             it("should not start a second subscription when already watching", async () => {
@@ -652,13 +714,13 @@ describe("Test SharedState", () => {
             it("should not start a second polling fallback on repeated subscription errors", async () => {
                 sharedState.watchBlockNumber(5000);
                 await vi.advanceTimersByTimeAsync(0);
-                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                expect(config.client.getBlock).toHaveBeenCalledTimes(1);
 
                 // repeated errors should keep a single poller
                 onError(new Error("ws failed"));
                 onError(new Error("ws failed again"));
                 await vi.advanceTimersByTimeAsync(5000);
-                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
+                expect(config.client.getBlock).toHaveBeenCalledTimes(2);
             });
 
             it("should re-establish the subscription after the resubscribe delay", async () => {
@@ -675,9 +737,9 @@ describe("Test SharedState", () => {
                 // the fresh subscription pushes and stops the polling fallback
                 onBlockNumber(200n);
                 expect(sharedState.blockNumber).toBe(200n);
-                const callCount = (config.client.getBlockNumber as Mock).mock.calls.length;
+                const callCount = (config.client.getBlock as Mock).mock.calls.length;
                 await vi.advanceTimersByTimeAsync(15000);
-                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(callCount);
+                expect(config.client.getBlock).toHaveBeenCalledTimes(callCount);
             });
 
             it("should schedule a single resubscribe for repeated subscription errors", async () => {
@@ -719,14 +781,15 @@ describe("Test SharedState", () => {
                 expect(sharedState.isWatchingBlockNumber).toBe(true);
 
                 sharedState.unwatchBlockNumber();
-                expect(wsUnwatch).toHaveBeenCalledTimes(1);
                 expect(sharedState.isWatchingBlockNumber).toBe(false);
 
-                // no more polling after unwatch
+                // the subscription is dropped once it is established, and no more
+                // polling after unwatch
                 await vi.advanceTimersByTimeAsync(0);
-                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                expect(wsUnwatch).toHaveBeenCalledTimes(1);
+                expect(config.client.getBlock).toHaveBeenCalledTimes(1);
                 await vi.advanceTimersByTimeAsync(15000);
-                expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                expect(config.client.getBlock).toHaveBeenCalledTimes(1);
             });
 
             describe("flashblocks", () => {
@@ -772,7 +835,7 @@ describe("Test SharedState", () => {
 
                     // immediate update over http on start
                     await vi.advanceTimersByTimeAsync(0);
-                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                    expect(config.client.getBlock).toHaveBeenCalledTimes(1);
                     expect(sharedState.blockNumber).toBe(100n);
 
                     // flashblock heads push updates the block number from the hex
@@ -788,21 +851,31 @@ describe("Test SharedState", () => {
 
                     // no polling should be active
                     await vi.advanceTimersByTimeAsync(15000);
-                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                    expect(config.client.getBlock).toHaveBeenCalledTimes(1);
+                });
+
+                it("should hand the flashblock's base fee, of the block being built, to the gas manager", async () => {
+                    sharedState.watchBlockNumber(5000);
+                    resolveSubscription();
+                    await vi.advanceTimersByTimeAsync(0);
+                    onData({ result: { number: "0x69", baseFeePerGas: "0x20" } });
+                    expect(config.gasManager.setBaseFee).toHaveBeenLastCalledWith(32n);
+                    // the fees are fetched on the sealed block, the one below
+                    expect(config.gasManager.onBlock).toHaveBeenLastCalledWith(104n);
                 });
 
                 it("should fall back to polling on subscription error and resubscribe after the delay", async () => {
                     sharedState.watchBlockNumber(5000);
                     resolveSubscription();
                     await vi.advanceTimersByTimeAsync(0);
-                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                    expect(config.client.getBlock).toHaveBeenCalledTimes(1);
 
                     // subscription error starts the polling fallback, a polled
                     // block number is a sealed one
                     onSubError(new Error("ws failed"));
-                    (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+                    (config.client.getBlock as Mock).mockResolvedValue(head(101n));
                     await vi.advanceTimersByTimeAsync(5000);
-                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
+                    expect(config.client.getBlock).toHaveBeenCalledTimes(2);
                     expect(sharedState.blockNumber).toBe(101n);
                     expect(sharedState.canonicalBlockNumber).toBe(101n);
 
@@ -816,20 +889,20 @@ describe("Test SharedState", () => {
                     // the fresh subscription pushes and stops the polling fallback
                     onData({ result: { number: "0xc8" } });
                     expect(sharedState.blockNumber).toBe(200n);
-                    const callCount = (config.client.getBlockNumber as Mock).mock.calls.length;
+                    const callCount = (config.client.getBlock as Mock).mock.calls.length;
                     await vi.advanceTimersByTimeAsync(15000);
-                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(callCount);
+                    expect(config.client.getBlock).toHaveBeenCalledTimes(callCount);
                 });
 
                 it("should fall back to polling when the subscription request fails", async () => {
                     sharedState.watchBlockNumber(5000);
                     rejectSubscription(new Error("unsupported subscription"));
                     await vi.advanceTimersByTimeAsync(0);
-                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                    expect(config.client.getBlock).toHaveBeenCalledTimes(1);
 
                     // polling fallback runs
                     await vi.advanceTimersByTimeAsync(5000);
-                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(2);
+                    expect(config.client.getBlock).toHaveBeenCalledTimes(2);
 
                     // and a fresh subscription is attempted after the delay
                     await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
@@ -865,7 +938,7 @@ describe("Test SharedState", () => {
 
                     // no polling fallback or resubscribe after unwatch
                     await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
-                    expect(config.client.getBlockNumber).toHaveBeenCalledTimes(1);
+                    expect(config.client.getBlock).toHaveBeenCalledTimes(1);
                     expect(subscribeSpy).toHaveBeenCalledTimes(1);
                 });
             });
@@ -908,8 +981,8 @@ describe("Test SharedState", () => {
 
             onData({ result: { number: "0x69" } });
             onData({ result: { number: "0xFF" } });
-            expect(onBlockNumber).toHaveBeenNthCalledWith(1, 105n);
-            expect(onBlockNumber).toHaveBeenNthCalledWith(2, 255n);
+            expect(onBlockNumber).toHaveBeenNthCalledWith(1, 105n, undefined);
+            expect(onBlockNumber).toHaveBeenNthCalledWith(2, 255n, undefined);
 
             // none of these throw, as a throw here would reach the socket
             // message listener uncaught, nor do they reach the callback
@@ -921,6 +994,45 @@ describe("Test SharedState", () => {
             onData({});
             onData(undefined);
             expect(onBlockNumber).toHaveBeenCalledTimes(2);
+            expect(onError).not.toHaveBeenCalled();
+        });
+
+        it("should hand on the head's base fee in any shape BigInt takes, null for none", async () => {
+            subscribeToFlashblocks(wsClient, onBlockNumber, onError);
+            resolveSubscription();
+            await Promise.resolve();
+
+            const baseFees = [
+                "0x4c4b40", // hex string
+                "5000000", // decimal string
+                5, // number
+                null, // a chain with no base fee
+                undefined, // no such field
+                "", // an empty string is not 0
+                "  ", // nor is a blank one
+                "abc", // BigInt throws
+                5.5, // BigInt throws
+                "-1", // below zero
+                true, // BigInt would take it for 1
+                {}, // not a value
+            ];
+            baseFees.forEach((baseFeePerGas, i) =>
+                onData({ result: { number: `0x${(100 + i).toString(16)}`, baseFeePerGas } }),
+            );
+            expect(onBlockNumber.mock.calls.map(([, baseFee]) => baseFee)).toEqual([
+                5_000_000n,
+                5_000_000n,
+                5n,
+                null,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+            ]);
             expect(onError).not.toHaveBeenCalled();
         });
 
@@ -962,7 +1074,7 @@ describe("Test SharedState", () => {
             onData({ result: { number: "0x69" } });
             onSubError(new Error("second"));
             expect(onError).toHaveBeenCalledTimes(2);
-            expect(onBlockNumber).toHaveBeenCalledWith(105n);
+            expect(onBlockNumber).toHaveBeenCalledWith(105n, undefined);
         });
 
         it("should report a rejected subscribe request that had no error callback", async () => {
@@ -1004,7 +1116,7 @@ describe("Test SharedState", () => {
         beforeEach(() => {
             update = vi.fn().mockResolvedValue(false);
             config.router.sushi = { update };
-            config.client.getBlockNumber = vi.fn().mockResolvedValue(100n);
+            config.client.getBlock = vi.fn().mockResolvedValue(head(100n));
         });
 
         afterEach(() => {
@@ -1020,13 +1132,13 @@ describe("Test SharedState", () => {
 
             // the same block again is not an advance, neither is a lower one
             await state.updateBlockNumber();
-            (config.client.getBlockNumber as Mock).mockResolvedValue(90n);
+            (config.client.getBlock as Mock).mockResolvedValue(head(90n));
             await state.updateBlockNumber();
             expect(update).toHaveBeenCalledTimes(1);
 
             // a newly created pool raises the flag for the consumer
             update.mockResolvedValue(true);
-            (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+            (config.client.getBlock as Mock).mockResolvedValue(head(101n));
             await state.updateBlockNumber();
             expect(update).toHaveBeenCalledTimes(2);
             expect(update).toHaveBeenLastCalledWith(101n);
@@ -1041,16 +1153,16 @@ describe("Test SharedState", () => {
             expect(update).toHaveBeenCalledTimes(1);
 
             // blocks advance while the update runs, none starts another one
-            (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+            (config.client.getBlock as Mock).mockResolvedValue(head(101n));
             await state.updateBlockNumber();
-            (config.client.getBlockNumber as Mock).mockResolvedValue(102n);
+            (config.client.getBlock as Mock).mockResolvedValue(head(102n));
             await state.updateBlockNumber();
             expect(update).toHaveBeenCalledTimes(1);
 
             // once done, the next block picks the gap up
             finish(false);
             await Promise.resolve();
-            (config.client.getBlockNumber as Mock).mockResolvedValue(103n);
+            (config.client.getBlock as Mock).mockResolvedValue(head(103n));
             await state.updateBlockNumber();
             expect(update).toHaveBeenCalledTimes(2);
             expect(update).toHaveBeenLastCalledWith(103n);
@@ -1064,7 +1176,7 @@ describe("Test SharedState", () => {
             expect(update).toHaveBeenCalledTimes(1);
             expect(state.newPoolCreated).toBe(false);
 
-            (config.client.getBlockNumber as Mock).mockResolvedValue(101n);
+            (config.client.getBlock as Mock).mockResolvedValue(head(101n));
             await state.updateBlockNumber();
             expect(update).toHaveBeenCalledTimes(2);
         });

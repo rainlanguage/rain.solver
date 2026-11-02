@@ -1,4 +1,4 @@
-import { AppOptions, CallBlockTag, RpcSelectionMode } from "./yaml";
+import { AppOptions, CallBlockTag, RpcSelectionMode, TxType } from "./yaml";
 import { describe, it, assert, expect } from "vitest";
 import { writeFileSync, unlinkSync } from "fs";
 
@@ -37,11 +37,11 @@ headroom: 2.5
 txGas: 15000
 quoteGas: 2000000
 botMinBalance: 50.5
-gasPriceMultiplier: 150
-txTimeThreshold: 4000
-gasIncreasePointsPerStep: 5
-gasIncreaseStepTime: 3
-maxGasPriceMultiplier: 300
+txType: legacy
+gasFeeBlockInterval: 5
+priorityFeePercentiles: [50, 90]
+maxFeeBaseFeeMultiplier: 1.5
+priorityFeeMultiplier: 1.07
 blockTime: 3000
 flashblocks: true
 multiBroadcast: true
@@ -59,8 +59,6 @@ dustOrderCheck: false
 strictMaxOwnerProfileCheck: true
 strictMaxOwnerProfilePartialTradeSizeCheck: true
 checkWalletBalanceTime: 30
-gasBoostMultiplier: 3.5
-gasBoostUsdThreshold: 5.5
 oracleMarketHours: 08:30-23:59
 gasLimitMultiplier: 90
 timeout: 20000
@@ -138,11 +136,11 @@ orderbookTradeTypes:
             txGas: "15000",
             quoteGas: BigInt(2000000),
             botMinBalance: "50.5",
-            gasPriceMultiplier: 150,
-            txTimeThreshold: 4000,
-            gasIncreasePointsPerStep: 5,
-            gasIncreaseStepTime: 3,
-            maxGasPriceMultiplier: 300,
+            txType: TxType.Legacy,
+            gasFeeBlockInterval: 5,
+            priorityFeePercentiles: [50, 90],
+            maxFeeBaseFeeMultiplier: 1.5,
+            priorityFeeMultiplier: 1.07,
             blockTime: 3000,
             flashblocks: true,
             multiBroadcast: true,
@@ -207,8 +205,6 @@ orderbookTradeTypes:
             strictMaxOwnerProfileCheck: true,
             strictMaxOwnerProfilePartialTradeSizeCheck: true,
             checkWalletBalanceTime: 30,
-            gasBoostMultiplier: 3.5,
-            gasBoostUsdThreshold: 5_500000000000000000n,
             oracleMarketHours: { open: 510, close: 1439 },
         };
 
@@ -244,8 +240,6 @@ orderbookTradeTypes:
             txGas: "15000",
             quoteGas: "2000000",
             botMinBalance: "50.5",
-            gasPriceMultiplier: "150",
-            txTimeThreshold: "4000",
             blockTime: "2000",
             gasLimitMultiplier: "90",
             timeout: "20000",
@@ -360,12 +354,12 @@ orderbookTradeTypes:
         assert.deepEqual(result.quoteGas, BigInt(2000000));
         // botMinBalance is resolved as string ("50.5")
         assert.deepEqual(result.botMinBalance, "50.5");
-        assert.deepEqual(result.gasPriceMultiplier, 150);
-        assert.deepEqual(result.txTimeThreshold, 4000);
-        // the gas price multiplier step options take their defaults, no ceiling when unset
-        assert.deepEqual(result.gasIncreasePointsPerStep, 10);
-        assert.deepEqual(result.gasIncreaseStepTime, 6);
-        assert.deepEqual(result.maxGasPriceMultiplier, undefined);
+        // the gas fee options take their defaults
+        assert.deepEqual(result.txType, TxType.Eip1559);
+        assert.deepEqual(result.gasFeeBlockInterval, 10);
+        assert.deepEqual(result.priorityFeePercentiles, [75]);
+        assert.deepEqual(result.maxFeeBaseFeeMultiplier, 2);
+        assert.deepEqual(result.priorityFeeMultiplier, 1);
         assert.deepEqual(result.blockTime, 2000);
         assert.deepEqual(result.gasLimitMultiplier, 90);
         assert.deepEqual(result.timeout, 20000);
@@ -445,8 +439,6 @@ orderbookTradeTypes:
         assert.equal(result.flashblocks, false); // should be default false
         assert.equal(result.multiBroadcast, false); // should be default false
         assert.equal(result.callBlockTag, undefined); // no block tag when unset
-        assert.equal(result.gasBoostMultiplier, undefined); // no boost when unset
-        assert.equal(result.gasBoostUsdThreshold, undefined); // no boost when unset
         assert.deepEqual(result.oracleMarketHours, { open: 480, close: 1439 }); // should be default 08:00-23:59
     });
 
@@ -568,5 +560,37 @@ callBlockTag: soon
                 blockTag: tag,
             });
         }
+    });
+});
+
+describe("Test TxType", () => {
+    it("should list all tx types", () => {
+        expect(TxType.all).toEqual(["eip1559", "legacy"]);
+    });
+
+    it("resolve should accept each type, case insensitive, eip1559 when unset", () => {
+        for (const type of TxType.all) {
+            assert.equal(TxType.resolve(type), type);
+            assert.equal(TxType.resolve(type.toUpperCase()), type);
+        }
+        assert.equal(TxType.resolve(undefined), TxType.Eip1559);
+        assert.equal(TxType.resolve(null), TxType.Eip1559);
+        assert.equal(TxType.resolve(""), TxType.Eip1559);
+    });
+
+    it("resolve should throw for an unknown type", () => {
+        for (const bad of ["eip2930", "fast", 1, true]) {
+            assert.throws(
+                () => TxType.resolve(bad),
+                "expected either of eip1559, legacy for txType",
+            );
+        }
+    });
+
+    it("resolve should read an env value", () => {
+        process.env.TEST_TX_TYPE = "Legacy";
+        assert.equal(TxType.resolve("$TEST_TX_TYPE"), TxType.Legacy);
+        delete process.env.TEST_TX_TYPE;
+        assert.equal(TxType.resolve("$TEST_TX_TYPE"), TxType.Eip1559);
     });
 });

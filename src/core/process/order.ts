@@ -198,7 +198,12 @@ export async function processOrder(
     if (this.state.l1GasPrice) {
         spanAttributes["details.gasPriceL1"] = this.state.l1GasPrice.toString();
     }
-    spanAttributes["gasPriceMultiplier"] = this.state.gasPriceMultiplier;
+    // the parts of an eip1559 gas price, the base fee and the tip, see GasManager
+    const gasManager = this.state.gasManager;
+    if (gasManager?.isEip1559) {
+        spanAttributes["details.baseFeePerGas"] = String(gasManager.baseFeePerGas);
+        spanAttributes["details.priorityFee"] = gasManager.priorityFee.toString();
+    }
     const getEthMarketPriceDuration = performance.now() - getEthMarketPriceTime;
     spanAttributes["events.duration.getEthMarketPrice"] = getEthMarketPriceDuration;
     spanEvents["getEthMarketPrice"] = {

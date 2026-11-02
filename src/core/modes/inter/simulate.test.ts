@@ -73,6 +73,7 @@ describe("Test InterOrderbookTradeSimulator", () => {
         mockSolver = {
             state: {
                 gasPrice: 1000000000000000000n,
+                txFees: vi.fn().mockReturnValue({ gasPrice: 1000000000000000000n }),
                 gasLimitMultiplier: 1.5,
                 chainConfig: {
                     isSpecialL2: true,

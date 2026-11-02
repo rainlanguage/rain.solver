@@ -872,6 +872,26 @@ describe("Test RainSolverCli", () => {
                 expect.any(String),
             );
         });
+
+        it("should report a failing fee history, and nothing while it works", async () => {
+            const mockRoundSpan = { setAttributes: vi.fn(), setAttribute: vi.fn() };
+            (mockWalletManager.getWorkerWalletsBalance as Mock).mockResolvedValue({});
+            const state = rainSolverCli.state as any;
+
+            state.gasManager = { feeFetchFailures: 0, lastFeeFetchError: undefined };
+            await rainSolverCli.reportMetaInfoForRound(mockRoundSpan as any);
+            const names = mockRoundSpan.setAttribute.mock.calls.map(([name]) => name);
+            expect(names).not.toContain("gasFee.fetchFailures");
+            expect(names).not.toContain("gasFee.lastFetchError");
+
+            state.gasManager = { feeFetchFailures: 3, lastFeeFetchError: "request timed out" };
+            await rainSolverCli.reportMetaInfoForRound(mockRoundSpan as any);
+            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith("gasFee.fetchFailures", 3);
+            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith(
+                "gasFee.lastFetchError",
+                "request timed out",
+            );
+        });
     });
 
     describe("Test maybeResetAvgGasCost method", () => {

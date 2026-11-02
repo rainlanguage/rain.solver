@@ -78,7 +78,16 @@ export async function processTransaction(
     let hash: `0x${string}`, txUrl: string;
     let txSendTime = 0;
     try {
-        rawtx.type = "legacy";
+        // an eip1559 tx carries a max fee and a tip, a legacy one a gas price, see GasManager.txFees
+        if (typeof rawtx.maxFeePerGas === "bigint") {
+            rawtx.type = "eip1559";
+            baseResult.spanAttributes["details.maxFeePerGas"] = rawtx.maxFeePerGas.toString();
+            baseResult.spanAttributes["details.maxPriorityFeePerGas"] = (
+                rawtx.maxPriorityFeePerGas ?? 0n
+            ).toString();
+        } else {
+            rawtx.type = "legacy";
+        }
         ({ hash } = await signer.asWriteSigner().sendTx(rawtx as any));
         txUrl = signer.state.chainConfig.blockExplorers?.default.url + "/tx/" + hash;
         txSendTime = performance.now();

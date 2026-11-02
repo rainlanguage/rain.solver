@@ -59,6 +59,7 @@ describe("Test RouterTradeSimulator", () => {
         mockSolver = {
             state: {
                 gasPrice: 1000000000000000000n,
+                txFees: vi.fn().mockReturnValue({ gasPrice: 1000000000000000000n }),
                 gasLimitMultiplier: 1.5,
                 chainConfig: {
                     isSpecialL2: true,
@@ -398,6 +399,36 @@ describe("Test RouterTradeSimulator", () => {
                 tradeArgs.orderDetails,
                 TradeType.Balancer,
             );
+        });
+
+        it("should build an eip1559 tx with the max fee and the tip of the state's fees", async () => {
+            (mockSolver.state.txFees as Mock).mockReturnValueOnce({
+                maxFeePerGas: 3_000n,
+                maxPriorityFeePerGas: 100n,
+            });
+            (mockSolver.state.router.getTradeParams as Mock).mockResolvedValueOnce(
+                Result.ok({
+                    type: RouterType.Balancer,
+                    quote: {
+                        type: RouterType.Balancer,
+                        status: "Success",
+                        price: 1234n * ONE18,
+                        route: { route: {}, pcMap: new Map() },
+                        amountOut: 1234n * ONE18,
+                    },
+                    routeVisual: ["some route"],
+                    takeOrdersConfigStruct: {} as any,
+                }),
+            );
+
+            const result = await simulator.prepareTradeParams();
+            assert(result.isOk());
+            // no gas price on an eip1559 tx
+            expect(result.value.rawtx).toEqual({
+                to: "0xdestination",
+                maxFeePerGas: 3_000n,
+                maxPriorityFeePerGas: 100n,
+            });
         });
 
         it("should return error when trade addresses are not configured", async () => {

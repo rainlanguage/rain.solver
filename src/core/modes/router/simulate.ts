@@ -98,7 +98,7 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
             blockNumber,
             isPartial,
         } = this.tradeArgs;
-        const gasPrice = this.tradeArgs.solver.state.gasPrice;
+        const txFees = this.tradeArgs.solver.state.txFees();
 
         const maximumInput = scaleFrom18(maximumInputFixed, orderDetails.sellTokenDecimals);
         this.spanAttributes["amountIn"] = formatUnits(maximumInputFixed, 18);
@@ -207,7 +207,7 @@ export class RouterTradeSimulator extends TradeSimulatorBase {
 
         const rawtx: RawTransaction = {
             to: addresses.destination,
-            gasPrice,
+            ...txFees,
         };
         return Result.ok({
             type,
