@@ -66,7 +66,6 @@ describe("Test sendTx", () => {
             },
             state: {
                 gasPrice: 20000000000n,
-                gasPriceMultiplier: 110,
                 chainConfig: {
                     id: 1,
                     isSpecialL2: false,
@@ -1019,7 +1018,6 @@ describe("Test estimateGasCost", () => {
         mockSigner = {
             state: {
                 gasPrice: 20000000000n, // 20 gwei
-                gasPriceMultiplier: 110, // 110%
                 chainConfig: {
                     isSpecialL2: false,
                 },
@@ -1307,9 +1305,6 @@ describe("Test tryGetReceipt", () => {
                 client: {
                     getTransactionReceipt: vi.fn(),
                 },
-                gasManager: {
-                    onTransactionMine: vi.fn(),
-                },
                 nonceCache: new NonceCache(),
             },
         } as unknown as RainSolverSigner;
@@ -1388,10 +1383,6 @@ describe("Test tryGetReceipt", () => {
             await expect(tryGetReceipt(mockSigner, "0xhash", 50, 10)).rejects.toBeInstanceOf(
                 WaitForTransactionReceiptTimeoutError,
             );
-            expect(mockSigner.state.gasManager.onTransactionMine).toHaveBeenCalledWith({
-                didMine: false,
-                length: expect.any(Number),
-            });
             expect(mockSigner.busy).toBe(false);
             // the receipt was looked up while the wait was alive
             expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalled();
@@ -1436,11 +1427,6 @@ describe("Test tryGetReceipt", () => {
             1000,
             expect.any(Object),
         );
-        expect(mockSigner.state.gasManager.onTransactionMine).toHaveBeenCalledTimes(1);
-        expect(mockSigner.state.gasManager.onTransactionMine).toHaveBeenCalledWith({
-            didMine: true,
-            length: expect.any(Number),
-        });
         expect(mockSigner.busy).toBe(false);
         // a mined tx keeps the cached nonce
         expect(mockSigner.state.nonceCache.get("0xsender")).toBe(7);
@@ -1565,11 +1551,6 @@ describe("Test tryGetReceipt", () => {
             150,
             new WaitForTransactionReceiptTimeoutError({ hash: "0xhash" }),
         );
-        expect(mockSigner.state.gasManager.onTransactionMine).toHaveBeenCalledTimes(1);
-        expect(mockSigner.state.gasManager.onTransactionMine).toHaveBeenCalledWith({
-            didMine: false,
-            length: expect.any(Number),
-        });
         expect(mockSigner.busy).toBe(false);
         // the tx did not mine, so the cached nonce is refreshed from the chain
         expect(mockSigner.state.nonceCache.get("0xsender")).toBe(9);

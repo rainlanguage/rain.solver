@@ -3,7 +3,7 @@ import assert from "assert";
 import { ChainId } from "sushi";
 import { GasManager } from "../../gas";
 import { createPublicClient } from "viem";
-import { AppOptions, RpcSelectionMode } from "../../config";
+import { AppOptions, RpcSelectionMode, TxType } from "../../config";
 import { Command, Option } from "commander";
 import { sleep, TokenDetails } from "../../common";
 import { getChainConfig } from "../../state/chain";
@@ -105,10 +105,11 @@ export async function sweepFunds(opts: SweepOptions) {
         walletCount: length,
         subgraph,
         gasLimitMultiplier: 100,
-        gasPriceMultiplier: 107,
-        txTimeThreshold: 2_500,
-        gasIncreasePointsPerStep: 10,
-        gasIncreaseStepTime: 6,
+        txType: TxType.Legacy,
+        gasFeeBlockInterval: 10,
+        priorityFeePercentiles: [75],
+        maxFeeBaseFeeMultiplier: 2,
+        priorityFeeMultiplier: 1,
         blockTime: 5_000,
         flashblocks: false,
         multiBroadcast: false,
@@ -191,14 +192,7 @@ export async function sweepFunds(opts: SweepOptions) {
         walletConfig: WalletConfig.tryFromAppOptions(options),
         subgraphConfig: SubgraphConfig.tryFromAppOptions(options),
         orderManagerConfig: OrderManagerConfig.tryFromAppOptions(options),
-        gasManager: await GasManager.init({
-            client,
-            chainConfig,
-            baseGasPriceMultiplier: options.gasPriceMultiplier,
-            txTimeThreshold: options.txTimeThreshold,
-            gasIncreasePointsPerStep: options.gasIncreasePointsPerStep,
-            gasIncreaseStepTime: options.gasIncreaseStepTime * 60_000,
-        }),
+        gasManager: await GasManager.init({ client, chainConfig }),
     };
     const state = new SharedState(stateConfig);
 

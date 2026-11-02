@@ -309,6 +309,36 @@ describe("Test yaml Validator methods", async function () {
         );
     });
 
+    it("test Validator resolvePercentiles", async function () {
+        const resolve = (input: any) => Validator.resolvePercentiles(input, "field", [75]);
+        // the default when unset
+        assert.deepEqual(resolve(undefined), [75]);
+        assert.deepEqual(resolve(null), [75]);
+        // one value, as a number or a string
+        assert.deepEqual(resolve(90), [90]);
+        assert.deepEqual(resolve("90.5"), [90.5]);
+        // a yaml list
+        assert.deepEqual(resolve([76, 90]), [76, 90]);
+        assert.deepEqual(resolve(["0", "100"]), [0, 100]);
+
+        // a comma separated env value, with or without spaces
+        process.env.TEST_PERCENTILES = "76, 90";
+        assert.deepEqual(resolve("$TEST_PERCENTILES"), [76, 90]);
+        process.env.TEST_PERCENTILES = "60,75,90";
+        assert.deepEqual(resolve("$TEST_PERCENTILES"), [60, 75, 90]);
+        // an unset env is the default
+        delete process.env.TEST_PERCENTILES;
+        assert.deepEqual(resolve("$TEST_PERCENTILES"), [75]);
+
+        // out of range or not a number
+        for (const bad of [101, "-1", "abc", [], [50, "x"], [50, 200]]) {
+            assert.throws(
+                () => resolve(bad),
+                "invalid field value, must be a number or a list of numbers between 0 and 100",
+            );
+        }
+    });
+
     it("test Validator resolveRpcSelection", async function () {
         // default
         for (const input of [undefined, null, ""]) {

@@ -1,4 +1,4 @@
-import { GasManager } from "../gas";
+import { GasManager, TxFees } from "../gas";
 import { ChainId } from "sushi/chain";
 import { AppOptions } from "../config";
 import { Token } from "sushi/currency";
@@ -59,13 +59,56 @@ const HEX_QUANTITY_PATTERN = /^0x[0-9a-f]+$/i;
  * in the socket message listener uncaught and the flashblocks payload is
  * provider specific
  * @param wsClient - The ws client to subscribe through
- * @param onBlockNumber - Called with the flashblock head block number
+ * @param onBlockNumber - Called with the flashblock head block number and its base fee
  * @param onError - Called when the subscription errors
  * @returns A function that unsubscribes
  */
 export function subscribeToFlashblocks(
     wsClient: PublicClient,
-    onBlockNumber: (blockNumber: bigint) => void,
+    onBlockNumber: (blockNumber: bigint, baseFeePerGas?: bigint | null) => void,
+    onError: (error: any) => void,
+): () => void {
+    return subscribeToHeads(wsClient, "newFlashblocks", onBlockNumber, onError);
+}
+
+/**
+ * Reads the base fee of a head, null when the head says it has none (a chain
+ * without eip1559). A string that is not empty (hex or decimal), a number or a
+ * bigint is taken with BigInt, a value that it does not take or that comes out
+ * below zero is undefined, as is a head with no such field, anything else too,
+ * a boolean say, that BigInt would take for 0 or 1
+ * @param head - The head as it came over the socket
+ */
+function readHeadBaseFee(head: any): bigint | null | undefined {
+    const baseFee = head?.baseFeePerGas;
+    if (baseFee === null) return null;
+    const takes =
+        (typeof baseFee === "string" && baseFee.trim() !== "") ||
+        typeof baseFee === "number" ||
+        typeof baseFee === "bigint";
+    if (!takes) return undefined;
+    try {
+        const value = BigInt(baseFee);
+        return value >= 0n ? value : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Subscribes to the given heads of the given ws client, new heads (newHeads) or
+ * flashblocks heads (newFlashblocks), and hands on each head's block number and
+ * base fee, see subscribeToFlashblocks for how it mirrors viem's watchBlockNumber
+ * @param wsClient - The ws client to subscribe through
+ * @param kind - The heads to subscribe to
+ * @param onHead - Called with the head's block number and its base fee, see readHeadBaseFee
+ * @param onError - Called when the subscription errors
+ * @returns A function that unsubscribes
+ */
+export function subscribeToHeads(
+    wsClient: PublicClient,
+    kind: "newHeads" | "newFlashblocks",
+    onHead: (blockNumber: bigint, baseFeePerGas?: bigint | null) => void,
     onError: (error: any) => void,
 ): () => void {
     let active = true;
@@ -76,12 +119,12 @@ export function subscribeToFlashblocks(
             // through a structural type to pass the flashblocks params
             const transport = wsClient.transport as unknown as WsTransportSubscribe;
             const { unsubscribe: unsubscribe_ } = await transport.subscribe({
-                params: ["newFlashblocks"],
+                params: [kind],
                 onData(data: any) {
                     if (!active) return;
                     const number = data?.result?.number;
                     if (typeof number === "string" && HEX_QUANTITY_PATTERN.test(number)) {
-                        onBlockNumber(hexToBigInt(number as `0x${string}`));
+                        onHead(hexToBigInt(number as `0x${string}`), readHeadBaseFee(data.result));
                     }
                 },
                 onError(error: any) {
@@ -259,11 +302,12 @@ export namespace SharedStateConfig {
             gasManager: await GasManager.init({
                 client,
                 chainConfig,
-                baseGasPriceMultiplier: options.gasPriceMultiplier,
-                txTimeThreshold: options.txTimeThreshold,
-                gasIncreasePointsPerStep: options.gasIncreasePointsPerStep,
-                gasIncreaseStepTime: options.gasIncreaseStepTime * 60_000,
-                maxGasPriceMultiplier: options.maxGasPriceMultiplier,
+                txType: options.txType,
+                gasFeeBlockInterval: options.gasFeeBlockInterval,
+                priorityFeePercentiles: options.priorityFeePercentiles,
+                maxFeeBaseFeeMultiplier: options.maxFeeBaseFeeMultiplier,
+                priorityFeeMultiplier: options.priorityFeeMultiplier,
+                feeHistoryBlockTag: options.callBlockTag,
             }),
         };
 
@@ -381,7 +425,18 @@ export class SharedState {
         }
     }
 
-    /** Current gas price of the operating chain */
+    /**
+     * The fee fields of an arb transaction as things stand, the max fee and the
+     * tip in eip1559 mode, the gas price otherwise, see GasManager.txFees
+     */
+    txFees(): TxFees {
+        return this.gasManager.txFees();
+    }
+
+    /**
+     * The expected gas price of a transaction, what the estimates count with, the
+     * base fee plus the tip in eip1559 mode, see GasManager.gasPrice
+     */
     get gasPrice(): bigint {
         return this.gasManager.gasPrice;
     }
@@ -395,14 +450,6 @@ export class SharedState {
     }
     set l1GasPrice(value: bigint) {
         this.gasManager.l1GasPrice = value;
-    }
-
-    /** A multiplier for the gas price fetched from the rpc as percentage */
-    get gasPriceMultiplier(): number {
-        return this.gasManager.gasPriceMultiplier;
-    }
-    set gasPriceMultiplier(value: number) {
-        this.gasManager.gasPriceMultiplier = value;
     }
 
     get isWatchingGasPrice(): boolean {
@@ -525,14 +572,16 @@ export class SharedState {
     }
 
     /**
-     * Updates the block number by reading it from the rpc once,
-     * keeps the previous value if the call fails
+     * Updates the block number by reading the latest block from the rpc once,
+     * its base fee goes to the gas fees, see GasManager.setBaseFee, keeps the
+     * previous values if the call fails
      */
     async updateBlockNumber() {
-        const blockNumber = await this.client.getBlockNumber().catch(() => undefined);
-        if (typeof blockNumber === "bigint") {
-            // a read block number is always a sealed one
-            this.setBlockNumbers(blockNumber, blockNumber);
+        const block = await this.client.getBlock().catch(() => undefined);
+        if (typeof block?.number === "bigint") {
+            this.gasManager.setBaseFee(block.baseFeePerGas);
+            // a read block is always a sealed one
+            this.setBlockNumbers(block.number, block.number);
         }
     }
 
@@ -552,6 +601,8 @@ export class SharedState {
         if (canonicalBlockNumber > this.canonicalBlockNumber) {
             this.canonicalBlockNumber = canonicalBlockNumber;
             this.updatePools();
+            // the gas fees are fetched every gasFeeBlockInterval sealed blocks
+            this.gasManager.onBlock(canonicalBlockNumber);
             for (const listener of this.blockListeners) {
                 try {
                     listener(canonicalBlockNumber);
@@ -703,11 +754,12 @@ export class SharedState {
      * the block number updates for the whole outage
      */
     private subscribeToBlockNumber(wsClient: PublicClient, interval: number) {
-        const onBlockNumber = (blockNumber: bigint) => {
+        const onBlockNumber = (blockNumber: bigint, baseFeePerGas?: bigint | null) => {
             // a flashblock head belongs to the block being built, so the
             // sealed block is the one below it, a new head is sealed itself
             const sealed = this.appOptions.flashblocks ? blockNumber - 1n : blockNumber;
             if (sealed > this.wsBlockNumber) this.wsBlockNumber = sealed;
+            this.gasManager.setBaseFee(baseFeePerGas);
             this.setBlockNumbers(blockNumber, sealed);
             // subscription is healthy, so stop the polling fallback
             // and cancel any pending resubscribe if active
@@ -735,11 +787,13 @@ export class SharedState {
             });
             return;
         }
-        if (this.appOptions.flashblocks) {
-            this.wsBlockNumberUnwatcher = subscribeToFlashblocks(wsClient, onBlockNumber, onError);
-        } else {
-            this.wsBlockNumberUnwatcher = wsClient.watchBlockNumber({ onBlockNumber, onError });
-        }
+        // both heads carry the base fee, the gas fees follow it, see GasManager.setBaseFee
+        this.wsBlockNumberUnwatcher = subscribeToHeads(
+            wsClient,
+            this.appOptions.flashblocks ? "newFlashblocks" : "newHeads",
+            onBlockNumber,
+            onError,
+        );
     }
 
     /** Cancels the pending ws resubscribe if there is one scheduled */
