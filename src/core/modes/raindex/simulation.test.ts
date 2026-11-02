@@ -76,6 +76,7 @@ describe("Test RaindexRouterTradeSimulator", () => {
         mockSolver = {
             state: {
                 gasPrice: 1000000000000000000n,
+                txFees: vi.fn().mockReturnValue({ gasPrice: 1000000000000000000n }),
                 chainConfig: {
                     id: 1,
                     routeProcessors: {

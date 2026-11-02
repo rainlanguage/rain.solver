@@ -60,6 +60,7 @@ describe("Test sweep functions", () => {
             writeContract: vi.fn(),
             getSelfBalance: vi.fn(),
             estimateGasCost: vi.fn(),
+            getGasPrice: vi.fn(),
             waitForReceipt: vi.fn(),
             sendTx: vi.fn(),
         } as any;
@@ -189,7 +190,8 @@ describe("Test sweep functions", () => {
 
         it("should return early if balance is less than gas cost", async () => {
             (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(50n);
-            (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 100n });
+            (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ gas: 1n, l1Cost: 0n });
+            (mockFromSigner.getGasPrice as Mock).mockResolvedValue(100n);
 
             const result = await transferRemainingGasFrom(mockFromSigner, toAddress);
 
@@ -199,7 +201,8 @@ describe("Test sweep functions", () => {
 
         it("should successfully transfer remaining gas", async () => {
             (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(1000n);
-            (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 100n });
+            (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ gas: 1n, l1Cost: 0n });
+            (mockFromSigner.getGasPrice as Mock).mockResolvedValue(100n);
             (mockFromSigner.sendTx as Mock).mockResolvedValue({
                 hash: "0xhash",
                 wait: vi.fn().mockResolvedValue({ status: "success" }),
@@ -210,7 +213,8 @@ describe("Test sweep functions", () => {
 
             const result = await transferRemainingGasFrom(mockFromSigner, toAddress);
 
-            // With 1000n balance and 100n gas cost, total cost is 102n (102%), remaining is 898n
+            // the gas price read for the tx is 100n, with the 2% headroom 102n, for 1 gas the
+            // reserve is 102n, so 898n of the 1000n balance goes out
             expect(result).toMatchObject({
                 txHash: "0xhash",
                 amount: 898n,
@@ -218,12 +222,28 @@ describe("Test sweep functions", () => {
             expect(mockFromSigner.sendTx).toHaveBeenCalledWith({
                 to: toAddress,
                 value: 898n,
+                gas: 1n,
+                gasPrice: 102n,
             });
+        });
+
+        it("should reserve the L1 fee with its 2% headroom too", async () => {
+            (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(1000n);
+            (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ gas: 1n, l1Cost: 50n });
+            (mockFromSigner.getGasPrice as Mock).mockResolvedValue(100n);
+            (mockFromSigner.sendTx as Mock).mockResolvedValue({ hash: "0xhash" });
+            (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({ status: "success" });
+
+            const result = await transferRemainingGasFrom(mockFromSigner, toAddress);
+
+            // 102n for the gas and 51n for the L1 fee
+            expect(result).toMatchObject({ amount: 847n });
         });
 
         it("should handle failed gas transfer transaction", async () => {
             (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(1000n);
-            (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 100n });
+            (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ gas: 1n, l1Cost: 0n });
+            (mockFromSigner.getGasPrice as Mock).mockResolvedValue(100n);
             (mockFromSigner.sendTx as Mock).mockResolvedValue({
                 hash: "0xhash",
                 wait: vi.fn().mockResolvedValue({ status: "reverted" }),

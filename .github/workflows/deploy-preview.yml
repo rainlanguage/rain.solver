@@ -76,7 +76,6 @@ jobs:
           echo "ARB_ADDRESS=${{ vars.PREVIEW_ARB_ADDRESS }}" >> .env
           echo "GENERIC_ARB_ADDRESS=${{ vars.PREVIEW_GENERIC_ARB_ADDRESS }}" >> .env
           echo "BOT_MIN_BALANCE=${{ vars.PREVIEW_BOT_MIN_BALANCE }}" >> .env
-          echo "GAS_PRICE_MULTIPLIER=${{ vars.PREVIEW_GAS_PRICE_MULTIPLIER }}" >> .env
           echo "RP_ONLY=${{ vars.PREVIEW_RP_ONLY }}" >> .env
           echo "TX_GAS=${{ vars.PREVIEW_TX_GAS }}" >> .env
           echo "DISPAIR=${{ vars.PREVIEW_DISPAIR }}" >> .env

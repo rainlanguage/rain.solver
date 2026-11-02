@@ -178,6 +178,43 @@ describe("Test processTransaction", () => {
             });
         });
 
+        it("should send an eip1559 tx with its max fee and tip, a legacy one with its gas price", async () => {
+            mockWriteSigner.sendTx.mockResolvedValue({ hash: "0xTxHash" });
+            (mockSigner.waitForReceipt as Mock).mockResolvedValue({ status: "success" });
+            (processReceipt as Mock).mockResolvedValue(
+                Result.ok({ ...mockArgs.baseResult, endTime: 123 }),
+            );
+
+            // the fee fields of an eip1559 tx, see GasManager.txFees
+            mockArgs.rawtx = {
+                to: mockRawTx.to,
+                data: mockRawTx.data,
+                value: mockRawTx.value,
+                gas: mockRawTx.gas,
+                maxFeePerGas: 3_000n,
+                maxPriorityFeePerGas: 100n,
+            };
+            await processTransaction.call(mockSolver, mockArgs);
+            expect(mockWriteSigner.sendTx).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    type: "eip1559",
+                    maxFeePerGas: 3_000n,
+                    maxPriorityFeePerGas: 100n,
+                }),
+            );
+            expect(mockArgs.baseResult.spanAttributes["details.maxFeePerGas"]).toBe("3000");
+            expect(mockArgs.baseResult.spanAttributes["details.maxPriorityFeePerGas"]).toBe("100");
+
+            // a legacy tx carries its gas price and no eip1559 span attributes
+            mockArgs.rawtx = { ...mockRawTx };
+            mockArgs.baseResult.spanAttributes = {};
+            await processTransaction.call(mockSolver, mockArgs);
+            expect(mockWriteSigner.sendTx).toHaveBeenLastCalledWith(
+                expect.objectContaining({ type: "legacy", gasPrice: mockRawTx.gasPrice }),
+            );
+            expect(mockArgs.baseResult.spanAttributes["details.maxFeePerGas"]).toBeUndefined();
+        });
+
         it("should send from the signer of the order and lock it", async () => {
             (mockSigner as any).busy = false;
             const mockReceipt = { status: "success" };

@@ -19,5 +19,7 @@ export type RawTransaction = Prettify<
     Omit<TransactionRequestBase, "to"> & {
         to: `0x${string}`;
         gasPrice?: bigint;
+        maxFeePerGas?: bigint;
+        maxPriorityFeePerGas?: bigint;
     }
 >;

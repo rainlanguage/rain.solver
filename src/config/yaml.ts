@@ -100,8 +100,6 @@ export type AppOptions = {
     botMinBalance: string;
     /** Specifies the routing mode 'multi' or 'single' or 'full', default is 'single' */
     route: "single" | "multi" | undefined;
-    /** Option to multiply the gas price fetched from the rpc as percentage, default is 107, ie +7% */
-    gasPriceMultiplier: number;
     /** Option to multiply the gas limit estimation from the rpc as percentage, default is 100, ie no change */
     gasLimitMultiplier: number;
     /** Option to set a gas limit for all submitting txs optionally with appended percentage sign to apply as percentage to original gas */
@@ -132,14 +130,38 @@ export type AppOptions = {
     convertToGasTime: number;
     /** Determines if multi wallets should be rotated at runtime, meaning new ones to replace older ones once they runs out of gas, default is false */
     rotateMultiWallet: boolean;
-    /** Time threshold (in ms) for a transaction mine time before it counts as a trigger to increase gas price multiplier for future transactions, default is 15 seconds, must be below the receipt wait (3 block times) for a transaction to count as slow */
-    txTimeThreshold: number;
-    /** Points added to the gas price multiplier on each step up, default is 10 */
-    gasIncreasePointsPerStep: number;
-    /** Time (in minutes) of one gas price multiplier step, at most one step up per this time and one step down per this time once the last step up is that old, default is 6 */
-    gasIncreaseStepTime: number;
-    /** Optional ceiling of the gas price multiplier, never below gasPriceMultiplier, defaults to gasPriceMultiplier plus 1000 points (ten times the rpc gas price) when unset */
-    maxGasPriceMultiplier?: number;
+    /**
+     * The type of the arb transactions, "eip1559" sends them with a max fee and a
+     * priority fee (tip), "legacy" with a single gas price. A chain without a base
+     * fee always gets legacy transactions. Default is "eip1559".
+     */
+    txType: TxType;
+    /**
+     * The number of sealed blocks between two fetches of the gas fees, the gas
+     * price in legacy mode, the fee history (the tip) in eip1559 mode. The fee
+     * history also covers this number of blocks. Default is 10.
+     */
+    gasFeeBlockInterval: number;
+    /**
+     * The percentiles of the priority fees (tips) of each block in the fee history,
+     * one or more, in ascending order with no value repeated, the rpc can reject
+     * other lists, the mean of all these values over all the blocks is the market
+     * tip a transaction pays, the zero ones of empty blocks left out, 0 when every
+     * block paid none, eip1559 mode only. Default is [75].
+     */
+    priorityFeePercentiles: number[];
+    /**
+     * The headroom of the max fee over the base fee of a transaction, max fee = base
+     * fee x this + tip. The transaction pays only the base fee at inclusion plus the
+     * tip, the headroom lets the base fee rise before inclusion, eip1559 mode only.
+     * Default is 2.
+     */
+    maxFeeBaseFeeMultiplier: number;
+    /**
+     * The multiplier on the market tip, the fee history's mean times this is the
+     * tip a transaction pays, eip1559 mode only, must be greater than 0. Default is 1.
+     */
+    priorityFeeMultiplier: number;
     /** The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher and the transaction receipt wait, a receipt wait times out after 3 block times, required */
     blockTime: number;
     /** Subscribes the block number watcher to flashblocks heads instead of new heads over the ws rpc, only supported on Base chain, requires wsRpc, default is false */
@@ -174,10 +196,6 @@ export type AppOptions = {
     strictMaxOwnerProfilePartialTradeSizeCheck: boolean;
     /** Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins */
     checkWalletBalanceTime: number;
-    /** Optional multiplier applied to the tx gas price when the gas boost usd threshold is exceeded, no boost applies if unset */
-    gasBoostMultiplier?: number;
-    /** Optional threshold for the estimated profit USD value that if exceeded boosts the tx gas price, kept as 18 point decimals, no boost applies if unset */
-    gasBoostUsdThreshold?: bigint;
     /** Daily market hours (UTC) of the known oracles, orders with a known oracle skip the oracle fetch out of these hours and all day on weekends (saturday and sunday), default is 08:00-23:59 */
     oracleMarketHours: OracleMarketHours;
 };
@@ -337,18 +355,6 @@ export namespace AppOptions {
                             "invalid bot min balance, it should be an number greater than equal to 0",
                         ),
                 ),
-                gasPriceMultiplier: Validator.resolveNumericValue(
-                    input.gasPriceMultiplier,
-                    INT_PATTERN,
-                    "invalid gasPriceMultiplier value, must be an integer greater than 0",
-                    "107",
-                    undefined,
-                    (gasPriceMultiplier) =>
-                        assert(
-                            gasPriceMultiplier > 0,
-                            "invalid gasPriceMultiplier value, must be an integer greater than 0",
-                        ),
-                ),
                 gasLimitMultiplier: Validator.resolveNumericValue(
                     input.gasLimitMultiplier,
                     INT_PATTERN,
@@ -440,52 +446,46 @@ export namespace AppOptions {
                     "expected a boolean value for rotateMultiWallet",
                     false,
                 ),
-                txTimeThreshold: Validator.resolveNumericValue(
-                    input.txTimeThreshold,
+                txType: TxType.resolve(input.txType),
+                gasFeeBlockInterval: Validator.resolveNumericValue(
+                    input.gasFeeBlockInterval,
                     INT_PATTERN,
-                    "invalid txTimeThreshold value, must be an integer greater than 0",
-                    "15000",
-                    undefined,
-                    (txTimeThreshold) =>
-                        assert(
-                            txTimeThreshold > 0,
-                            "invalid txTimeThreshold value, must be an integer greater than 0",
-                        ),
-                ),
-                gasIncreasePointsPerStep: Validator.resolveNumericValue(
-                    input.gasIncreasePointsPerStep,
-                    INT_PATTERN,
-                    "invalid gasIncreasePointsPerStep value, must be an integer greater than 0",
+                    "invalid gasFeeBlockInterval value, must be an integer greater than 0",
                     "10",
                     undefined,
-                    (gasIncreasePointsPerStep) =>
+                    (gasFeeBlockInterval) =>
                         assert(
-                            gasIncreasePointsPerStep > 0,
-                            "invalid gasIncreasePointsPerStep value, must be an integer greater than 0",
+                            gasFeeBlockInterval > 0,
+                            "invalid gasFeeBlockInterval value, must be an integer greater than 0",
                         ),
                 ),
-                gasIncreaseStepTime: Validator.resolveNumericValue(
-                    input.gasIncreaseStepTime,
-                    INT_PATTERN,
-                    "invalid gasIncreaseStepTime value, must be an integer greater than 0",
-                    "6",
+                priorityFeePercentiles: Validator.resolvePercentiles(
+                    input.priorityFeePercentiles,
+                    "priorityFeePercentiles",
+                    [75],
+                ),
+                maxFeeBaseFeeMultiplier: Validator.resolveNumericValue(
+                    input.maxFeeBaseFeeMultiplier,
+                    FLOAT_PATTERN,
+                    "invalid maxFeeBaseFeeMultiplier value, must be a number greater than or equal to 1",
+                    "2",
                     undefined,
-                    (gasIncreaseStepTime) =>
+                    (maxFeeBaseFeeMultiplier) =>
                         assert(
-                            gasIncreaseStepTime > 0,
-                            "invalid gasIncreaseStepTime value, must be an integer greater than 0",
+                            maxFeeBaseFeeMultiplier >= 1,
+                            "invalid maxFeeBaseFeeMultiplier value, must be a number greater than or equal to 1",
                         ),
                 ),
-                maxGasPriceMultiplier: Validator.resolveNumericValue(
-                    input.maxGasPriceMultiplier,
-                    INT_PATTERN,
-                    "invalid maxGasPriceMultiplier value, must be an integer greater than 0",
+                priorityFeeMultiplier: Validator.resolveNumericValue(
+                    input.priorityFeeMultiplier,
+                    FLOAT_PATTERN,
+                    "invalid priorityFeeMultiplier value, must be a number greater than 0",
+                    "1",
                     undefined,
-                    undefined,
-                    (maxGasPriceMultiplier) =>
+                    (priorityFeeMultiplier) =>
                         assert(
-                            maxGasPriceMultiplier === undefined || maxGasPriceMultiplier > 0,
-                            "invalid maxGasPriceMultiplier value, must be an integer greater than 0",
+                            priorityFeeMultiplier > 0,
+                            "invalid priorityFeeMultiplier value, must be a number greater than 0",
                         ),
                 ),
                 blockTime: Validator.resolveNumericValue(
@@ -597,36 +597,6 @@ export namespace AppOptions {
                             "invalid checkWalletBalanceTime, must be an integer greater than equal to  0",
                         ),
                 ),
-                gasBoostMultiplier: Validator.resolveNumericValue(
-                    input.gasBoostMultiplier,
-                    FLOAT_PATTERN,
-                    "invalid gasBoostMultiplier value, must be an number greater than 1",
-                    undefined,
-                    undefined,
-                    (gasBoostMultiplier) =>
-                        assert(
-                            gasBoostMultiplier === undefined || gasBoostMultiplier > 1,
-                            "invalid gasBoostMultiplier value, must be an number greater than 1",
-                        ),
-                ),
-                gasBoostUsdThreshold: (() => {
-                    const gasBoostUsdThreshold = Validator.resolveNumericValue(
-                        input.gasBoostUsdThreshold,
-                        FLOAT_PATTERN,
-                        "invalid gasBoostUsdThreshold value, must be a number greater than 0",
-                        undefined,
-                        true,
-                        (value) =>
-                            assert(
-                                value === undefined || Number(value) > 0,
-                                "invalid gasBoostUsdThreshold value, must be a number greater than 0",
-                            ),
-                    );
-                    // convert to 18 point decimals
-                    return gasBoostUsdThreshold === undefined
-                        ? undefined
-                        : parseUnits(gasBoostUsdThreshold, 18);
-                })(),
                 oracleMarketHours: Validator.resolveOracleMarketHours(input.oracleMarketHours),
             } as AppOptions);
         } catch (error: any) {
@@ -694,5 +664,36 @@ export namespace CallBlockTag {
      */
     export function getCallBlockTag(options?: AppOptions): { blockTag?: CallBlockTag } {
         return options?.callBlockTag ? { blockTag: options.callBlockTag } : {};
+    }
+}
+
+/** The types of the arb transactions, see AppOptions.txType */
+export enum TxType {
+    Eip1559 = "eip1559",
+    Legacy = "legacy",
+}
+export namespace TxType {
+    /** The list of all tx types */
+    export const all: TxType[] = Object.values(TxType).filter(
+        (v): v is TxType => typeof v === "string",
+    );
+
+    /**
+     * Resolves the tx type from the config input, case insensitive, eip1559 when
+     * unset, throws for an unknown type
+     * @param input - The config input value, a plain value or an env reference
+     */
+    export function resolve(input: any): TxType {
+        const value = readValue(input).value;
+        if (value === undefined || value === null || value === "") return TxType.Eip1559;
+        const lowered = typeof value === "string" ? value.toLowerCase() : value;
+        assert(
+            typeof lowered === "string" && all.includes(lowered as TxType),
+            new AppOptionsError(
+                `expected either of ${all.join(", ")} for txType`,
+                AppOptionsErrorType.AppOptionsValidationError,
+            ),
+        );
+        return lowered as TxType;
     }
 }

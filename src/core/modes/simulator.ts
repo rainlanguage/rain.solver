@@ -1,7 +1,6 @@
 import { dryrun } from "./dryrun";
 import { toUsdValue } from "../../math";
 import { formatUnits } from "viem";
-import { RawTransaction } from "../../common";
 import { Attributes } from "@opentelemetry/api";
 import { EstimateGasCostResult } from "../../signer";
 import { DryrunGasCache } from "../../state/dryrunGasCache";
@@ -20,9 +19,6 @@ import {
     RaindexRouterTradePreparedParams,
     SimulateRaindexRouterTradeArgs,
 } from "./raindex/simulation";
-
-/** The number of steps the gas price boost climbs from no boost to the configured multiplier */
-export const GAS_BOOST_STEPS = 4n;
 
 /** Specifies the reason that simulation failed */
 export enum SimulationHaltReason {
@@ -336,7 +332,6 @@ export abstract class TradeSimulatorBase {
         }
 
         const estimatedProfit = this.estimateProfit(prepareParamsResult.value.price)!;
-        this.maybeBoostGasPrice(prepareParamsResult.value.rawtx, estimatedProfit, estimatedGasCost);
 
         this.spanAttributes["foundOpp"] = true;
         this.spanAttributes["duration"] = performance.now() - this.startTime;
@@ -455,7 +450,6 @@ export abstract class TradeSimulatorBase {
             return Result.err(setTransactionDataResult.error);
         }
         prepareParamsResult.value.rawtx.gas = gasLimit;
-        this.maybeBoostGasPrice(prepareParamsResult.value.rawtx, estimatedProfit, estimatedGasCost);
 
         this.spanAttributes["snapTx"] = true;
         this.spanAttributes["foundOpp"] = true;
@@ -468,51 +462,5 @@ export abstract class TradeSimulatorBase {
             oppBlockNumber: Number(this.tradeArgs.blockNumber),
             estimatedProfit,
         });
-    }
-
-    /**
-     * Boosts the tx gas price if the trade is highly profitable, that is when the
-     * estimated profit USD value exceeds the configured USD threshold, this increases
-     * the chance of the tx to land onchain faster as the trade can afford it, the
-     * boost steps up from no boost to the configured multiplier in a few steps and
-     * settles on the last step whose boosted gas cost still fits in the estimated
-     * profit, so the boost never makes the trade unprofitable, this has no effect if
-     * the config fields are not set or the gas token USD price is unknown
-     * @param rawtx - The trade tx to boost the gas price of
-     * @param estimatedProfit - The estimated profit of the trade
-     * @param estimatedGasCost - The estimated gas cost of the trade at the current gas price
-     */
-    maybeBoostGasPrice(rawtx: RawTransaction, estimatedProfit: bigint, estimatedGasCost: bigint) {
-        const { gasBoostMultiplier, gasBoostUsdThreshold } = this.tradeArgs.solver.appOptions;
-        const gasTokenUsdPrice = this.tradeArgs.solver.state.gasTokenUsdPrice;
-        const exceedsUsdThreshold =
-            gasBoostUsdThreshold !== undefined &&
-            !!gasTokenUsdPrice &&
-            toUsdValue(estimatedProfit, gasTokenUsdPrice) > gasBoostUsdThreshold;
-        if (
-            gasBoostMultiplier === undefined ||
-            typeof rawtx.gasPrice !== "bigint" ||
-            !exceedsUsdThreshold
-        ) {
-            return;
-        }
-
-        // the multipliers are scaled by 100 to apply them with 2 decimal points precision,
-        // step from no boost (100) up to the configured multiplier and stop at the first
-        // step whose boosted gas cost surpasses the estimated profit, the last step before
-        // it is the one applied, no step fitting means no boost at all
-        const base = 100n;
-        const target = BigInt(Math.round(gasBoostMultiplier * 100));
-        let applied = base;
-        for (let i = 1n; i <= GAS_BOOST_STEPS; i++) {
-            const multiplier = base + ((target - base) * i) / GAS_BOOST_STEPS;
-            if ((estimatedGasCost * multiplier) / 100n > estimatedProfit) break;
-            applied = multiplier;
-        }
-        if (applied > base) {
-            rawtx.gasPrice = (rawtx.gasPrice * applied) / 100n;
-            this.spanAttributes["gasPriceBoosted"] = true;
-            this.spanAttributes["gasBoostMultiplierApplied"] = Number(applied) / 100;
-        }
     }
 }

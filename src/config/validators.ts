@@ -260,6 +260,28 @@ export namespace Validator {
         return lowered as RpcSelectionMode;
     }
 
+    /**
+     * Resolves a list of percentiles, numbers from 0 to 100, from a single value, a
+     * yaml list or a comma separated env value, the given default when unset
+     * @param input - The config input value
+     * @param name - The config field name, for the error message
+     * @param fallback - The default list
+     */
+    export function resolvePercentiles(input: any, name: string, fallback: number[]): number[] {
+        const read = readValue(input);
+        let value = read.value;
+        if (value === undefined || value === null || value === "") return fallback;
+        if (typeof value === "string") value = tryIntoArray(value);
+        const list: unknown[] = Array.isArray(value) ? value : [value];
+        const message = `invalid ${name} value, must be a number or a list of numbers between 0 and 100`;
+        assert(list.length > 0, validationError(message));
+        return list.map((item) => {
+            const text = String(item);
+            assert(FLOAT_PATTERN.test(text) && Number(text) <= 100, validationError(message));
+            return Number(text);
+        });
+    }
+
     /** Resolves config's rpcs */
     export function resolveRpc<isOptional extends boolean = false>(
         input: any,
