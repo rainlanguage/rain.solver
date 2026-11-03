@@ -324,6 +324,7 @@ describe("Test RainSolverCli", () => {
             );
             expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith({ name: "sg-status" });
             expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith({ name: "wallet-init" });
+            expect(mockLogger.shutdown).not.toHaveBeenCalled();
 
             expect(result).toBeInstanceOf(RainSolverCli);
         });
@@ -346,6 +347,26 @@ describe("Test RainSolverCli", () => {
                     status: { code: SpanStatusCode.ERROR, message: expect.any(String) },
                 }),
             );
+            // the startup error span is flushed before init rejects
+            expect(mockLogger.shutdown).toHaveBeenCalledTimes(1);
+            expect(mockLogger.shutdown.mock.invocationCallOrder[0]).toBeGreaterThan(
+                mockLogger.exportPreAssembledSpan.mock.invocationCallOrder[0],
+            );
+        });
+
+        it("should reject with the init error when the logger flush fails", async () => {
+            const mockCmdOptions = { config: "config.yaml" };
+            const mockLogger = {
+                exportPreAssembledSpan: vi.fn(),
+                shutdown: vi.fn().mockRejectedValue(new Error("flush failed")),
+            };
+            (AppOptions.tryFromYamlPath as Mock).mockReturnValue(
+                Result.err(new Error("Startup failed")),
+            );
+            (RainSolverLogger as Mock).mockImplementation(() => mockLogger);
+
+            await expect(RainSolverCli.init(mockCmdOptions)).rejects.toThrow("Startup failed");
+            expect(mockLogger.shutdown).toHaveBeenCalledTimes(1);
         });
 
         it("should handle startup errors when shared state config init fails", async () => {
@@ -396,6 +417,7 @@ describe("Test RainSolverCli", () => {
             );
 
             expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledWith({ name: "sg-error" });
+            expect(mockLogger.shutdown).toHaveBeenCalledTimes(1);
         });
 
         describe("with the log sync", () => {
@@ -489,6 +511,7 @@ describe("Test RainSolverCli", () => {
 
                 expect(mockEventSync.close).toHaveBeenCalledTimes(1);
                 expect(mockState.unwatchBlockNumber).toHaveBeenCalledTimes(1);
+                expect(mockLogger.shutdown).toHaveBeenCalledTimes(1);
             });
 
             it("should go on when no orderbook goes live, and say so", async () => {
@@ -521,6 +544,7 @@ describe("Test RainSolverCli", () => {
 
                 expect(mockEventSync.close).toHaveBeenCalledTimes(1);
                 expect(mockState.unwatchBlockNumber).toHaveBeenCalledTimes(1);
+                expect(mockLogger.shutdown).toHaveBeenCalledTimes(1);
             });
 
             it("should report the subgraphs that did not answer, and go on with the others", async () => {

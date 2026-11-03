@@ -129,7 +129,26 @@ export class RainSolverCli {
     static async init(cmdOptions: OptionValues) {
         // init logger
         const logger = new RainSolverLogger();
+        try {
+            return await RainSolverCli.initWithLogger(cmdOptions, logger);
+        } catch (error) {
+            // the process exits after a failed init, so flush the queued spans
+            // first, a failed flush must not hide the init error
+            try {
+                await logger.shutdown();
+            } catch {
+                /* the init error below is the one to report */
+            }
+            throw error;
+        }
+    }
 
+    /**
+     * Runs the init steps of {@link RainSolverCli.init} with the given logger
+     * @param cmdOptions - Parsed command-line arguments
+     * @param logger - The logger that records the init reports
+     */
+    private static async initWithLogger(cmdOptions: OptionValues, logger: RainSolverLogger) {
         // parse cli args and appOptions and init state
         // record the process as startup otel report
         const { appOptions, state } = await (async () => {
