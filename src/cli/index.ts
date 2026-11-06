@@ -769,5 +769,12 @@ export class RainSolverCli {
         if (this.avgGasCost) {
             roundSpan.setAttribute("avgGasCost", formatUnits(this.avgGasCost, 18));
         }
+
+        // report a failing fee history, the tip comes off the node's gas price meanwhile
+        const gasManager = this.state.gasManager;
+        if (gasManager?.feeFetchFailures) {
+            roundSpan.setAttribute("gasFee.fetchFailures", gasManager.feeFetchFailures);
+            roundSpan.setAttribute("gasFee.lastFetchError", gasManager.lastFeeFetchError ?? "N/A");
+        }
     }
 }

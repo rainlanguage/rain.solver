@@ -89,7 +89,7 @@ export class RaindexRouterTradeSimulator extends TradeSimulatorBase {
             rpParams,
             routeVisual,
         } = this.tradeArgs;
-        const gasPrice = this.tradeArgs.solver.state.gasPrice;
+        const txFees = this.tradeArgs.solver.state.txFees();
 
         this.spanAttributes["against"] = counterpartyOrderDetails.takeOrder.id;
         this.spanAttributes["counterpartyInputToEthPrice"] = formatUnits(
@@ -173,7 +173,7 @@ export class RaindexRouterTradeSimulator extends TradeSimulatorBase {
 
         const rawtx: RawTransaction = {
             to: addresses.destination,
-            gasPrice,
+            ...txFees,
         };
         return Result.ok({
             type: TradeType.Raindex,

@@ -399,6 +399,22 @@ describe("Test processOrder", () => {
         });
     });
 
+    it("should record the base fee and the tip of an eip1559 gas price, none in legacy mode", async () => {
+        (findBestTrade as Mock).mockResolvedValue(Result.err({ spanAttributes: {} }));
+        (mockState as any).gasManager = { isEip1559: true, baseFeePerGas: 90n, priorityFee: 10n };
+
+        let result = await (await processOrder.call(mockRainSolver, mockArgs))();
+        assert(result.isOk());
+        expect(result.value.spanAttributes["details.baseFeePerGas"]).toBe("90");
+        expect(result.value.spanAttributes["details.priorityFee"]).toBe("10");
+
+        (mockState as any).gasManager = { isEip1559: false, baseFeePerGas: 90n, priorityFee: 0n };
+        result = await (await processOrder.call(mockRainSolver, mockArgs))();
+        assert(result.isOk());
+        expect(result.value.spanAttributes["details.baseFeePerGas"]).toBeUndefined();
+        expect(result.value.spanAttributes["details.priorityFee"]).toBeUndefined();
+    });
+
     it("should return ok result if findBestTrade throws with noneNodeError", async () => {
         const error = { spanAttributes: { test: "something" }, noneNodeError: "some error" };
         (findBestTrade as Mock).mockResolvedValue(Result.err(error));

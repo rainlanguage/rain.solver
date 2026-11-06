@@ -102,7 +102,7 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
             inputToEthPrice,
             outputToEthPrice,
         } = this.tradeArgs;
-        const gasPrice = this.tradeArgs.solver.state.gasPrice;
+        const txFees = this.tradeArgs.solver.state.txFees();
 
         this.spanAttributes["against"] = counterpartyOrderDetails.takeOrder.id;
         this.spanAttributes["inputToEthPrice"] = inputToEthPrice;
@@ -156,7 +156,7 @@ export class InterOrderbookTradeSimulator extends TradeSimulatorBase {
 
         const rawtx: RawTransaction = {
             to: addresses.destination,
-            gasPrice,
+            ...txFees,
         };
         return Result.ok({
             type: TradeType.InterOrderbook,

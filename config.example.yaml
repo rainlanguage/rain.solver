@@ -133,24 +133,36 @@ quoteGas: 1000000
 # Minimum bot's wallet gas token balance required for operating, required option
 botMinBalance: 0.5
 
-# Option to multiply the gas price fetched from the rpc as percentage, default is 107, ie +7%
-gasPriceMultiplier: 107
+# The type of the arb transactions: eip1559 or legacy.
+# With eip1559, a transaction has a max fee and a priority fee (tip). With legacy, it has one gas price.
+# On a chain without a base fee, the solver always sends legacy transactions.
+# Default is eip1559.
+txType: eip1559
 
-# Time threshold (in ms) for a transaction mine time before it counts as a trigger to increase gas price multiplier for future transactions, default is 15000ms (15 seconds)
-# A timed out receipt wait does not count, only a mined transaction does. Set this to at least two block times, one missed block is normal.
-# A receipt wait times out after 3 block times, so set this below that, otherwise no transaction can count as slow.
-txTimeThreshold: 15000
+# The number of sealed blocks between two fetches of the gas fees.
+# In legacy mode the solver fetches the gas price. In eip1559 mode it fetches the fee history of this number of blocks.
+# Default is 10.
+gasFeeBlockInterval: 10
 
-# Points added to the gas price multiplier on each step up, default is 10
-gasIncreasePointsPerStep: 10
+# The percentiles of the priority fees (tips) that the solver reads from each block in the fee history.
+# Set one value or a list. In env, separate the values with commas, for example: 76,90
+# Put the values in ascending order, with no value repeated. The rpc can reject other lists.
+# The market tip is the mean of all these values from all the blocks. For example, 2 percentiles and 10 blocks
+# give 20 values. The zero values of empty blocks are left out, and the tip is 0 when every block paid none.
+# A transaction pays this tip. Only for eip1559 mode.
+# Default is [75].
+priorityFeePercentiles: [75]
 
-# Time (in minutes) of one gas price multiplier step, the multiplier steps up at most once per this time,
-# and steps down once per this time after the last step up, default is 6
-gasIncreaseStepTime: 6
+# The headroom of the max fee over the base fee: max fee = base fee x this value + tip. A transaction pays only
+# the base fee at inclusion plus the tip. The headroom lets the base fee go up before inclusion. The wallet must
+# hold enough for gas x max fee. Only for eip1559 mode.
+# Default is 2.
+maxFeeBaseFeeMultiplier: 2
 
-# Optional ceiling of the gas price multiplier, never below gasPriceMultiplier, when unset it is
-# gasPriceMultiplier plus 1000 points, ie ten times the rpc gas price
-# maxGasPriceMultiplier: 200
+# The multiplier on the market tip: the mean of the fee history percentiles times this value is the tip a
+# transaction pays. Must be greater than 0. Only for eip1559 mode.
+# Default is 1.
+priorityFeeMultiplier: 1
 
 # The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher
 # and the transaction receipt wait, a receipt wait times out after 3 block times, required
@@ -218,12 +230,6 @@ strictMaxOwnerProfilePartialTradeSizeCheck: false
 
 # Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins
 checkWalletBalanceTime: 15
-
-# Optional multiplier applied to the tx gas price when the gas boost usd threshold is exceeded, no boost applies if unset
-gasBoostMultiplier: 2.5
-
-# Optional threshold (in dollars) for the estimated profit USD value that if exceeded boosts the tx gas price, no boost applies if unset
-gasBoostUsdThreshold: 5.5
 
 # Daily market hours of the known oracles, as a range of two standard UTC times of the current day in form of
 # HH:MM-HH:MM, e.g. 08:30-23:59, the close time is inclusive, so the market is open until the end of that minute,

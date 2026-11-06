@@ -271,7 +271,7 @@ export function resetNonce(signer: RainSolverSigner) {
 /**
  * Estimates the total gas cost for a transaction, including L2 gas costs and L1 fees if on a special L2 chain.
  * This function calculates:
- * - Base gas cost using the signer's configured gas price and multiplier
+ * - Base gas cost using the state's gas price, the base fee plus the tip in eip1559 mode
  * - L2 gas estimation for the transaction
  * - L1 gas fees if on an L2 chain like Arbitrum (gets L1 base fee and estimates L1 calldata cost)
  *
@@ -464,7 +464,6 @@ export async function tryGetReceipt(
     timeout = 3 * signer.state.appOptions.blockTime,
     pollingInterval = signer.state.appOptions.blockTime,
 ): Promise<TransactionReceipt> {
-    const start = Date.now();
     // the poll loop runs only while the wait is unsettled, so a timed out
     // wait does not keep polling the receipt in the background
     let active = true;
@@ -497,8 +496,6 @@ export async function tryGetReceipt(
         // conflicts), it stays locked while another tx of it is in flight
         const inflight = signer.state.nonceCache.settle(signer.account.address, hash);
         signer.busy = inflight > 0;
-        // capture tx mine record
-        signer.state.gasManager.onTransactionMine({ didMine: true, length: Date.now() - start });
         return result;
     } catch (error) {
         // the tx did not mine, so the cached next nonce is off, reset it to the chain's
@@ -512,8 +509,6 @@ export async function tryGetReceipt(
         // free the signer after transaction state is concluded (to not cause nonce
         // conflicts), counted again, as other txs of it may have settled meanwhile
         signer.busy = nonceCache.inflightCount(address) > 0;
-        // capture tx mine record
-        signer.state.gasManager.onTransactionMine({ didMine: false, length: Date.now() - start });
         throw error;
     } finally {
         active = false;
