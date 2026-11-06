@@ -81,6 +81,8 @@ jobs:
           echo "DISPAIR=${{ vars.PREVIEW_DISPAIR }}" >> .env
           echo "MAX_CONCURRENCY=${{ vars.MAX_CONCURRENCY }}" >> .env
           echo "BLOCK_TIME=${{ vars.PREVIEW_BLOCK_TIME || '2000' }}" >> .env
+          echo "ROUND_TRIGGER_MODE=${{ vars.PREVIEW_ROUND_TRIGGER_MODE || 'time' }}" >> .env
+          echo "ROUND_TRIGGER_INTERVAL=${{ vars.PREVIEW_ROUND_TRIGGER_INTERVAL || '10000' }}" >> .env
 
       # spans print to this public log, and GitHub only masks the exact secret
       # value, so mask each rpc url parsed out of it (split like tryIntoArray)

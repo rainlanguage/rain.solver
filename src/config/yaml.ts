@@ -88,8 +88,8 @@ export type AppOptions = {
     maxRatio: boolean;
     /** list of liquidity providers names, default includes all liquidity providers */
     liquidityProviders?: string[];
-    /** Milliseconds to wait between each arb round, default is 10000 */
-    sleep: number;
+    /** What starts the next round, see RoundTrigger: in the time mode the next round starts once interval ms passed after the round; in the block mode the next round starts on the sealed block interval blocks past the one the round ran at, at once when it arrived during the round, so a round slower than the interval runs once more and then waits, never once per missed interval, both fields are required and have no default */
+    roundTrigger: RoundTrigger;
     /** Gas coverage percentage for each transaction to be considered profitable to be submitted, default is 100 */
     gasCoveragePercentage: string;
     /** Optional timeout (in ms) of the rpc and subgraph requests, default is 15000 */
@@ -308,12 +308,7 @@ export namespace AppOptions {
                     "expected a boolean value for maxRatio",
                     true,
                 ),
-                sleep: Validator.resolveNumericValue(
-                    input.sleep,
-                    INT_PATTERN,
-                    "invalid sleep value, must be an integer greater than equal to 0",
-                    "10000",
-                ),
+                roundTrigger: RoundTrigger.resolve(input.roundTrigger),
                 poolUpdateInterval: Validator.resolveNumericValue(
                     input.poolUpdateInterval,
                     INT_PATTERN,
@@ -695,5 +690,76 @@ export namespace TxType {
             ),
         );
         return lowered as TxType;
+    }
+}
+
+/** What the interval of the round trigger counts, see AppOptions.roundTrigger */
+export enum RoundTriggerMode {
+    /** The next round starts once the interval, in ms, passed after the round */
+    Time = "time",
+    /** The next round starts on the sealed block the interval, in blocks, past the one the round ran at */
+    Block = "block",
+}
+export namespace RoundTriggerMode {
+    /** The list of all round trigger modes */
+    export const all: RoundTriggerMode[] = Object.values(RoundTriggerMode).filter(
+        (v): v is RoundTriggerMode => typeof v === "string",
+    );
+}
+
+/** What starts the next round, see AppOptions.roundTrigger */
+export type RoundTrigger = {
+    /** What the interval counts, time or sealed blocks */
+    mode: RoundTriggerMode;
+    /** The ms to wait after the round in the time mode, the sealed blocks past the one the round ran at in the block mode */
+    interval: number;
+};
+export namespace RoundTrigger {
+    /**
+     * Resolves the round trigger from the config input, both fields are
+     * required and have no default, the mode case insensitive, throws for an
+     * unknown one, the interval an integer, 0 or more in the time mode and 1
+     * or more in the block mode
+     * @param input - The config input value, a map of mode and interval, each a plain value or an env reference
+     */
+    export function resolve(input: any): RoundTrigger {
+        const modes = RoundTriggerMode.all.join(", ");
+        const value = readValue(input?.mode).value;
+        assert(
+            value !== undefined && value !== null && value !== "",
+            new AppOptionsError(
+                `roundTrigger.mode is required, expected either of ${modes}`,
+                AppOptionsErrorType.AppOptionsValidationError,
+            ),
+        );
+        const lowered = typeof value === "string" ? value.toLowerCase() : value;
+        assert(
+            typeof lowered === "string" &&
+                RoundTriggerMode.all.includes(lowered as RoundTriggerMode),
+            new AppOptionsError(
+                `expected either of ${modes} for roundTrigger.mode`,
+                AppOptionsErrorType.AppOptionsValidationError,
+            ),
+        );
+        const mode = lowered as RoundTriggerMode;
+        const isBlock = mode === RoundTriggerMode.Block;
+        const exception = isBlock
+            ? "invalid roundTrigger.interval value, must be an integer greater than 0 in the block mode"
+            : "invalid roundTrigger.interval value, must be an integer greater than equal to 0 in the time mode";
+        const interval = Validator.resolveNumericValue(
+            input?.interval,
+            INT_PATTERN,
+            exception,
+            undefined,
+            undefined,
+            (interval) => {
+                assert(
+                    interval !== undefined,
+                    "roundTrigger.interval is required, the ms after the round in the time mode or the sealed blocks in the block mode",
+                );
+                assert(!isBlock || interval > 0, exception);
+            },
+        );
+        return { mode, interval: interval as number };
     }
 }

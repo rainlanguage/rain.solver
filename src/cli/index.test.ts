@@ -1,7 +1,7 @@
 import { AppOptions } from "../config";
 import { RainSolver } from "../core";
 import { OrderManager } from "../order";
-import { DAY, RainSolverCli } from "./index";
+import { DAY, HEAD_STALL_MS, RainSolverCli } from "./index";
 import { RainSolverLogger, redactUrl } from "../logger";
 import { WalletManager, WalletType } from "../wallet";
 import { SharedState, SharedStateConfig } from "../state";
@@ -26,6 +26,7 @@ vi.mock("../config", () => ({
     AppOptions: {
         tryFromYamlPath: vi.fn(),
     },
+    RoundTriggerMode: { Time: "time", Block: "block" },
 }));
 
 vi.mock("../core", () => ({
@@ -106,7 +107,7 @@ describe("Test RainSolverCli", () => {
         vi.clearAllMocks();
 
         mockAppOptions = {
-            sleep: 1000,
+            roundTrigger: { mode: "time", interval: 1000 },
             poolUpdateInterval: 60,
             gasCoveragePercentage: "100",
             blockTime: 2000,
@@ -808,7 +809,7 @@ describe("Test RainSolverCli", () => {
                     { address: "0xUSDC", symbol: "USDC", decimals: 6 },
                 ]),
                 "meta.configurations": JSON.stringify({
-                    sleep: 1000,
+                    roundTrigger: { mode: "time", interval: 1000 },
                     poolUpdateInterval: 60,
                     gasCoveragePercentage: "100",
                     blockTime: 2000,
@@ -1540,6 +1541,221 @@ describe("Test RainSolverCli", () => {
 
             finalizeSpy.mockRestore();
             process.env = originalEnv;
+        });
+
+        it("should wait for the next round by the interval ms in the time mode, and by the next sealed block in the block mode", async () => {
+            (sleep as Mock).mockResolvedValue(undefined);
+            await rainSolverCli.waitForNextRound(10n);
+            expect(sleep).toHaveBeenCalledWith(1000);
+
+            const timeTrigger = mockAppOptions.roundTrigger;
+            (mockAppOptions as any).roundTrigger = { mode: "block", interval: 1 };
+            const listeners: ((blockNumber: bigint) => void)[] = [];
+            (mockState as any).canonicalBlockNumber = 10n;
+            (mockState as any).onBlockNumber = vi.fn((listener: (blockNumber: bigint) => void) => {
+                listeners.push(listener);
+                return () => {
+                    const at = listeners.indexOf(listener);
+                    if (at >= 0) listeners.splice(at, 1);
+                };
+            });
+            try {
+                (sleep as Mock).mockClear();
+                // no head past the round's yet, the wait stands until one comes, and leaves then
+                let done = false;
+                const wait = rainSolverCli.waitForNextRound(10n).then(() => {
+                    done = true;
+                });
+                await Promise.resolve();
+                expect(done).toBe(false);
+                expect(listeners).toHaveLength(1);
+                listeners[0](11n);
+                await wait;
+                expect(done).toBe(true);
+                expect(listeners).toHaveLength(0);
+                // a head that arrived during the round is the next round's turn at once
+                (mockState as any).canonicalBlockNumber = 12n;
+                await rainSolverCli.waitForNextRound(11n);
+                expect(mockState.onBlockNumber).toHaveBeenCalledTimes(1);
+                expect(sleep).not.toHaveBeenCalled();
+
+                // a wait with no head for five minutes, taken in whole block times, 150 of
+                // 2 seconds, is reported, once per such stretch, and goes on until the
+                // head comes, the reports stop with it
+                const stall = 150 * mockAppOptions.blockTime;
+                expect(stall).toBe(HEAD_STALL_MS);
+                vi.useFakeTimers();
+                try {
+                    (mockLogger.exportPreAssembledSpan as Mock).mockClear();
+                    const stalled = rainSolverCli.waitForNextRound(12n);
+                    vi.advanceTimersByTime(stall - 1);
+                    expect(mockLogger.exportPreAssembledSpan).not.toHaveBeenCalled();
+                    vi.advanceTimersByTime(1);
+                    expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledTimes(1);
+                    const report = (mockLogger.exportPreAssembledSpan as Mock).mock.calls[0][0];
+                    expect(report.name).toBe("block-watch");
+                    expect(report.attributes["severity"]).toBe("HIGH");
+                    expect(report.attributes["details.lastBlock"]).toBe(12);
+                    expect(report.attributes["details.sinceMs"]).toBe(stall);
+                    expect(report.attributes["details.stallBlocks"]).toBe(150);
+                    expect(report.status).toEqual({
+                        code: SpanStatusCode.ERROR,
+                        message: `no sealed block for ${stall} ms, 150 block times, the last one is 12`,
+                    });
+                    vi.advanceTimersByTime(stall);
+                    expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledTimes(2);
+                    (mockState as any).canonicalBlockNumber = 13n;
+                    listeners[0](13n);
+                    await stalled;
+                    vi.advanceTimersByTime(2 * stall);
+                    expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledTimes(2);
+                } finally {
+                    vi.useRealTimers();
+                }
+            } finally {
+                (mockAppOptions as any).roundTrigger = timeTrigger;
+            }
+        });
+
+        it("should wait for the sealed block interval blocks past the round's in the block mode", async () => {
+            const timeTrigger = mockAppOptions.roundTrigger;
+            (mockAppOptions as any).roundTrigger = { mode: "block", interval: 3 };
+            const listeners: ((blockNumber: bigint) => void)[] = [];
+            (mockState as any).canonicalBlockNumber = 10n;
+            (mockState as any).onBlockNumber = vi.fn((listener: (blockNumber: bigint) => void) => {
+                listeners.push(listener);
+                return () => {
+                    const at = listeners.indexOf(listener);
+                    if (at >= 0) listeners.splice(at, 1);
+                };
+            });
+            (sleep as Mock).mockClear();
+            try {
+                // the heads before block 13 keep the wait, block 13 ends it
+                let done = false;
+                const wait = rainSolverCli.waitForNextRound(10n).then(() => {
+                    done = true;
+                });
+                for (const head of [11n, 12n]) {
+                    (mockState as any).canonicalBlockNumber = head;
+                    listeners[0](head);
+                    await Promise.resolve();
+                    expect(done).toBe(false);
+                    expect(listeners).toHaveLength(1);
+                }
+                (mockState as any).canonicalBlockNumber = 13n;
+                listeners[0](13n);
+                await wait;
+                expect(done).toBe(true);
+                expect(listeners).toHaveLength(0);
+
+                // a head that skips past the target ends the wait too
+                const skipped = rainSolverCli.waitForNextRound(13n);
+                (mockState as any).canonicalBlockNumber = 20n;
+                listeners[0](20n);
+                await skipped;
+                expect(listeners).toHaveLength(0);
+
+                // the target reached during the round is the next round's turn at once,
+                // a block before it is not
+                (mockState as any).canonicalBlockNumber = 23n;
+                await rainSolverCli.waitForNextRound(20n);
+                expect(listeners).toHaveLength(0);
+                (mockState as any).canonicalBlockNumber = 22n;
+                const short = rainSolverCli.waitForNextRound(20n);
+                expect(listeners).toHaveLength(1);
+                (mockState as any).canonicalBlockNumber = 23n;
+                listeners[0](23n);
+                await short;
+                expect(sleep).not.toHaveBeenCalled();
+
+                // the stall time counts from the last head, a long wait whose heads
+                // come in on time reports nothing, a stretch with no head does
+                const stall = 150 * mockAppOptions.blockTime;
+                vi.useFakeTimers();
+                try {
+                    (mockLogger.exportPreAssembledSpan as Mock).mockClear();
+                    (mockState as any).canonicalBlockNumber = 23n;
+                    const stalled = rainSolverCli.waitForNextRound(23n);
+                    vi.advanceTimersByTime(stall - 1);
+                    (mockState as any).canonicalBlockNumber = 24n;
+                    listeners[0](24n);
+                    vi.advanceTimersByTime(stall - 1);
+                    expect(mockLogger.exportPreAssembledSpan).not.toHaveBeenCalled();
+                    vi.advanceTimersByTime(1);
+                    expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledTimes(1);
+                    const report = (mockLogger.exportPreAssembledSpan as Mock).mock.calls[0][0];
+                    expect(report.attributes["details.lastBlock"]).toBe(24);
+                    expect(report.attributes["details.sinceMs"]).toBe(stall);
+                    (mockState as any).canonicalBlockNumber = 26n;
+                    listeners[0](26n);
+                    await stalled;
+                    vi.advanceTimersByTime(2 * stall);
+                    expect(mockLogger.exportPreAssembledSpan).toHaveBeenCalledTimes(1);
+                } finally {
+                    vi.useRealTimers();
+                }
+            } finally {
+                (mockAppOptions as any).roundTrigger = timeTrigger;
+            }
+        });
+
+        it("should run the next round on the next sealed block in the block mode, no sleep", async () => {
+            const originalEnv = process.env;
+            process.env = { ...originalEnv, IS_PREVIEW: "true", PREVIEW_ROUNDS: "1" };
+            const timeTrigger = mockAppOptions.roundTrigger;
+            (mockAppOptions as any).roundTrigger = { mode: "block", interval: 1 };
+            const listeners: ((blockNumber: bigint) => void)[] = [];
+            (mockState as any).canonicalBlockNumber = 10n;
+            (mockState as any).onBlockNumber = vi.fn((listener: (blockNumber: bigint) => void) => {
+                listeners.push(listener);
+                return () => {
+                    const at = listeners.indexOf(listener);
+                    if (at >= 0) listeners.splice(at, 1);
+                };
+            });
+            const mockSpan = {
+                setAttribute: vi.fn(),
+                setAttributes: vi.fn(),
+                setStatus: vi.fn(),
+                recordException: vi.fn(),
+                end: vi.fn(),
+            };
+            (mockLogger.tracer.startSpan as Mock).mockReturnValue(mockSpan);
+            (trace.setSpan as Mock).mockReturnValue({ test: "context" });
+            (context.active as Mock).mockReturnValue({ test: "active" });
+            (mockWalletManager.checkMainWalletBalance as Mock).mockResolvedValue({
+                name: "check-balance",
+            });
+            (mockWalletManager.fundOwnedVaults as Mock).mockResolvedValue([]);
+            (mockRainSolver.processNextRound as Mock).mockResolvedValue({
+                results: [],
+                reports: [],
+                checkpointReports: [],
+            });
+            (mockWalletManager.retryPendingAddWorkers as Mock).mockResolvedValue([]);
+            (mockWalletManager.assessWorkers as Mock).mockResolvedValue([]);
+            (mockWalletManager.getWorkerWalletsBalance as Mock).mockResolvedValue({});
+            rainSolverCli.eventSync = mockEventSync;
+            (sleep as Mock).mockClear();
+
+            try {
+                const runPromise = rainSolverCli.run();
+                // the round ran at block 10 and the loop waits for the next head
+                await vi.waitFor(() => expect(mockState.onBlockNumber).toHaveBeenCalledTimes(1));
+                expect(mockRainSolver.processNextRound).toHaveBeenCalledTimes(1);
+                expect(listeners).toHaveLength(1);
+                // the head comes, the loop goes on, the preview ends it there
+                (mockState as any).canonicalBlockNumber = 11n;
+                listeners[0](11n);
+                await runPromise;
+                expect(sleep).not.toHaveBeenCalled();
+                expect(listeners).toHaveLength(0);
+                expect(mockLogger.shutdown).toHaveBeenCalledTimes(1);
+            } finally {
+                (mockAppOptions as any).roundTrigger = timeTrigger;
+                process.env = originalEnv;
+            }
         });
 
         it("should handle errors in processing loop", async () => {

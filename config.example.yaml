@@ -111,8 +111,14 @@ liquidityProviders:
 # Specifies the routing mode 'multi' or 'single' or 'full', default is single
 route: single
 
-# Milliseconds to wait between each arb round, default is 10000
-sleep: 10000
+# What starts the next round, required, both mode and interval must be set, they have no default.
+# mode time: the next round starts once interval ms passed after the round, 0 or more.
+# mode block: the next round starts on the sealed block interval blocks past the one the round ran at, at once when it
+# arrived during the round, so a round slower than the interval runs once more and then waits, never once per missed
+# interval, 1 or more, 1 is every sealed block.
+roundTrigger:
+  mode: time
+  interval: 10000
 
 # Option to specify time (in minutes) between pools updates, default is 0 minutes
 poolUpdateInterval: 10
