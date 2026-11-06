@@ -4,6 +4,21 @@ import { RainSolverTransportTimeoutError } from "./transport";
 import { http, webSocket, Transport, HttpTransportConfig } from "viem";
 import { normalizeUrl, probablyPicksFrom, isWebSocketUrl, shouldThrow } from "./helpers";
 
+/** How the state picks the rpc of a request among its pool, see RpcState.nextRpc and AppOptions.rpcSelection */
+export enum RpcSelectionMode {
+    /**
+     * A draw over the rpcs' recent success rates alone, every draw lands on an
+     * rpc, a healthier one more often, so the pick is at hand at once
+     */
+    Immediate = "immediate",
+    /**
+     * The draw leaves room for no pick, the share the rpcs' failures take, a
+     * miss waits a polling interval and draws again, up to the polling timeout,
+     * so requests are held back while every rpc fails
+     */
+    Throttled = "throttled",
+}
+
 /** The rpc configurations */
 export type RpcConfig = {
     /** The rpc url, either http(s) or ws(s) */
@@ -33,7 +48,11 @@ export class RpcState {
      * Creates a new instance
      * @param configs - The list of rpc configs
      */
-    constructor(public configs: RpcConfig[]) {
+    constructor(
+        public configs: RpcConfig[],
+        /** How the rpc of a request is picked, see nextRpc, immediate when unset */
+        readonly selection: RpcSelectionMode = RpcSelectionMode.Immediate,
+    ) {
         // throw if no rpc is given
         if (!configs.length) throw "empty list, expected at least one rpc";
 
@@ -78,7 +97,13 @@ export class RpcState {
     /**
      * Get next rpc to use which is picked based on past performance, returns
      * the picked transport atomically paired with its url, since reading the
-     * shared lastUsedUrl after the call can race with concurrent callers
+     * shared lastUsedUrl after the call can race with concurrent callers. In
+     * the immediate selection mode every draw lands and the pick returns at
+     * once, in the throttled mode a draw can land on nothing and the pick
+     * waits a polling interval and draws again, up to the timeout, see
+     * RpcSelectionMode
+     * @param timeout - The longest wait for a pick in the throttled mode, in ms
+     * @param pollingInterval - The wait between two draws in the throttled mode, in ms
      */
     async nextRpc({
         timeout = 10_000,
@@ -93,6 +118,19 @@ export class RpcState {
         // the higher chance of being selected
         const rates = this.urls.map((url) => this.metrics[url].progress.selectionRate);
         const weights = this.urls.map((url) => this.metrics[url].progress.selectionWeight);
+        if (this.selection === RpcSelectionMode.Immediate) {
+            // every draw lands, see probablyPicksFrom, no wait and no timer to
+            // run, the rates are never all zero so the draw cannot miss, the
+            // first rpc stands in should it ever do
+            let index = 0;
+            if (this.urls.length > 1) {
+                const picked = probablyPicksFrom(rates, weights, true);
+                index = isNaN(picked) ? 0 : picked;
+            }
+            this.lastUsedRpcIndex = index;
+            const url = this.urls[index];
+            return { transport: this.transports[url], url };
+        }
         // the pick loop runs only while the wait is unsettled, so a timed out
         // wait does not keep polling in the background nor picks an rpc late
         let active = true;

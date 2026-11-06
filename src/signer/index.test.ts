@@ -53,11 +53,6 @@ describe("Test RainSolverSigner creation", () => {
             account: mockAccount,
             transport: "mockedTransport",
             chain: mockSharedState.chainConfig,
-            batch: {
-                multicall: {
-                    batchSize: 36_000,
-                },
-            },
         });
     });
 
@@ -116,11 +111,6 @@ describe("Test RainSolverSigner creation", () => {
         expect(createClient).toHaveBeenCalledWith(
             expect.objectContaining({
                 chain: customChainState.chainConfig,
-                batch: {
-                    multicall: {
-                        batchSize: 36_000,
-                    },
-                },
             }),
         );
     });

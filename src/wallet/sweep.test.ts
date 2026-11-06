@@ -2,6 +2,7 @@ import { maxUint256 } from "viem";
 import { TokenDetails } from "../common";
 import { RainDataFetcher } from "sushi";
 import { RainSolverSigner } from "../signer";
+import { NonceCache } from "../signer/nonce";
 import { describe, it, expect, vi, Mock, beforeEach } from "vitest";
 import { transferTokenFrom, transferRemainingGasFrom, convertToGas } from "./sweep";
 
@@ -53,7 +54,7 @@ describe("Test sweep functions", () => {
 
         // setup mock from signer
         mockFromSigner = {
-            state: { appOptions: {}, nonceCache: new Map() },
+            state: { appOptions: {}, nonceCache: new NonceCache() },
             account: { address: "0xfrom" },
             readContract: vi.fn(),
             writeContract: vi.fn(),
@@ -65,7 +66,7 @@ describe("Test sweep functions", () => {
 
         // setup mock to signer
         mockToSigner = {
-            state: { appOptions: {}, nonceCache: new Map() },
+            state: { appOptions: {}, nonceCache: new NonceCache() },
             account: { address: "0xto" },
             readContract: vi.fn(),
             writeContract: vi.fn(),
@@ -153,7 +154,7 @@ describe("Test sweep functions", () => {
                 args: [mockToSigner.account.address, 100n],
             });
             // viem took the nonce over rpc, so the cached one is dropped
-            expect(mockFromSigner.state.nonceCache.has("0xfrom")).toBe(false);
+            expect(mockFromSigner.state.nonceCache.get("0xfrom")).toBeUndefined();
         });
 
         it("should handle failed transfer transaction", async () => {
@@ -266,7 +267,7 @@ describe("Test sweep functions", () => {
             // setup mock state
             mockFromSigner.state = {
                 appOptions: {},
-                nonceCache: new Map(),
+                nonceCache: new NonceCache(),
                 chainConfig: {
                     id: 1,
                     routeProcessors: {
@@ -335,7 +336,7 @@ describe("Test sweep functions", () => {
                 args: [rp4Address, maxUint256],
             });
             // viem took the approve nonce over rpc, so the cached one is dropped
-            expect(mockFromSigner.state.nonceCache.has("0xfrom")).toBe(false);
+            expect(mockFromSigner.state.nonceCache.get("0xfrom")).toBeUndefined();
         });
 
         it("should skip swap if cost outweighs benefit", async () => {

@@ -1,4 +1,4 @@
-import { describe, it, assert, expect } from "vitest";
+import { describe, it, assert, expect, vi } from "vitest";
 import { getRpcError, normalizeUrl, probablyPicksFrom, shouldThrow } from "./helpers";
 import {
     BaseError,
@@ -51,6 +51,59 @@ describe("Test rpc helpers", async function () {
         assert.closeTo(result.second, 12, 2); // has been picked close to 12% of times (30% adjusted with weight of 1)
         assert.closeTo(result.third, 4, 2); // has been picked close to 4% of times (10% adjusted with weight of 0.5)
         assert.closeTo(result.outOfRange, 60, 2); // has been picked close to 60% of times (out of range)
+    });
+
+    it("should always land in proportion to the ranges when asked to", async function () {
+        const ranges = [6000, 3000, 1000];
+        const weights = [1, 1, 0.5]; // play no part in a draw that always lands
+        const counts = [0, 0, 0];
+        for (let i = 0; i < 10000; i++) {
+            const picked = probablyPicksFrom(ranges, weights, true);
+            expect(Number.isNaN(picked)).toBe(false);
+            counts[picked]++;
+        }
+        assert.closeTo(counts[0] / 100, 60, 2);
+        assert.closeTo(counts[1] / 100, 30, 2);
+        assert.closeTo(counts[2] / 100, 10, 2);
+
+        // the floor rates alone still land, every time
+        for (let i = 0; i < 1000; i++) {
+            expect([0, 1]).toContain(probablyPicksFrom([10, 10], [1, 1], true));
+        }
+
+        // a zero range is never picked, and nothing to land on is a miss
+        for (let i = 0; i < 1000; i++) {
+            expect(probablyPicksFrom([0, 5000], [1, 1], true)).toBe(1);
+        }
+        expect(Number.isNaN(probablyPicksFrom([0, 0], [1, 1], true))).toBe(true);
+    });
+
+    it("should match the draw against the ranges alone when asked to always land", async function () {
+        const ranges = [6000, 3000, 1000];
+        const weights = [1, 1, 0.5];
+        const randomSpy = vi.spyOn(Math, "random");
+
+        // a 10000 wide draw, the slots are [1, 6000], [6001, 9000] and [9001, 10000]
+        const cases: [number, number][] = [
+            [0, 0],
+            [0.59995, 0],
+            [0.60005, 1],
+            [0.89995, 1],
+            [0.90005, 2],
+            [0.99999, 2],
+        ];
+        for (const [random, expected] of cases) {
+            randomSpy.mockReturnValueOnce(random);
+            expect(probablyPicksFrom(ranges, weights, true)).toBe(expected);
+        }
+
+        // the same draw misses when the weights reserve room, the default
+        randomSpy.mockReturnValueOnce(0.60005);
+        expect(Number.isNaN(probablyPicksFrom(ranges, weights, false))).toBe(true);
+        randomSpy.mockReturnValueOnce(0.60005);
+        expect(Number.isNaN(probablyPicksFrom(ranges, weights))).toBe(true);
+
+        randomSpy.mockRestore();
     });
 
     describe("Test getRpcError", () => {

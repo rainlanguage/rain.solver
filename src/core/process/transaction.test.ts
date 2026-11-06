@@ -2,7 +2,7 @@ import { RainSolver } from "..";
 import { BaseError } from "viem";
 import { Token } from "sushi/currency";
 import { processReceipt } from "./receipt";
-import { RainSolverSigner } from "../../signer";
+import { NonceCache, RainSolverSigner } from "../../signer";
 import { PreAssembledSpan } from "../../logger";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { containsNodeError, ErrorSeverity, errorSnapshot, isTimeout } from "../../error";
@@ -66,6 +66,7 @@ describe("Test processTransaction", () => {
             },
             state: {
                 gasCosts: [],
+                nonceCache: new NonceCache(),
                 client: {
                     getTransactionReceipt: vi.fn(),
                 },
@@ -176,6 +177,36 @@ describe("Test processTransaction", () => {
                 txSendTime: expect.any(Number),
             });
         });
+
+        it("should send from the signer of the order and lock it", async () => {
+            (mockSigner as any).busy = false;
+            const mockReceipt = { status: "success" };
+            // the wallet is locked by the time the tx goes out
+            mockWriteSigner.sendTx.mockImplementationOnce(async () => {
+                expect(mockSigner.busy).toBe(true);
+                return { hash: "0xTxHash" };
+            });
+            (mockSigner.waitForReceipt as Mock).mockResolvedValueOnce(mockReceipt);
+            (processReceipt as Mock).mockResolvedValueOnce(
+                Result.ok({ ...mockArgs.baseResult, endTime: 123 }),
+            );
+
+            const settlerFn = await processTransaction.call(mockSolver, mockArgs);
+            const result = await settlerFn();
+            assert(result.isOk());
+            await result.value.txSettlement;
+
+            // the dryrun ran with this signer, so the tx goes out from it
+            expect(mockSigner.asWriteSigner).toHaveBeenCalledTimes(1);
+            expect(mockWriteSigner.sendTx).toHaveBeenCalledTimes(1);
+            expect(mockArgs.baseResult.spanAttributes["details.sender"]).toBe("0xSignerAddress");
+
+            // the settlement runs on it too
+            expect(mockSigner.waitForReceipt).toHaveBeenCalledWith({ hash: "0xTxHash" });
+            expect(processReceipt as Mock).toHaveBeenCalledWith(
+                expect.objectContaining({ receipt: mockReceipt, signer: mockSigner }),
+            );
+        });
     });
 
     describe("transaction sending failures", () => {
@@ -212,6 +243,33 @@ describe("Test processTransaction", () => {
             assert(result.isErr());
             expect(mockArgs.baseResult.spanAttributes["txNoneNodeError"]).toBe(false);
             expect(containsNodeError).toHaveBeenCalledWith(mockNodeError);
+        });
+
+        it("should log the signer of the order as the sender of a failed tx", async () => {
+            mockWriteSigner.sendTx.mockRejectedValue(new Error("send failed"));
+            (containsNodeError as Mock).mockResolvedValue(false);
+            const settlerFn = await processTransaction.call(mockSolver, mockArgs);
+            const result = await settlerFn();
+
+            assert(result.isErr());
+            expect(mockArgs.baseResult.spanAttributes["details.sender"]).toBe("0xSignerAddress");
+            const rawTx = JSON.parse(mockArgs.baseResult.spanAttributes["details.rawTx"] as string);
+            expect(rawTx.from).toBe("0xSignerAddress");
+        });
+
+        it("should release the lock when the send throws, unless another tx of the wallet is in flight", async () => {
+            // a throw that does not come through the retry of sendTx
+            (mockSigner.asWriteSigner as Mock).mockImplementation(() => {
+                throw new Error("no write signer");
+            });
+            (containsNodeError as Mock).mockResolvedValue(false);
+
+            await processTransaction.call(mockSolver, mockArgs);
+            expect(mockSigner.busy).toBe(false);
+
+            mockSigner.state.nonceCache.track("0xSignerAddress", "0xother");
+            await processTransaction.call(mockSolver, mockArgs);
+            expect(mockSigner.busy).toBe(true);
         });
     });
 

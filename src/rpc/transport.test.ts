@@ -2,7 +2,7 @@ import { randomInt } from "crypto";
 import { getLocal } from "mockttp";
 import { polygon } from "viem/chains";
 import { describe, it, assert, expect, vi } from "vitest";
-import { normalizeUrl, RpcConfig, RpcBufferType, RpcState } from ".";
+import { normalizeUrl, RpcConfig, RpcBufferType, RpcState, RpcSelectionMode } from ".";
 import {
     rainSolverTransport,
     RainSolverTransportConfig,
@@ -192,12 +192,12 @@ describe("Test transport", async function () {
         await mockServer2.start(9898);
 
         const state = new RpcState([{ url: mockServer1.url }, { url: mockServer2.url }]);
-        // both rpcs start at 50% success rate, so each occupies the first half of
-        // its 10000 wide slot, pin the picks so rpc1 is picked first and rpc2 second
+        // both rpcs start at 50% success rate, rpc1 drops to the floor rate once it
+        // fails, pin the picks so rpc1 is picked first and rpc2 second
         const randomSpy = vi
             .spyOn(Math, "random")
-            .mockReturnValueOnce(0) // pick 1 -> rpc1 slot
-            .mockReturnValueOnce(0.55); // pick 11001 -> rpc2 slot
+            .mockReturnValueOnce(0) // pick 1 of 10000 -> rpc1 slot
+            .mockReturnValueOnce(0.55); // pick 2756 of 5010 -> rpc2 slot
 
         await mockServer1.forPost().thenSendJsonRpcError({
             code: -32000,
@@ -305,7 +305,7 @@ describe("Test transport", async function () {
                 url: mockServer2.url,
             },
         ];
-        const state = new RpcState(rpcConfigs);
+        const state = new RpcState(rpcConfigs, RpcSelectionMode.Throttled);
         for (const url in state.metrics) {
             state.metrics[url].progress.buffer = Array(100).fill(RpcBufferType.Failure);
         }
@@ -327,5 +327,46 @@ describe("Test transport", async function () {
 
         await mockServer1.stop();
         await mockServer2.stop();
+    });
+
+    it("should send at once in the immediate mode while every rpc fails", async function () {
+        const mockServer1 = getLocal();
+        const mockServer2 = getLocal();
+        await mockServer1.start(6868);
+        await mockServer2.start(7070);
+
+        const state = new RpcState([{ url: mockServer1.url }, { url: mockServer2.url }]);
+        for (const url in state.metrics) {
+            state.metrics[url].progress.buffer = Array(100).fill(RpcBufferType.Failure);
+        }
+        const transport = rainSolverTransport(state, {
+            retryCount: 0,
+            pollingInterval: 50,
+            pollingTimeout: 0,
+        })({ chain: polygon });
+
+        await mockServer1.forPost().thenSendJsonRpcResult(1234);
+        await mockServer2.forPost().thenSendJsonRpcResult(1234);
+
+        // the throttled mode times out on the same setup, see the unhappy test above
+        const result = await transport.request({ method: "eth_blockNumber" });
+        expect(result).toBe(1234);
+        expect(
+            state.metrics[normalizeUrl(mockServer1.url)].req +
+                state.metrics[normalizeUrl(mockServer2.url)].req,
+        ).toBe(1);
+
+        await mockServer1.stop();
+        await mockServer2.stop();
+    });
+
+    it("should hand the configured timeout to the inner transport of every rpc, as the sends get it", async () => {
+        const state = new RpcState([{ url: "https://rpc1.example" }]);
+        const request = vi.fn().mockResolvedValue("0x1");
+        const inner = vi.fn().mockReturnValue({ request });
+        state.transports[state.urls[0]] = inner as any;
+        const transport = rainSolverTransport(state, { timeout: 1234 })({ chain: polygon });
+        await transport.request({ method: "eth_chainId" });
+        expect(inner).toHaveBeenCalledWith({ chain: polygon, retryCount: 0, timeout: 1234 });
     });
 });

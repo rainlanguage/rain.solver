@@ -559,6 +559,30 @@ describe("Test processOrder", () => {
         expect(mockState.isDustTrade).toHaveBeenCalledTimes(2);
     });
 
+    it("should hand the signer of the order to processTransaction", async () => {
+        (findBestTrade as Mock).mockResolvedValue(
+            Result.ok({
+                rawtx: { to: "0xRAW" },
+                oppBlockNumber: 100,
+                estimatedProfit: 123n,
+                spanAttributes: {},
+            }),
+        );
+        (processTransaction as Mock).mockReturnValue(async () =>
+            Result.ok({ status: ProcessOrderStatus.FoundOpportunity, endTime: 123 }),
+        );
+
+        const fn: Awaited<ReturnType<typeof processOrder>> = await processOrder.call(
+            mockRainSolver,
+            mockArgs,
+        );
+        await fn();
+
+        // the tx must go out from the signer its dryrun ran with
+        const callArgs = (processTransaction as Mock).mock.calls[0][0];
+        expect(callArgs.signer).toBe(mockArgs.signer);
+    });
+
     it("should not run the dust check when disabled by config", async () => {
         (mockRainSolver.appOptions as any).dustOrderCheck = false;
         (mockState.isDustTrade as Mock).mockReturnValue(true);
