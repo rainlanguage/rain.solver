@@ -1288,6 +1288,38 @@ describe("Test EventSyncManager", () => {
         expect(second.orderbooks[0].lastError).toBeUndefined();
     });
 
+    it("should report the text of an error that is no Error, such as a ws error event", async () => {
+        const manager = await init({ includeOrderbooks: new Set([ORDERBOOK]) });
+        const sync = manager.syncs.get(ORDERBOOK)!;
+        // a ws error event carries a message and the error under it
+        manager.stream.lastError = {
+            type: "error",
+            message: "Received network error or non-101 status code.",
+            error: new Error("connect ECONNREFUSED"),
+        };
+        sync.lastError = { code: -32602, message: "invalid params" };
+        let report = manager.report();
+        expect(report.stream.lastError).toBe(
+            "Received network error or non-101 status code. (connect ECONNREFUSED)",
+        );
+        expect(report.orderbooks[0].lastError).toBe("invalid params");
+
+        // only the error under it, or nothing but the event type
+        manager.stream.lastError = { type: "error", error: new Error("socket hang up") };
+        sync.lastError = new Event("error");
+        report = manager.report();
+        expect(report.stream.lastError).toBe("socket hang up");
+        expect(report.orderbooks[0].lastError).toBe("error event with no message");
+
+        // the urls in it are masked too
+        manager.stream.lastError = {
+            type: "error",
+            message: "failed",
+            error: new Error("URL: wss://ws.example.com/v2/secretkey"),
+        };
+        expect(manager.report().stream.lastError).not.toContain("secretkey");
+    });
+
     it("should mask the rpc urls in the errors it reports", async () => {
         const manager = await init({ includeOrderbooks: new Set([ORDERBOOK]) });
         // a failed rpc call carries the rpc url with its key in the message

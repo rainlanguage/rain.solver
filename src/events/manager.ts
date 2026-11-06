@@ -1096,5 +1096,26 @@ function groupByBlock(logs: RawLog[]): Map<bigint, PolledBlock> {
  */
 function describe(error: unknown): string | undefined {
     if (error === undefined || error === null) return undefined;
-    return redactUrls(error instanceof Error ? error.message : String(error));
+    return redactUrls(errorText(error));
+}
+
+/**
+ * The text of an error. A ws error event or an rpc error object is no Error,
+ * its own message and the message of the error it carries tell what failed,
+ * and the type of the event when it carries neither
+ */
+function errorText(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    if (typeof error === "object" && error !== null) {
+        const event = error as { message?: unknown; error?: unknown; type?: unknown };
+        const own = typeof event.message === "string" ? event.message : "";
+        const inner = event.error instanceof Error ? event.error.message : "";
+        const cause = inner !== own ? inner : "";
+        if (own && cause) return `${own} (${cause})`;
+        if (own || cause) return own || cause;
+        if (typeof event.type === "string" && event.type) {
+            return `${event.type} event with no message`;
+        }
+    }
+    return String(error);
 }
