@@ -111,20 +111,25 @@ jobs:
       # Base and Ethereum fork through a local eRPC (rainix's rpc-proxy): our
       # own node first, signed in with this job's GitHub OIDC token, then
       # public RPCs, then the RPC_URL_<CHAIN>_FORK secret, failing over per
-      # request. It exports BASE_RPC_URL and ETHEREUM_RPC_URL. The other
-      # chains have no node of ours and keep reading the secret directly.
+      # request. It exports RPC_URL_BASE_FORK / RPC_URL_ETHEREUM_FORK pointing
+      # at itself, so env[env.RPC] picks the proxy for those two chains and
+      # the secret for the rest, which have no node of ours. The proxy serves
+      # both chains in either job, so both get their secret as last resort.
+      # If the proxy fails to start, the tests read the secret as before.
       - name: RPC proxy
         if: matrix.chain == 'BASE' || matrix.chain == 'ETH'
+        continue-on-error: true
         uses: rainlanguage/rainix/.github/actions/rpc-proxy@main
         env:
-          RAINIX_RPC_SECRET_BASE: ${{ matrix.chain == 'BASE' && secrets.RPC_URL_BASE_FORK || '' }}
-          RAINIX_RPC_SECRET_ETHEREUM: ${{ matrix.chain == 'ETH' && secrets.RPC_URL_ETHEREUM_FORK || '' }}
+          RAINIX_RPC_SECRET_BASE: ${{ secrets.RPC_URL_BASE_FORK }}
+          RAINIX_RPC_VARS_BASE: ${{ vars.RPC_URL_BASE_FORK }}
+          RAINIX_RPC_SECRET_ETHEREUM: ${{ secrets.RPC_URL_ETHEREUM_FORK }}
+          RAINIX_RPC_VARS_ETHEREUM: ${{ vars.RPC_URL_ETHEREUM_FORK }}
 
       - name: Run Tests
-        run: TEST_${{ matrix.chain }}_RPC="$FORK_RPC" nix develop -c npm run e2e-test
+        run: TEST_${{ matrix.chain }}_RPC="$DEFAULT_RPC" nix develop -c npm run e2e-test
         env:
-          FORK_RPC: ${{ (matrix.chain == 'BASE' && env.BASE_RPC_URL) || (matrix.chain == 'ETH' && env.ETHEREUM_RPC_URL) || secrets[env.RPC] }}
-          DEFAULT_RPC: ${{ (matrix.chain == 'BASE' && env.BASE_RPC_URL) || (matrix.chain == 'ETH' && env.ETHEREUM_RPC_URL) || secrets[env.RPC] }}
+          DEFAULT_RPC: ${{ env[env.RPC] || secrets[env.RPC] }}
 
       - name: RPC proxy report
         if: always() && (matrix.chain == 'BASE' || matrix.chain == 'ETH')
