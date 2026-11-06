@@ -115,8 +115,10 @@ jobs:
       # at itself, so env[env.RPC] picks the proxy for those two chains and
       # the secret for the rest, which have no node of ours. The proxy serves
       # both chains in either job, so both get their secret as last resort.
-      # If the proxy fails to start, the tests read the secret as before.
+      # If the proxy step fails at any stage (even after it exported its local
+      # URLs), the tests read the secret as before.
       - name: RPC proxy
+        id: proxy
         if: matrix.chain == 'BASE' || matrix.chain == 'ETH'
         continue-on-error: true
         uses: rainlanguage/rainix/.github/actions/rpc-proxy@main
@@ -129,7 +131,7 @@ jobs:
       - name: Run Tests
         run: TEST_${{ matrix.chain }}_RPC="$DEFAULT_RPC" nix develop -c npm run e2e-test
         env:
-          DEFAULT_RPC: ${{ env[env.RPC] || secrets[env.RPC] }}
+          DEFAULT_RPC: ${{ (steps.proxy.outcome == 'success' && env[env.RPC]) || secrets[env.RPC] }}
 
       - name: RPC proxy report
         if: always() && (matrix.chain == 'BASE' || matrix.chain == 'ETH')
