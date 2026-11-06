@@ -106,9 +106,28 @@ jobs:
             hardhat-fork-cache-${{ matrix.chain }}-
 
       - name: Set Chain Rpc Key
-        run: echo "RPC=RPC_URL_${{ matrix.chain == 'ETH' && 'ETHEREUM' || matrix.chain }}_FORK" >> $GITHUB_ENV
-      
+        run: echo "RPC=RPC_URL_${{ matrix.chain == 'ETH' && 'ETHEREUM' || matrix.chain }}_FORK" >> "$GITHUB_ENV"
+
+      # Base and Ethereum fork through a local eRPC (rainix's rpc-proxy): our
+      # own node first, signed in with this job's GitHub OIDC token, then
+      # public RPCs, then the RPC_URL_<CHAIN>_FORK secret, failing over per
+      # request. It exports BASE_RPC_URL and ETHEREUM_RPC_URL. The other
+      # chains have no node of ours and keep reading the secret directly.
+      - name: RPC proxy
+        if: matrix.chain == 'BASE' || matrix.chain == 'ETH'
+        uses: rainlanguage/rainix/.github/actions/rpc-proxy@main
+        env:
+          RAINIX_RPC_SECRET_BASE: ${{ matrix.chain == 'BASE' && secrets.RPC_URL_BASE_FORK || '' }}
+          RAINIX_RPC_SECRET_ETHEREUM: ${{ matrix.chain == 'ETH' && secrets.RPC_URL_ETHEREUM_FORK || '' }}
+
       - name: Run Tests
-        run: TEST_${{ matrix.chain }}_RPC=${{ secrets[env.RPC] }} nix develop -c npm run e2e-test
-        env: 
-          DEFAULT_RPC: ${{ secrets[env.RPC] }}
+        run: TEST_${{ matrix.chain }}_RPC="$FORK_RPC" nix develop -c npm run e2e-test
+        env:
+          FORK_RPC: ${{ (matrix.chain == 'BASE' && env.BASE_RPC_URL) || (matrix.chain == 'ETH' && env.ETHEREUM_RPC_URL) || secrets[env.RPC] }}
+          DEFAULT_RPC: ${{ (matrix.chain == 'BASE' && env.BASE_RPC_URL) || (matrix.chain == 'ETH' && env.ETHEREUM_RPC_URL) || secrets[env.RPC] }}
+
+      - name: RPC proxy report
+        if: always() && (matrix.chain == 'BASE' || matrix.chain == 'ETH')
+        uses: rainlanguage/rainix/.github/actions/rpc-proxy@main
+        with:
+          mode: report
