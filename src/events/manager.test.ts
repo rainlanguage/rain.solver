@@ -488,30 +488,15 @@ describe("Test EventSyncManager", () => {
         manager.close();
     });
 
-    it("should wait for a socket that is opening before it subscribes", async () => {
-        let open!: () => void;
-        state.openWsSocket.mockReturnValueOnce(new Promise<void>((resolve) => (open = resolve)));
+    it("should open the socket right before it subscribes, and subscribe at once", async () => {
         const manager = await init();
         manager.open();
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        expect(subs).toHaveLength(0);
-        open();
+        // the subscription takes the socket that is open or opening, see SharedState.openWsSocket
+        expect(state.openWsSocket).toHaveBeenCalledTimes(1);
         await vi.waitFor(() => expect(subs).toHaveLength(1));
-        manager.close();
-    });
-
-    it("should cancel a wait for a socket that is opening when the sync closes", async () => {
-        let open!: () => void;
-        const opening = new Promise<void>((resolve) => (open = resolve));
-        state.openWsSocket.mockReturnValueOnce(opening).mockReturnValueOnce(opening);
-        const manager = await init();
-        manager.open();
-        manager.close();
-        manager.open();
-        open();
-        await vi.waitFor(() => expect(subs).toHaveLength(1));
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        expect(subs).toHaveLength(1);
+        expect(state.openWsSocket.mock.invocationCallOrder[0]).toBeLessThan(
+            wsClient.transport.subscribe.mock.invocationCallOrder[0],
+        );
         manager.close();
     });
 

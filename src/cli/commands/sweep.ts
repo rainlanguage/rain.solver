@@ -10,7 +10,13 @@ import { getChainConfig } from "../../state/chain";
 import { OracleMarketHours } from "../../oracle/types";
 import { RainSolverRouter } from "../../router/router";
 import { SolverContracts } from "../../state/contracts";
-import { rainSolverTransport, RpcState } from "../../rpc";
+import {
+    RpcState,
+    watchWsSocket,
+    isWebSocketUrl,
+    rainSolverTransport,
+    WS_RPC_SOCKET_OPTIONS,
+} from "../../rpc";
 import { WalletConfig, WalletManager } from "../../wallet";
 import { SharedState, SharedStateConfig } from "../../state";
 import { OrderManager, OrderManagerConfig } from "../../order";
@@ -153,6 +159,10 @@ export async function sweepFunds(opts: SweepOptions) {
     // prepare state config fields
     const rainSolverTransportConfig = { timeout: options.timeout };
     const rpcState = new RpcState(options.rpc, options.rpcSelection);
+    // the sockets of the ws rpcs open before the first request, see watchWsSocket
+    for (const { url } of options.rpc) {
+        if (isWebSocketUrl(url)) watchWsSocket(url, WS_RPC_SOCKET_OPTIONS);
+    }
     // use temp client to get chain id
     let client = createPublicClient({
         transport: rainSolverTransport(rpcState, rainSolverTransportConfig),
