@@ -1,9 +1,19 @@
 import {
+    SocketClosedError,
+    WebSocketRequestError,
     ExecutionRevertedError,
     UserRejectedRequestError,
     TransactionRejectedRpcError,
 } from "viem";
-import { getWebSocketRpcClient, socketClientCache } from "viem/utils";
+import {
+    socketClientCache,
+    getSocketRpcClient,
+    GetSocketParameters,
+    getWebSocketRpcClient,
+} from "viem/utils";
+
+/** viem's ws socket client, see getWebSocketRpcClient */
+type WsSocketClient = Awaited<ReturnType<typeof getWebSocketRpcClient>>;
 
 /** EVM JSON-RPC error codes */
 export const RpcErrorCode = [
@@ -114,20 +124,122 @@ export const WS_OPEN_TIMEOUT = 10_000;
 
 /**
  * The most openings of one ws socket that run at once, see openSharedWsSocket.
- * An opening that times out cannot be stopped, viem gives no handle to its
- * socket, so it runs until Node gives up on its handshake, and a new opening
- * waits while this many still run
+ * An opening that times out cannot be stopped: viem gives no handle to the
+ * socket of the rpc requests, and a close of a socket in its handshake leaves
+ * Node's connection open all the same. So it runs until Node gives up on its
+ * handshake, and a new opening waits while this many still run
  */
 export const WS_MAX_OPENINGS = 2;
 
-/** The client of each cached ws url once its socket opened, see openSharedWsSocket */
-const openedWsSockets = new Map<string, Awaited<ReturnType<typeof getWebSocketRpcClient>>>();
+/** The client of each cached ws socket once it opened, by its cache key, see openSharedWsSocket */
+const openedWsSockets = new Map<string, WsSocketClient>();
 
-/** The openings of each cached ws url that still run, see WS_MAX_OPENINGS */
+/** The openings of each cached ws socket that still run, by its cache key, see WS_MAX_OPENINGS */
 const runningWsOpenings = new Map<string, number>();
 
-/** The opening of each cached ws url that waits for a running one to end, see WS_MAX_OPENINGS */
+/** The opening of each cached ws socket that waits for a running one to end, by its cache key, see WS_MAX_OPENINGS */
 const waitingWsOpenings = new Map<string, () => void>();
+
+/**
+ * The keys of the shared ws sockets in viem's socket cache, a url has one
+ * socket for each key, its cache key is the key, ":" and the url
+ */
+export enum WsSocketKey {
+    /** The socket of the rpc requests, the one viem's ws transport takes, see getWebSocketRpcClient */
+    Rpc = "socket",
+    /** The socket of the subscriptions of the ws rpc, apart from the one of the rpc requests, see subscriptionWebSocket */
+    Subscription = "subscription",
+}
+
+/**
+ * Gets the socket client of a ws url for a key from viem, see
+ * getSocketRpcClient. The rpc key takes viem's own ws socket client. Any other
+ * key takes viem's socket client with that key, and a socket set up as viem's
+ * ws socket client sets it up, viem's ws socket client takes no key of its own
+ * @param url - The ws url
+ * @param options - The keep alive and reconnect options of the socket
+ * @param key - The key of the socket
+ */
+export function getWsSocketClient(
+    url: string,
+    options: { keepAlive: boolean; reconnect: boolean },
+    key: WsSocketKey,
+): Promise<WsSocketClient> {
+    if (key === WsSocketKey.Rpc) return getWebSocketRpcClient(url, options);
+    return getSocketRpcClient({
+        ...options,
+        key,
+        url,
+        getSocket: (params) => getWebSocket(url, params),
+    });
+}
+
+/**
+ * Opens a ws socket and wires it to a socket client, see getSocketRpcClient,
+ * the same as viem's ws socket client does it, see getWebSocketRpcClient in
+ * viem 2.21.35, which keeps it to itself. The socket is Node's own WebSocket,
+ * global from Node 22 on, the same one viem gets from isows there
+ * @param url - The ws url
+ * @param params - The callbacks of the socket client
+ */
+async function getWebSocket(
+    url: string,
+    { onClose, onError, onOpen, onResponse }: GetSocketParameters,
+): Promise<WsSocketClient["socket"]> {
+    if (typeof WebSocket === "undefined") {
+        throw new Error("a ws socket needs the global WebSocket of Node 22 or later");
+    }
+    const socket = new WebSocket(url);
+    function onClose_() {
+        onClose();
+        socket.removeEventListener("close", onClose_);
+        socket.removeEventListener("message", onMessage);
+        socket.removeEventListener("error", onError);
+        socket.removeEventListener("open", onOpen);
+    }
+    function onMessage({ data }: MessageEvent) {
+        onResponse(JSON.parse(data));
+    }
+    socket.addEventListener("close", onClose_);
+    socket.addEventListener("message", onMessage);
+    socket.addEventListener("error", onError);
+    socket.addEventListener("open", onOpen);
+    // wait for the socket to open
+    if (socket.readyState === WebSocket.CONNECTING) {
+        await new Promise((resolve, reject) => {
+            socket.onopen = resolve;
+            socket.onerror = reject;
+        });
+    }
+    const { close: close_ } = socket;
+    return Object.assign(socket, {
+        close() {
+            close_.bind(socket)();
+            onClose();
+        },
+        ping() {
+            try {
+                if (socket.readyState === socket.CLOSED || socket.readyState === socket.CLOSING)
+                    throw new WebSocketRequestError({
+                        url: socket.url,
+                        cause: new SocketClosedError({ url: socket.url }),
+                    });
+                socket.send(JSON.stringify({ jsonrpc: "2.0", method: "net_version", params: [] }));
+            } catch (error) {
+                onError(error as Error);
+            }
+        },
+        request({ body }: { body: { [key: string]: unknown } }) {
+            if (socket.readyState === socket.CLOSED || socket.readyState === socket.CLOSING)
+                throw new WebSocketRequestError({
+                    body,
+                    url: socket.url,
+                    cause: new SocketClosedError({ url: socket.url }),
+                });
+            return socket.send(JSON.stringify(body));
+        },
+    });
+}
 
 /**
  * Opens the socket of a ws url and puts the opening in viem's socket cache at
@@ -142,26 +254,28 @@ const waitingWsOpenings = new Map<string, () => void>();
  * once with its error and open nothing, and the socket opens again after
  * WS_REOPEN_DELAY, unless something else took its place meanwhile. An opening
  * that times out still runs, so the next one waits while WS_MAX_OPENINGS of the
- * url run, and starts once one of them ends. viem puts the client of an opening
- * that opens after its timeout in the cache all the same, such a late one that
- * finds an open socket is closed, and the open one goes back in its place, and a
- * closed client it takes the place of is closed for good. An opening settles
- * with the client the url keeps, so its callers never get a client that is
- * closed again. The cache key is the one of the viem ws transport, "socket:"
- * and the url
+ * socket run, and starts once one of them ends. viem puts the client of an
+ * opening that opens after its timeout in the cache all the same, such a late
+ * one that finds an open socket is closed, and the open one goes back in its
+ * place, and a closed client it takes the place of is closed for good. An
+ * opening settles with the client the socket keeps, so its callers never get a
+ * client that is closed again. The cache key is the key of the socket, ":" and
+ * the url, see WsSocketKey, the limit and the clients are kept by it too
  * @param url - The ws url
  * @param options - The keep alive and reconnect options of the socket, the ones of the transports that use it
+ * @param key - The key of the socket, the one of the rpc requests by default
  * @returns The opening, or the cached client when there is one
  */
 export function openSharedWsSocket(
     url: string,
     options: { keepAlive: boolean; reconnect: boolean },
+    key = WsSocketKey.Rpc,
 ): Promise<unknown> {
-    const key = `socket:${url}`;
-    const cached = socketClientCache.get(key);
+    const cacheKey = `${key}:${url}`;
+    const cached = socketClientCache.get(cacheKey);
     if (cached) return Promise.resolve(cached);
-    const opening = getWebSocketRpcClient(url, options);
-    runningWsOpenings.set(key, (runningWsOpenings.get(key) ?? 0) + 1);
+    const opening = getWsSocketClient(url, options, key);
+    runningWsOpenings.set(cacheKey, (runningWsOpenings.get(cacheKey) ?? 0) + 1);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
         timer = setTimeout(
@@ -171,42 +285,42 @@ export function openSharedWsSocket(
         // the wait must not keep the process alive on its own
         timer.unref?.();
     });
-    // the client the url keeps once the socket opens, the opening settles with it
+    // the client the socket keeps once it opens, the opening settles with it
     const kept = opening.then((client) => {
-        const current = openedWsSockets.get(key);
+        const current = openedWsSockets.get(cacheKey);
         if (current && current !== client) {
             // 1 is OPEN, a late opening finds the one that opened meanwhile
             if (current.socket?.readyState === 1) {
                 client.close();
-                socketClientCache.set(key, current as any);
+                socketClientCache.set(cacheKey, current as any);
                 return current;
             }
             // a closed client this one replaces is closed for good, which also
             // stops its keep alive timer, its close drops the key from the cache
             current.close();
-            socketClientCache.set(key, client as any);
+            socketClientCache.set(cacheKey, client as any);
         }
-        openedWsSockets.set(key, client);
+        openedWsSockets.set(cacheKey, client);
         return client;
     });
     const entry = Promise.race([kept, timeout]).finally(() => clearTimeout(timer));
-    socketClientCache.set(key, entry as any);
+    socketClientCache.set(cacheKey, entry as any);
     kept.catch(() => {}).finally(() => {
-        runningWsOpenings.set(key, (runningWsOpenings.get(key) ?? 1) - 1);
+        runningWsOpenings.set(cacheKey, (runningWsOpenings.get(cacheKey) ?? 1) - 1);
         // the opening that waits for one to end starts now
-        const waiting = waitingWsOpenings.get(key);
-        waitingWsOpenings.delete(key);
+        const waiting = waitingWsOpenings.get(cacheKey);
+        waitingWsOpenings.delete(cacheKey);
         waiting?.();
     });
     entry.catch(() => {
         const reopen = () => {
-            if (socketClientCache.get(key) !== (entry as any)) return;
-            if ((runningWsOpenings.get(key) ?? 0) >= WS_MAX_OPENINGS) {
-                waitingWsOpenings.set(key, reopen);
+            if (socketClientCache.get(cacheKey) !== (entry as any)) return;
+            if ((runningWsOpenings.get(cacheKey) ?? 0) >= WS_MAX_OPENINGS) {
+                waitingWsOpenings.set(cacheKey, reopen);
                 return;
             }
-            socketClientCache.delete(key);
-            openSharedWsSocket(url, options);
+            socketClientCache.delete(cacheKey);
+            openSharedWsSocket(url, options, key);
         };
         const timer = setTimeout(reopen, WS_REOPEN_DELAY);
         // the wait must not keep the process alive on its own
@@ -224,20 +338,22 @@ export function openSharedWsSocket(
  * itself
  * @param url - The ws url
  * @param options - The keep alive and reconnect options of the socket
+ * @param key - The key of the socket, the one of the rpc requests by default
  * @returns The new opening, undefined when none started
  */
 export function reopenClosedWsSocket(
     url: string,
     options: { keepAlive: boolean; reconnect: boolean },
+    key = WsSocketKey.Rpc,
 ): Promise<unknown> | undefined {
-    const cached = socketClientCache.get(`socket:${url}`);
+    const cached = socketClientCache.get(`${key}:${url}`);
     if (cached) {
         const readyState = (cached.socket as { readyState?: number } | undefined)?.readyState;
         // 2 is CLOSING and 3 is CLOSED, a socket with no reconnect stays closed
         if (readyState !== 2 && readyState !== 3) return undefined;
         cached.close();
     }
-    return openSharedWsSocket(url, options);
+    return openSharedWsSocket(url, options, key);
 }
 
 /** How often (in ms) a watched ws socket is checked, see watchWsSocket */
@@ -247,12 +363,14 @@ export const WS_CHECK_INTERVAL = 2_000;
 const wsSocketWatches = new Map<string, ReturnType<typeof setInterval>>();
 
 /**
- * Opens the socket of a ws url, see openSharedWsSocket, and checks it every
- * WS_CHECK_INTERVAL from then on, a socket that closed opens again, see
- * reopenClosedWsSocket. This stands in for viem's own reconnect, which is off
- * for these sockets: viem's reconnect timers outlive their client, those of an
- * opening that failed belong to no client at all, and a socket one of them
- * opens is never closed. A url that is watched already is left as it is
+ * Opens the socket of the rpc requests of a ws url, see WsSocketKey.Rpc and
+ * openSharedWsSocket, and checks it every WS_CHECK_INTERVAL from then on, a
+ * socket that closed opens again, see reopenClosedWsSocket. This stands in for
+ * viem's own reconnect, which is off for these sockets: viem's reconnect timers
+ * outlive their client, those of an opening that failed belong to no client at
+ * all, and a socket one of them opens is never closed. A url that is watched
+ * already is left as it is. The socket of the subscriptions of the url is not
+ * watched, it opens again when they subscribe again, see SharedState.openWsSocket
  * @param url - The ws url
  * @param options - The keep alive and reconnect options of the socket, the ones of the transports that use it
  */
@@ -266,7 +384,8 @@ export function watchWsSocket(url: string, options: { keepAlive: boolean; reconn
 }
 
 /**
- * Stops the watch of a ws url, see watchWsSocket, its socket stays as it is
+ * Stops the watch of the socket of the rpc requests of a ws url, see
+ * watchWsSocket, the socket stays as it is
  * @param url - The ws url
  */
 export function unwatchWsSocket(url: string) {

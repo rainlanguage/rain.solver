@@ -6,8 +6,10 @@ import { normalizeUrl, probablyPicksFrom, isWebSocketUrl, shouldThrow } from "./
 
 /**
  * The socket options of the ws rpcs, their transports and the openings of their
- * sockets share them. viem's own reconnect is off, a watch opens a socket that
- * closed again, see watchWsSocket
+ * sockets share them, the socket of the subscriptions of the ws rpc too. viem's
+ * own reconnect is off. A watch opens a socket of the rpc requests that closed
+ * again, see watchWsSocket, the socket of the subscriptions opens again when
+ * they subscribe again, see SharedState.openWsSocket
  */
 export const WS_RPC_SOCKET_OPTIONS = { keepAlive: true, reconnect: false } as const;
 

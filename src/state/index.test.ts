@@ -3,7 +3,7 @@ import { SushiRouter, TradeSizeStatus } from "../router";
 import { Token } from "sushi/currency";
 import { getChainConfig } from "./chain";
 import { createPublicClient } from "viem";
-import { getWebSocketRpcClient, socketClientCache } from "viem/utils";
+import { getSocketRpcClient, getWebSocketRpcClient, socketClientCache } from "viem/utils";
 import { unwatchWsSocket } from "../rpc";
 import { LiquidityProviders } from "sushi";
 import { SolverContracts } from "./contracts";
@@ -39,6 +39,7 @@ vi.mock("viem", async (importOriginal) => ({
 vi.mock("viem/utils", async (importOriginal) => ({
     ...(await importOriginal()),
     getWebSocketRpcClient: vi.fn().mockResolvedValue({}),
+    getSocketRpcClient: vi.fn().mockResolvedValue({}),
     socketClientCache: new Map(),
 }));
 
@@ -616,6 +617,9 @@ describe("Test SharedState", () => {
                 const client = sharedState.getWsClient();
                 expect(client).toBeDefined();
                 expect(sharedState.getWsClient()).toBe(client);
+                // the transport of the subscriptions, on a socket apart from the rpc requests
+                const { transport } = (createPublicClient as Mock).mock.calls.at(-1)![0];
+                expect(transport({}).config.key).toBe("subscriptionWebSocket");
                 sharedState.watchBlockNumber(5000);
                 // the watcher subscribed through the same client, one was created
                 expect(createPublicClient).toHaveBeenCalledTimes(created + 1);
@@ -626,7 +630,7 @@ describe("Test SharedState", () => {
             });
 
             it("should open the socket with no reconnect before the subscription, and open a closed one again", async () => {
-                const key = `socket:${config.appOptions.wsRpc}`;
+                const key = `subscription:${config.appOptions.wsRpc}`;
                 // a client as viem caches it in place of the opening once the socket
                 // is open, its close drops it from there
                 const opened = (readyState: number) => {
@@ -637,53 +641,60 @@ describe("Test SharedState", () => {
                     socketClientCache.set(key, client as any);
                     return client;
                 };
+                (getSocketRpcClient as Mock).mockClear();
                 (getWebSocketRpcClient as Mock).mockClear();
                 sharedState.watchBlockNumber(5000);
-                // the socket opens before the subscription, with the options of the ws rpcs
-                expect(getWebSocketRpcClient).toHaveBeenCalledWith(config.appOptions.wsRpc, {
-                    keepAlive: true,
-                    reconnect: false,
-                });
-                expect((getWebSocketRpcClient as Mock).mock.invocationCallOrder[0]).toBeLessThan(
+                // the socket of the subscriptions opens before the subscription, apart
+                // from the one of the rpc requests, with the options of the ws rpcs
+                expect(getSocketRpcClient).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        key: "subscription",
+                        url: config.appOptions.wsRpc,
+                        keepAlive: true,
+                        reconnect: false,
+                    }),
+                );
+                expect(getWebSocketRpcClient).not.toHaveBeenCalled();
+                expect((getSocketRpcClient as Mock).mock.invocationCallOrder[0]).toBeLessThan(
                     watchBlockNumberSpy.mock.invocationCallOrder[0],
                 );
                 // the opening is in the cache at once, a later call opens no second socket
                 expect(socketClientCache.get(key)).toBeInstanceOf(Promise);
                 await vi.advanceTimersByTimeAsync(0);
                 sharedState.openWsSocket();
-                expect(getWebSocketRpcClient).toHaveBeenCalledTimes(1);
+                expect(getSocketRpcClient).toHaveBeenCalledTimes(1);
 
                 // an open socket stays, a closed one is dropped and a new one opens in its place
                 const cached = opened(1);
                 sharedState.openWsSocket();
                 expect(cached.close).not.toHaveBeenCalled();
-                expect(getWebSocketRpcClient).toHaveBeenCalledTimes(1);
+                expect(getSocketRpcClient).toHaveBeenCalledTimes(1);
                 cached.socket.readyState = 3;
                 sharedState.openWsSocket();
                 expect(cached.close).toHaveBeenCalledTimes(1);
-                expect(getWebSocketRpcClient).toHaveBeenCalledTimes(2);
+                expect(getSocketRpcClient).toHaveBeenCalledTimes(2);
                 expect(socketClientCache.get(key)).toBeInstanceOf(Promise);
 
                 // a socket that does not open stays in the cache as a failed opening
                 opened(3);
-                (getWebSocketRpcClient as Mock).mockRejectedValueOnce(new Error("refused"));
+                (getSocketRpcClient as Mock).mockRejectedValueOnce(new Error("refused"));
                 expect(() => sharedState.openWsSocket()).not.toThrow();
                 await vi.advanceTimersByTimeAsync(0);
-                expect(getWebSocketRpcClient).toHaveBeenCalledTimes(3);
+                expect(getSocketRpcClient).toHaveBeenCalledTimes(3);
                 expect(socketClientCache.get(key)).toBeInstanceOf(Promise);
                 socketClientCache.delete(key);
             });
 
             it("should subscribe at once while the socket is opening, with no second opening", async () => {
-                (getWebSocketRpcClient as Mock).mockClear();
-                (getWebSocketRpcClient as Mock).mockReturnValueOnce(new Promise(() => {}));
+                (getSocketRpcClient as Mock).mockClear();
+                (getSocketRpcClient as Mock).mockReturnValueOnce(new Promise(() => {}));
                 sharedState.openWsSocket();
                 // the opening is past its first tick, the subscription takes it from the cache
                 await vi.advanceTimersByTimeAsync(0);
                 sharedState.watchBlockNumber(5000);
                 expect(sharedState.isWatchingBlockNumber).toBe(true);
                 expect(watchBlockNumberSpy).toHaveBeenCalledTimes(1);
-                expect(getWebSocketRpcClient).toHaveBeenCalledTimes(1);
+                expect(getSocketRpcClient).toHaveBeenCalledTimes(1);
                 sharedState.unwatchBlockNumber();
             });
 
