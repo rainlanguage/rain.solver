@@ -255,6 +255,83 @@ describe("Test transport", async function () {
         await mockServer.stop();
     });
 
+    it("should send to a fallback rpc only on the retry of a failed main rpc while the main one is healthy", async function () {
+        const main = getLocal();
+        const backup = getLocal();
+        await main.start(10202);
+        await backup.start(10303);
+
+        const state = new RpcState([{ url: main.url }, { url: backup.url, fallback: true }]);
+        // a healthy main rpc keeps every first try, see RpcProgress.settledSuccessRate
+        const record = state.metrics[normalizeUrl(main.url)];
+        record.progress.settledBuffer = Array(100).fill(RpcBufferType.Success);
+        record.progress.settledSuccess = 100;
+        const transport = rainSolverTransport(state, {
+            retryCount: 0,
+            retryCountNext: 1,
+            timeout: 60_000,
+            pollingInterval: 0,
+        })({ chain: polygon });
+
+        // the main rpc answers, the fallback gets nothing
+        await main.forPost().times(5).thenSendJsonRpcResult("0x1");
+        for (let i = 0; i < 5; i++) {
+            expect(await transport.request({ method: "eth_blockNumber" })).toBe("0x1");
+        }
+        expect(state.metrics[normalizeUrl(backup.url)].req).toBe(0);
+
+        // the main rpc fails once, the next try goes to the fallback and succeeds
+        await main.forPost().once().thenSendJsonRpcError({
+            code: -32000,
+            message: "ratelimit exceeded",
+        });
+        await backup.forPost().once().thenSendJsonRpcResult("0x2");
+        expect(await transport.request({ method: "eth_blockNumber" })).toBe("0x2");
+        expect(state.metrics[normalizeUrl(backup.url)].req).toBe(1);
+
+        await main.stop();
+        await backup.stop();
+    });
+
+    it("should fail a retry with the error of the try before it when no rpc is picked in time in the throttled mode", async function () {
+        const main = getLocal();
+        const other = getLocal();
+        await main.start(10404);
+        await other.start(10505);
+
+        const state = new RpcState(
+            [{ url: main.url }, { url: other.url }],
+            RpcSelectionMode.Throttled,
+        );
+        // the other rpc is down, its rate is at the floor of the draw
+        const record = state.metrics[normalizeUrl(other.url)];
+        record.progress.buffer = Array(100).fill(RpcBufferType.Failure);
+        record.progress.settledBuffer = Array(100).fill(RpcBufferType.Failure);
+        // the first draw lands on the main rpc, and every draw over the other rpc alone misses
+        const random = vi.spyOn(Math, "random").mockReturnValue(0.1);
+        const transport = rainSolverTransport(state, {
+            retryCount: 0,
+            retryCountNext: 1,
+            timeout: 60_000,
+            pollingInterval: 10,
+            pollingTimeout: 200,
+        })({ chain: polygon });
+
+        await main.forPost().once().thenSendJsonRpcError({
+            code: -32000,
+            message: "ratelimit exceeded",
+        });
+        const request = transport.request({ method: "eth_blockNumber" });
+        const error = (await request.catch((e) => e)) as Error;
+        random.mockRestore();
+        expect(error).not.toBeInstanceOf(RainSolverTransportTimeoutError);
+        expect(error.message).toMatch(/ratelimit exceeded/);
+        expect(state.metrics[normalizeUrl(other.url)].req).toBe(0);
+
+        await main.stop();
+        await other.stop();
+    });
+
     it("should not retry at all when the error is a node level error", async function () {
         const mockServer = getLocal();
         await mockServer.start(10101);

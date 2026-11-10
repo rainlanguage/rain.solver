@@ -25,7 +25,10 @@ topupAmount: 0.5
 writeRpc:
     - url: http://write-rpc.example.com
 rpcSelection: Throttled
-wsRpc: wss://ws-rpc.example.com
+wsRpc:
+  - url: wss://ws-rpc.example.com
+  - url: wss://ws-backup.example.com
+    fallback: true
 subgraph: ["http://subgraph.example.com"]
 contracts:
   v4:
@@ -127,6 +130,7 @@ orderbookTradeTypes:
             writeRpc: [{ url: "http://write-rpc.example.com" }],
             rpcSelection: RpcSelectionMode.Throttled,
             wsRpc: "wss://ws-rpc.example.com",
+            wsRpcFallback: "wss://ws-backup.example.com",
             subgraph: ["http://subgraph.example.com"],
             contracts: {
                 v4: {
@@ -454,6 +458,7 @@ orderbookTradeTypes:
         assert.equal(result.defaultOwnerLimit, 5); // should be default 5
         assert.equal(result.rpcSelection, RpcSelectionMode.Immediate); // should be default immediate
         assert.equal(result.wsRpc, undefined); // no ws rpc when unset
+        assert.equal(result.wsRpcFallback, undefined); // no ws fallback when unset
         assert.equal(result.flashblocks, false); // should be default false
         assert.equal(result.multiBroadcast, false); // should be default false
         assert.equal(result.callBlockTag, undefined); // no block tag when unset

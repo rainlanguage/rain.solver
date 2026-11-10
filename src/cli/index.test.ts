@@ -125,6 +125,7 @@ describe("Test RainSolverCli", () => {
             },
             rpc: {
                 urls: ["https://rpc1.com", "https://rpc2.com"],
+                isFallback: vi.fn((url: string) => url === "https://rpc2.com"),
                 metrics: {
                     "https://rpc1.com": {
                         req: 10,
@@ -134,6 +135,7 @@ describe("Test RainSolverCli", () => {
                         avgRequestIntervals: 100,
                         progress: {
                             successRate: 8000,
+                            settledSuccessRate: 9000,
                             selectionWeight: 0.8,
                         },
                         reset: vi.fn(),
@@ -146,6 +148,7 @@ describe("Test RainSolverCli", () => {
                         avgRequestIntervals: 120,
                         progress: {
                             successRate: 8000,
+                            settledSuccessRate: 9000,
                             selectionWeight: 0.8,
                         },
                         reset: vi.fn(),
@@ -153,6 +156,7 @@ describe("Test RainSolverCli", () => {
                 },
             },
             writeRpc: {
+                isFallback: vi.fn().mockReturnValue(false),
                 metrics: {
                     "https://writerpc.com": {
                         req: 3,
@@ -162,6 +166,7 @@ describe("Test RainSolverCli", () => {
                         avgRequestIntervals: 80,
                         progress: {
                             successRate: 10000,
+                            settledSuccessRate: 10000,
                             selectionWeight: 1.0,
                         },
                         reset: vi.fn(),
@@ -776,6 +781,26 @@ describe("Test RainSolverCli", () => {
             expect(reported).toMatch(/^https:\/\/base-mainnet\.g\.alchemy\.com\/\[redacted:/);
             expect(reported).not.toContain("secretkey");
         });
+
+        it("should report whether each rpc is a fallback one, and its settled success rate", async () => {
+            const mockSpan = { setAttributes: vi.fn(), end: vi.fn() };
+            (mockLogger.tracer.startActiveSpan as Mock).mockImplementation(
+                (_name, _options, _ctx, callback) => callback(mockSpan),
+            );
+
+            await rainSolverCli.reportRpcMetricsForRound({} as any);
+
+            const reported = (mockSpan.setAttributes as Mock).mock.calls.map(([attrs]) => [
+                attrs["rpc-url"],
+                attrs["is-fallback"],
+                attrs["settled-success-rate"],
+            ]);
+            expect(reported).toEqual([
+                [redactUrl("https://rpc1.com"), false, 90],
+                [redactUrl("https://rpc2.com"), true, 90],
+                [redactUrl("https://writerpc.com"), false, 100],
+            ]);
+        });
     });
 
     describe("Test reportMetaInfoForRound method", () => {
@@ -892,6 +917,25 @@ describe("Test RainSolverCli", () => {
                 "gasFee.lastFetchError",
                 "request timed out",
             );
+        });
+
+        it("should report the ws rpc url the subscriptions use, with its api key masked", async () => {
+            const mockRoundSpan = { setAttributes: vi.fn(), setAttribute: vi.fn() };
+            (mockWalletManager.getWorkerWalletsBalance as Mock).mockResolvedValue({});
+
+            // no ws rpc, nothing to report
+            await rainSolverCli.reportMetaInfoForRound(mockRoundSpan as any);
+            const names = mockRoundSpan.setAttribute.mock.calls.map(([name]) => name);
+            expect(names).not.toContain("meta.wsRpcInUse");
+
+            const url = "wss://base-mainnet.g.alchemy.com/v2/secretkey";
+            (rainSolverCli.state as any).activeWsUrl = url;
+            await rainSolverCli.reportMetaInfoForRound(mockRoundSpan as any);
+            expect(mockRoundSpan.setAttribute).toHaveBeenCalledWith(
+                "meta.wsRpcInUse",
+                redactUrl(url),
+            );
+            expect(redactUrl(url)).not.toContain("secretkey");
         });
     });
 

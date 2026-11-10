@@ -808,6 +808,40 @@ describe("Test yaml Validator methods", async function () {
         );
     });
 
+    it("test Validator resolveRpc fallback", async function () {
+        // a yaml boolean or its text, case insensitive, false when unset
+        const result = Validator.resolveRpc([
+            { url: "https://main.com" },
+            { url: "https://backup1.com", fallback: true },
+            { url: "wss://backup2.com", fallback: "TRUE" },
+            { url: "https://main2.com", fallback: false },
+        ]);
+        assert.deepEqual(result, [
+            { url: "https://main.com" },
+            { url: "https://backup1.com", fallback: true },
+            { url: "wss://backup2.com", fallback: true },
+            { url: "https://main2.com", fallback: false },
+        ]);
+
+        // the same from env, next to the other keys
+        process.env.RPC_URLS =
+            "url=https://main.com,weight=2,url=https://backup1.com,fallback=true,trackSize=50";
+        assert.deepEqual(Validator.resolveRpc("$RPC_URLS"), [
+            { url: "https://main.com", selectionWeight: 2 },
+            { url: "https://backup1.com", fallback: true, trackSize: 50 },
+        ]);
+
+        // unhappy: a value that is not a boolean, and a duplicate
+        process.env.RPC_URLS = "url=https://backup1.com,fallback=yes";
+        assert.throws(
+            () => Validator.resolveRpc("$RPC_URLS"),
+            `invalid rpc fallback: "yes", expected true or false`,
+        );
+        process.env.RPC_URLS = "url=https://backup1.com,fallback=true,fallback=false";
+        assert.throws(() => Validator.resolveRpc("$RPC_URLS"), /duplicate fallback/);
+        delete process.env.RPC_URLS;
+    });
+
     it("test Validator resolveRpc", async function () {
         // happy path using direct object input:
         const inputs = [
@@ -876,8 +910,22 @@ describe("Test yaml Validator methods", async function () {
         process.env.RPC_URLS = `url=https://example2.com,weight=2.5,trackSize=abcd`;
         assert.throws(
             () => Validator.resolveRpc("$RPC_URLS"),
-            `invalid rpc track size: "abcd", expected an integer greater than equal to 0`,
+            `invalid rpc track size: "abcd", expected an integer greater than equal to 1`,
         );
+
+        // a track size of 0 keeps no request, the rpc would stay healthy for good
+        process.env.RPC_URLS = `url=https://example2.com,trackSize=0`;
+        assert.throws(
+            () => Validator.resolveRpc("$RPC_URLS"),
+            `invalid rpc track size: "0", expected an integer greater than equal to 1`,
+        );
+        assert.throws(
+            () => Validator.resolveRpc([{ url: "https://example2.com", trackSize: 0 }]),
+            `invalid rpc track size: "0", expected an integer greater than equal to 1`,
+        );
+        assert.deepEqual(Validator.resolveRpc([{ url: "https://example2.com", trackSize: 1 }]), [
+            { url: "https://example2.com", trackSize: 1 },
+        ]);
 
         // unhappy: Direct input not provided as an array
         const badInput = {
@@ -903,19 +951,69 @@ describe("Test yaml Validator methods", async function () {
 
     it("test Validator resolveWsRpc", async function () {
         // happy: wss and ws urls
-        assert.equal(
-            Validator.resolveWsRpc("wss://ws-rpc.example.com"),
-            "wss://ws-rpc.example.com",
-        );
-        assert.equal(Validator.resolveWsRpc("ws://ws-rpc.example.com"), "ws://ws-rpc.example.com");
+        assert.deepEqual(Validator.resolveWsRpc("wss://ws-rpc.example.com"), {
+            url: "wss://ws-rpc.example.com",
+        });
+        assert.deepEqual(Validator.resolveWsRpc("ws://ws-rpc.example.com"), {
+            url: "ws://ws-rpc.example.com",
+        });
 
-        // happy: unset returns undefined
-        assert.equal(Validator.resolveWsRpc(undefined), undefined);
+        // happy: unset gives no url
+        assert.deepEqual(Validator.resolveWsRpc(undefined), {});
 
         // happy: env variable
         process.env.TEST_WS_RPC = "wss://ws-rpc.example.com";
-        assert.equal(Validator.resolveWsRpc("$TEST_WS_RPC"), "wss://ws-rpc.example.com");
+        assert.deepEqual(Validator.resolveWsRpc("$TEST_WS_RPC"), {
+            url: "wss://ws-rpc.example.com",
+        });
         delete process.env.TEST_WS_RPC;
+
+        // happy: a main url and a fallback url, as a yaml list and from env
+        assert.deepEqual(
+            Validator.resolveWsRpc([
+                { url: "wss://main.example.com" },
+                { url: "wss://backup.example.com", fallback: true },
+            ]),
+            { url: "wss://main.example.com", fallback: "wss://backup.example.com" },
+        );
+        process.env.TEST_WS_RPC =
+            "url=wss://main.example.com,url=wss://backup.example.com,fallback=true";
+        assert.deepEqual(Validator.resolveWsRpc("$TEST_WS_RPC"), {
+            url: "wss://main.example.com",
+            fallback: "wss://backup.example.com",
+        });
+        // a list with only a main url
+        process.env.TEST_WS_RPC = "url=wss://main.example.com";
+        assert.deepEqual(Validator.resolveWsRpc("$TEST_WS_RPC"), {
+            url: "wss://main.example.com",
+            fallback: undefined,
+        });
+        delete process.env.TEST_WS_RPC;
+
+        // unhappy: a list with no main url, two main urls or two fallback urls
+        for (const list of [
+            [{ url: "wss://backup.example.com", fallback: true }],
+            [{ url: "wss://main1.example.com" }, { url: "wss://main2.example.com" }],
+            [
+                { url: "wss://main.example.com" },
+                { url: "wss://backup1.example.com", fallback: true },
+                { url: "wss://backup2.example.com", fallback: true },
+            ],
+        ]) {
+            assert.throws(
+                () => Validator.resolveWsRpc(list),
+                /wsRpc takes one main url and at most one fallback url/,
+            );
+        }
+        // unhappy: a list with an http url, or with a key other than url and fallback
+        assert.throws(
+            () => Validator.resolveWsRpc([{ url: "https://rpc.example.com" }]),
+            /invalid wsRpc value, expected a websocket url starting with ws:\/\/ or wss:\/\//,
+        );
+        assert.throws(
+            () => Validator.resolveWsRpc([{ url: "wss://main.example.com", weight: "2" }]),
+            /wsRpc takes only the url and fallback keys/,
+        );
 
         // unhappy: non websocket url
         assert.throws(

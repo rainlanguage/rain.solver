@@ -550,4 +550,30 @@ describe("Test the shared ws socket with the real viem socket client", () => {
         expect(rpcClient.requests.size).toBe(1);
         await vi.waitFor(() => expect(rpcClient.requests.size).toBe(0), { timeout: 1_500 });
     });
+
+    it("should subscribe on the url the url function gives at each call", async () => {
+        const first = await wsServer();
+        const second = await wsServer();
+        let url = first.url;
+        // as the ws client of the state gives the url in use, see SharedState.activeWsUrl
+        const ws = createPublicClient({
+            transport: subscriptionWebSocket(() => url, WS_RPC_SOCKET_OPTIONS),
+        });
+        const subscribe = () =>
+            (ws.transport as any).subscribe({
+                params: ["newHeads"],
+                onData: () => {},
+                onError: () => {},
+            });
+        await subscribe();
+        expect(first.subscribers.size).toBe(1);
+        expect(second.attempts).toBe(0);
+
+        // the url changes, the next subscription goes to the other url, the first one stays
+        url = second.url;
+        await subscribe();
+        expect(second.subscribers.size).toBe(1);
+        expect(first.subscribers.size).toBe(1);
+        expect(first.attempts).toBe(1);
+    });
 });

@@ -2,6 +2,7 @@ import { sleep } from "../common";
 import { RainSolverTransportTimeoutError } from "./transport";
 import { Transport, TimeoutError, ExecutionRevertedError } from "viem";
 import { vi, describe, it, assert, Mock, beforeEach, expect } from "vitest";
+import { watchWsSocket } from "./helpers";
 import {
     RpcState,
     RpcConfig,
@@ -10,7 +11,14 @@ import {
     RpcBufferType,
     withRpcMetrics,
     RpcSelectionMode,
+    WS_RPC_SOCKET_OPTIONS,
+    RPC_HEALTHY_SUCCESS_RATE,
 } from "./rpc";
+
+vi.mock("./helpers", async (importOriginal) => ({
+    ...(await importOriginal()),
+    watchWsSocket: vi.fn(),
+}));
 
 vi.mock("../common", async (importOriginal) => ({
     ...(await importOriginal()),
@@ -263,6 +271,172 @@ describe("Test RpcState", async function () {
         }
     });
 
+    describe("fallback rpcs", () => {
+        const main1 = "https://main1.com/";
+        const main2 = "https://main2.com/";
+        const backup = "https://backup.com/";
+        const tiers = (): RpcConfig[] => [
+            { url: main1 },
+            { url: main2 },
+            { url: backup, fallback: true },
+        ];
+        // the draw takes the success rate, the health the one of the settled requests
+        const setRate = (state: RpcState, url: string, rate: number) => {
+            const { progress } = state.metrics[url];
+            vi.spyOn(progress, "successRate", "get").mockReturnValue(rate);
+            vi.spyOn(progress, "settledSuccessRate", "get").mockReturnValue(rate);
+        };
+        const countPicks = async (state: RpcState, times: number) => {
+            const picks: Record<string, number> = {};
+            for (let i = 0; i < times; i++) {
+                const { url } = await state.nextRpc({});
+                picks[url] = (picks[url] ?? 0) + 1;
+            }
+            return picks;
+        };
+
+        it("should leave the fallback rpcs out of the picks while a main rpc is healthy", async () => {
+            const state = new RpcState(tiers());
+            expect(state.fallbacks).toEqual([false, false, true]);
+            expect(state.isFallback(backup)).toBe(true);
+            expect(state.isFallback(main1)).toBe(false);
+            expect(state.isFallback("https://unknown.com/")).toBe(false);
+            // one main rpc is healthy, at the threshold, the other one is down
+            setRate(state, main1, RPC_HEALTHY_SUCCESS_RATE);
+            setRate(state, main2, 0);
+            const picks = await countPicks(state, 300);
+            expect(picks[backup]).toBeUndefined();
+            expect(picks[main1]).toBeGreaterThan(picks[main2] ?? 0);
+        });
+
+        it("should add the fallback rpcs to the picks while no main rpc is healthy, the main ones keep a chance", async () => {
+            const state = new RpcState(tiers());
+            // just below the threshold, and down, the fallback keeps its default rate of 50%
+            setRate(state, main1, RPC_HEALTHY_SUCCESS_RATE - 1);
+            setRate(state, main2, 0);
+            const picks = await countPicks(state, 400);
+            // the fallback takes most of the picks, a main rpc that comes back still gets some
+            expect(picks[backup]).toBeGreaterThan(picks[main1]);
+            expect(picks[main1]).toBeGreaterThan(0);
+
+            // the main rpc is healthy again, the fallback gets no picks again
+            setRate(state, main1, RPC_HEALTHY_SUCCESS_RATE);
+            expect((await countPicks(state, 300))[backup]).toBeUndefined();
+        });
+
+        it("should keep a main rpc healthy while its requests wait for a reply, and not once they fail", async () => {
+            const state = new RpcState([{ url: main1 }, { url: backup, fallback: true }]);
+            // many requests at once at start, none has a reply yet
+            for (let i = 0; i < 150; i++) {
+                const { url } = await state.nextRpc({});
+                expect(url).toBe(main1);
+                state.metrics[url].recordRequest();
+            }
+            // they all fail, the fallback joins the picks
+            for (let i = 0; i < 150; i++) state.metrics[main1].recordFailure();
+            expect((await countPicks(state, 100))[backup]).toBeGreaterThan(0);
+        });
+
+        it("should move the first tries to the fallback once the requests to a main rpc that hangs time out, while more of them still wait", async () => {
+            const state = new RpcState([
+                { url: main1, trackSize: 20 },
+                { url: backup, fallback: true },
+            ]);
+            const record = state.metrics[main1];
+            // requests come faster than trackSize per timeout, none gets a reply
+            for (let i = 0; i < 40; i++) {
+                expect((await state.nextRpc({})).url).toBe(main1);
+                record.recordRequest();
+            }
+            // the first trackSize of them time out, the others still wait
+            for (let i = 0; i < 20; i++) record.recordTimeout();
+            expect(record.progress.settledSuccessRate).toBe(0);
+            const picks = await countPicks(state, 100);
+            expect(picks[backup]).toBeGreaterThan(picks[main1] ?? 0);
+        });
+
+        it("should draw over every rpc with no fallback rpc, or with no main rpc", async () => {
+            // no fallback, every main rpc down, they are all still drawn from
+            const mains = new RpcState([{ url: main1 }, { url: main2 }]);
+            setRate(mains, main1, 0);
+            setRate(mains, main2, 0);
+            expect(Object.keys(await countPicks(mains, 400)).sort()).toEqual([main1, main2]);
+
+            // every rpc a fallback, they are all drawn from
+            const backups = new RpcState([
+                { url: main1, fallback: true },
+                { url: backup, fallback: true },
+            ]);
+            expect(Object.keys(await countPicks(backups, 200)).sort()).toEqual([backup, main1]);
+        });
+
+        it("should retry on another rpc, a healthy main one first, then a fallback one, never the failed one", async () => {
+            const state = new RpcState(tiers());
+            setRate(state, main1, RPC_HEALTHY_SUCCESS_RATE);
+            setRate(state, main2, RPC_HEALTHY_SUCCESS_RATE);
+            // a failure on a main rpc goes to the other healthy main rpc
+            for (let i = 0; i < 50; i++) {
+                expect((await state.retryRpc({ failedUrl: main1 }))?.url).toBe(main2);
+            }
+            // with the other main rpc down too, it goes to the fallback rpc
+            setRate(state, main2, 0);
+            for (let i = 0; i < 50; i++) {
+                expect((await state.retryRpc({ failedUrl: main1 }))?.url).toBe(backup);
+            }
+            // a failure on the fallback rpc with no healthy main rpc goes to a main rpc
+            setRate(state, main1, 0);
+            for (let i = 0; i < 50; i++) {
+                expect([main1, main2]).toContain(
+                    (await state.retryRpc({ failedUrl: backup }))?.url,
+                );
+            }
+            // the last used rpc follows the retry pick
+            const picked = await state.retryRpc({ failedUrl: backup });
+            expect(state.lastUsedUrl).toBe(picked?.url);
+
+            // with no other rpc, there is nothing to retry on
+            const alone = new RpcState([{ url: main1 }]);
+            expect(await alone.retryRpc({ failedUrl: main1 })).toBeUndefined();
+        });
+
+        it("should open the socket of a ws rpc once it is picked or used, a fallback one only then", async () => {
+            const state = new RpcState([
+                { url: "wss://main.example.com" },
+                { url: "wss://backup.example.com", fallback: true },
+                { url: "https://http.example.com" },
+            ]);
+            // the main rpcs are healthy, the fallback is never picked, its socket stays closed
+            setRate(state, "https://http.example.com/", 0);
+            for (let i = 0; i < 50; i++) await state.nextRpc({});
+            expect(watchWsSocket).toHaveBeenCalledWith(
+                "wss://main.example.com",
+                WS_RPC_SOCKET_OPTIONS,
+            );
+            expect(watchWsSocket).not.toHaveBeenCalledWith(
+                "wss://backup.example.com",
+                expect.anything(),
+            );
+
+            // the main rpcs are down, the fallback is picked and its socket opens
+            setRate(state, "wss://main.example.com/", 0);
+            await countPicks(state, 100);
+            expect(watchWsSocket).toHaveBeenCalledWith(
+                "wss://backup.example.com",
+                WS_RPC_SOCKET_OPTIONS,
+            );
+
+            // an http rpc has no socket to open
+            (watchWsSocket as Mock).mockClear();
+            state.watchSocket("https://http.example.com/");
+            expect(watchWsSocket).not.toHaveBeenCalled();
+            state.watchSocket("wss://backup.example.com/");
+            expect(watchWsSocket).toHaveBeenCalledWith(
+                "wss://backup.example.com",
+                WS_RPC_SOCKET_OPTIONS,
+            );
+        });
+    });
+
     it("should create the underlying transport based on the url scheme", async function () {
         const state = new RpcState([
             { url: "wss://ws-example.com" },
@@ -313,6 +487,7 @@ describe("Test withRpcMetrics", async function () {
         assert.equal(record.success, 1);
         assert.equal(record.failure, 0);
         assert.equal(record.timeout, 0);
+        assert.deepEqual(record.progress.settledBuffer, [RpcBufferType.Success]);
     });
 
     it("should record success for node level error rejection", async function () {
@@ -330,6 +505,7 @@ describe("Test withRpcMetrics", async function () {
         assert.equal(record.success, 1);
         assert.equal(record.failure, 0);
         assert.equal(record.timeout, 0);
+        assert.deepEqual(record.progress.settledBuffer, [RpcBufferType.Success]);
     });
 
     it("should record neither success nor failure for timeout rejection", async function () {
@@ -346,6 +522,8 @@ describe("Test withRpcMetrics", async function () {
         assert.equal(record.success, 0);
         assert.equal(record.failure, 0);
         assert.equal(record.timeout, 1); // derived from req - (success + failure)
+        // the request ended, its timeout counts as a failure of a request with a reply
+        assert.deepEqual(record.progress.settledBuffer, [RpcBufferType.Failure]);
     });
 
     it("should record failure for any other rejection", async function () {
@@ -359,6 +537,7 @@ describe("Test withRpcMetrics", async function () {
         assert.equal(record.success, 0);
         assert.equal(record.failure, 1);
         assert.equal(record.timeout, 0);
+        assert.deepEqual(record.progress.settledBuffer, [RpcBufferType.Failure]);
     });
 });
 
@@ -487,6 +666,23 @@ describe("Test RpcMetrics", async function () {
         assert.ok(result.lastRequestTimestamp > 0);
         assert.equal(result.timeout, 0);
         assert.ok(result.avgRequestIntervals >= 0);
+        assert.deepEqual(result.progress.settledBuffer, [RpcBufferType.Failure]);
+    });
+
+    it("should record timeout response", async function () {
+        const result = new RpcMetrics();
+        result.recordRequest();
+        assert.deepEqual(result.progress.settledBuffer, []);
+
+        result.recordTimeout();
+
+        // the timeout count is derived, the request ended in the progress as a failure
+        assert.equal(result.req, 1);
+        assert.equal(result.success, 0);
+        assert.equal(result.failure, 0);
+        assert.equal(result.timeout, 1);
+        assert.deepEqual(result.progress.settledBuffer, [RpcBufferType.Failure]);
+        assert.deepEqual(result.progress.buffer, [RpcBufferType.Failure]);
     });
 
     it("should reset rpc record", async function () {
@@ -622,6 +818,42 @@ describe("Test RpcProgress", async function () {
         assert.deepEqual(result.buffer, [RpcBufferType.Failure, RpcBufferType.Success]);
         assert.equal(result.success, 1);
         assert.equal(result.successRate, 5000);
+    });
+
+    it("should test settled success rate", async function () {
+        const result = new RpcProgress({ trackSize: 3, url: "" });
+        assert.deepEqual(result.settledBuffer, []);
+        assert.equal(result.settledSuccessRate, 5000);
+
+        // requests with no reply yet do not count
+        for (let i = 0; i < 10; i++) result.recordRequest();
+        assert.equal(result.successRate, 0);
+        assert.equal(result.settledSuccessRate, 5000);
+
+        result.recordSuccess();
+        assert.deepEqual(result.settledBuffer, [RpcBufferType.Success]);
+        assert.equal(result.settledSuccessRate, 10000);
+
+        result.recordFailure();
+        result.recordFailure();
+        assert.equal(result.settledSuccessRate, 3334);
+
+        // the settled buffer keeps the latest trackSize ones
+        result.recordSuccess();
+        assert.deepEqual(result.settledBuffer, [
+            RpcBufferType.Failure,
+            RpcBufferType.Failure,
+            RpcBufferType.Success,
+        ]);
+        assert.equal(result.settledSuccess, 1);
+        assert.equal(result.settledSuccessRate, 3334);
+        for (let i = 0; i < 3; i++) result.recordFailure();
+        assert.equal(result.settledSuccess, 0);
+        assert.equal(result.settledSuccessRate, 0);
+
+        // new requests with no reply leave it as it is
+        for (let i = 0; i < 10; i++) result.recordRequest();
+        assert.equal(result.settledSuccessRate, 0);
     });
 
     it("should test selection rate", async function () {

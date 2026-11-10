@@ -14,7 +14,9 @@ import {
     SharedState,
     SharedStateConfig,
     SharedStateErrorType,
+    WS_PROBE_MAX_LAG,
     WS_RESUBSCRIBE_DELAY,
+    WS_MAIN_PROBE_INTERVAL,
     subscribeToFlashblocks,
 } from ".";
 
@@ -696,6 +698,442 @@ describe("Test SharedState", () => {
                 expect(watchBlockNumberSpy).toHaveBeenCalledTimes(1);
                 expect(getSocketRpcClient).toHaveBeenCalledTimes(1);
                 sharedState.unwatchBlockNumber();
+            });
+
+            describe("fallback url", () => {
+                // urls of their own for each test, the socket helpers keep their
+                // openings and clients by url, the earlier tests leave some behind
+                let run = 0;
+                let main: string;
+                let backup: string;
+                /**
+                 * How each next opening of a url goes, a fail when none is left, a hang
+                 * never ends, a later one opens once its call in later is made
+                 */
+                let outcomes: Record<string, ("fail" | "open" | "hang" | "later")[]>;
+                /** The calls that open the later openings, in their order */
+                let later: (() => void)[];
+                /** The clients of the openings of each url that opened */
+                let clients: Record<string, { socket: { readyState: number }; close: Mock }[]>;
+                const opened = () =>
+                    (getSocketRpcClient as Mock).mock.calls.map(([args]) => args.url);
+                /** The new heads subscription of the given order, of the block watcher or of a probe */
+                const subscription = (at: number) => watchBlockNumberSpy.mock.calls[at][0];
+                /** A head of the given block number on the new heads subscription of the given order */
+                const head = (at: number, blockNumber = 105) =>
+                    subscription(at).onData({
+                        result: { number: `0x${blockNumber.toString(16)}` },
+                    });
+                /** Fails two new heads subscriptions in a row on the main url, its socket open */
+                const moveToFallback = async () => {
+                    sharedState.watchBlockNumber(5000);
+                    await vi.advanceTimersByTimeAsync(0);
+                    onError(new Error("subscribe timed out"));
+                    expect(sharedState.activeWsUrl).toBe(main);
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    onError(new Error("subscribe timed out"));
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                };
+
+                beforeEach(() => {
+                    run++;
+                    main = `wss://ws-main-${run}.example.com`;
+                    backup = `wss://ws-backup-${run}.example.com`;
+                    config.appOptions.wsRpc = main;
+                    config.appOptions.wsRpcFallback = backup;
+                    sharedState = new SharedState(config);
+                    outcomes = { [main]: [], [backup]: [] };
+                    later = [];
+                    clients = { [main]: [], [backup]: [] };
+                    (getSocketRpcClient as Mock).mockReset();
+                    // an opening as viem's, the client goes in the cache once the socket opens
+                    (getSocketRpcClient as Mock).mockImplementation(({ url }: { url: string }) => {
+                        const open = () => {
+                            const key = `subscription:${url}`;
+                            // a close closes the socket and drops the client from the cache
+                            const client = {
+                                socket: { readyState: 1 },
+                                close: vi.fn(() => {
+                                    client.socket.readyState = 3;
+                                    socketClientCache.delete(key);
+                                }),
+                            };
+                            clients[url].push(client);
+                            socketClientCache.set(key, client as any);
+                            return client;
+                        };
+                        return Promise.resolve().then(() => {
+                            const outcome = outcomes[url].shift() ?? "fail";
+                            if (outcome === "hang") return new Promise(() => {});
+                            if (outcome === "later") {
+                                return new Promise((resolve) => later.push(() => resolve(open())));
+                            }
+                            if (outcome === "fail") throw new Error("refused");
+                            return open();
+                        });
+                    });
+                });
+
+                afterEach(() => {
+                    config.appOptions.wsRpcFallback = undefined;
+                    socketClientCache.clear();
+                    // the helpers keep the last open client of a socket, a closed one
+                    // does not stand in for the clients of the next test
+                    for (const list of Object.values(clients)) {
+                        for (const client of list) client.socket.readyState = 3;
+                    }
+                });
+
+                it("should move the subscriptions to the fallback after two failed subscriptions on the main url, and back on the first head of a probe", async () => {
+                    outcomes[main] = ["open", "open"];
+                    outcomes[backup] = ["open"];
+                    // the main socket opens, but its subscriptions time out, on the same socket
+                    await moveToFallback();
+                    expect(watchBlockNumberSpy).toHaveBeenCalledTimes(2);
+                    expect(opened()).toEqual([main]);
+
+                    // the main socket is closed and dropped
+                    expect(clients[main][0].close).toHaveBeenCalled();
+                    expect(socketClientCache.get(`subscription:${main}`)).toBeUndefined();
+
+                    // the subscription subscribes again after its delay, the fallback socket opens only now
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    expect(watchBlockNumberSpy).toHaveBeenCalledTimes(3);
+                    expect(opened()).toEqual([main, backup]);
+
+                    // a probe opens the main socket and subscribes to the heads on it, an open
+                    // socket alone moves nothing
+                    await vi.advanceTimersByTimeAsync(
+                        WS_MAIN_PROBE_INTERVAL - WS_RESUBSCRIBE_DELAY,
+                    );
+                    expect(opened()).toEqual([main, backup, main]);
+                    expect(watchBlockNumberSpy).toHaveBeenCalledTimes(4);
+                    expect(subscription(3).params).toEqual(["newHeads"]);
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                    // the probe subscribes on the main url, whatever url is in use
+                    const { transport } = (createPublicClient as Mock).mock.calls.at(-1)![0];
+                    expect(await transport({}).value.getRpcClient()).toBe(clients[main][1]);
+
+                    // its first head moves the subscriptions back, the probe ends, and the
+                    // fallback socket is closed, so the subscriptions on it subscribe again
+                    const unwatched = wsUnwatch.mock.calls.length;
+                    head(3);
+                    expect(sharedState.activeWsUrl).toBe(main);
+                    expect(wsUnwatch).toHaveBeenCalledTimes(unwatched + 1);
+                    expect(clients[backup][0].close).toHaveBeenCalledTimes(1);
+                    expect(socketClientCache.get(`subscription:${main}`)).toBe(clients[main][1]);
+
+                    // the subscription on the closed fallback socket fails, which changes
+                    // nothing, and it subscribes again on the socket the probe opened
+                    subscription(2).onError(new Error("closed"));
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    expect(sharedState.activeWsUrl).toBe(main);
+                    expect(watchBlockNumberSpy).toHaveBeenCalledTimes(5);
+                    expect(opened()).toEqual([main, backup, main]);
+
+                    // no more probes once back on the main url
+                    await vi.advanceTimersByTimeAsync(2 * WS_MAIN_PROBE_INTERVAL);
+                    expect(opened()).toEqual([main, backup, main]);
+                    expect(watchBlockNumberSpy).toHaveBeenCalledTimes(5);
+                });
+
+                it("should keep the subscriptions on the fallback while the heads of a probe are behind it, and move back once they catch up", async () => {
+                    outcomes[main] = ["open", "open"];
+                    outcomes[backup] = ["open"];
+                    await moveToFallback();
+                    // the subscription on the fallback url gets block 200
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    head(2, 200);
+                    expect(sharedState.wsBlockNumber).toBe(200n);
+
+                    // the main url comes back on a node that still syncs, its heads are behind
+                    await vi.advanceTimersByTimeAsync(
+                        WS_MAIN_PROBE_INTERVAL - WS_RESUBSCRIBE_DELAY,
+                    );
+                    expect(watchBlockNumberSpy).toHaveBeenCalledTimes(4);
+                    head(3, 150);
+                    head(3, 199);
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                    expect(sharedState.canonicalBlockNumber).toBe(200n);
+
+                    // a head that caught up moves the subscriptions back
+                    head(3, 200);
+                    expect(sharedState.activeWsUrl).toBe(main);
+                });
+
+                it("should move back to a main in sync whose heads come after the fallback's next head, by the block number at the probe start", async () => {
+                    outcomes[main] = ["open", "open"];
+                    outcomes[backup] = ["open"];
+                    await moveToFallback();
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    head(2, 200);
+                    await vi.advanceTimersByTimeAsync(
+                        WS_MAIN_PROBE_INTERVAL - WS_RESUBSCRIBE_DELAY,
+                    );
+                    // the fallback gets each block first, the main head of a block comes
+                    // after the fallback's head of the next block
+                    head(2, 201);
+                    expect(sharedState.canonicalBlockNumber).toBe(201n);
+                    head(3, 200);
+                    expect(sharedState.activeWsUrl).toBe(main);
+                });
+
+                it("should keep the subscriptions on the fallback when a probe head reaches the start block after the bot moved well past it", async () => {
+                    outcomes[main] = ["open", "open"];
+                    outcomes[backup] = ["open"];
+                    await moveToFallback();
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    head(2, 200);
+                    await vi.advanceTimersByTimeAsync(
+                        WS_MAIN_PROBE_INTERVAL - WS_RESUBSCRIBE_DELAY,
+                    );
+                    // the bot moves on to block 300 while the probe runs
+                    head(2, 300);
+                    head(3, 200);
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                    // with no blockTime set, a head can be one block behind
+                    head(3, 298);
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                    head(3, 299);
+                    expect(sharedState.activeWsUrl).toBe(main);
+                });
+
+                it("should let a probe head be WS_PROBE_MAX_LAG behind the bot's block number, in blocks of blockTime", async () => {
+                    config.appOptions.blockTime = 250;
+                    const maxLag = Math.ceil(WS_PROBE_MAX_LAG / 250);
+                    outcomes[main] = ["open", "open"];
+                    outcomes[backup] = ["open"];
+                    await moveToFallback();
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    head(2, 200);
+                    await vi.advanceTimersByTimeAsync(
+                        WS_MAIN_PROBE_INTERVAL - WS_RESUBSCRIBE_DELAY,
+                    );
+                    head(2, 300);
+                    head(3, 300 - maxLag - 1);
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                    head(3, 300 - maxLag);
+                    expect(sharedState.activeWsUrl).toBe(main);
+                });
+
+                it("should compare a flashblocks head of a probe by its sealed block", async () => {
+                    config.appOptions.flashblocks = true;
+                    outcomes[main] = ["open", "open"];
+                    outcomes[backup] = ["open"];
+                    await moveToFallback();
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    // a flashblock head builds block 201, its sealed block is 200
+                    head(2, 201);
+                    expect(sharedState.canonicalBlockNumber).toBe(200n);
+                    await vi.advanceTimersByTimeAsync(
+                        WS_MAIN_PROBE_INTERVAL - WS_RESUBSCRIBE_DELAY,
+                    );
+                    expect(subscription(3).params).toEqual(["newFlashblocks"]);
+
+                    // a probe head that builds block 200 has sealed block 199, it is behind
+                    head(3, 200);
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                    head(3, 201);
+                    expect(sharedState.activeWsUrl).toBe(main);
+                });
+
+                it("should keep the subscriptions on the fallback while the heads of a probe are behind the block number the http poll read", async () => {
+                    outcomes[main] = ["open", "open"];
+                    outcomes[backup] = ["open"];
+                    await moveToFallback();
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    head(2, 200);
+                    // the fallback subscription is down too, the http poll reads block 300
+                    (config.client.getBlock as Mock).mockResolvedValue({
+                        number: 300n,
+                        baseFeePerGas: 7n,
+                    });
+                    await sharedState.updateBlockNumber();
+                    expect(sharedState.wsBlockNumber).toBe(200n);
+                    expect(sharedState.canonicalBlockNumber).toBe(300n);
+
+                    // a head of the probe past the last ws head but behind the poll moves nothing
+                    await vi.advanceTimersByTimeAsync(
+                        WS_MAIN_PROBE_INTERVAL - WS_RESUBSCRIBE_DELAY,
+                    );
+                    head(3, 250);
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                    head(3, 300);
+                    expect(sharedState.activeWsUrl).toBe(main);
+                });
+
+                it("should keep the subscriptions on the fallback while the probes fail on an open main socket, each probe on a new socket", async () => {
+                    outcomes[main] = ["open", "open", "open", "open"];
+                    outcomes[backup] = ["open"];
+                    await moveToFallback();
+                    await vi.advanceTimersByTimeAsync(WS_MAIN_PROBE_INTERVAL);
+                    expect(opened()).toEqual([main, backup, main]);
+
+                    // the main socket opens, but the subscribe of the probe times out, its
+                    // socket is dropped
+                    subscription(3).onError(new Error("subscribe timed out"));
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                    expect(clients[main][1].close).toHaveBeenCalled();
+                    expect(socketClientCache.get(`subscription:${main}`)).toBeUndefined();
+
+                    // the next probe opens a new socket, and gets no head by the probe after it,
+                    // which ends it and drops its socket, and opens a new one again
+                    await vi.advanceTimersByTimeAsync(WS_MAIN_PROBE_INTERVAL);
+                    expect(opened()).toEqual([main, backup, main, main]);
+                    expect(watchBlockNumberSpy).toHaveBeenCalledTimes(5);
+                    const unwatched = wsUnwatch.mock.calls.length;
+                    await vi.advanceTimersByTimeAsync(WS_MAIN_PROBE_INTERVAL);
+                    expect(wsUnwatch).toHaveBeenCalledTimes(unwatched + 1);
+                    expect(clients[main][2].close).toHaveBeenCalled();
+                    expect(opened()).toEqual([main, backup, main, main, main]);
+                    expect(watchBlockNumberSpy).toHaveBeenCalledTimes(6);
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                });
+
+                it("should move the subscriptions to the fallback when the main socket opens and closes soon after each time", async () => {
+                    outcomes[main] = ["open", "open"];
+                    outcomes[backup] = ["open"];
+                    sharedState.watchBlockNumber(5000);
+                    await vi.advanceTimersByTimeAsync(0);
+                    for (const at of [0, 1]) {
+                        expect(sharedState.activeWsUrl).toBe(main);
+                        // the socket closes before the first head, the subscription fails
+                        clients[main][at].socket.readyState = 3;
+                        onError(new Error("closed"));
+                        await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    }
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                    expect(opened()).toEqual([main, main, backup]);
+                });
+
+                it("should count only failed subscriptions in a row, a head on the main url ends them, and a subscription fails once", async () => {
+                    outcomes[main] = ["open"];
+                    sharedState.watchBlockNumber(5000);
+                    await vi.advanceTimersByTimeAsync(0);
+                    // a subscription that reports its error twice fails once
+                    onError(new Error("socket error"));
+                    onError(new Error("closed"));
+                    expect(sharedState.activeWsUrl).toBe(main);
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+
+                    // a head on the main url ends the failures in a row
+                    onBlockNumber(105n);
+                    onError(new Error("closed"));
+                    expect(sharedState.activeWsUrl).toBe(main);
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+
+                    // the next failure is the second in a row
+                    onError(new Error("closed"));
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                });
+
+                it("should close a fallback socket that opens after the subscriptions moved back to the main url", async () => {
+                    outcomes[main] = ["open", "open"];
+                    outcomes[backup] = ["open", "later"];
+                    await moveToFallback();
+                    // the fallback socket drops right before the probe, a subscription opens
+                    // it again, and that opening still runs at the move back
+                    await vi.advanceTimersByTimeAsync(WS_MAIN_PROBE_INTERVAL - 1_000);
+                    clients[backup][0].socket.readyState = 3;
+                    sharedState.openWsSocket();
+                    await vi.advanceTimersByTimeAsync(1_000);
+                    expect(opened()).toEqual([main, backup, backup, main]);
+                    head(3);
+                    expect(sharedState.activeWsUrl).toBe(main);
+                    expect(socketClientCache.get(`subscription:${backup}`)).toBeUndefined();
+
+                    // the fallback socket opens, it is closed at once, its subscriptions
+                    // subscribe again on the main url
+                    later[0]();
+                    await vi.advanceTimersByTimeAsync(0);
+                    expect(clients[backup][1].close).toHaveBeenCalled();
+                    expect(socketClientCache.get(`subscription:${backup}`)).toBeUndefined();
+                    expect(socketClientCache.get(`subscription:${main}`)).toBe(clients[main][1]);
+                });
+
+                it("should keep a failed probe from opening again by itself, the next probe tries again", async () => {
+                    outcomes[main] = ["open", "fail", "open"];
+                    outcomes[backup] = ["open"];
+                    await moveToFallback();
+                    await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    expect(opened()).toEqual([main, backup]);
+
+                    // the first probe fails to open, and the main url gets no opening until
+                    // the next one, its failed opening would open again after WS_REOPEN_DELAY
+                    await vi.advanceTimersByTimeAsync(
+                        WS_MAIN_PROBE_INTERVAL - WS_RESUBSCRIBE_DELAY,
+                    );
+                    expect(opened()).toEqual([main, backup, main]);
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                    await vi.advanceTimersByTimeAsync(WS_MAIN_PROBE_INTERVAL - 1_000);
+                    expect(opened()).toEqual([main, backup, main]);
+
+                    // the next probe opens it, its first head moves the subscriptions back
+                    await vi.advanceTimersByTimeAsync(1_000);
+                    expect(opened()).toEqual([main, backup, main, main]);
+                    head(4);
+                    expect(sharedState.activeWsUrl).toBe(main);
+                });
+
+                it("should not probe while WS_MAX_OPENINGS openings of the main url still run", async () => {
+                    outcomes[main] = ["open", "hang", "hang", "open"];
+                    outcomes[backup] = ["open"];
+                    await moveToFallback();
+
+                    // two probes stall in their handshake, they time out and still run
+                    await vi.advanceTimersByTimeAsync(2 * WS_MAIN_PROBE_INTERVAL);
+                    expect(opened()).toEqual([main, backup, main, main]);
+
+                    // the next probes open nothing while both run
+                    await vi.advanceTimersByTimeAsync(3 * WS_MAIN_PROBE_INTERVAL);
+                    expect(opened()).toEqual([main, backup, main, main]);
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                });
+
+                it("should stop the probes on an unwatch on the fallback url, and start them again on a new watch", async () => {
+                    outcomes[main] = ["open", "open"];
+                    outcomes[backup] = ["open"];
+                    await moveToFallback();
+                    await vi.advanceTimersByTimeAsync(WS_MAIN_PROBE_INTERVAL);
+                    expect(opened()).toEqual([main, backup, main]);
+                    expect(watchBlockNumberSpy).toHaveBeenCalledTimes(4);
+
+                    // the unwatch ends the block watcher's subscription and the probe's
+                    const unwatched = wsUnwatch.mock.calls.length;
+                    sharedState.unwatchBlockNumber();
+                    expect(wsUnwatch).toHaveBeenCalledTimes(unwatched + 2);
+
+                    // a late head of the probe moves nothing, and no probe runs any more
+                    head(3);
+                    expect(sharedState.activeWsUrl).toBe(backup);
+                    await vi.advanceTimersByTimeAsync(3 * WS_MAIN_PROBE_INTERVAL);
+                    expect(opened()).toEqual([main, backup, main]);
+                    expect(watchBlockNumberSpy).toHaveBeenCalledTimes(4);
+
+                    // a new watch subscribes on the fallback url, and the probes start again
+                    sharedState.watchBlockNumber(5000);
+                    await vi.advanceTimersByTimeAsync(0);
+                    expect(watchBlockNumberSpy).toHaveBeenCalledTimes(5);
+                    await vi.advanceTimersByTimeAsync(WS_MAIN_PROBE_INTERVAL);
+                    expect(watchBlockNumberSpy).toHaveBeenCalledTimes(6);
+                    head(5);
+                    expect(sharedState.activeWsUrl).toBe(main);
+                });
+
+                it("should keep the subscriptions on the main url with no fallback url", async () => {
+                    config.appOptions.wsRpcFallback = undefined;
+                    sharedState = new SharedState(config);
+                    outcomes[main] = ["open"];
+                    sharedState.watchBlockNumber(5000);
+                    await vi.advanceTimersByTimeAsync(0);
+                    for (let i = 0; i < 3; i++) {
+                        onError(new Error("subscribe timed out"));
+                        await vi.advanceTimersByTimeAsync(WS_RESUBSCRIBE_DELAY);
+                    }
+                    expect(sharedState.activeWsUrl).toBe(main);
+                    expect(watchBlockNumberSpy).toHaveBeenCalledTimes(4);
+                    expect(opened()).toEqual([main]);
+                });
             });
 
             it("should fall back to polling on subscription error and stop it on recovery", async () => {

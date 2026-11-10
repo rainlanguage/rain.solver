@@ -330,6 +330,16 @@ export function openSharedWsSocket(
 }
 
 /**
+ * Whether WS_MAX_OPENINGS openings of the socket of a ws url still run, see
+ * openSharedWsSocket, which opens a url that is not in the cache whatever runs
+ * @param url - The ws url
+ * @param key - The key of the socket, the one of the rpc requests by default
+ */
+export function wsOpeningsAtLimit(url: string, key = WsSocketKey.Rpc): boolean {
+    return (runningWsOpenings.get(`${key}:${url}`) ?? 0) >= WS_MAX_OPENINGS;
+}
+
+/**
  * Opens the socket of a ws url again when its cached socket is closing or
  * closed. The closed client is closed first, which drops it from the cache, and
  * the opening takes its place in the same step, see openSharedWsSocket, so the

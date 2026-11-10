@@ -97,6 +97,7 @@ describe("Test sendTx", () => {
             (mockSigner.state as any).rainSolverTransportConfig = { timeout: 1234 };
             (mockSigner as any).transport = {
                 rpcState: {
+                    watchSocket: vi.fn(),
                     urls: ["https://rpc1", "https://rpc2"],
                     transports: {
                         "https://rpc1": vi.fn().mockReturnValue({ request: request1 }),
@@ -127,6 +128,8 @@ describe("Test sendTx", () => {
                 retryCount: 0,
                 timeout: 1234,
             });
+            // each rpc of the pool, a fallback one too, gets its socket opened before its send
+            expect(rpcState.watchSocket.mock.calls).toEqual([["https://rpc1"], ["https://rpc2"]]);
             for (const request of [request1, request2]) {
                 expect(request).toHaveBeenCalledTimes(1);
                 expect(request).toHaveBeenCalledWith({
@@ -725,6 +728,7 @@ describe("Test broadcastTx", () => {
             },
             transport: {
                 rpcState: {
+                    watchSocket: vi.fn(),
                     urls: ["https://rpc1", "https://rpc2", "https://rpc3"],
                     transports: {
                         "https://rpc1": transport1,

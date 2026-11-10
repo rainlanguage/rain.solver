@@ -68,9 +68,9 @@ export type AppOptions = {
     walletCount?: number;
     /** Topup amount for excess accounts, required only when mnemonic option is used */
     topupAmount?: string;
-    /** List of rpc config */
+    /** List of rpc config, a fallback rpc gets no first tries while a main rpc is healthy, it gets the retry of a failed request when no other main rpc is healthy, with multiBroadcast on every transaction goes to every rpc of the pool, the fallback ones included, and the socket of a fallback ws rpc stays open once it is first used, see RpcConfig.fallback */
     rpc: RpcConfig[];
-    /** List of write rpc configs used explicitly for write transactions */
+    /** List of write rpc configs used explicitly for write transactions, a fallback one works as in rpc */
     writeRpc?: RpcConfig[];
     /** How the rpc of a request is picked among the rpc list, see RpcSelectionMode: immediate, a draw over the rpcs' recent success rates that always lands, so a request never waits for a pick, or throttled, a draw that can land on nothing while the rpcs fail, which holds the request back and draws again, default is immediate */
     rpcSelection: RpcSelectionMode;
@@ -79,9 +79,21 @@ export type AppOptions = {
      * heads over it. The log sync subscribes to the logs of all orderbooks over
      * it, with one subscription. While that logs subscription is down, the log
      * sync reads the logs over http with one query on each new block. Without
-     * this url, the log sync always reads the logs that way
+     * this url, the log sync always reads the logs that way. It is the main url
+     * of the ws rpc, see wsRpcFallback
      */
     wsRpc?: string;
+    /**
+     * Optional fallback url of the ws rpc, set by an entry of wsRpc with
+     * fallback true. The subscriptions move to it after two new heads
+     * subscriptions in a row on the main url failed before a head came, the
+     * socket failed to open or dropped, or the subscribe failed or timed out.
+     * They move back once a probe of the main url, one a minute, gets a head
+     * on a heads subscription that is not behind the bot's block number at
+     * the probe start, and at most about 2 s of blocks behind it when it
+     * comes. Its socket opens only once it is needed
+     */
+    wsRpcFallback?: string;
     /** List of subgraph urls */
     subgraph: string[];
     /** Option to maximize maxIORatio, default is true */
@@ -166,7 +178,7 @@ export type AppOptions = {
     blockTime: number;
     /** Subscribes the block number watcher to flashblocks heads instead of new heads over the ws rpc, only supported on Base chain, requires wsRpc, default is false */
     flashblocks: boolean;
-    /** Broadcasts each signed transaction through all the configured write rpcs (or all rpcs when no write rpc is set) at the same time, taking the first accepted one, default is false */
+    /** Broadcasts each signed transaction through all the configured write rpcs (or all rpcs when no write rpc is set) at the same time, the fallback ones included, taking the first accepted one, default is false */
     multiBroadcast: boolean;
     /** Specifies the block tag usde on eth_call and eth_estimateGas RPC calls, possible values are 'latest', 'earliest', 'pending', 'safe', 'finalized', not all chains support each tag, default is viem client's default, usually latest */
     callBlockTag?: CallBlockTag;
@@ -256,14 +268,15 @@ export namespace AppOptions {
                 "expected a boolean value for flashblocks",
                 false,
             );
-            assert(!flashblocks || wsRpc, "flashblocks requires a wsRpc to subscribe through");
+            assert(!flashblocks || wsRpc.url, "flashblocks requires a wsRpc to subscribe through");
             return Result.ok({
                 ...Validator.resolveWalletKey(input),
                 contracts: Validator.resolveContracts(input),
                 rpc: Validator.resolveRpc(input.rpc),
                 writeRpc: Validator.resolveRpc(input.writeRpc, true),
                 rpcSelection: Validator.resolveRpcSelection(input.rpcSelection),
-                wsRpc,
+                wsRpc: wsRpc.url,
+                wsRpcFallback: wsRpc.fallback,
                 flashblocks,
                 multiBroadcast: Validator.resolveBool(
                     input.multiBroadcast,
