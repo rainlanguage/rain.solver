@@ -13,10 +13,12 @@ describe("OTLP trace export", () => {
         vi.stubEnv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "");
         vi.stubEnv("OTEL_EXPORTER_OTLP_HEADERS", "");
         vi.stubEnv("OTEL_EXPORTER_OTLP_TRACES_HEADERS", "");
+        vi.stubEnv("HYPERDX_API_KEY", "");
         vi.stubEnv("TRACER_SERVICE_NAME", "base-bot");
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         vi.unstubAllEnvs();
         trace.disable();
         context.disable();
@@ -33,6 +35,34 @@ describe("OTLP trace export", () => {
             "OTLP headers require an HTTPS trace endpoint",
         );
     });
+
+    it("warns at startup when no endpoint is set", () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        new RainSolverLogger();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain("No OTLP trace endpoint is set");
+        expect(warn.mock.calls[0][0]).not.toContain("HYPERDX_API_KEY");
+    });
+
+    it("names the ignored HYPERDX_API_KEY in the startup warning", () => {
+        vi.stubEnv("HYPERDX_API_KEY", "old-key");
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        new RainSolverLogger();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain("HYPERDX_API_KEY is set but no longer used");
+        expect(warn.mock.calls[0][0]).not.toContain("old-key");
+    });
+
+    it.each(["OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"])(
+        "does not warn when %s is set",
+        async (endpoint) => {
+            vi.stubEnv(endpoint, "http://127.0.0.1:1/unused");
+            const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+            const logger = new RainSolverLogger();
+            expect(warn).not.toHaveBeenCalled();
+            await logger.shutdown();
+        },
+    );
 
     it.each(["trace-specific", "generic"])(
         "exports queued diagnostics on shutdown using the %s endpoint",
