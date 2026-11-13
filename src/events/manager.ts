@@ -675,19 +675,9 @@ export class EventSyncManager {
             }
         };
         stream.open = false;
-        // the subscription takes the socket this opens, in the same tick, a
-        // closed socket is dropped first, see SharedState.openWsSocket, or it
-        // waits for a socket that is opening and then subscribes
-        const opening = this.state.openWsSocket();
-        if (opening) {
-            // a close while it waits cancels the wait, as it would unsubscribe
-            let waiting = true;
-            stream.unsubscribe = () => (waiting = false);
-            void opening.then(() => {
-                if (waiting) this.subscribe(wsClient);
-            });
-            return;
-        }
+        // the subscription takes the socket that is open or opening, a closed
+        // one is opened again first, see SharedState.openWsSocket
+        this.state.openWsSocket();
         stream.unsubscribe = subscribeToOrderbookLogs(
             wsClient,
             this.orderbooks,

@@ -6,6 +6,8 @@ node_modules
 dist
 test
 diag
+cache
+.DS_Store
 lib/forge-std
 lib/sushiswap/*
 !lib/sushiswap/packages

@@ -20,7 +20,15 @@ import { toEthValue, toUsdValue } from "../math";
 import { RainSolverRouterError } from "../router/error";
 import { NonceCache } from "../signer/nonce";
 import { ChainConfig, ChainConfigError, getChainConfig } from "./chain";
-import { RpcState, rainSolverTransport, RainSolverTransportConfig } from "../rpc";
+import {
+    RpcState,
+    isWebSocketUrl,
+    watchWsSocket,
+    reopenClosedWsSocket,
+    rainSolverTransport,
+    WS_RPC_SOCKET_OPTIONS,
+    RainSolverTransportConfig,
+} from "../rpc";
 import {
     webSocket,
     parseUnits,
@@ -30,7 +38,6 @@ import {
     createPublicClient,
     ReadContractErrorType,
 } from "viem";
-import { getWebSocketRpcClient, socketClientCache } from "viem/utils";
 
 /** Delay (in ms) before an errored ws new heads subscription is re-established */
 export const WS_RESUBSCRIBE_DELAY = 15_000;
@@ -222,6 +229,13 @@ export namespace SharedStateConfig {
             ? new RpcState(options.writeRpc, options.rpcSelection)
             : undefined;
 
+        // the sockets of the ws rpcs open before the first request, so the
+        // requests made during the opening share them, and a socket that
+        // closed opens again, see watchWsSocket
+        for (const { url } of [...options.rpc, ...(options.writeRpc ?? [])]) {
+            if (isWebSocketUrl(url)) watchWsSocket(url, WS_RPC_SOCKET_OPTIONS);
+        }
+
         // use temp client to get chain id
         let client = createPublicClient({
             transport: rainSolverTransport(rpcState, rainSolverTransportConfig),
@@ -393,8 +407,6 @@ export class SharedState {
     private wsResubscribeTimer: ReturnType<typeof setTimeout> | undefined;
     /** The ws client every subscription goes through, one socket, created on first use from the ws rpc */
     private wsClient: PublicClient | undefined;
-    /** The socket that openWsSocket is opening, and whether a subscription can still join it in this tick */
-    private wsSocketOpening?: { joinable: boolean; promise: Promise<void> };
     /** The listeners of sealed block numbers, see onBlockNumber */
     private readonly blockListeners = new Set<(blockNumber: bigint) => void>();
 
@@ -628,67 +640,34 @@ export class SharedState {
     }
 
     /**
-     * Opens the socket of the ws client with no reconnect of its own, and drops
-     * a closed one first. Call it right before a subscription of the ws client,
-     * in the same tick, the subscription then takes this socket. The ws
-     * transport opens a socket that reconnects a few times only, and its
-     * reconnect timers can open sockets that nothing uses, so each subscription
-     * opens again after an error instead, through this. A subscription joins
-     * the opening only in the tick it began, after that the opening is past
-     * the point a subscription can join it, so this returns it, the
-     * subscription waits for it and calls this again, and no second socket
-     * opens. The socket cache key is the one of the viem ws transport, "socket:"
-     * and the url
-     * @returns The socket that is opening, when the subscription must wait for it
+     * Opens the socket of the ws client when there is none, or when the one in
+     * viem's socket cache is closing or closed, see reopenClosedWsSocket. Call
+     * it right before a subscription of the ws client. The opening is in the
+     * cache at once, so the subscription takes this socket whenever it comes,
+     * and so does every request on the url meanwhile, see openSharedWsSocket. A
+     * failed opening fails the subscription at once and opens again after its
+     * own delay. The ws client has no reconnect of its own, viem's reconnect
+     * timers can open sockets that nothing uses, so each subscription opens
+     * again after an error instead, through this
      */
-    openWsSocket(): Promise<void> | undefined {
+    openWsSocket() {
         const url = this.appOptions.wsRpc;
-        if (!url) return undefined;
-        const opening = this.wsSocketOpening;
-        if (opening) return opening.joinable ? undefined : opening.promise;
-        const cached = socketClientCache.get(`socket:${url}`);
-        const readyState = (cached?.socket as { readyState?: number } | undefined)?.readyState;
-        if (cached) {
-            // 2 is CLOSING and 3 is CLOSED, a socket with no reconnect stays closed
-            if (readyState !== 2 && readyState !== 3) return undefined;
-            cached.close();
-        }
-        // a socket that does not open fails the subscription that takes it, the
-        // subscription opens again after its delay
-        const entry = { joinable: true, promise: Promise.resolve() };
-        // the ws transport runs the batch of the opening on a timer it sets in
-        // the call below, this timer is set first, so a subscription never
-        // finds the opening joinable once the batch ran, at worst it waits for
-        // a socket it could have joined
-        setTimeout(() => (entry.joinable = false), 0);
-        entry.promise = getWebSocketRpcClient(url, { keepAlive: true, reconnect: false })
-            .then(
-                () => {},
-                () => {},
-            )
-            .finally(() => {
-                if (this.wsSocketOpening === entry) this.wsSocketOpening = undefined;
-            });
-        this.wsSocketOpening = entry;
-        return undefined;
+        if (url) void reopenClosedWsSocket(url, WS_RPC_SOCKET_OPTIONS);
     }
 
     /**
      * The ws client, one socket for every subscription, created on first use,
-     * undefined when no ws rpc is configured. The transport options apply to
-     * its requests only, a subscription takes the socket that openWsSocket
-     * opens with no reconnect of its own, each subscription opens again after
-     * an error instead
+     * undefined when no ws rpc is configured. Its socket options are the ones
+     * of the ws rpcs, viem keeps one socket per url, so a ws rpc of the same url
+     * shares it, see WS_RPC_SOCKET_OPTIONS. A subscription takes the socket that
+     * openWsSocket opens, each subscription opens again after an error
      */
     getWsClient(): PublicClient | undefined {
         if (!this.appOptions.wsRpc) return undefined;
         if (!this.wsClient) {
             this.wsClient = createPublicClient({
                 chain: this.chainConfig,
-                transport: webSocket(this.appOptions.wsRpc, {
-                    keepAlive: true,
-                    reconnect: false,
-                }),
+                transport: webSocket(this.appOptions.wsRpc, WS_RPC_SOCKET_OPTIONS),
             });
         }
         return this.wsClient;
@@ -776,17 +755,9 @@ export class SharedState {
                 }, WS_RESUBSCRIBE_DELAY);
             }
         };
-        // the subscription below takes the socket this opens, in the same tick,
-        // or waits for a socket that is opening and then subscribes
-        const opening = this.openWsSocket();
-        if (opening) {
-            let waiting = true;
-            this.wsBlockNumberUnwatcher = () => (waiting = false);
-            void opening.then(() => {
-                if (waiting) this.subscribeToBlockNumber(wsClient, interval);
-            });
-            return;
-        }
+        // the subscription below takes the socket that is open or opening, a
+        // closed one is opened again first, see openWsSocket
+        this.openWsSocket();
         // both heads carry the base fee, the gas fees follow it, see GasManager.setBaseFee
         this.wsBlockNumberUnwatcher = subscribeToHeads(
             wsClient,

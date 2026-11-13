@@ -1,4 +1,4 @@
-FROM node:22.14
+FROM node:22.23.4
 
 # set git sha and docker tag form build time arg to run time env in container
 ARG GIT_SHA

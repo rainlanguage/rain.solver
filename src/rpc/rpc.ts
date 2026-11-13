@@ -4,6 +4,13 @@ import { RainSolverTransportTimeoutError } from "./transport";
 import { http, webSocket, Transport, HttpTransportConfig } from "viem";
 import { normalizeUrl, probablyPicksFrom, isWebSocketUrl, shouldThrow } from "./helpers";
 
+/**
+ * The socket options of the ws rpcs, their transports and the openings of their
+ * sockets share them. viem's own reconnect is off, a watch opens a socket that
+ * closed again, see watchWsSocket
+ */
+export const WS_RPC_SOCKET_OPTIONS = { keepAlive: true, reconnect: false } as const;
+
 /** How the state picks the rpc of a request among its pool, see RpcState.nextRpc and AppOptions.rpcSelection */
 export enum RpcSelectionMode {
     /**
@@ -73,8 +80,7 @@ export class RpcState {
                 ? webSocket(conf.url, {
                       key: conf.transportConfig?.key,
                       name: conf.transportConfig?.name,
-                      keepAlive: true,
-                      reconnect: true,
+                      ...WS_RPC_SOCKET_OPTIONS,
                   })
                 : http(conf.url, conf.transportConfig);
             this.transports[url] = withRpcMetrics(transport, record);
