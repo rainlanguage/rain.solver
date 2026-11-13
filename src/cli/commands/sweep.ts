@@ -159,9 +159,10 @@ export async function sweepFunds(opts: SweepOptions) {
     // prepare state config fields
     const rainSolverTransportConfig = { timeout: options.timeout };
     const rpcState = new RpcState(options.rpc, options.rpcSelection);
-    // the sockets of the ws rpcs open before the first request, see watchWsSocket
-    for (const { url } of options.rpc) {
-        if (isWebSocketUrl(url)) watchWsSocket(url, WS_RPC_SOCKET_OPTIONS);
+    // the sockets of the main ws rpcs open before the first request, see
+    // watchWsSocket, a fallback one opens once it is first picked
+    for (const { url, fallback } of options.rpc) {
+        if (isWebSocketUrl(url) && !fallback) watchWsSocket(url, WS_RPC_SOCKET_OPTIONS);
     }
     // use temp client to get chain id
     let client = createPublicClient({

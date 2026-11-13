@@ -79,17 +79,40 @@ export namespace Validator {
         return Array.from(new Set(urls.value)) as any;
     }
 
-    /** Resolves config's optional websocket rpc url */
-    export function resolveWsRpc(input: any): string | undefined {
-        const url = readValue(input);
-        if (url.value === undefined) return undefined;
+    /**
+     * Resolves config's optional websocket rpc, a single url, or a list in the
+     * format of rpc, see resolveRpc, with one main url and at most one fallback
+     * url, a url and a fallback key each, the env form starts with "url="
+     * @param input - The config input value, a plain value or an env reference
+     * @returns The main url and the fallback url, both unset when none is given
+     */
+    export function resolveWsRpc(input: any): { url?: string; fallback?: string } {
+        const value = readValue(input).value;
+        if (value === undefined || value === null || value === "") return {};
+        const exception =
+            "invalid wsRpc value, expected a websocket url starting with ws:// or wss://";
+        const isWs = (url: unknown) => typeof url === "string" && /^wss?:\/\//.test(url);
+        // a single url, as it is or from env
+        if (!Array.isArray(value) && !(typeof value === "string" && value.startsWith("url="))) {
+            assert(isWs(value), validationError(exception));
+            return { url: value };
+        }
+        const list = resolveRpc(input);
         assert(
-            typeof url.value === "string" && /^wss?:\/\//.test(url.value),
-            validationError(
-                "invalid wsRpc value, expected a websocket url starting with ws:// or wss://",
-            ),
+            list.every((v) => v.selectionWeight === undefined && v.trackSize === undefined),
+            validationError("wsRpc takes only the url and fallback keys"),
         );
-        return url.value;
+        assert(
+            list.every((v) => isWs(v.url)),
+            validationError(exception),
+        );
+        const mains = list.filter((v) => !v.fallback);
+        const fallbacks = list.filter((v) => v.fallback);
+        assert(
+            mains.length === 1 && fallbacks.length <= 1,
+            validationError("wsRpc takes one main url and at most one fallback url"),
+        );
+        return { url: mains[0].url, fallback: fallbacks[0]?.url };
     }
 
     /** Resolves config's list of liquidity providers */
@@ -290,7 +313,7 @@ export namespace Validator {
         const rpcs = readValue(input);
         const validate = (rpcConfig: any, key: string, value: any) => {
             assert(
-                key === "url" || key === "weight" || key === "trackSize",
+                key === "url" || key === "weight" || key === "trackSize" || key === "fallback",
                 validationError(`unknown key: ${key}`),
             );
             if (key === "url") {
@@ -315,12 +338,22 @@ export namespace Validator {
                 assert(!("trackSize" in rpcConfig), validationError("duplicate trackSize option"));
                 const parsedValue = parseInt(value);
                 assert(
-                    !isNaN(parsedValue) && parsedValue >= 0,
+                    !isNaN(parsedValue) && parsedValue >= 1,
                     validationError(
-                        `invalid rpc track size: "${value}", expected an integer greater than equal to 0`,
+                        `invalid rpc track size: "${value}", expected an integer greater than equal to 1`,
                     ),
                 );
                 rpcConfig.trackSize = parsedValue;
+            }
+            if (key === "fallback") {
+                assert(!("fallback" in rpcConfig), validationError("duplicate fallback option"));
+                // a yaml boolean, or its text in an env value, case insensitive
+                const text = String(value).toLowerCase();
+                assert(
+                    text === "true" || text === "false",
+                    validationError(`invalid rpc fallback: "${value}", expected true or false`),
+                );
+                rpcConfig.fallback = text === "true";
             }
         };
 

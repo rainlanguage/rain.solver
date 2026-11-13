@@ -12,6 +12,7 @@ import {
     WS_MAX_OPENINGS,
     WS_CHECK_INTERVAL,
     probablyPicksFrom,
+    wsOpeningsAtLimit,
     openSharedWsSocket,
     reopenClosedWsSocket,
 } from "./helpers";
@@ -342,12 +343,16 @@ describe("Test rpc helpers", async function () {
                         ),
                 );
                 openSharedWsSocket(url, options).catch(() => {});
+                expect(wsOpeningsAtLimit(url)).toBe(false);
 
                 // the openings time out one after another, the ones that timed out still run
                 for (let i = 0; i < 4; i++) {
                     await vi.advanceTimersByTimeAsync(WS_OPEN_TIMEOUT + WS_REOPEN_DELAY);
                 }
                 expect(getWebSocketRpcClient).toHaveBeenCalledTimes(WS_MAX_OPENINGS);
+                expect(wsOpeningsAtLimit(url)).toBe(true);
+                // the limit is kept for each key of the url
+                expect(wsOpeningsAtLimit(url, WsSocketKey.Subscription)).toBe(false);
 
                 // Node gives up on the first one, the opening that waits starts at once
                 giveUp[0]();

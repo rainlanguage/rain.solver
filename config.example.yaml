@@ -11,7 +11,14 @@ walletCount: 5
 topupAmount: 0.5
 
 # List of rpc urls, required
-# example for env: url=https://rpc-url1.com,weight=0.5,trackSize=200
+# example for env: url=https://rpc-url1.com,weight=0.5,trackSize=200,url=https://rpc-url3.com,fallback=true
+# A fallback rpc gets no first tries of the requests while one of the other (main) rpcs is healthy, that is its
+# success rate over its latest requests that have a reply, timeouts included, is 20% or more. While none is, the
+# fallback rpcs take the first tries, and the main rpcs still get a few, so one that comes back takes over again.
+# A request that fails on one rpc is tried again on another healthy main rpc first, then on a fallback rpc, never
+# on the same rpc, so with one main rpc the retries go to a fallback rpc. With multiBroadcast on, every transaction
+# goes to every rpc, the fallback ones included. A fallback ws rpc opens its socket only once it is first used, and
+# its socket stays open from then on. Default for fallback is false.
 rpc:
   - url: https://rpc-url1.com # required field
     weight: 1.5 # optional
@@ -20,8 +27,11 @@ rpc:
   - url: https://rpc-url2.com
     weight: 0.5
 
-# Optional list of write rpc urls for write transactions
-# example for env: url=https://rpc-url1.com,weight=0.5,trackSize=200
+  - url: https://rpc-url3.com
+    fallback: true # optional
+
+# Optional list of write rpc urls for write transactions, a fallback rpc works the same as in rpc
+# example for env: url=https://rpc-url1.com,weight=0.5,trackSize=200,url=https://rpc-url3.com,fallback=true
 writeRpc:
   - url: https://rpc-url1.com # required field
     weight: 1.5 # optional
@@ -29,6 +39,9 @@ writeRpc:
 
   - url: https://rpc-url2.com
     weight: 0.5
+
+  - url: https://rpc-url3.com
+    fallback: true # optional
 
 # How the rpc of a request is picked among the rpc list.
 # immediate: a draw over the rpcs' recent success rates that always lands on one of them, a healthier rpc more
@@ -46,7 +59,19 @@ rpcSelection: immediate
 # it, with one subscription, and reads the logs over http with one eth_getLogs
 # query on each new block while that subscription is down. When it is unset,
 # the log sync always reads the logs of all orderbooks over http that way.
+# It can also be a list in the format of rpc, with one main url and at most one fallback url, only the url and
+# fallback keys. The subscriptions move to the fallback after two new heads subscriptions in a row on the main url
+# failed before a head came, the socket failed to open or dropped, or the subscribe failed or timed out. They move
+# back once a heads subscription on the main url gets a head again that is not behind the bot's block number at
+# the start of the try, and at most about 2 s of blocks (see blockTime) behind it when it comes, it is tried once a
+# minute. The fallback opens its socket only when it is needed.
+# example for env: wss://rpc-url1.com, or url=wss://rpc-url1.com,url=wss://rpc-url2.com,fallback=true
 wsRpc: wss://rpc-url1.com
+# or
+# wsRpc:
+#   - url: wss://rpc-url1.com
+#   - url: wss://rpc-url2.com
+#     fallback: true
 
 # List of subgraph urls, required
 # for specifying more than 1 subgraph URL in the env, separate them by a comma
@@ -184,7 +209,7 @@ callBlockTag: pending
 flashblocks: false
 
 # Broadcasts each signed transaction through all the configured write rpcs (or all rpcs when no write rpc is set)
-# at the same time, taking the first accepted one, default is false
+# at the same time, the fallback ones included, taking the first accepted one, default is false
 multiBroadcast: false
 
 # Adds the backoff sizes of the found trade size, three quarters of it and its halved sizes, to the router mode
