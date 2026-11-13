@@ -24,13 +24,14 @@ import {
     RpcState,
     isWebSocketUrl,
     watchWsSocket,
+    WsSocketKey,
     reopenClosedWsSocket,
+    subscriptionWebSocket,
     rainSolverTransport,
     WS_RPC_SOCKET_OPTIONS,
     RainSolverTransportConfig,
 } from "../rpc";
 import {
-    webSocket,
     parseUnits,
     formatUnits,
     hexToBigInt,
@@ -644,30 +645,32 @@ export class SharedState {
      * viem's socket cache is closing or closed, see reopenClosedWsSocket. Call
      * it right before a subscription of the ws client. The opening is in the
      * cache at once, so the subscription takes this socket whenever it comes,
-     * and so does every request on the url meanwhile, see openSharedWsSocket. A
-     * failed opening fails the subscription at once and opens again after its
-     * own delay. The ws client has no reconnect of its own, viem's reconnect
-     * timers can open sockets that nothing uses, so each subscription opens
-     * again after an error instead, through this
+     * see openSharedWsSocket. A failed opening fails the subscription at once
+     * and opens again after its own delay. The socket is the one of the
+     * subscriptions, apart from the socket of the rpc requests of the same url,
+     * see WsSocketKey. It has no reconnect of its own, viem's reconnect timers
+     * can open sockets that nothing uses, so each subscription opens again
+     * after an error instead, through this
      */
     openWsSocket() {
         const url = this.appOptions.wsRpc;
-        if (url) void reopenClosedWsSocket(url, WS_RPC_SOCKET_OPTIONS);
+        if (url) void reopenClosedWsSocket(url, WS_RPC_SOCKET_OPTIONS, WsSocketKey.Subscription);
     }
 
     /**
      * The ws client, one socket for every subscription, created on first use,
-     * undefined when no ws rpc is configured. Its socket options are the ones
-     * of the ws rpcs, viem keeps one socket per url, so a ws rpc of the same url
-     * shares it, see WS_RPC_SOCKET_OPTIONS. A subscription takes the socket that
-     * openWsSocket opens, each subscription opens again after an error
+     * undefined when no ws rpc is configured. Its socket is apart from the one of
+     * the rpc requests, a ws rpc of the same url included, see
+     * subscriptionWebSocket, its socket options are the ones of the ws rpcs, see
+     * WS_RPC_SOCKET_OPTIONS. A subscription takes the socket that openWsSocket
+     * opens, each subscription opens again after an error
      */
     getWsClient(): PublicClient | undefined {
         if (!this.appOptions.wsRpc) return undefined;
         if (!this.wsClient) {
             this.wsClient = createPublicClient({
                 chain: this.chainConfig,
-                transport: webSocket(this.appOptions.wsRpc, WS_RPC_SOCKET_OPTIONS),
+                transport: subscriptionWebSocket(this.appOptions.wsRpc, WS_RPC_SOCKET_OPTIONS),
             });
         }
         return this.wsClient;

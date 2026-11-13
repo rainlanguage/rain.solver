@@ -1,7 +1,14 @@
 import { RpcState } from "./rpc";
 import { sleep } from "../common";
-import { shouldThrow } from "./helpers";
-import { BaseError, createTransport, Transport, TransportConfig } from "viem";
+import { getWsSocketClient, openSharedWsSocket, shouldThrow, WsSocketKey } from "./helpers";
+import {
+    BaseError,
+    Transport,
+    TimeoutError,
+    TransportConfig,
+    createTransport,
+    RpcRequestError,
+} from "viem";
 
 /**
  * RainSolver transport default configurations
@@ -163,4 +170,160 @@ export function rainSolverTransport(
             },
         );
     }) as RainSolverTransport;
+}
+
+/**
+ * How long a subscribe that timed out waits for a late reply, in timeouts of
+ * its transport, see subscriptionWebSocket, a reply after that finds nothing
+ */
+export const WS_LATE_REPLY_TIMEOUTS = 3;
+
+/**
+ * Drops the requests of a socket client that carry the given error callback
+ * once the given time passes, unless their reply came first. A request with no
+ * reply stays in the client until its socket closes, see getSocketRpcClient
+ * @param rpcClient - The socket client
+ * @param onError - The error callback of the requests
+ * @param ms - The time to wait in milliseconds
+ */
+function dropRequestsAfter(
+    rpcClient: Awaited<ReturnType<typeof getWsSocketClient>>,
+    onError: unknown,
+    ms: number,
+) {
+    const timer = setTimeout(() => {
+        for (const [id, request] of rpcClient.requests) {
+            if (request.onError === onError) rpcClient.requests.delete(id);
+        }
+    }, ms);
+    // the wait must not keep the process alive on its own
+    timer.unref?.();
+}
+
+/**
+ * The ws transport of the subscriptions of the ws rpc, on a socket of its own,
+ * apart from the socket of the rpc requests of the same url, see
+ * WsSocketKey.Subscription. It is viem's ws transport, see webSocket in viem
+ * 2.21.35, with the socket client of the subscription key, taken from its shared
+ * opening, see openSharedWsSocket, viem's ws transport takes no key of its own.
+ * A subscribe that gets no reply within the timeout fails with a TimeoutError,
+ * viem's ws transport waits for the reply with no limit. The subscription of a
+ * reply that comes after the timeout, within WS_LATE_REPLY_TIMEOUTS more
+ * timeouts, is ended at once with eth_unsubscribe
+ * @param url - The ws url
+ * @param options - The keep alive and reconnect options of the socket
+ */
+export function subscriptionWebSocket(
+    url: string,
+    options: { keepAlive: boolean; reconnect: boolean },
+): Transport {
+    return ({ retryCount, timeout = 10_000 }) => {
+        // the shared opening of the socket, the cached one, or a new one with its
+        // timeout and its limit when the cache holds none, so a subscription opens
+        // no socket of its own whatever ran before it, see openSharedWsSocket
+        const getRpcClient = () =>
+            openSharedWsSocket(url, options, WsSocketKey.Subscription) as ReturnType<
+                typeof getWsSocketClient
+            >;
+        return createTransport(
+            {
+                key: "subscriptionWebSocket",
+                name: "WebSocket JSON-RPC subscriptions",
+                type: "webSocket",
+                retryCount,
+                timeout,
+                async request({ method, params }) {
+                    const body = { method, params };
+                    const rpcClient = await getRpcClient();
+                    const { error, result } = await rpcClient.requestAsync({ body, timeout });
+                    if (error) throw new RpcRequestError({ body, error, url });
+                    return result;
+                },
+            },
+            {
+                getRpcClient,
+                async subscribe({
+                    params,
+                    onData,
+                    onError,
+                }: {
+                    params: unknown[];
+                    onData: (data: any) => void;
+                    onError?: (error: any) => void;
+                }) {
+                    const rpcClient = await getRpcClient();
+                    const body = { method: "eth_subscribe", params };
+                    let timer: ReturnType<typeof setTimeout> | undefined;
+                    const { result: subscriptionId } = await new Promise<any>((resolve, reject) => {
+                        const fail = (error: any) => {
+                            clearTimeout(timer);
+                            reject(error);
+                            onError?.(error);
+                        };
+                        // an open socket with no reply to the subscribe gives no error, so the
+                        // wait ends after the timeout. A late reply still sets up the subscription
+                        // on the node, so the request stays with a stub in place of the caller's
+                        // callbacks, the stub ends the subscription of a late reply at once. A
+                        // node that never replies would keep the stub for good, so it is dropped
+                        // after WS_LATE_REPLY_TIMEOUTS more timeouts, and so is an unsubscribe
+                        // with no reply after one timeout
+                        timer = setTimeout(() => {
+                            const ignore = () => {};
+                            for (const [id, request] of rpcClient.requests) {
+                                if (request.onError !== fail) continue;
+                                rpcClient.requests.set(id, {
+                                    onResponse(response: any) {
+                                        if (typeof response.result !== "string") return;
+                                        const ignoreUnsubscribe = () => {};
+                                        rpcClient.request({
+                                            body: {
+                                                method: "eth_unsubscribe",
+                                                params: [response.result],
+                                            },
+                                            onError: ignoreUnsubscribe,
+                                            onResponse() {},
+                                        });
+                                        dropRequestsAfter(rpcClient, ignoreUnsubscribe, timeout);
+                                    },
+                                    onError: ignore,
+                                });
+                            }
+                            dropRequestsAfter(rpcClient, ignore, timeout * WS_LATE_REPLY_TIMEOUTS);
+                            fail(new TimeoutError({ body, url }));
+                        }, timeout);
+                        // the wait must not keep the process alive on its own
+                        timer.unref?.();
+                        rpcClient.request({
+                            body,
+                            onError: fail,
+                            onResponse(response: any) {
+                                if (response.error) {
+                                    fail(response.error);
+                                    return;
+                                }
+                                if (typeof response.id === "number") {
+                                    clearTimeout(timer);
+                                    resolve(response);
+                                    return;
+                                }
+                                if (response.method !== "eth_subscription") return;
+                                onData(response.params);
+                            },
+                        });
+                    });
+                    return {
+                        subscriptionId,
+                        async unsubscribe() {
+                            return new Promise((resolve) =>
+                                rpcClient.request({
+                                    body: { method: "eth_unsubscribe", params: [subscriptionId] },
+                                    onResponse: resolve,
+                                }),
+                            );
+                        },
+                    };
+                },
+            },
+        );
+    };
 }

@@ -1,9 +1,10 @@
 import { describe, it, assert, expect, vi, Mock } from "vitest";
-import { getWebSocketRpcClient, socketClientCache } from "viem/utils";
+import { getSocketRpcClient, getWebSocketRpcClient, socketClientCache } from "viem/utils";
 import {
     getRpcError,
     normalizeUrl,
     shouldThrow,
+    WsSocketKey,
     watchWsSocket,
     unwatchWsSocket,
     WS_REOPEN_DELAY,
@@ -24,6 +25,7 @@ import {
 vi.mock("viem/utils", async (importOriginal) => ({
     ...(await importOriginal()),
     getWebSocketRpcClient: vi.fn(),
+    getSocketRpcClient: vi.fn(),
     socketClientCache: new Map(),
 }));
 
@@ -480,6 +482,47 @@ describe("Test rpc helpers", async function () {
             } finally {
                 vi.useRealTimers();
             }
+        });
+    });
+
+    describe("Test the socket of the subscriptions", () => {
+        const url = "wss://example.com";
+        const options = { keepAlive: true, reconnect: false };
+
+        it("should open it with its own key, apart from the socket of the rpc requests", () => {
+            socketClientCache.clear();
+            (getWebSocketRpcClient as Mock).mockReset();
+            (getSocketRpcClient as Mock).mockReset();
+            (getSocketRpcClient as Mock).mockReturnValue(new Promise(() => {}));
+            const rpcSocket = { socket: { readyState: 1 }, close: vi.fn() };
+            socketClientCache.set(`socket:${url}`, rpcSocket as any);
+
+            // the socket of the rpc requests of the same url is no socket of the subscriptions
+            const opening = openSharedWsSocket(url, options, WsSocketKey.Subscription);
+            expect(getSocketRpcClient).toHaveBeenCalledTimes(1);
+            expect(getSocketRpcClient).toHaveBeenCalledWith(
+                expect.objectContaining({ key: "subscription", url, ...options }),
+            );
+            expect(getWebSocketRpcClient).not.toHaveBeenCalled();
+            expect(socketClientCache.get(`subscription:${url}`)).toBe(opening);
+            expect(socketClientCache.get(`socket:${url}`)).toBe(rpcSocket);
+
+            // a closed socket of the rpc requests is no concern of the subscriptions, and
+            // a closed socket of the subscriptions is replaced under its own key
+            rpcSocket.socket.readyState = 3;
+            const subscriptionSocket = {
+                socket: { readyState: 3 },
+                close: vi.fn(() => socketClientCache.delete(`subscription:${url}`)),
+            };
+            socketClientCache.set(`subscription:${url}`, subscriptionSocket as any);
+            const reopening = reopenClosedWsSocket(url, options, WsSocketKey.Subscription);
+            expect(subscriptionSocket.close).toHaveBeenCalledTimes(1);
+            expect(rpcSocket.close).not.toHaveBeenCalled();
+            expect(socketClientCache.get(`subscription:${url}`)).toBe(reopening);
+            expect(socketClientCache.get(`socket:${url}`)).toBe(rpcSocket);
+            expect(getSocketRpcClient).toHaveBeenCalledTimes(2);
+            expect(getWebSocketRpcClient).not.toHaveBeenCalled();
+            socketClientCache.clear();
         });
     });
 
