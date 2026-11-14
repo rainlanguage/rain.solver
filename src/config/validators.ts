@@ -220,12 +220,13 @@ export namespace Validator {
 
     /**
      * Resolves config's oracle daily market hours from a range of two standard UTC
-     * times of the current day in form of HH:MM-HH:MM, e.g. 08:30-23:59, the close
-     * time is inclusive and the open time must be before the close time
+     * times in form of HH:MM-HH:MM, e.g. 08:30-23:59. The close time is inclusive.
+     * A close time before the open time is on the next day, e.g. 09:00-00:59. The
+     * two times must differ, see OracleMarketHours
      */
     export function resolveOracleMarketHours(input: any): OracleMarketHours {
         const exception =
-            "invalid oracleMarketHours value, must be a range of two UTC times in form of HH:MM-HH:MM, e.g. 08:30-23:59, with the open time before the close time";
+            "invalid oracleMarketHours value, must be a range of two different UTC times in form of HH:MM-HH:MM, e.g. 08:30-23:59, or 09:00-00:59 to close on the next day";
         const range = readValue(input).value;
         if (range === undefined || range === null || range === "") {
             return { ...OracleMarketHours.DEFAULT };
@@ -236,7 +237,7 @@ export namespace Validator {
         const [, openHour, openMinute, closeHour, closeMinute] = match;
         const open = Number(openHour) * 60 + Number(openMinute);
         const close = Number(closeHour) * 60 + Number(closeMinute);
-        assert(open < close, validationError(exception));
+        assert(open !== close, validationError(exception));
         return { open, close };
     }
 

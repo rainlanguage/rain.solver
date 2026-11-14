@@ -40,10 +40,17 @@ describe("Test OracleConstants.isKnown", () => {
 describe("Test OracleMarketHours.isOpen", () => {
     // 2026-10-05 is a monday, so 2026-10-09 is a friday, 2026-10-10 a saturday and 2026-10-11 a sunday
     const at = (iso: string) => new Date(iso).getTime();
-    const hours = OracleMarketHours.DEFAULT;
+    // 08:00-23:59, the summer hours of the market
+    const hours = { open: 8 * 60, close: 23 * 60 + 59 };
 
-    it("should have 08:00-23:59 as the default market hours", () => {
-        expect(OracleMarketHours.DEFAULT).toEqual({ open: 480, close: 1439 });
+    it("should have 00:00-23:59 as the default market hours, all day on weekdays", () => {
+        expect(OracleMarketHours.DEFAULT).toEqual({ open: 0, close: 1439 });
+        const defaults = OracleMarketHours.DEFAULT;
+        expect(OracleMarketHours.isOpen(defaults, at("2026-10-06T00:00:00Z"))).toBe(true);
+        expect(OracleMarketHours.isOpen(defaults, at("2026-10-06T03:00:00Z"))).toBe(true);
+        expect(OracleMarketHours.isOpen(defaults, at("2026-10-09T23:59:59.999Z"))).toBe(true);
+        expect(OracleMarketHours.isOpen(defaults, at("2026-10-10T00:00:00Z"))).toBe(false);
+        expect(OracleMarketHours.isOpen(defaults, at("2026-10-11T12:00:00Z"))).toBe(false);
     });
 
     it("should be open on weekdays inside the market hours", () => {
@@ -91,6 +98,49 @@ describe("Test OracleMarketHours.isOpen", () => {
         expect(OracleMarketHours.isOpen(custom, at("2026-10-06T20:15:00Z"))).toBe(true);
         expect(OracleMarketHours.isOpen(custom, at("2026-10-06T20:15:59.999Z"))).toBe(true);
         expect(OracleMarketHours.isOpen(custom, at("2026-10-06T20:16:00Z"))).toBe(false);
+    });
+
+    it("should run a session past midnight when the close is before the open", () => {
+        // 09:00-00:59, the winter hours, open from 09:00 until 01:00 of the next day
+        const overnight = { open: 9 * 60, close: 59 };
+        // a weekday session runs into the next day until the end of the close minute
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-06T08:59:59.999Z"))).toBe(false);
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-06T09:00:00Z"))).toBe(true);
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-06T23:59:59.999Z"))).toBe(true);
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-07T00:30:00Z"))).toBe(true);
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-07T00:59:59.999Z"))).toBe(true);
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-07T01:00:00Z"))).toBe(false);
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-07T03:00:00Z"))).toBe(false);
+    });
+
+    it("should run the friday session into saturday, and open none on saturday or sunday", () => {
+        const overnight = { open: 9 * 60, close: 59 };
+        // friday 09:00 until saturday 01:00
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-09T23:30:00Z"))).toBe(true);
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-10T00:30:00Z"))).toBe(true);
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-10T01:00:00Z"))).toBe(false);
+        // no session opens on saturday or sunday
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-10T09:00:00Z"))).toBe(false);
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-11T00:30:00Z"))).toBe(false);
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-11T23:30:00Z"))).toBe(false);
+        // the early hour of monday belongs to sunday, the monday session opens at 09:00
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-12T00:30:00Z"))).toBe(false);
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-12T09:00:00Z"))).toBe(true);
+        // and its own early hours run into tuesday
+        expect(OracleMarketHours.isOpen(overnight, at("2026-10-13T00:30:00Z"))).toBe(true);
+    });
+
+    it("should run a session of almost 24 hours into the next day, and keep the early monday hours closed", () => {
+        // 08:00-07:59, from 08:00 until 08:00 of the next day
+        const allDay = { open: 8 * 60, close: 7 * 60 + 59 };
+        // the early monday hours belong to sunday, which has no session
+        expect(OracleMarketHours.isOpen(allDay, at("2026-10-12T07:59:59.999Z"))).toBe(false);
+        expect(OracleMarketHours.isOpen(allDay, at("2026-10-12T08:00:00Z"))).toBe(true);
+        // the early wednesday hours belong to the tuesday session
+        expect(OracleMarketHours.isOpen(allDay, at("2026-10-07T03:00:00Z"))).toBe(true);
+        // the friday session runs until saturday 07:59
+        expect(OracleMarketHours.isOpen(allDay, at("2026-10-10T07:59:59.999Z"))).toBe(true);
+        expect(OracleMarketHours.isOpen(allDay, at("2026-10-10T08:00:00Z"))).toBe(false);
     });
 
     it("should check against now when no time is given", () => {
