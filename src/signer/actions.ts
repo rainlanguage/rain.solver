@@ -403,6 +403,9 @@ export async function broadcastTx(
 
     const sends = rpcState.urls.map(async (url) => {
         try {
+            // a fallback ws rpc gets its first request here maybe, its socket
+            // opens through the shared opening, see RpcState.watchSocket
+            rpcState.watchSocket(url);
             const transport = rpcState.transports[url]({
                 chain: signer.chain,
                 retryCount: 0,

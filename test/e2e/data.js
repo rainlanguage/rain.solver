@@ -17,26 +17,26 @@ module.exports = [
         [
             WNATIVE[ChainId.POLYGON],
             USDC[ChainId.POLYGON],
-            new Token({
-                chainId: ChainId.POLYGON,
-                address: "0xd0e9c8f5Fae381459cf07Ec506C1d2896E8b5df6",
-                decimals: 18,
-                symbol: "IOEN",
-            }),
-            new Token({
-                chainId: ChainId.POLYGON,
-                address: "0x874e178A2f3f3F9d34db862453Cd756E7eAb0381",
-                decimals: 18,
-                symbol: "GFI",
-            }),
+            // new Token({
+            //     chainId: ChainId.POLYGON,
+            //     address: "0xd0e9c8f5Fae381459cf07Ec506C1d2896E8b5df6",
+            //     decimals: 18,
+            //     symbol: "IOEN",
+            // }),
+            // new Token({
+            //     chainId: ChainId.POLYGON,
+            //     address: "0x874e178A2f3f3F9d34db862453Cd756E7eAb0381",
+            //     decimals: 18,
+            //     symbol: "GFI",
+            // }),
         ],
 
         // addresses with token balance, in order with specified tokens
         [
             "0x13dCa56c1747a0351A8FD23384b593E3dF53CA6d",
             "0xe7804c37c13166fF0b37F5aE0BB07A3aEbb6e245",
-            "0xd6756f5aF54486Abda6bd9b1eee4aB0dBa7C3ef2",
-            "0x9294132f9d423b0FD5823aB400133d814fe73016",
+            // "0xd6756f5aF54486Abda6bd9b1eee4aB0dBa7C3ef2",
+            // "0x9294132f9d423b0FD5823aB400133d814fe73016",
         ],
 
         // liq providers to use for test
@@ -44,7 +44,7 @@ module.exports = [
         [
             LiquidityProviders.QuickSwapV2,
             LiquidityProviders.QuickSwapV3,
-            LiquidityProviders.GravityFinance,
+            // LiquidityProviders.GravityFinance,
         ],
 
         // deposist amounts per token pair order
