@@ -3,7 +3,6 @@ import { SharedState } from "../state";
 import { fetchOracleContext } from "./index";
 import { Order, Pair } from "../order/types";
 import { fetchSignedContext } from "./fetch";
-import { OracleMarketHours } from "./types";
 import { Attributes } from "@opentelemetry/api";
 import { OracleError, OracleErrorType } from "./error";
 import { assert, describe, it, expect, vi, beforeEach, afterEach, Mock } from "vitest";
@@ -159,8 +158,9 @@ describe("fetchOracleContext", () => {
 
         beforeEach(() => {
             vi.useFakeTimers();
+            // 08:00-23:59, the summer hours of the market
             (mockState as any).appOptions = {
-                oracleMarketHours: { ...OracleMarketHours.DEFAULT },
+                oracleMarketHours: { open: 8 * 60, close: 23 * 60 + 59 },
             };
             (fetchSignedContext as Mock).mockResolvedValue(Result.ok(validSignedContext));
         });
@@ -223,7 +223,7 @@ describe("fetchOracleContext", () => {
         it("uses the configured market hours", async () => {
             // 00:00-23:59
             (mockState as any).appOptions.oracleMarketHours = { open: 0, close: 1439 };
-            // tuesday 03:00 UTC, out of the default hours but inside the configured hours
+            // tuesday 03:00 UTC, out of the summer hours but inside the configured hours
             vi.setSystemTime(new Date("2026-10-06T03:00:00Z"));
             mockOrderDetails.oracleUrl = knownUrl;
             const result = await fetchOracleContext.call(
