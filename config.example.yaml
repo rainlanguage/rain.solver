@@ -237,11 +237,13 @@ strictMaxOwnerProfilePartialTradeSizeCheck: false
 # Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins
 checkWalletBalanceTime: 15
 
-# Daily market hours of the known oracles, as a range of two standard UTC times of the current day in form of
-# HH:MM-HH:MM, e.g. 08:30-23:59, the close time is inclusive, so the market is open until the end of that minute,
-# and the open time must be before the close time, out of these hours, orders with a known oracle do not fetch
-# from the oracle and fail to quote with an out of market hours error, weekends are always off, from saturday
-# 00:00 UTC until sunday 23:59 UTC, default is 08:00-23:59
+# Daily market hours of the known oracles, as a range of two different standard UTC times in form of HH:MM-HH:MM,
+# e.g. 08:30-23:59. The close time is inclusive, so the market is open until the end of that minute. A close time
+# before the open time is on the next day. For example, 09:00-00:59 is open from 09:00 UTC until 01:00 UTC of the
+# next day. Out of these hours, orders with a known oracle do not fetch from the oracle and fail to quote with an
+# out of market hours error. A session belongs to the day it opens on, and no session opens on saturday or sunday.
+# So the session of friday runs into saturday when it closes on the next day. Default is 00:00-23:59, all day on
+# weekdays. For the summer hours of the market, use 08:00-23:59. In winter, use 09:00-00:59.
 oracleMarketHours: 08:00-23:59
 
 # Option to multiply the gas limit estimation from the rpc as percentage, default is 100, ie no change

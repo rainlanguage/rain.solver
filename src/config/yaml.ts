@@ -196,7 +196,7 @@ export type AppOptions = {
     strictMaxOwnerProfilePartialTradeSizeCheck: boolean;
     /** Time (in minutes) to to check the operating wallet balances, 0 means dont ever check wallet balance, default is 15 mins */
     checkWalletBalanceTime: number;
-    /** Daily market hours (UTC) of the known oracles, orders with a known oracle skip the oracle fetch out of these hours and all day on weekends (saturday and sunday), default is 08:00-23:59 */
+    /** Daily market hours (UTC) of the known oracles. Out of these hours, orders with a known oracle skip the oracle fetch. A close before the open is on the next day, e.g. 09:00-00:59. A session belongs to the day it opens on, and no session opens on saturday or sunday. Default is 00:00-23:59, all day on weekdays */
     oracleMarketHours: OracleMarketHours;
 };
 

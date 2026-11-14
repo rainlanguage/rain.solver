@@ -388,7 +388,7 @@ describe("Test yaml Validator methods", async function () {
         // default
         for (const input of [undefined, null, ""]) {
             assert.deepEqual(Validator.resolveOracleMarketHours(input), {
-                open: 480,
+                open: 0,
                 close: 1439,
             });
         }
@@ -411,6 +411,16 @@ describe("Test yaml Validator methods", async function () {
             close: 1,
         });
 
+        // happy, a close before the open is on the next day
+        assert.deepEqual(Validator.resolveOracleMarketHours("09:00-00:59"), {
+            open: 540,
+            close: 59,
+        });
+        assert.deepEqual(Validator.resolveOracleMarketHours("10:00-08:00"), {
+            open: 600,
+            close: 480,
+        });
+
         // happy from env
         process.env.ORACLE_MARKET_HOURS_TEST = "09:30-16:00";
         assert.deepEqual(Validator.resolveOracleMarketHours("$ORACLE_MARKET_HOURS_TEST"), {
@@ -421,7 +431,7 @@ describe("Test yaml Validator methods", async function () {
         // default for unset env
         delete process.env.ORACLE_MARKET_HOURS_TEST;
         assert.deepEqual(Validator.resolveOracleMarketHours("$ORACLE_MARKET_HOURS_TEST"), {
-            open: 480,
+            open: 0,
             close: 1439,
         });
 
@@ -440,8 +450,8 @@ describe("Test yaml Validator methods", async function () {
             "08:30-23:60",
             "08:30-24:00",
             "24:00-23:59",
-            "10:00-08:00",
             "08:30-08:30",
+            "00:00-00:00",
             "aa:bb-cc:dd",
             8,
             true,

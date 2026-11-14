@@ -457,7 +457,7 @@ orderbookTradeTypes:
         assert.equal(result.flashblocks, false); // should be default false
         assert.equal(result.multiBroadcast, false); // should be default false
         assert.equal(result.callBlockTag, undefined); // no block tag when unset
-        assert.deepEqual(result.oracleMarketHours, { open: 480, close: 1439 }); // should be default 08:00-23:59
+        assert.deepEqual(result.oracleMarketHours, { open: 0, close: 1439 }); // should be default 00:00-23:59
     });
 
     it("test AppOptions rpcSelection", async function () {
