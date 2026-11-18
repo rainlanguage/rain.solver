@@ -110,10 +110,11 @@ The solver sends gzip-compressed OTLP HTTP traces when
 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
 The trace-specific endpoint takes precedence and must include the full path.
 The generic endpoint is a base URL; the OpenTelemetry SDK appends `/v1/traces`.
-Without either endpoint, spans go to the console, including in GitHub previews.
+Without either endpoint, spans go to the console, including in GitHub previews,
+and the solver writes a startup warning to stderr.
 No telemetry credential is required for the private VictoriaTraces endpoint.
 
-For the Base solver deployment and verification steps, see
+For the deployment and verification steps, see
 [the VictoriaTraces runbook](VictoriaTraces.md).
 
 ## List of supported dexes as external liquidity (decentralized exchanges)
