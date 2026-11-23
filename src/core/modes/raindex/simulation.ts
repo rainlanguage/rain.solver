@@ -4,7 +4,7 @@ import { RainSolver } from "../..";
 import { scaleFrom18 } from "../../../math";
 import { errorSnapshot } from "../../../error";
 import { RainSolverSigner } from "../../../signer";
-import { SushiRouterQuote } from "../../../router";
+import { SushiRouterQuote, getRouteProcessor } from "../../../router";
 import { PairV4, TakeOrdersConfigTypeV5 } from "../../../order";
 import { TradeType, FailedSimulation, TaskType } from "../../types";
 import { SimulationHaltReason, TradeSimulatorBase } from "../simulator";
@@ -140,7 +140,8 @@ export class RaindexRouterTradeSimulator extends TradeSimulatorBase {
         const legs = [
             {
                 routeLegType: RouteLegType.SUSHI,
-                destination: this.tradeArgs.solver.state.chainConfig.routeProcessors["4"],
+                // the route processor the route code is made for, see getRouteProcessorParams
+                destination: getRouteProcessor(this.tradeArgs.solver.state).address,
                 data: encodeAbiParameters(
                     [{ type: "address" }, { type: "address" }, { type: "bytes" }],
                     [

@@ -3,10 +3,10 @@ import { ChainId } from "sushi/chain";
 import { AppOptions } from "../config";
 import { Token } from "sushi/currency";
 import { BalancerRouter, DEFAULT_PRICE_IMPACT_TOLERANCE, TradeSizeStatus } from "../router";
-import { LiquidityProviders } from "sushi";
+import { LiquidityProviders, UniV4LiquidityProviders } from "sushi";
 import { SolverContracts } from "./contracts";
 import { DryrunGasCache } from "./dryrunGasCache";
-import { SushiRouter } from "../router/sushi";
+import { SushiRouter, getRouteProcessor } from "../router/sushi";
 import { AddressProvider } from "@balancer/sdk";
 import { WalletConfig } from "../wallet/config";
 import { Result, TokenDetails } from "../common";
@@ -256,6 +256,18 @@ export namespace SharedStateConfig {
         }
         const chainConfig = chainConfigResult.value;
 
+        // the route processor the bot routes through must be on the chain, see
+        // AppOptions.routeProcessor
+        const routeProcessor = getRouteProcessor({ appOptions: options, chainConfig });
+        if (!routeProcessor.address) {
+            return Result.err(
+                new SharedStateError(
+                    `missing route processor ${routeProcessor.version} address for the network with chain id: ${chainId}`,
+                    SharedStateErrorType.ChainConfigError,
+                ),
+            );
+        }
+
         // re-assign the client with static chain data
         client = createPublicClient({
             chain: chainConfig,
@@ -266,7 +278,25 @@ export namespace SharedStateConfig {
 
         const liquidityProviders = SushiRouter.processLiquidityProviders(
             options.liquidityProviders,
+            routeProcessor.version,
         );
+        // the known configured providers are all Uniswap V4 style ones, which need
+        // RouteProcessor6, the other configured names are not known providers
+        if (!liquidityProviders.length) {
+            const isUniV4 = (name: string) =>
+                UniV4LiquidityProviders.some((v) => v.toLowerCase() === name.toLowerCase().trim());
+            const names = options.liquidityProviders ?? [];
+            const unknownNames = names.filter((v) => !isUniV4(v));
+            return Result.err(
+                new SharedStateError(
+                    `no liquidity provider is left with route processor ${routeProcessor.version}, the Uniswap V4 style ones in liquidityProviders (${names.filter(isUniV4).join(", ")}) need route processor 6` +
+                        (unknownNames.length
+                            ? `, and these are not known liquidity providers: ${unknownNames.join(", ")}`
+                            : ""),
+                    SharedStateErrorType.RouterInitializationError,
+                ),
+            );
+        }
         const balancerRouterAddress = (() => {
             try {
                 return AddressProvider.BatchRouter(chainId);
@@ -280,7 +310,7 @@ export namespace SharedStateConfig {
             stabullRouter: !!(options.contracts.v4?.stabullArb || options.contracts.v5?.stabullArb),
             sushiRouterConfig: {
                 liquidityProviders,
-                sushiRouteProcessor4Address: chainConfig.routeProcessors["4"] as `0x${string}`,
+                sushiRouteProcessorAddress: routeProcessor.address,
             },
             balancerRouterConfig:
                 (options.contracts.v4?.balancerArb || options.contracts.v5?.balancerArb) &&
@@ -801,22 +831,24 @@ export class SharedState {
 
     /**
      * Updates the native gas token dollar price by quoting the chain's wrapped
-     * native token against the chain's dollar token (USDC or USDT), keeps the
-     * previous price if the quote fails, does nothing if the operating chain
+     * native token against the chain's dollar tokens in their order, see
+     * ChainConfig.usdTokens, the first quote that succeeds sets the price, keeps
+     * the previous price if all quotes fail, does nothing if the operating chain
      * has no known dollar token
      * @param blockNumber - (optional) The block number to fetch the price at
      */
     async updateGasTokenUsdPrice(blockNumber?: bigint) {
-        const usdToken = this.chainConfig.usdToken;
-        if (!usdToken) return;
-        const result = await this.getMarketPrice(
-            this.chainConfig.nativeWrappedToken,
-            usdToken,
-            blockNumber,
-            true,
-        );
-        if (result.isOk()) {
-            this.gasTokenUsdPrice = result.value.price;
+        for (const usdToken of this.chainConfig.usdTokens) {
+            const result = await this.getMarketPrice(
+                this.chainConfig.nativeWrappedToken,
+                usdToken,
+                blockNumber,
+                true,
+            );
+            if (result.isOk()) {
+                this.gasTokenUsdPrice = result.value.price;
+                return;
+            }
         }
     }
 

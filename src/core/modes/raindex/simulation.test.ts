@@ -254,6 +254,24 @@ describe("Test RaindexRouterTradeSimulator", () => {
             );
         });
 
+        it("should send the route leg to the configured route processor", async () => {
+            const legDestination = () =>
+                (encodeAbiParameters as Mock).mock.calls.find(
+                    (v) => v[0] === ABI.Orderbook.V6.Primary.RouteLeg,
+                )?.[1][0][0].destination;
+
+            // RouteProcessor4, the default
+            assert((await simulator.prepareTradeParams()).isOk());
+            expect(legDestination()).toBe("0xrouter");
+
+            // RouteProcessor6
+            (encodeAbiParameters as Mock).mockClear();
+            (mockSolver.state as any).appOptions = { routeProcessor: 6 };
+            (mockSolver.state.chainConfig.routeProcessors as any)["6"] = "0xrouter6";
+            assert((await simulator.prepareTradeParams()).isOk());
+            expect(legDestination()).toBe("0xrouter6");
+        });
+
         it("should create takeOrders with correct min/max float values", async () => {
             const result = await simulator.prepareTradeParams();
             assert(result.isOk());

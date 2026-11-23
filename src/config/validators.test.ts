@@ -464,6 +464,31 @@ describe("Test yaml Validator methods", async function () {
         }
     });
 
+    it("test Validator resolveRouteProcessor", async function () {
+        // default
+        for (const input of [undefined, null, ""]) {
+            assert.equal(Validator.resolveRouteProcessor(input), 4);
+        }
+
+        // happy, a number or its text, from env too
+        assert.equal(Validator.resolveRouteProcessor(4), 4);
+        assert.equal(Validator.resolveRouteProcessor(6), 6);
+        assert.equal(Validator.resolveRouteProcessor("6"), 6);
+        assert.equal(Validator.resolveRouteProcessor(" 4 "), 4);
+        process.env.ROUTE_PROCESSOR_TEST = "6";
+        assert.equal(Validator.resolveRouteProcessor("$ROUTE_PROCESSOR_TEST"), 6);
+        delete process.env.ROUTE_PROCESSOR_TEST;
+        assert.equal(Validator.resolveRouteProcessor("$ROUTE_PROCESSOR_TEST"), 4);
+
+        // unhappy
+        for (const input of [3, 5, "3", "v4", "4.5", true, {}, []]) {
+            assert.throws(
+                () => Validator.resolveRouteProcessor(input),
+                /expected either of 4 or 6 for routeProcessor/,
+            );
+        }
+    });
+
     it("test Validator resolveRouteType", async function () {
         // happy
         let input: any = "full";

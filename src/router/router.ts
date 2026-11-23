@@ -34,7 +34,7 @@ export type RainSolverRouterConfig = {
     /** Optional configuration for the Sushi router */
     sushiRouterConfig?: {
         /** The address of the SushiSwap Router v4 contract */
-        sushiRouteProcessor4Address: `0x${string}`;
+        sushiRouteProcessorAddress: `0x${string}`;
         /** Optional list of Sushi RP liquidity providers */
         liquidityProviders?: LiquidityProviders[];
     };
@@ -84,7 +84,7 @@ export class RainSolverRouter extends RainSolverRouterBase {
             ? await SushiRouter.create(
                   chainId,
                   client,
-                  sushiRouterConfig.sushiRouteProcessor4Address,
+                  sushiRouterConfig.sushiRouteProcessorAddress,
                   sushiRouterConfig.liquidityProviders,
               )
             : Result.err(

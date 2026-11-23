@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        chain: [POLYGON, ARBITRUM, ETH, FLARE, BSC, BASE, LINEA]
+        chain: [POLYGON, ARBITRUM, ETH, FLARE, BSC, BASE, LINEA, ZEROG]
       fail-fast: false
 
     steps:

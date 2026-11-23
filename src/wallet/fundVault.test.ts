@@ -10,6 +10,7 @@ vi.mock("sushi", async (importOriginal) => ({
     ...(await importOriginal()),
     Router: {
         routeProcessor4Params: vi.fn(),
+        routeProcessor6Params: vi.fn(),
     } as any,
     Native: {
         onChain: vi.fn().mockReturnValue({
@@ -237,6 +238,46 @@ describe("Test fundVault", () => {
         expect(mockSigner.readContract).toHaveBeenCalledTimes(5);
         expect(mockSigner.waitForReceipt).toHaveBeenNthCalledWith(1, { hash: "0xapprove" });
         expect(mockSigner.waitForReceipt).toHaveBeenNthCalledWith(2, { hash: "0xdeposit" });
+    });
+
+    it("should swap with RouteProcessor6 when it is configured", async () => {
+        (mockSigner.state as any).appOptions = { routeProcessor: 6 };
+        mockSigner.state.chainConfig.routeProcessors["6"] = "0xrp6";
+        (mockSigner.readContract as Mock)
+            .mockResolvedValueOnce(parseUnits("50", 18)) // vault balance below threshold
+            .mockResolvedValueOnce(18) // decimals
+            .mockResolvedValueOnce("TEST") // symbol
+            .mockResolvedValueOnce(parseUnits("100", 18)) // insufficient token balance
+            .mockResolvedValueOnce(parseUnits("2000", 18)); // sufficient allowance after swap
+        vi.mocked(Router.routeProcessor6Params).mockReturnValue({
+            data: "0xswapdata6",
+            amountOutMin: parseUnits("950", 18),
+        } as any);
+        (mockSigner.sendTx as Mock).mockResolvedValue({
+            hash: "0xswap",
+            wait: vi.fn().mockResolvedValue({ status: "success" }),
+        });
+        (mockSigner.writeContract as Mock).mockResolvedValue("0xdeposit");
+        (mockSigner.waitForReceipt as Mock).mockResolvedValueOnce({ status: "success" });
+
+        const result = await fundVault(vaultDetails, mockSigner);
+
+        expect(result).toEqual({ txHash: "0xdeposit" });
+        // the route code is built for RouteProcessor6 at its address, and the swap goes to it
+        expect(Router.routeProcessor6Params).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            mockSigner.account.address,
+            "0xrp6",
+        );
+        expect(Router.routeProcessor4Params).not.toHaveBeenCalled();
+        expect(mockSigner.sendTx).toHaveBeenCalledWith({
+            to: "0xrp6",
+            data: "0xswapdata6",
+            value: parseUnits("1", 18),
+        });
     });
 
     it("should fetch token details and cache them when not available", async () => {
