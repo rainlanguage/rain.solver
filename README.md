@@ -269,6 +269,11 @@ To create a bind mount to a specific absolute path on the host
 docker volume create --driver local --opt type=none --opt device=<absolute-host-path> --opt o=bind <volume-name>
 ```
 
+### 0G deployment
+
+For the 0G (chain id 16661) instance, its prerequisites and its config, see
+[the 0G runbook](ZeroG.md).
+
 ### Running On Github Actions
 In order to run this app periodically to clear orders in Github Actions, first you need to fork this repository, then you can modify the `./.github/workflows/take-orders.yaml` file with your desired configuration so the app run periodically. You can set the schedule for the app to run by modifying the cron syntax of the mentioned file and in the last line of the file, you can pass the required/optional arguments for the app to run. All the mentioned CLI arguments can be applied, for wallet private key and rpc url, you can set up Github Secrets.
 
