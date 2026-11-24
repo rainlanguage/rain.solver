@@ -52,6 +52,7 @@ priorityFeePercentiles: [50, 90]
 maxFeeBaseFeeMultiplier: 1.5
 priorityFeeMultiplier: 1.07
 blockTime: 3000
+txTimeout: 12000
 flashblocks: true
 multiBroadcast: true
 callBlockTag: pending
@@ -151,6 +152,7 @@ orderbookTradeTypes:
             maxFeeBaseFeeMultiplier: 1.5,
             priorityFeeMultiplier: 1.07,
             blockTime: 3000,
+            txTimeout: 12000,
             flashblocks: true,
             multiBroadcast: true,
             callBlockTag: CallBlockTag.Pending,
@@ -322,6 +324,14 @@ orderbookTradeTypes:
         const zeroBlockTimeRes = AppOptions.tryFrom({ ...input, blockTime: "0" });
         assert(zeroBlockTimeRes.isErr());
         assert.ok(String(zeroBlockTimeRes.error.cause).includes("blockTime is required"));
+        // txTimeout is optional, but when set it is an integer greater than 0
+        for (const txTimeout of ["0", "abc", "1.5"]) {
+            const txTimeoutRes = AppOptions.tryFrom({ ...input, txTimeout });
+            assert(txTimeoutRes.isErr());
+            // a value off the pattern fails with its own message, a 0 fails in the callback
+            const { message, cause } = txTimeoutRes.error;
+            assert.ok(`${message} ${cause}`.includes("invalid txTimeout value"));
+        }
         // the round trigger is required, both of its fields
         const noTriggerRes = AppOptions.tryFrom({ ...input, roundTrigger: undefined });
         assert(noTriggerRes.isErr());
@@ -379,6 +389,7 @@ orderbookTradeTypes:
         assert.deepEqual(result.maxFeeBaseFeeMultiplier, 2);
         assert.deepEqual(result.priorityFeeMultiplier, 1);
         assert.deepEqual(result.blockTime, 2000);
+        assert.equal(result.txTimeout, undefined); // unset, the receipt wait uses its own default
         assert.deepEqual(result.gasLimitMultiplier, 90);
         assert.deepEqual(result.timeout, 20000);
         assert.equal(result.maxRatio, true);

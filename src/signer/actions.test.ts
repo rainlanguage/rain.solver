@@ -1394,6 +1394,40 @@ describe("Test tryGetReceipt", () => {
         expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalledTimes(1);
     });
 
+    it("should default the timeout to the configured txTimeout when it is set", async () => {
+        (mockSigner.state.client.getTransactionReceipt as Mock).mockResolvedValue({
+            status: "success",
+        });
+
+        // above and below the 3 block times and 5s default, the config is used as is
+        for (const txTimeout of [20_000, 1_000]) {
+            (mockSigner.state.appOptions as any).blockTime = 2_000;
+            (mockSigner.state.appOptions as any).txTimeout = txTimeout;
+            (mockSigner.state as any).blockNumber = 100n;
+            setTimeout(() => ((mockSigner.state as any).blockNumber = 101n), 50);
+            promiseTimeoutSpy.mockClear();
+
+            await tryGetReceipt(mockSigner, "0xhash");
+
+            expect(promiseTimeoutSpy).toHaveBeenCalledWith(
+                expect.any(Promise),
+                txTimeout,
+                expect.any(Object),
+            );
+        }
+
+        // an explicit timeout still wins over the config
+        (mockSigner.state as any).blockNumber = 100n;
+        setTimeout(() => ((mockSigner.state as any).blockNumber = 101n), 50);
+        promiseTimeoutSpy.mockClear();
+        await tryGetReceipt(mockSigner, "0xhash", 3_000);
+        expect(promiseTimeoutSpy).toHaveBeenCalledWith(
+            expect.any(Promise),
+            3_000,
+            expect.any(Object),
+        );
+    });
+
     it("should stop polling once the wait has timed out", async () => {
         (mockSigner.state.client.getTransactionReceipt as Mock).mockRejectedValue(
             new Error("not found"),
