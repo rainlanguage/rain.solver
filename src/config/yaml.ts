@@ -162,8 +162,10 @@ export type AppOptions = {
      * tip a transaction pays, eip1559 mode only, must be greater than 0. Default is 1.
      */
     priorityFeeMultiplier: number;
-    /** The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher and the transaction receipt wait, a receipt wait times out after 3 block times, required */
+    /** The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher and the transaction receipt wait, see txTimeout for the timeout of the receipt wait, required */
     blockTime: number;
+    /** The time (in ms) the receipt wait of a sent transaction lasts before it times out, default is 3 block times and at least 5000 */
+    txTimeout?: number;
     /** Subscribes the block number watcher to flashblocks heads instead of new heads over the ws rpc, only supported on Base chain, requires wsRpc, default is false */
     flashblocks: boolean;
     /** Broadcasts each signed transaction through all the configured write rpcs (or all rpcs when no write rpc is set) at the same time, taking the first accepted one, default is false */
@@ -493,6 +495,18 @@ export namespace AppOptions {
                         assert(
                             typeof blockTime !== "undefined" && blockTime > 0,
                             "blockTime is required, must be an integer greater than 0",
+                        ),
+                ),
+                txTimeout: Validator.resolveNumericValue(
+                    input.txTimeout,
+                    INT_PATTERN,
+                    "invalid txTimeout value, must be an integer greater than 0",
+                    undefined,
+                    undefined,
+                    (txTimeout) =>
+                        assert(
+                            typeof txTimeout === "undefined" || txTimeout > 0,
+                            "invalid txTimeout value, must be an integer greater than 0",
                         ),
                 ),
                 callBlockTag: CallBlockTag.resolve(input.callBlockTag),

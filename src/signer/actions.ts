@@ -117,7 +117,7 @@ export type RainSolverSignerActions<
      * block number watcher.
      * This method does not leak memory as the viem's default `waitForTransactionReceipt` method.
      * @param hash - The transaction hash to get the receipt for
-     * @param timeout - The timeout in ms (default is 3 times the configured block time)
+     * @param timeout - The timeout in ms (default is the configured txTimeout, else max of 3 times the configured block time and 5s)
      * @param pollingInterval - The interval (in ms) the block number is checked at a fifth of (default is the configured block time)
      * @returns Resolves with the transaction receipt or rejects with timeout error
      */
@@ -455,13 +455,14 @@ export function getWriteSignerFrom(signer: RainSolverSigner): RainSolverSigner {
  * signer's cached nonce to the chain's mined tx count, see NonceCache.refresh
  * @param signer - The RainSolverSigner instance
  * @param hash - The transaction hash
- * @param timeout - The timeout in ms (default is max of 3 times the configured block time and 5s)
+ * @param timeout - The timeout in ms (default is the configured txTimeout, else max of 3 times the configured block time and 5s)
  * @param pollingInterval - The interval (in ms) the block number is checked at max of a fifth of blocktime and 300ms (default is the configured block time)
  */
 export async function tryGetReceipt(
     signer: RainSolverSigner,
     hash: `0x${string}`,
-    timeout = Math.max(3 * signer.state.appOptions.blockTime, 5000),
+    timeout = signer.state.appOptions.txTimeout ??
+        Math.max(3 * signer.state.appOptions.blockTime, 5000),
     pollingInterval = signer.state.appOptions.blockTime,
 ): Promise<TransactionReceipt> {
     // the poll loop runs only while the wait is unsettled, so a timed out

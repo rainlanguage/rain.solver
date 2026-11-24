@@ -171,8 +171,12 @@ maxFeeBaseFeeMultiplier: 2
 priorityFeeMultiplier: 1
 
 # The average block time (in ms) of the operating chain, used as the polling interval of the block number watcher
-# and the transaction receipt wait, a receipt wait times out after 3 block times, required
+# and the transaction receipt wait, see txTimeout for the timeout of the receipt wait, required
 blockTime: 2000
+
+# Optional time (in ms) the receipt wait of a sent transaction lasts before it times out, default is 3 block times
+# and at least 5000
+txTimeout: 10000
 
 # Optional block tag used for the order quote calls (eth_call) and the gas estimate calls (eth_estimateGas),
 # either of latest, earliest, pending, safe or finalized, not all chains support each tag, when unset the
