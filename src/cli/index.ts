@@ -752,7 +752,9 @@ export class RainSolverCli {
                     "timeout-count": record.timeout,
                     "avg-request-interval": record.avgRequestIntervals,
                     "latest-success-rate": record.progress.successRate / 100,
+                    "settled-success-rate": record.progress.settledSuccessRate / 100,
                     "selection-weight": record.progress.selectionWeight,
+                    "is-fallback": this.state.rpc.isFallback(rpc),
                 });
                 record.reset();
                 span.end();
@@ -776,7 +778,9 @@ export class RainSolverCli {
                             "timeout-count": record.timeout,
                             "avg-request-interval": record.avgRequestIntervals,
                             "latest-success-rate": record.progress.successRate / 100,
+                            "settled-success-rate": record.progress.settledSuccessRate / 100,
                             "selection-weight": record.progress.selectionWeight,
+                            "is-fallback": this.state.writeRpc!.isFallback(rpc),
                         });
                         record.reset();
                         span.end();
@@ -821,11 +825,17 @@ export class RainSolverCli {
                         url: redactUrl(v.url),
                     })),
                     wsRpc: this.appOptions.wsRpc && redactUrl(this.appOptions.wsRpc),
+                    wsRpcFallback:
+                        this.appOptions.wsRpcFallback && redactUrl(this.appOptions.wsRpcFallback),
                 },
                 withBigintSerializer,
             ),
             "meta.liquidityProviders": this.state.router.getLiquidityProvidersList(),
         });
+
+        // the url the subscriptions use now, the main ws rpc url or its fallback url
+        const wsRpcInUse = this.state.activeWsUrl;
+        if (wsRpcInUse) roundSpan.setAttribute("meta.wsRpcInUse", redactUrl(wsRpcInUse));
 
         // report avg gas cost
         if (this.avgGasCost) {

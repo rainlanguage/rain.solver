@@ -25,6 +25,7 @@ import {
     isWebSocketUrl,
     watchWsSocket,
     WsSocketKey,
+    wsOpeningsAtLimit,
     reopenClosedWsSocket,
     subscriptionWebSocket,
     rainSolverTransport,
@@ -39,9 +40,29 @@ import {
     createPublicClient,
     ReadContractErrorType,
 } from "viem";
+import { socketClientCache } from "viem/utils";
 
 /** Delay (in ms) before an errored ws new heads subscription is re-established */
 export const WS_RESUBSCRIBE_DELAY = 15_000;
+
+/**
+ * The failed new heads subscriptions in a row on the main ws rpc url, after
+ * which the subscriptions move to its fallback url. A subscription fails when
+ * its socket fails to open or drops, or when its subscribe fails or times out,
+ * see SharedState.onWsFailure
+ */
+export const WS_FAILURES_TO_FALLBACK = 2;
+
+/** How often (in ms) the main ws rpc url is tried while its fallback is in use, see SharedState.probeWsMain */
+export const WS_MAIN_PROBE_INTERVAL = 60_000;
+
+/**
+ * How far (in ms) a head of a probe of the main ws rpc url can be behind the
+ * bot's block number when it comes, in blocks of blockTime and at least one
+ * block, a main in sync can send each head a bit after the fallback, see
+ * SharedState.probeWsMain
+ */
+export const WS_PROBE_MAX_LAG = 2_000;
 
 /** The raw eth_subscribe interface of the viem ws transport */
 type WsTransportSubscribe = {
@@ -230,11 +251,12 @@ export namespace SharedStateConfig {
             ? new RpcState(options.writeRpc, options.rpcSelection)
             : undefined;
 
-        // the sockets of the ws rpcs open before the first request, so the
+        // the sockets of the main ws rpcs open before the first request, so the
         // requests made during the opening share them, and a socket that
-        // closed opens again, see watchWsSocket
-        for (const { url } of [...options.rpc, ...(options.writeRpc ?? [])]) {
-            if (isWebSocketUrl(url)) watchWsSocket(url, WS_RPC_SOCKET_OPTIONS);
+        // closed opens again, see watchWsSocket, the socket of a fallback ws
+        // rpc opens once it is first picked, see RpcState.watchSocket
+        for (const { url, fallback } of [...options.rpc, ...(options.writeRpc ?? [])]) {
+            if (isWebSocketUrl(url) && !fallback) watchWsSocket(url, WS_RPC_SOCKET_OPTIONS);
         }
 
         // use temp client to get chain id
@@ -408,6 +430,16 @@ export class SharedState {
     private wsResubscribeTimer: ReturnType<typeof setTimeout> | undefined;
     /** The ws client every subscription goes through, one socket, created on first use from the ws rpc */
     private wsClient: PublicClient | undefined;
+    /** Whether the subscriptions use the fallback url of the ws rpc, see activeWsUrl */
+    private wsOnFallback = false;
+    /** The failed new heads subscriptions in a row on the main ws rpc url, see onWsFailure */
+    private wsFailures = 0;
+    /** The timer of the probes of the main ws rpc url while its fallback is in use */
+    private wsProbeTimer: ReturnType<typeof setInterval> | undefined;
+    /** The ws client of the probes, on the main ws rpc url only, created on the first probe, see probeWsMain */
+    private wsProbeClient: PublicClient | undefined;
+    /** Ends the heads subscription of the probe that runs, see probeWsMain */
+    private wsProbeUnsubscribe: (() => void) | undefined;
     /** The listeners of sealed block numbers, see onBlockNumber */
     private readonly blockListeners = new Set<(blockNumber: bigint) => void>();
 
@@ -653,8 +685,148 @@ export class SharedState {
      * after an error instead, through this
      */
     openWsSocket() {
-        const url = this.appOptions.wsRpc;
+        const url = this.activeWsUrl;
         if (url) void reopenClosedWsSocket(url, WS_RPC_SOCKET_OPTIONS, WsSocketKey.Subscription);
+    }
+
+    /**
+     * The url the subscriptions use now, the main url of the ws rpc, or its
+     * fallback url while that is in use, see onWsFailure
+     */
+    get activeWsUrl(): string | undefined {
+        return this.wsOnFallback ? this.appOptions.wsRpcFallback : this.appOptions.wsRpc;
+    }
+
+    /**
+     * Counts a failed new heads subscription of the block watcher on the main
+     * url of the ws rpc, see subscribeToBlockNumber, and moves the subscriptions
+     * to its fallback url after WS_FAILURES_TO_FALLBACK in a row. A head that
+     * comes on the main url ends the failures in a row. The main socket is
+     * closed, so the subscriptions on it get an error, and they subscribe again
+     * on the fallback after their own delay, its socket opens only then. The
+     * main url is then tried every WS_MAIN_PROBE_INTERVAL, see probeWsMain. A
+     * failure on the fallback url, or with no fallback url, changes nothing
+     * @param url - The url of the subscription that failed
+     */
+    private onWsFailure(url: string | undefined) {
+        const { wsRpc, wsRpcFallback } = this.appOptions;
+        if (!wsRpc || !wsRpcFallback || this.wsOnFallback || url !== wsRpc) return;
+        if (++this.wsFailures < WS_FAILURES_TO_FALLBACK) return;
+        this.wsOnFallback = true;
+        this.wsFailures = 0;
+        this.dropWsSocket(wsRpc);
+        this.startWsProbes();
+    }
+
+    /** Starts the probes of the main ws rpc url, one every WS_MAIN_PROBE_INTERVAL, see probeWsMain */
+    private startWsProbes() {
+        clearInterval(this.wsProbeTimer);
+        this.wsProbeTimer = setInterval(() => this.probeWsMain(), WS_MAIN_PROBE_INTERVAL);
+        // the probes must not keep the process alive on their own
+        this.wsProbeTimer.unref?.();
+    }
+
+    /** Stops the probes of the main ws rpc url, and ends the one that runs, see probeWsMain */
+    private stopWsProbes() {
+        clearInterval(this.wsProbeTimer);
+        this.wsProbeTimer = undefined;
+        this.stopWsProbe(false);
+    }
+
+    /**
+     * Tries the main url of the ws rpc while its fallback url is in use: a probe
+     * subscribes to the heads on the main url, on its subscription socket, and
+     * moves the subscriptions back on its first head that is not behind the
+     * bot's block number at the probe start, see canonicalBlockNumber, and not
+     * more than WS_PROBE_MAX_LAG behind it when it comes, a head is the same
+     * sign that ends the failures in a row, see onWsFailure. An
+     * open socket alone proves nothing, it can drop soon after or never answer
+     * the subscribe. The fallback socket is then closed, so the subscriptions
+     * on it get an error and subscribe again on the main url after their own
+     * delay. A probe that fails, or that has no such head by the next probe,
+     * ends and its socket is dropped, so the next probe opens a new one. A
+     * failed opening opens nothing again by itself. No probe opens while
+     * WS_MAX_OPENINGS openings of the main url still run, see wsOpeningsAtLimit
+     */
+    private probeWsMain() {
+        const main = this.appOptions.wsRpc;
+        if (!main || !this.wsOnFallback) return;
+        this.stopWsProbe(true);
+        // an opening that timed out still runs until its handshake ends
+        if (wsOpeningsAtLimit(main, WsSocketKey.Subscription)) return;
+        const key = `${WsSocketKey.Subscription}:${main}`;
+        const opening = reopenClosedWsSocket(main, WS_RPC_SOCKET_OPTIONS, WsSocketKey.Subscription);
+        opening?.catch(() => {
+            if (socketClientCache.get(key) === (opening as any)) socketClientCache.delete(key);
+        });
+        this.wsProbeClient ??= createPublicClient({
+            chain: this.chainConfig,
+            transport: subscriptionWebSocket(main, WS_RPC_SOCKET_OPTIONS),
+        });
+        // the bot's block number at the probe start, the fallback heads raise it
+        // while the probe runs, and a main in sync can send each head a bit later
+        const target = this.canonicalBlockNumber;
+        // the most blocks a head can be behind the bot's block number when it
+        // comes, so a main that stays behind does not pass, see WS_PROBE_MAX_LAG
+        const lag = Math.ceil(WS_PROBE_MAX_LAG / this.appOptions.blockTime);
+        const maxLag = BigInt(lag > 1 ? lag : 1);
+        this.wsProbeUnsubscribe = subscribeToHeads(
+            this.wsProbeClient,
+            this.appOptions.flashblocks ? "newFlashblocks" : "newHeads",
+            (blockNumber) => {
+                // a main behind the bot's block number, a node that still syncs,
+                // waits for a head that caught up, the block number never moves down
+                const sealed = this.appOptions.flashblocks ? blockNumber - 1n : blockNumber;
+                if (sealed < target || this.canonicalBlockNumber - sealed > maxLag) return;
+                this.stopWsProbe(false);
+                if (this.wsOnFallback) this.useWsMain();
+            },
+            () => this.stopWsProbe(true),
+        );
+    }
+
+    /**
+     * Ends the probe that runs, if any, see probeWsMain, the socket of a failed
+     * one is dropped, nothing else uses the main socket while it runs
+     * @param failed - Whether the probe failed
+     */
+    private stopWsProbe(failed: boolean) {
+        if (!this.wsProbeUnsubscribe) return;
+        this.wsProbeUnsubscribe();
+        this.wsProbeUnsubscribe = undefined;
+        if (failed && this.appOptions.wsRpc) this.dropWsSocket(this.appOptions.wsRpc);
+    }
+
+    /** Moves the subscriptions back to the main url of the ws rpc, see probeWsMain */
+    private useWsMain() {
+        this.wsOnFallback = false;
+        this.wsFailures = 0;
+        this.stopWsProbes();
+        if (this.appOptions.wsRpcFallback) this.dropWsSocket(this.appOptions.wsRpcFallback);
+    }
+
+    /**
+     * Drops the subscription socket of a ws url, a client is closed, so the
+     * subscriptions on it get an error and subscribe again, and an opening is
+     * dropped from the cache, so it opens nothing again by itself. An opening
+     * still runs, and a subscription that waits for it takes its socket, so its
+     * client is closed once it opens, unless the url is in use again by then
+     * @param url - The ws url
+     */
+    private dropWsSocket(url: string) {
+        const key = `${WsSocketKey.Subscription}:${url}`;
+        const cached: unknown = socketClientCache.get(key);
+        if (cached instanceof Promise) {
+            cached.then(
+                (client: { close(): void }) => {
+                    if (url !== this.activeWsUrl) client.close();
+                },
+                () => {},
+            );
+        } else {
+            (cached as { close?: () => void } | undefined)?.close?.();
+        }
+        socketClientCache.delete(key);
     }
 
     /**
@@ -670,7 +842,11 @@ export class SharedState {
         if (!this.wsClient) {
             this.wsClient = createPublicClient({
                 chain: this.chainConfig,
-                transport: subscriptionWebSocket(this.appOptions.wsRpc, WS_RPC_SOCKET_OPTIONS),
+                // each subscribe takes the url in use then, see activeWsUrl
+                transport: subscriptionWebSocket(
+                    () => this.activeWsUrl as string,
+                    WS_RPC_SOCKET_OPTIONS,
+                ),
             });
         }
         return this.wsClient;
@@ -711,18 +887,25 @@ export class SharedState {
         this.updateBlockNumber();
         const wsClient = this.getWsClient();
         if (wsClient) {
+            // an unwatch on the fallback url stopped its probes, see unwatchBlockNumber
+            if (this.wsOnFallback) this.startWsProbes();
             this.subscribeToBlockNumber(wsClient, interval);
         } else {
             this.startPollingBlockNumber(interval);
         }
     }
 
-    /** Unwatches block number if the watcher has been already active */
+    /**
+     * Unwatches block number if the watcher has been already active, the probes
+     * of the main ws rpc url stop too, they follow the failures of the watcher,
+     * see onWsFailure, a new watch on the fallback url starts them again
+     */
     unwatchBlockNumber() {
         this.stopPollingBlockNumber();
         this.clearWsResubscribeTimer();
         this.wsBlockNumberUnwatcher?.();
         this.wsBlockNumberUnwatcher = undefined;
+        this.stopWsProbes();
     }
 
     /**
@@ -733,10 +916,17 @@ export class SharedState {
      * see openWsSocket, when the ws endpoint is still
      * down, the fresh subscription errors again and re-enters this path,
      * which forms a retry loop paced by the delay, with polling covering
-     * the block number updates for the whole outage
+     * the block number updates for the whole outage. Its failures on the main
+     * ws rpc url move the subscriptions to the fallback url, see onWsFailure
      */
     private subscribeToBlockNumber(wsClient: PublicClient, interval: number) {
+        // the url of this subscription, its failure and its heads count for it,
+        // see onWsFailure, it can report its error more than once, it fails once
+        const url = this.activeWsUrl;
+        let failed = false;
         const onBlockNumber = (blockNumber: bigint, baseFeePerGas?: bigint | null) => {
+            // a head on the main url ends its failures in a row
+            if (url === this.appOptions.wsRpc) this.wsFailures = 0;
             // a flashblock head belongs to the block being built, so the
             // sealed block is the one below it, a new head is sealed itself
             const sealed = this.appOptions.flashblocks ? blockNumber - 1n : blockNumber;
@@ -749,6 +939,10 @@ export class SharedState {
             this.clearWsResubscribeTimer();
         };
         const onError = () => {
+            if (!failed) {
+                failed = true;
+                this.onWsFailure(url);
+            }
             this.startPollingBlockNumber(interval);
             if (this.wsResubscribeTimer === undefined) {
                 this.wsResubscribeTimer = setTimeout(() => {

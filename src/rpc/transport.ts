@@ -1,4 +1,4 @@
-import { RpcState } from "./rpc";
+import { RpcState, RPC_HEALTHY_SUCCESS_RATE } from "./rpc";
 import { sleep } from "../common";
 import { getWsSocketClient, openSharedWsSocket, shouldThrow, WsSocketKey } from "./helpers";
 import {
@@ -71,6 +71,24 @@ export class RainSolverTransportTimeoutError extends BaseError {
 export type RainSolverTransport = Transport<"RainSolverTransport">;
 
 /**
+ * Picks the rpc of the next try of a failed request, see RpcState.retryRpc.
+ * In the throttled mode the draw can miss until its timeout when the other
+ * rpcs fail too, then no rpc is picked, so the request fails with the error
+ * of the try before it, not with the timeout of the pick
+ * @param state - The rpc state
+ * @param args - The arguments of RpcState.retryRpc
+ * @returns The picked rpc, undefined when none is picked
+ */
+async function pickRetryRpc(state: RpcState, args: Parameters<RpcState["retryRpc"]>[0]) {
+    try {
+        return await state.retryRpc(args);
+    } catch (error) {
+        if (error instanceof RainSolverTransportTimeoutError) return undefined;
+        throw error;
+    }
+}
+
+/**
  * RainSolver viem Transport that can be used for any viem client, it operates on
  * the given `RpcState` with as many number of desired urls, incoming requests are
  * passed to any transport that `RpcState.nextRpc` provides at the time, so the
@@ -119,16 +137,21 @@ export function rainSolverTransport(
                     ): Promise<any> => {
                         // transport comes atomically paired with its url, reading
                         // state.lastUsedUrl here instead could race with concurrent
-                        // requests that already moved it by their own nextRpc calls
-                        const { transport, url } = await state.nextRpc({
-                            timeout: pollingTimeout,
-                            pollingInterval,
-                        });
-                        // when the rotation lands on the same rpc that just failed,
-                        // dont waste another attempt on it and bail out with its
-                        // error, its recorded failure has already lowered its chance
-                        // of selection, so this balances out over future requests
-                        if (url === prevUrl) throw prevError;
+                        // requests that already moved it by their own nextRpc calls.
+                        // A next try goes to another rpc, never the one that just
+                        // failed, a healthy main one first, then a fallback one, see
+                        // RpcState.retryRpc, and with no other rpc, or none picked in
+                        // time, it bails out with the error, see pickRetryRpc
+                        const picked =
+                            prevUrl === undefined
+                                ? await state.nextRpc({ timeout: pollingTimeout, pollingInterval })
+                                : await pickRetryRpc(state, {
+                                      failedUrl: prevUrl,
+                                      timeout: pollingTimeout,
+                                      pollingInterval,
+                                  });
+                        if (!picked) throw prevError;
+                        const { transport, url } = picked;
                         const instance = getInstance(transport, url);
                         const attempt = async (retrySameCount: number): Promise<any> => {
                             try {
@@ -144,7 +167,8 @@ export function rainSolverTransport(
                                 if (
                                     retrySameCount > 0 &&
                                     tryNextCount > 0 &&
-                                    state.metrics[url].progress.successRate > 2000
+                                    state.metrics[url].progress.successRate >
+                                        RPC_HEALTHY_SUCCESS_RATE
                                 ) {
                                     await sleep(retryDelay);
                                     return attempt(retrySameCount - 1);
@@ -210,19 +234,20 @@ function dropRequestsAfter(
  * viem's ws transport waits for the reply with no limit. The subscription of a
  * reply that comes after the timeout, within WS_LATE_REPLY_TIMEOUTS more
  * timeouts, is ended at once with eth_unsubscribe
- * @param url - The ws url
+ * @param url - The ws url, or a function that gives the url to use at each call, so the url can change, see SharedState.getWsClient
  * @param options - The keep alive and reconnect options of the socket
  */
 export function subscriptionWebSocket(
-    url: string,
+    url: string | (() => string),
     options: { keepAlive: boolean; reconnect: boolean },
 ): Transport {
+    const urlOf = typeof url === "function" ? url : () => url;
     return ({ retryCount, timeout = 10_000 }) => {
         // the shared opening of the socket, the cached one, or a new one with its
         // timeout and its limit when the cache holds none, so a subscription opens
         // no socket of its own whatever ran before it, see openSharedWsSocket
-        const getRpcClient = () =>
-            openSharedWsSocket(url, options, WsSocketKey.Subscription) as ReturnType<
+        const getRpcClient = (current = urlOf()) =>
+            openSharedWsSocket(current, options, WsSocketKey.Subscription) as ReturnType<
                 typeof getWsSocketClient
             >;
         return createTransport(
@@ -234,14 +259,15 @@ export function subscriptionWebSocket(
                 timeout,
                 async request({ method, params }) {
                     const body = { method, params };
-                    const rpcClient = await getRpcClient();
+                    const current = urlOf();
+                    const rpcClient = await getRpcClient(current);
                     const { error, result } = await rpcClient.requestAsync({ body, timeout });
-                    if (error) throw new RpcRequestError({ body, error, url });
+                    if (error) throw new RpcRequestError({ body, error, url: current });
                     return result;
                 },
             },
             {
-                getRpcClient,
+                getRpcClient: () => getRpcClient(),
                 async subscribe({
                     params,
                     onData,
@@ -251,7 +277,8 @@ export function subscriptionWebSocket(
                     onData: (data: any) => void;
                     onError?: (error: any) => void;
                 }) {
-                    const rpcClient = await getRpcClient();
+                    const current = urlOf();
+                    const rpcClient = await getRpcClient(current);
                     const body = { method: "eth_subscribe", params };
                     let timer: ReturnType<typeof setTimeout> | undefined;
                     const { result: subscriptionId } = await new Promise<any>((resolve, reject) => {
@@ -289,7 +316,7 @@ export function subscriptionWebSocket(
                                 });
                             }
                             dropRequestsAfter(rpcClient, ignore, timeout * WS_LATE_REPLY_TIMEOUTS);
-                            fail(new TimeoutError({ body, url }));
+                            fail(new TimeoutError({ body, url: current }));
                         }, timeout);
                         // the wait must not keep the process alive on its own
                         timer.unref?.();
