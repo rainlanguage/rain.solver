@@ -3,12 +3,13 @@ import assert from "assert";
 import { ChainId } from "sushi";
 import { GasManager } from "../../gas";
 import { createPublicClient } from "viem";
-import { AppOptions, RoundTriggerMode, RpcSelectionMode, TxType } from "../../config";
 import { Command, Option } from "commander";
+import { Validator } from "../../config/validators";
 import { sleep, TokenDetails } from "../../common";
 import { getChainConfig } from "../../state/chain";
 import { OracleMarketHours } from "../../oracle/types";
 import { RainSolverRouter } from "../../router/router";
+import { SushiRouter, getRouteProcessor } from "../../router/sushi";
 import { SolverContracts } from "../../state/contracts";
 import {
     RpcState,
@@ -21,6 +22,13 @@ import { WalletConfig, WalletManager } from "../../wallet";
 import { SharedState, SharedStateConfig } from "../../state";
 import { OrderManager, OrderManagerConfig } from "../../order";
 import { SubgraphConfig, SubgraphManager } from "../../subgraph";
+import {
+    TxType,
+    AppOptions,
+    RoundTriggerMode,
+    RpcSelectionMode,
+    RouteProcessorVersion,
+} from "../../config";
 
 export type SweepOptions = {
     mnemonic: string;
@@ -29,6 +37,7 @@ export type SweepOptions = {
     length: number;
     token: TokenDetails[];
     gasConversion: boolean;
+    routeProcessor?: RouteProcessorVersion;
 };
 
 /** Command-line interface for the sweep script */
@@ -83,6 +92,14 @@ export const SweepCmd = new Command("sweep")
             return [...previous, { address, symbol, decimals }];
         }),
     )
+    .addOption(
+        new Option(
+            "--route-processor <version>",
+            "The sushi RouteProcessor version the gas conversion swaps route through, 4 or 6, 6 also routes through the Uniswap V4 style pools, default is 4",
+        )
+            .env("ROUTE_PROCESSOR")
+            .argParser((val: string) => Validator.resolveRouteProcessor(val)),
+    )
     .option("--no-gas-conversion", "Skip converting all holdings to gas at the end of the sweep")
     .description(
         "Sweeps funds from multiple wallets derived from a mnemonic to the main address of the wallet (index 0) and optionally converts all of them to gas",
@@ -133,6 +150,7 @@ export async function sweepFunds(opts: SweepOptions) {
         strictMaxOwnerProfilePartialTradeSizeCheck: false,
         rpcSelection: RpcSelectionMode.Immediate,
         timeout: 15_000,
+        routeProcessor: opts.routeProcessor ?? 4,
 
         // unused fields but need to be defined
         maxRatio: false,
@@ -178,11 +196,24 @@ export async function sweepFunds(opts: SweepOptions) {
         chain: chainConfig,
         transport: rainSolverTransport(rpcState, rainSolverTransportConfig),
     });
+    // the sweeps route through the given route processor, 4 when unset, with 4 the
+    // Uniswap V4 style pools are left out, see SushiRouter.processLiquidityProviders
+    const routeProcessor = getRouteProcessor({ appOptions: options, chainConfig });
+    if (!routeProcessor.address) {
+        throw new Error(
+            `missing route processor ${routeProcessor.version} address for the network with chain id: ${chainId}`,
+        );
+    }
+    const liquidityProviders = SushiRouter.processLiquidityProviders(
+        undefined,
+        routeProcessor.version,
+    );
     const routerResult = await RainSolverRouter.create({
         chainId,
         client,
         sushiRouterConfig: {
-            sushiRouteProcessor4Address: chainConfig.routeProcessors["4"] as `0x${string}`,
+            liquidityProviders,
+            sushiRouteProcessorAddress: routeProcessor.address,
         },
     });
     if (routerResult.isErr()) {
@@ -196,6 +227,7 @@ export async function sweepFunds(opts: SweepOptions) {
         chainConfig,
         router: routerResult.value,
         appOptions: options,
+        liquidityProviders,
         rainSolverTransportConfig,
         transactionGas: options.txGas,
         contracts: await SolverContracts.fromAppOptions(client, options),

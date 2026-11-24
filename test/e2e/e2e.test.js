@@ -74,6 +74,7 @@ for (let i = 0; i < testData.length; i++) {
         arbAddress,
         botAddress,
         stabullTrade,
+        routeProcessor,
     ] = testData[i];
 
     // if rpc is not defined for a network go to next test
@@ -89,10 +90,12 @@ for (let i = 0; i < testData.length; i++) {
         const config = configResult.value;
         config.chain = publicClientConfig[chainId].chain;
 
-        // get available route processor versions for the chain (only RP4)
-        const rpVersions = Object.keys(config.routeProcessors).filter((v) => v === "4");
+        // get the route processor version to test with, RP4 unless the chain data sets another
+        const rpVersions = [String(routeProcessor ?? 4)].filter((v) => config.routeProcessors[v]);
         if (rpVersions.length === 0)
-            assert.fail(`Found no known RP4 contract address on ${ChainKey[chainId]} chain`);
+            assert.fail(
+                `Found no known RP${routeProcessor ?? 4} contract address on ${ChainKey[chainId]} chain`,
+            );
 
         const exporter = new OTLPTraceExporter();
         const provider = new BasicTracerProvider({
@@ -140,7 +143,7 @@ for (let i = 0; i < testData.length; i++) {
                 quoteGas: 1_000_000n,
             },
             router: {},
-            appOptions: {},
+            appOptions: { routeProcessor: routeProcessor ?? 4 },
             contracts: {
                 v4: {},
                 v5: {},

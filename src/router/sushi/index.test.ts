@@ -6,7 +6,7 @@ import { RouterType, RouteStatus, TradeSizeStatus } from "../types";
 import { RouteLeg } from "sushi/tines";
 import { maxUint256, PublicClient } from "viem";
 import { SushiRouterError, SushiRouterErrorType } from "./error";
-import { LiquidityProviders, RainDataFetcher, Router } from "sushi";
+import { LiquidityProviders, RainDataFetcher, Router, UniV4LiquidityProviders } from "sushi";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 import { Order, OrderbookVersions, TakeOrdersConfigType } from "../../order";
 import { SushiRouter, SushiQuoteParams, ExcludedLiquidityProviders } from ".";
@@ -134,7 +134,6 @@ describe("test SushiRouter methods", () => {
 
         it("should have correct router properties", () => {
             expect(router.routerAddress).toBe("0xsushiRouter");
-            expect(router.protocolVersion).toBe(4);
             expect(router.liquidityProviders).toEqual([LiquidityProviders.UniswapV2]);
             expect(router.dataFetcher).toBe(mockDataFetcher);
         });
@@ -707,6 +706,36 @@ describe("test SushiRouter methods", () => {
             expect(result.length).toBeGreaterThan(0);
         });
 
+        it("should leave the Uniswap V4 style providers out with RouteProcessor4, and keep them with 6", () => {
+            // the default, RouteProcessor4, with no list and with the names given
+            for (const result of [
+                SushiRouter.processLiquidityProviders(),
+                SushiRouter.processLiquidityProviders(undefined, 4),
+                SushiRouter.processLiquidityProviders(["UniswapV4", "comfy", "UniswapV3"], 4),
+            ]) {
+                UniV4LiquidityProviders.forEach((lp) => expect(result).not.toContain(lp));
+            }
+            expect(SushiRouter.processLiquidityProviders(["UniswapV4", "UniswapV3"], 4)).toEqual([
+                LiquidityProviders.UniswapV3,
+            ]);
+
+            // only Uniswap V4 style names leave nothing, not all the providers, so their limit holds
+            expect(SushiRouter.processLiquidityProviders(["comfy"], 4)).toEqual([]);
+            expect(SushiRouter.processLiquidityProviders(["UniswapV4", "unknown"], 4)).toEqual([]);
+            // no valid name at all still falls back to all the providers
+            expect(SushiRouter.processLiquidityProviders(["unknown"], 4)).toEqual(
+                SushiRouter.processLiquidityProviders(undefined, 4),
+            );
+
+            // RouteProcessor6 routes through them
+            const all = SushiRouter.processLiquidityProviders(undefined, 6);
+            UniV4LiquidityProviders.forEach((lp) => expect(all).toContain(lp));
+            expect(SushiRouter.processLiquidityProviders(["UniswapV4", "Comfy"], 6)).toEqual([
+                LiquidityProviders.UniswapV4,
+                LiquidityProviders.Comfy,
+            ]);
+        });
+
         it("should not include duplicates", () => {
             const input = ["UniswapV2", "uniswapv2", "UNISWAPV2"];
             const result = SushiRouter.processLiquidityProviders(input);
@@ -726,11 +755,13 @@ describe("test SushiRouter methods", () => {
             poolAddress: string,
             poolName: string,
             absolutePortion: number,
+            uniqueId = poolAddress,
         ): RouteLeg {
             return {
                 tokenFrom: from,
                 tokenTo: to,
                 poolAddress,
+                uniqueId,
                 poolName,
                 absolutePortion,
             } as any;
@@ -756,6 +787,20 @@ describe("test SushiRouter methods", () => {
             expect(result.length).toBe(1);
             expect(result[0]).toContain("50.00%");
             expect(result[0]).toContain("C/A (Pool1 0xPool1) >> B/C (Pool2 0xPool2)");
+        });
+
+        it("should return the whole indirect route through Uniswap V4 style pools that share one address, by their pool ids", () => {
+            // two pools of one PoolManager, their unique id is the pool id and the address
+            const manager = "0x" + "a".repeat(40);
+            const id1 = "0x" + "1".repeat(64);
+            const id2 = "0x" + "2".repeat(64);
+            const legs = [
+                makeLeg(tokenA, tokenC, manager, "UniswapV4", 0.5, id1 + manager),
+                makeLeg(tokenC, tokenB, manager, "UniswapV4", 0.5, id2 + manager),
+            ];
+            const result = SushiRouter.visualizeRoute(tokenA, tokenB, legs);
+            expect(result.length).toBe(1);
+            expect(result[0]).toContain(`C/A (UniswapV4 ${id1}) >> B/C (UniswapV4 ${id2})`);
         });
 
         it("should sort routes by absolutePortion descending", () => {

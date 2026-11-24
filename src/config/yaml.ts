@@ -58,6 +58,9 @@ export type AppOptionsContracts = {
     };
 };
 
+/** The sushi RouteProcessor versions the solver routes through, see AppOptions.routeProcessor */
+export type RouteProcessorVersion = 4 | 6;
+
 /** Rain Solver app yaml configurations */
 export type AppOptions = {
     /** Private key of the bot's wallet, only one of this or mnemonic must be set */
@@ -86,7 +89,7 @@ export type AppOptions = {
     subgraph: string[];
     /** Option to maximize maxIORatio, default is true */
     maxRatio: boolean;
-    /** list of liquidity providers names, default includes all liquidity providers */
+    /** list of liquidity providers names, default includes all liquidity providers, the Uniswap V4 style ones are left out with routeProcessor 4, a list of only them stops the bot from starting with routeProcessor 4 */
     liquidityProviders?: string[];
     /** What starts the next round, see RoundTrigger: in the time mode the next round starts once interval ms passed after the round; in the block mode the next round starts on the sealed block interval blocks past the one the round ran at, at once when it arrived during the round, so a round slower than the interval runs once more and then waits, never once per missed interval, both fields are required and have no default */
     roundTrigger: RoundTrigger;
@@ -100,6 +103,8 @@ export type AppOptions = {
     botMinBalance: string;
     /** Specifies the routing mode 'multi' or 'single' or 'full', default is 'single' */
     route: "single" | "multi" | undefined;
+    /** The sushi RouteProcessor version the trades and the wallet swaps route through, 4 or 6. RouteProcessor6 also takes the Uniswap V4 style pools, with 4 they are left out of the routes, see UniV4LiquidityProviders. Default is 4 */
+    routeProcessor: RouteProcessorVersion;
     /** Option to multiply the gas limit estimation from the rpc as percentage, default is 100, ie no change */
     gasLimitMultiplier: number;
     /** Option to set a gas limit for all submitting txs optionally with appended percentage sign to apply as percentage to original gas */
@@ -278,6 +283,7 @@ export namespace AppOptions {
                 ),
                 liquidityProviders: Validator.resolveLiquidityProviders(input.liquidityProviders),
                 route: Validator.resolveRouteType(input.route),
+                routeProcessor: Validator.resolveRouteProcessor(input.routeProcessor),
                 ownerProfile: Validator.resolveOwnerProfile(input.ownerProfile),
                 defaultOwnerLimit: Validator.resolveNumericValue(
                     input.defaultOwnerLimit,

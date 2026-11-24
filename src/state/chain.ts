@@ -9,6 +9,7 @@ import {
     BASES_TO_CHECK_TRADES_AGAINST,
     ROUTE_PROCESSOR_3_ADDRESS,
     ROUTE_PROCESSOR_4_ADDRESS,
+    ROUTE_PROCESSOR_6_ADDRESS,
     ROUTE_PROCESSOR_3_1_ADDRESS,
     ROUTE_PROCESSOR_3_2_ADDRESS,
 } from "sushi/config";
@@ -17,7 +18,6 @@ import {
 export enum ChainConfigErrorType {
     UnsupportedChain,
     MissingNativeWrappedTokenInfo,
-    MissingSushiRouteProcessor4Address,
 }
 
 /**
@@ -45,24 +45,36 @@ export type ChainConfig = Chain & {
     routeProcessors: { [key: string]: `0x${string}` };
     stableTokens?: Token[];
     isSpecialL2: boolean;
-    /** The dollar denominated token (USDC, USDT or USDG) of the chain, used for reporting dollar values */
-    usdToken?: Token;
+    /** The dollar denominated tokens of the chain in the order of findUsdTokens, used for reporting dollar values, see SharedState.updateGasTokenUsdPrice */
+    usdTokens: Token[];
 };
 
+/** The symbol rules of the USD denominated tokens, in their order, see findUsdTokens */
+const USD_TOKEN_RULES: ((symbol: string) => boolean)[] = [
+    (symbol) => symbol === "USDC",
+    (symbol) => symbol === "USDT",
+    (symbol) => symbol.includes("USDC"),
+    (symbol) => symbol.includes("USDT"),
+    (symbol) => symbol === "USDG",
+    (symbol) => symbol === "USDZ",
+];
+
 /**
- * Finds the USD denominated token (USDC, USDT, USDG or the USDC/USDT variants)
- * from the given list of candidate tokens, prioritizing exact symbol matches in
- * that order over variants
+ * Finds the USD denominated tokens in the given list of candidate tokens, in
+ * this order: exact USDC, exact USDT, the USDC variants, the USDT variants,
+ * USDG and USDZ, so USDC.e on 0G comes before its USDZ
  * @param candidates - The list of tokens to search in
  */
-export function findUsdToken(candidates?: Token[]): Token | undefined {
-    return (
-        candidates?.find((token: Token) => token.symbol === "USDC") ??
-        candidates?.find((token: Token) => token.symbol === "USDT") ??
-        candidates?.find((token: Token) => token.symbol === "USDG") ??
-        candidates?.find((token: Token) => token.symbol?.includes("USDC")) ??
-        candidates?.find((token: Token) => token.symbol?.includes("USDT"))
-    );
+export function findUsdTokens(candidates?: Token[]): Token[] {
+    const usdTokens: Token[] = [];
+    for (const rule of USD_TOKEN_RULES) {
+        for (const token of candidates ?? []) {
+            if (token.symbol && rule(token.symbol) && !usdTokens.includes(token)) {
+                usdTokens.push(token);
+            }
+        }
+    }
+    return usdTokens;
 }
 
 /**
@@ -90,41 +102,37 @@ export function getChainConfig(chainId: ChainId): Result<ChainConfig, ChainConfi
             ),
         );
 
-    // get route processor addresses
+    // get route processor addresses, the one the bot routes through is checked
+    // at startup, see AppOptions.routeProcessor
     const routeProcessors: Record<string, `0x${string}`> = {};
     [
         ["3", ROUTE_PROCESSOR_3_ADDRESS],
         ["3.1", ROUTE_PROCESSOR_3_1_ADDRESS],
         ["3.2", ROUTE_PROCESSOR_3_2_ADDRESS],
         ["4", ROUTE_PROCESSOR_4_ADDRESS],
+        ["6", ROUTE_PROCESSOR_6_ADDRESS],
     ].forEach(([key, addresses]: any[]) => {
         const address = addresses[chainId];
         if (address) {
             routeProcessors[key] = address;
         }
     });
-    if (!routeProcessors["4"])
-        return Result.err(
-            new ChainConfigError(
-                `missing route processor 4 address for chain ${chainId}`,
-                ChainConfigErrorType.MissingSushiRouteProcessor4Address,
-            ),
-        );
 
     // get known stable coins of the chain
     const stableTokens = (STABLES as any)[chainId];
 
-    // statically determine the chain's dollar denominated token, USDC, USDT or
-    // USDG, from the chain's known stables, falling back to its base trading
-    // tokens for a chain with no usable stables entry whose dollar token is a
-    // base token of the router (like USDG on Robinhood)
+    // statically determine the chain's dollar denominated tokens, see
+    // findUsdTokens, from the chain's known stables, falling back to its base
+    // trading tokens for a chain with no usable stables entry whose dollar
+    // token is a base token of the router (like USDG on Robinhood)
     const baseTokens = (BASES_TO_CHECK_TRADES_AGAINST as any)[chainId];
-    const usdToken = findUsdToken(stableTokens) ?? findUsdToken(baseTokens);
+    const stableUsdTokens = findUsdTokens(stableTokens);
+    const usdTokens = stableUsdTokens.length ? stableUsdTokens : findUsdTokens(baseTokens);
 
     return Result.ok({
         ...chain,
         nativeWrappedToken,
-        usdToken,
+        usdTokens,
         routeProcessors,
         stableTokens,
         isSpecialL2: SpecialL2Chains.is(chain.id),

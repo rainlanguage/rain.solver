@@ -70,7 +70,7 @@ describe("RainSolverRouter", () => {
             const mockConfig: RainSolverRouterConfig = {
                 chainId,
                 client: mockClient,
-                sushiRouterConfig: { sushiRouteProcessor4Address: "0xsushi" as `0x${string}` },
+                sushiRouterConfig: { sushiRouteProcessorAddress: "0xsushi" as `0x${string}` },
                 balancerRouterConfig: { balancerRouterAddress: "0xbalancer" as `0x${string}` },
                 stabullRouter: true,
             };
@@ -137,7 +137,7 @@ describe("RainSolverRouter", () => {
                 chainId,
                 client: mockClient,
                 sushiRouterConfig: {
-                    sushiRouteProcessor4Address: "0xsushi" as `0x${string}`,
+                    sushiRouteProcessorAddress: "0xsushi" as `0x${string}`,
                     liquidityProviders: [LiquidityProviders.ApeSwap],
                 },
             };

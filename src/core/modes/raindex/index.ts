@@ -2,7 +2,7 @@ import assert from "assert";
 import { RainSolver } from "../..";
 import { Pair } from "../../../order";
 import { Token } from "sushi/currency";
-import { Router, RPParams } from "sushi";
+import { RPParams } from "sushi";
 import { Attributes } from "@opentelemetry/api";
 import { RainSolverSigner } from "../../../signer";
 import { ONE18, scaleFrom18 } from "../../../math";
@@ -10,7 +10,7 @@ import { SimulationHaltReason } from "../simulator";
 import { RaindexRouterTradeSimulator } from "./simulation";
 import { SimulationResult, TradeType } from "../../types";
 import { getOptimalSortedList } from "../../../order/pair";
-import { SushiRouter, SushiRouterQuote } from "../../../router";
+import { SushiRouter, SushiRouterQuote, getRouteProcessorParams } from "../../../router";
 import { Result, extendObjectWithHeader } from "../../../common";
 import { calcCounterpartyInputToEthPrice, calcCounterpartyOutputToEthPrice } from "./utils";
 
@@ -117,13 +117,13 @@ export async function findBestRaindexRouterTrade(
             /**/
         }
 
-        const rpParams = Router.routeProcessor4Params(
+        const rpParams = getRouteProcessorParams(
+            this.state,
             quoteResult.value.route.pcMap,
             quoteResult.value.route.route,
             fromToken,
             toToken,
             addresses.destination, // destination is the sushi rp arb address
-            this.state.chainConfig.routeProcessors["4"],
         );
 
         quotes.set(baseTkn, {

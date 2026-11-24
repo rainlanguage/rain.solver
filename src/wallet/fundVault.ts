@@ -1,4 +1,3 @@
-import { Router } from "sushi";
 import { ABI } from "../common";
 import { SelfFundVault } from "../config";
 import { RainSolverSigner } from "../signer";
@@ -6,6 +5,7 @@ import { resetNonce } from "../signer/actions";
 import { Native, Token } from "sushi/currency";
 import { erc20Abi, maxUint256, parseUnits } from "viem";
 import { findMultiRouteExactOut, RToken } from "sushi/tines";
+import { getRouteProcessor, getRouteProcessorParams } from "../router/sushi/routeProcessor";
 
 /**
  * Funds the vault with the given details
@@ -14,7 +14,7 @@ import { findMultiRouteExactOut, RToken } from "sushi/tines";
  * @returns The result of the funding process
  */
 export async function fundVault(details: SelfFundVault, signer: RainSolverSigner) {
-    const rp4Address = signer.state.chainConfig.routeProcessors["4"] as `0x${string}`;
+    const rpAddress = getRouteProcessor(signer.state).address;
     const gasToken = Native.onChain(signer.chain.id);
 
     // get cuirrent vault balance
@@ -105,20 +105,21 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
             );
             route.legs = route.legs.map((l) => ({
                 ...l,
-                poolName: pcMap.get(l.poolAddress)?.poolName ?? "Unknown Pool",
+                // the pool codes are by unique id, Uniswap V4 style pools share one address
+                poolName: pcMap.get(l.uniqueId)?.poolName ?? "Unknown Pool",
             }));
-            const rpParams = Router.routeProcessor4Params(
+            const rpParams = getRouteProcessorParams(
+                signer.state,
                 pcMap,
                 route,
                 gasToken,
                 vaultToken,
                 signer.account.address,
-                rp4Address,
             );
 
             // perform the swap
             const { wait } = await signer.asWriteSigner().sendTx({
-                to: rp4Address,
+                to: rpAddress,
                 data: rpParams.data as `0x${string}`,
                 value: route.amountInBI,
             });

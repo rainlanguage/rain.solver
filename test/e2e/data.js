@@ -233,6 +233,34 @@ module.exports = [
         [LiquidityProviders.LynexV1, LiquidityProviders.LynexV2],
         ["1", "100"],
     ],
+    [
+        // RouteProcessor6 with the Comfy pools, the PancakeSwap Infinity style pools
+        ChainId.ZEROG,
+        process?.env?.TEST_ZEROG_RPC,
+        51175000,
+        [
+            WNATIVE[ChainId.ZEROG],
+            new Token({
+                chainId: ChainId.ZEROG,
+                address: "0xc77FBd3824cc68e612b26114D176879aDdc29463",
+                decimals: 18,
+                symbol: "iAI",
+            }),
+        ],
+        [
+            "0xCcd7aF961cEDA6Bd383FeA1EcC2fFAa410d991E9",
+            "0x53a0c312Cd4a923029BE2875048bF8cFCD755b61",
+        ],
+        [LiquidityProviders.Comfy],
+        ["1", "10"],
+        undefined,
+        undefined,
+        undefined,
+        false,
+
+        // route processor version, 4 when unset
+        6,
+    ],
     // [
     //     ChainId.MATCHAIN,
     //     process?.env?.TEST_MATCHAIN_RPC,

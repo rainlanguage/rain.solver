@@ -1,10 +1,15 @@
+import { ChainId } from "sushi";
 import { TokenDetails } from "../common";
-import { ChainId, Router } from "sushi";
 import { RainSolverSigner } from "../signer";
 import { resetNonce } from "../signer/actions";
 import { Native, Token } from "sushi/currency";
 import { poolFilter } from "../router/sushi/blacklist";
 import { encodeFunctionData, erc20Abi, maxUint256 } from "viem";
+import {
+    getLegPool,
+    getRouteProcessor,
+    getRouteProcessorParams,
+} from "../router/sushi/routeProcessor";
 
 /**
  * Transfers the given token from the given wallet to the main wallet
@@ -127,7 +132,7 @@ export async function convertToGas(
     token: TokenDetails,
     swapCostMultiplier = 25n, // defaults to 25 times greater than swap transaction gas cost
 ) {
-    const rp4Address = from.state.chainConfig.routeProcessors["4"] as `0x${string}`;
+    const rpAddress = getRouteProcessor(from.state).address;
     const buyToken = Native.onChain(from.state.chainConfig.id);
     const sellToken = new Token({
         chainId: from.state.chainConfig.id,
@@ -155,14 +160,14 @@ export async function convertToGas(
         address: sellToken.address,
         abi: erc20Abi,
         functionName: "allowance",
-        args: [from.account.address, rp4Address],
+        args: [from.account.address, rpAddress],
     });
     if (balance > allowance) {
         const hash = await from.asWriteSigner().writeContract({
             address: sellToken.address,
             abi: erc20Abi,
             functionName: "approve",
-            args: [rp4Address, maxUint256],
+            args: [rpAddress, maxUint256],
         });
         resetNonce(from); // viem took the nonce over rpc, out of the nonce cache
         await from.waitForReceipt({ hash });
@@ -181,13 +186,13 @@ export async function convertToGas(
         poolFilter,
         from.state.appOptions.route,
     );
-    const rpParams = Router.routeProcessor4Params(
+    const rpParams = getRouteProcessorParams(
+        from.state,
         pcMap,
         route,
         sellToken,
         buyToken,
         from.account.address,
-        rp4Address,
     );
     // visualize the route, in other words parse it as a string
     const visualizedRoute = route.legs
@@ -199,7 +204,7 @@ export async function convertToGas(
                 "(" +
                 ((v as any)?.poolName ?? "") +
                 " " +
-                (v.poolAddress ?? "") +
+                (v.poolAddress ? getLegPool(v) : "") +
                 ")"
             );
         })
@@ -207,12 +212,12 @@ export async function convertToGas(
 
     // make sure cost of the transaction does not outweigh the received gas amount
     const cost = await from.estimateGasCost({
-        to: rp4Address,
+        to: rpAddress,
         data: rpParams.data as `0x${string}`,
     });
     if (rpParams.amountOutMin >= cost.totalGasCost * swapCostMultiplier) {
         const { hash } = await from.asWriteSigner().sendTx({
-            to: rp4Address,
+            to: rpAddress,
             data: rpParams.data as `0x${string}`,
         });
         const receipt = await from.waitForReceipt({ hash });

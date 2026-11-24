@@ -20,6 +20,9 @@ vi.mock("sushi", async (importOriginal) => {
             static routeProcessor4Params() {
                 return { data: "0xdata", amountOutMin: 1000n };
             }
+            static routeProcessor6Params() {
+                return { data: "0xdata6", amountOutMin: 1000n };
+            }
         },
     };
 });
@@ -398,6 +401,46 @@ describe("Test sweep functions", () => {
             expect(mockFromSigner.state.nonceCache.get("0xfrom")).toBeUndefined();
         });
 
+        it("should check the allowance, approve, estimate and swap with RouteProcessor6 when it is configured", async () => {
+            const rp6Address = "0xrp6" as `0x${string}`;
+            (mockFromSigner.state as any).appOptions = { routeProcessor: 6 };
+            (mockFromSigner.state.chainConfig.routeProcessors as any)["6"] = rp6Address;
+            (mockFromSigner.readContract as Mock)
+                .mockResolvedValueOnce(1000n) // balance check
+                .mockResolvedValueOnce(500n); // allowance check
+            (mockFromSigner.writeContract as Mock).mockResolvedValue("0xapprove");
+            (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({ status: "success" });
+            (mockRouter.findBestRoute as Mock).mockResolvedValue({
+                pcMap: new Map(),
+                route: { legs: [], amountOutBI: 2000n },
+            });
+            (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 10n });
+            (mockFromSigner.sendTx as Mock).mockResolvedValue({ hash: "0xswap" });
+
+            const result = await convertToGas(mockFromSigner, mockToken);
+
+            expect(result.status).toBe("Successfully swapped");
+            // every address is the RouteProcessor6 one, and the swap carries its route code
+            expect(mockFromSigner.readContract).toHaveBeenNthCalledWith(
+                2,
+                expect.objectContaining({
+                    functionName: "allowance",
+                    args: [mockFromSigner.account.address, rp6Address],
+                }),
+            );
+            expect(mockFromSigner.writeContract).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    functionName: "approve",
+                    args: [rp6Address, maxUint256],
+                }),
+            );
+            expect(mockFromSigner.estimateGasCost).toHaveBeenCalledWith({
+                to: rp6Address,
+                data: "0xdata6",
+            });
+            expect(mockFromSigner.sendTx).toHaveBeenCalledWith({ to: rp6Address, data: "0xdata6" });
+        });
+
         it("should skip swap if cost outweighs benefit", async () => {
             // mock balance and allowance checks
             (mockFromSigner.readContract as Mock)
@@ -479,6 +522,38 @@ describe("Test sweep functions", () => {
             expect(result.amount).toBe(1000n);
             expect(result.receivedAmount).toBe(1000n);
             expect(result.route).toContain("ETH/TEST(SushiSwap 0xpool)");
+        });
+
+        it("should show the pool id of a Uniswap V4 style leg in the route", async () => {
+            (mockFromSigner.readContract as Mock)
+                .mockResolvedValueOnce(1000n) // balance check
+                .mockResolvedValueOnce(1000n); // allowance check (sufficient)
+
+            // the V4 style pools have the PoolManager address, their unique id is the pool id and it
+            const manager = "0x" + "a".repeat(40);
+            const id = "0x" + "1".repeat(64);
+            (mockRouter.findBestRoute as Mock).mockResolvedValue({
+                pcMap: new Map(),
+                route: {
+                    legs: [
+                        {
+                            tokenFrom: { symbol: "TEST" },
+                            tokenTo: { symbol: "ETH" },
+                            poolAddress: manager,
+                            uniqueId: id + manager,
+                            poolName: "Comfy",
+                        },
+                    ],
+                    amountOutBI: 1000n,
+                },
+            });
+            (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 10n });
+            (mockFromSigner.sendTx as Mock).mockResolvedValue({ hash: "0xswap" });
+            (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({ status: "success" });
+
+            const result = await convertToGas(mockFromSigner, mockToken);
+
+            expect(result.route).toBe(`ETH/TEST(Comfy ${id})`);
         });
 
         it("should handle failed swap transaction", async () => {

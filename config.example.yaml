@@ -102,7 +102,7 @@ contracts:
 
 # list of liquidity providers
 # if provided through an env var, they should be separated by a comma
-# default includes all available liquidity providers
+# default includes all available liquidity providers, except the Uniswap V4 style ones with routeProcessor 4
 liquidityProviders:
   - sushiswapv2
   - uniswapv3
@@ -110,6 +110,13 @@ liquidityProviders:
 
 # Specifies the routing mode 'multi' or 'single' or 'full', default is single
 route: single
+
+# The sushi RouteProcessor version that the trades and the wallet swaps route through, 4 or 6. RouteProcessor6 also
+# routes through the Uniswap V4 style pools (UniswapV4 and Comfy). With 4, those pools are left out of the routes,
+# also when they are in liquidityProviders, and a liquidityProviders list of only them stops the bot from starting.
+# With 6, the chain needs a RouteProcessor6 address in the sushi lib, else the bot does not start, and the sushiArb
+# contract must be the one that calls RouteProcessor6. Default is 4.
+routeProcessor: 4
 
 # What starts the next round, required, both mode and interval must be set, they have no default.
 # mode time: the next round starts once interval ms passed after the round, 0 or more.

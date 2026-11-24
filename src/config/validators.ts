@@ -1,6 +1,6 @@
 import assert from "assert";
 import { isAddress } from "viem";
-import { AppOptionsContracts, SelfFundVault } from ".";
+import { AppOptionsContracts, RouteProcessorVersion, SelfFundVault } from ".";
 import { RpcConfig, RpcSelectionMode } from "../rpc";
 import { isBigNumberish } from "../math";
 import { SgFilter } from "../subgraph/filter";
@@ -206,6 +206,21 @@ export namespace Validator {
         );
         if (route === "full") return undefined;
         else return route;
+    }
+
+    /**
+     * Resolves config's sushi RouteProcessor version, 4 or 6, as a number or
+     * its text, 4 when unset, see AppOptions.routeProcessor
+     */
+    export function resolveRouteProcessor(input: any): RouteProcessorVersion {
+        const value = readValue(input).value;
+        if (value === undefined || value === null || value === "") return 4;
+        const version = typeof value === "string" ? Number(value.trim()) : value;
+        assert(
+            version === 4 || version === 6,
+            validationError("expected either of 4 or 6 for routeProcessor"),
+        );
+        return version;
     }
 
     /** Resolves config's router secondary route try mode */

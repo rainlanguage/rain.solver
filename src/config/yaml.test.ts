@@ -37,6 +37,7 @@ liquidityProviders:
  - lp1
  - lp2
 route: multi
+routeProcessor: 6
 roundTrigger:
   mode: block
   interval: 10
@@ -140,6 +141,7 @@ orderbookTradeTypes:
             },
             liquidityProviders: ["lp1", "lp2"],
             route: "multi",
+            routeProcessor: 6,
             roundTrigger: { mode: RoundTriggerMode.Block, interval: 10 },
             poolUpdateInterval: 30,
             gasCoveragePercentage: "110",
@@ -370,6 +372,7 @@ orderbookTradeTypes:
         );
         assert.deepEqual(result.liquidityProviders, ["lp1", "lp2"]);
         assert.deepEqual(result.route, "multi");
+        assert.equal(result.routeProcessor, 4); // should be default 4
 
         // the round trigger as given, it has no default
         assert.deepEqual(result.roundTrigger, { mode: RoundTriggerMode.Time, interval: 20000 });

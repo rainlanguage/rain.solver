@@ -164,7 +164,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             stabullRouter: false,
             sushiRouterConfig: {
                 liquidityProviders: [LiquidityProviders.UniswapV2],
-                sushiRouteProcessor4Address: "0xrouteProcessor",
+                sushiRouteProcessorAddress: "0xrouteProcessor",
             },
             balancerRouterConfig: {
                 balancerRouterAddress: expect.any(String),
@@ -211,6 +211,90 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
         expect(result.error.type).toBe(SharedStateErrorType.ChainConfigError);
     });
 
+    it("should throw if the chain has no address for the configured route processor", async () => {
+        options.routeProcessor = 6;
+        const result = await SharedStateConfig.tryFromAppOptions(options);
+        assert(result.isErr());
+        expect(result.error.type).toBe(SharedStateErrorType.ChainConfigError);
+        expect(result.error.message).toBe(
+            "missing route processor 6 address for the network with chain id: 1",
+        );
+    });
+
+    it("should throw if the liquidity providers are only Uniswap V4 style ones with RouteProcessor4", async () => {
+        const spy = vi.spyOn(RainSolverRouter, "create");
+        options.routeProcessor = 4;
+        options.liquidityProviders = ["Comfy", "UniswapV4"];
+        const result = await SharedStateConfig.tryFromAppOptions(options);
+        assert(result.isErr());
+        expect(result.error.type).toBe(SharedStateErrorType.RouterInitializationError);
+        expect(result.error.message).toBe(
+            "no liquidity provider is left with route processor 4, the Uniswap V4 style ones in liquidityProviders (Comfy, UniswapV4) need route processor 6",
+        );
+        // no fall back to all the other providers
+        expect(spy).not.toHaveBeenCalled();
+        spy.mockRestore();
+    });
+
+    it("should name the unknown providers apart from the Uniswap V4 style ones in the error", async () => {
+        options.routeProcessor = 4;
+        // a typo next to a Uniswap V4 style name
+        options.liquidityProviders = ["comfy", "sushiswapv2x"];
+        const result = await SharedStateConfig.tryFromAppOptions(options);
+        assert(result.isErr());
+        expect(result.error.message).toBe(
+            "no liquidity provider is left with route processor 4, the Uniswap V4 style ones in liquidityProviders (comfy) need route processor 6, and these are not known liquidity providers: sushiswapv2x",
+        );
+    });
+
+    it("should route through RouteProcessor6 with the Uniswap V4 style pools when it is configured", async () => {
+        const spy = vi.spyOn(RainSolverRouter, "create");
+        (getChainConfig as Mock).mockReturnValue(
+            Result.ok({
+                id: 1,
+                isSpecialL2: false,
+                nativeWrappedToken: "0xwrapped",
+                routeProcessors: { "4": "0xrouteProcessor", "6": "0xrouteProcessor6" },
+                stableTokens: [],
+            }),
+        );
+        options.routeProcessor = 6;
+        options.liquidityProviders = ["UniswapV2", "UniswapV4"];
+        const result = await SharedStateConfig.tryFromAppOptions(options);
+        assert(result.isOk());
+        expect(result.value.liquidityProviders).toEqual([
+            LiquidityProviders.UniswapV2,
+            LiquidityProviders.UniswapV4,
+        ]);
+        expect(spy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                sushiRouterConfig: {
+                    liquidityProviders: [
+                        LiquidityProviders.UniswapV2,
+                        LiquidityProviders.UniswapV4,
+                    ],
+                    sushiRouteProcessorAddress: "0xrouteProcessor6",
+                },
+            }),
+        );
+
+        // with RouteProcessor4 the Uniswap V4 style pools are left out
+        spy.mockClear();
+        options.routeProcessor = 4;
+        const result4 = await SharedStateConfig.tryFromAppOptions(options);
+        assert(result4.isOk());
+        expect(result4.value.liquidityProviders).toEqual([LiquidityProviders.UniswapV2]);
+        expect(spy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                sushiRouterConfig: {
+                    liquidityProviders: [LiquidityProviders.UniswapV2],
+                    sushiRouteProcessorAddress: "0xrouteProcessor",
+                },
+            }),
+        );
+        spy.mockRestore();
+    });
+
     it("should throw if fails to init router", async () => {
         const spy = vi.spyOn(RainSolverRouter, "create");
         (spy as Mock).mockResolvedValue(Result.err("some err"));
@@ -224,7 +308,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             stabullRouter: false,
             sushiRouterConfig: {
                 liquidityProviders: [LiquidityProviders.UniswapV2],
-                sushiRouteProcessor4Address: "0xrouteProcessor",
+                sushiRouteProcessorAddress: "0xrouteProcessor",
             },
             balancerRouterConfig: {
                 balancerRouterAddress: expect.any(String),
@@ -245,7 +329,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             stabullRouter: false,
             sushiRouterConfig: {
                 liquidityProviders: [LiquidityProviders.UniswapV2],
-                sushiRouteProcessor4Address: "0xrouteProcessor",
+                sushiRouteProcessorAddress: "0xrouteProcessor",
             },
             balancerRouterConfig: undefined,
         });
@@ -266,7 +350,7 @@ describe("Test SharedStateConfig tryFromAppOptions", () => {
             stabullRouter: false,
             sushiRouterConfig: {
                 liquidityProviders: [LiquidityProviders.UniswapV2],
-                sushiRouteProcessor4Address: "0xrouteProcessor",
+                sushiRouteProcessorAddress: "0xrouteProcessor",
             },
             balancerRouterConfig: undefined,
         });
@@ -1397,19 +1481,22 @@ describe("Test SharedState", () => {
 
     describe("Test updateGasTokenUsdPrice method", () => {
         it("should update the gas token dollar price", async () => {
+            const usdc = { symbol: "USDC" };
+            const usdt = { symbol: "USDT" };
             (sharedState.chainConfig as any).nativeWrappedToken = { symbol: "WETH" };
-            (sharedState.chainConfig as any).usdToken = { symbol: "USDC" };
+            (sharedState.chainConfig as any).usdTokens = [usdc, usdt];
             const getMarketPriceSpy = vi
                 .spyOn(sharedState, "getMarketPrice")
                 .mockResolvedValueOnce(Result.ok({ price: "3500.25" }) as any);
 
             await sharedState.updateGasTokenUsdPrice(123n);
 
+            // the first dollar token quote sets the price, the next ones are not quoted
             expect(sharedState.gasTokenUsdPrice).toBe("3500.25");
             expect(getMarketPriceSpy).toHaveBeenCalledTimes(1);
             expect(getMarketPriceSpy).toHaveBeenCalledWith(
                 sharedState.chainConfig.nativeWrappedToken,
-                sharedState.chainConfig.usdToken,
+                usdc,
                 123n,
                 true,
             );
@@ -1417,22 +1504,56 @@ describe("Test SharedState", () => {
             getMarketPriceSpy.mockRestore();
         });
 
-        it("should keep the previous price when the quote fails", async () => {
+        it("should take the price of the next dollar token when a quote fails", async () => {
+            const usdz = { symbol: "USDZ" };
+            const usdce = { symbol: "USDC.e" };
+            (sharedState.chainConfig as any).nativeWrappedToken = { symbol: "W0G" };
+            (sharedState.chainConfig as any).usdTokens = [usdz, usdce];
+            const getMarketPriceSpy = vi
+                .spyOn(sharedState, "getMarketPrice")
+                .mockResolvedValueOnce(Result.err(new Error("no way")) as any)
+                .mockResolvedValueOnce(Result.ok({ price: "0.55" }) as any);
+
+            await sharedState.updateGasTokenUsdPrice(123n);
+
+            expect(sharedState.gasTokenUsdPrice).toBe("0.55");
+            expect(getMarketPriceSpy).toHaveBeenCalledTimes(2);
+            expect(getMarketPriceSpy).toHaveBeenNthCalledWith(
+                1,
+                sharedState.chainConfig.nativeWrappedToken,
+                usdz,
+                123n,
+                true,
+            );
+            expect(getMarketPriceSpy).toHaveBeenNthCalledWith(
+                2,
+                sharedState.chainConfig.nativeWrappedToken,
+                usdce,
+                123n,
+                true,
+            );
+
+            getMarketPriceSpy.mockRestore();
+        });
+
+        it("should keep the previous price when all quotes fail", async () => {
             (sharedState.chainConfig as any).nativeWrappedToken = { symbol: "WETH" };
-            (sharedState.chainConfig as any).usdToken = { symbol: "USDC" };
+            (sharedState.chainConfig as any).usdTokens = [{ symbol: "USDC" }, { symbol: "USDT" }];
             sharedState.gasTokenUsdPrice = "1000";
             const getMarketPriceSpy = vi
                 .spyOn(sharedState, "getMarketPrice")
-                .mockResolvedValueOnce(Result.err(new Error("no way")) as any);
+                .mockResolvedValue(Result.err(new Error("no way")) as any);
 
             await sharedState.updateGasTokenUsdPrice(123n);
 
             expect(sharedState.gasTokenUsdPrice).toBe("1000");
+            expect(getMarketPriceSpy).toHaveBeenCalledTimes(2);
 
             getMarketPriceSpy.mockRestore();
         });
 
         it("should do nothing when the chain has no dollar token", async () => {
+            (sharedState.chainConfig as any).usdTokens = [];
             const getMarketPriceSpy = vi.spyOn(sharedState, "getMarketPrice");
 
             await sharedState.updateGasTokenUsdPrice(123n);

@@ -7,7 +7,16 @@ import { BlackListSet, poolFilter } from "./blacklist";
 import { TakeOrdersConfigType } from "../../order/types";
 import { SushiRouterError, SushiRouterErrorType } from "./error";
 import { calculatePrice18, scaleFrom18, scaleTo18 } from "../../math";
-import { ChainId, LiquidityProviders, PoolCode, RainDataFetcher, Router } from "sushi";
+import type { RouteProcessorVersion } from "../../config";
+import { getLegPool, getRouteProcessorParams } from "./routeProcessor";
+import {
+    Router,
+    ChainId,
+    PoolCode,
+    RainDataFetcher,
+    LiquidityProviders,
+    UniV4LiquidityProviders,
+} from "sushi";
 import { Chain, Account, Transport, formatUnits, PublicClient, encodeAbiParameters } from "viem";
 import {
     RouterType,
@@ -27,6 +36,7 @@ import {
 } from "sushi/config";
 
 export * from "./blacklist";
+export * from "./routeProcessor";
 
 /** Sushi RouteProcessor addresses grouped by version */
 export namespace SushiRouteProcessorAddresses {
@@ -107,8 +117,6 @@ export type SushiTradeParams = {
 export class SushiRouter extends RainSolverRouterBase {
     /** The address of the route processor contract */
     readonly routerAddress: `0x${string}`;
-    /** The protocol version of the Sushi */
-    readonly protocolVersion = 4 as const;
     /** The list of liquidity providers to use, if undefined, all available liquidity provider for the operating chain will be used */
     readonly liquidityProviders?: LiquidityProviders[];
 
@@ -133,7 +141,7 @@ export class SushiRouter extends RainSolverRouterBase {
      * Tries to initialize the Sushi Router instance from the given params
      * @param chainId - The chain id of the operating chain
      * @param client - A viem client instance
-     * @param routerAddress - The address of the RouteProcessor4 contract
+     * @param routerAddress - The address of the route processor the bot routes through, see getRouteProcessor
      * @param liquidityProviders - Optional list of liquidity providers to use, if undefined,
      * all available liquidity provider for the operating chain will be used
      * @returns A Result containing the Sushi Router instance or an error
@@ -373,22 +381,37 @@ export class SushiRouter extends RainSolverRouterBase {
     }
 
     /**
-     * Resolves an array of case-insensitive names to LiquidityProviders type, ignores the ones that are not valid
+     * Resolves an array of case-insensitive names to LiquidityProviders type, ignores the ones that are not valid.
+     * RouteProcessor4 cannot route through the Uniswap V4 style pools, see UniV4LiquidityProviders, so with it
+     * they are left out, also when the given names include them. When none of the given names is valid, all the
+     * providers are used, but when the valid names are only Uniswap V4 style ones that are left out, the result
+     * is empty, so the provider limit of the given names is not lost
      * @param liquidityProviders - List of liquidity providers
+     * @param routeProcessor - The route processor version the routes go through, see AppOptions.routeProcessor
      */
-    static processLiquidityProviders(liquidityProviders?: string[]): LiquidityProviders[] {
-        const LPS = Object.values(LiquidityProviders);
+    static processLiquidityProviders(
+        liquidityProviders?: string[],
+        routeProcessor: RouteProcessorVersion = 4,
+    ): LiquidityProviders[] {
+        const LPS = Object.values(LiquidityProviders).filter(
+            (v) => routeProcessor !== 4 || !UniV4LiquidityProviders.includes(v),
+        );
         if (!liquidityProviders || !liquidityProviders.length) {
             return LPS.filter((v) => !ExcludedLiquidityProviders.includes(v as any));
         }
         const lps: LiquidityProviders[] = [];
+        let leftOut = false;
         for (let i = 0; i < liquidityProviders.length; i++) {
-            const index = LPS.findIndex(
-                (v) => v.toLowerCase() === liquidityProviders[i].toLowerCase().trim(),
-            );
-            if (index > -1 && !lps.includes(LPS[index])) lps.push(LPS[index]);
+            const name = liquidityProviders[i].toLowerCase().trim();
+            const index = LPS.findIndex((v) => v.toLowerCase() === name);
+            if (index > -1) {
+                if (!lps.includes(LPS[index])) lps.push(LPS[index]);
+            } else if (UniV4LiquidityProviders.some((v) => v.toLowerCase() === name)) {
+                leftOut = true;
+            }
         }
-        return lps.length ? lps : LPS.filter((v) => !ExcludedLiquidityProviders.includes(v as any));
+        if (lps.length || leftOut) return lps;
+        return LPS.filter((v) => !ExcludedLiquidityProviders.includes(v as any));
     }
 
     /**
@@ -425,10 +448,8 @@ export class SushiRouter extends RainSolverRouterBase {
                             (e) =>
                                 e.tokenFrom.address.toLowerCase() ===
                                     portions.at(-1)?.tokenTo.address.toLowerCase() &&
-                                portions.every(
-                                    (k) =>
-                                        k.poolAddress.toLowerCase() !== e.poolAddress.toLowerCase(),
-                                ),
+                                // by the unique id, Uniswap V4 style pools share one address
+                                portions.every((k) => k.uniqueId !== e.uniqueId),
                         );
                         if (legPortion) {
                             portions.push(legPortion);
@@ -461,7 +482,7 @@ export class SushiRouter extends RainSolverRouterBase {
                                 " (" +
                                 (e as any).poolName +
                                 " " +
-                                e.poolAddress +
+                                getLegPool(e) +
                                 ")",
                         )
                         .join(" >> "),
@@ -543,13 +564,14 @@ export class SushiRouter extends RainSolverRouterBase {
             /**/
         }
 
-        const rpParams = Router.routeProcessor4Params(
+        // the sushi rp arb contract calls the route processor of the same version
+        const rpParams = getRouteProcessorParams(
+            state,
             quoteResult.value.route.pcMap,
             quoteResult.value.route.route,
             fromToken,
             toToken,
             addresses.destination, // destination is the sushi rp arb address
-            state.chainConfig.routeProcessors["4"],
         );
 
         const takeOrdersConfigStructResult = this.getTakeOrdersConfig(
