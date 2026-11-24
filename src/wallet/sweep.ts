@@ -41,7 +41,9 @@ export async function transferTokenFrom(
     const totalCost = (cost.totalGasCost * 110n) / 100n;
     if (totalCost > gasBalance) {
         // fund the wallet
-        const { hash } = await to.sendTx({ to: from.account.address, value: totalCost });
+        const { hash } = await to
+            .asWriteSigner()
+            .sendTx({ to: from.account.address, value: totalCost });
         const receipt = await to.waitForReceipt({ hash });
         if (receipt.status !== "success") {
             throw {
@@ -54,7 +56,7 @@ export async function transferTokenFrom(
     }
 
     // perform the transfer transaction
-    const hash = await from.writeContract({
+    const hash = await from.asWriteSigner().writeContract({
         address: token.address as `0x${string}`,
         abi: erc20Abi,
         functionName: "transfer",
@@ -89,7 +91,7 @@ export async function transferRemainingGasFrom(from: RainSolverSigner, to: `0x${
     const totalCost = cost.gas * gasPrice + (cost.l1Cost * 102n) / 100n;
     if (balance > totalCost) {
         const amount = balance - totalCost;
-        const { hash } = await from.sendTx({
+        const { hash } = await from.asWriteSigner().sendTx({
             to,
             value: amount,
             gas: cost.gas,
@@ -156,7 +158,7 @@ export async function convertToGas(
         args: [from.account.address, rp4Address],
     });
     if (balance > allowance) {
-        const hash = await from.writeContract({
+        const hash = await from.asWriteSigner().writeContract({
             address: sellToken.address,
             abi: erc20Abi,
             functionName: "approve",
@@ -209,7 +211,7 @@ export async function convertToGas(
         data: rpParams.data as `0x${string}`,
     });
     if (rpParams.amountOutMin >= cost.totalGasCost * swapCostMultiplier) {
-        const { hash } = await from.sendTx({
+        const { hash } = await from.asWriteSigner().sendTx({
             to: rp4Address,
             data: rpParams.data as `0x${string}`,
         });

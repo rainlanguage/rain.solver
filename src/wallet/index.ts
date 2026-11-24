@@ -149,7 +149,8 @@ export class WalletManager {
     }
 
     /**
-     * Sends gas token the given wallet address from the main wallet
+     * Sends gas token the given wallet address from the main wallet, the tx goes out
+     * through the write rpcs when they are set, else through the read rpcs
      * @param wallet - The destination wallet address
      * @param topupAmount - (optional) Topup amount, default is the top up amount in this.config
      * @returns The report of the funding process
@@ -208,7 +209,8 @@ export class WalletManager {
                     report.end();
                     return Result.ok(report);
                 }
-                const { wait } = await this.mainSigner.sendTx({
+                // the write signer is the main signer itself when no write rpc is set
+                const { wait } = await this.mainSigner.asWriteSigner().sendTx({
                     to: wallet as `0x${string}`,
                     value: amount - balance,
                 });

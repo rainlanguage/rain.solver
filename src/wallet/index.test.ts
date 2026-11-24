@@ -12,17 +12,21 @@ import { SWEEP_RETRY_COUNT, WalletManager } from "./index";
 import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 import { describe, it, expect, vi, beforeEach, Mock, assert } from "vitest";
 
-// mock signer module
+// mock signer module, the write signer is the signer itself, as with no write rpc set
 vi.mock("../signer", () => ({
     RainSolverSigner: {
-        create: vi.fn().mockImplementation((wallet) => ({
-            account: wallet,
-            getSelfBalance: vi.fn(),
-            getBalance: vi.fn().mockResolvedValue(0n),
-            getTransactionCount: vi.fn().mockResolvedValue(0),
-            sendTx: vi.fn(),
-            waitForReceipt: vi.fn(),
-        })),
+        create: vi.fn().mockImplementation((wallet) => {
+            const signer: any = {
+                account: wallet,
+                getSelfBalance: vi.fn(),
+                getBalance: vi.fn().mockResolvedValue(0n),
+                getTransactionCount: vi.fn().mockResolvedValue(0),
+                sendTx: vi.fn(),
+                waitForReceipt: vi.fn(),
+            };
+            signer.asWriteSigner = vi.fn(() => signer);
+            return signer;
+        }),
     },
 }));
 
@@ -314,6 +318,53 @@ describe("Test WalletManager", () => {
 
             expect(report.status?.code).toBe(SpanStatusCode.OK);
             expect(report.status?.message).toBe("Successfully topped up");
+            // no write rpc, the send goes through the main signer
+            expect(walletManager.mainSigner.asWriteSigner).toHaveBeenCalled();
+            expect(walletManager.mainSigner.sendTx).toHaveBeenLastCalledWith({
+                to: targetWallet,
+                value: parseUnits("0.1", 18),
+            });
+        });
+
+        it("should send the topup through the write signer when the write rpcs are set", async () => {
+            const { walletManager } = await WalletManager.init(multiWalletState);
+            const targetWallet = "0x1234567890123456789012345678901234567890";
+            // the init funds the workers too, only the calls of this topup count
+            vi.mocked(walletManager.mainSigner.getSelfBalance).mockClear();
+            vi.mocked(walletManager.mainSigner.sendTx).mockClear();
+            vi.mocked(multiWalletState.client.getBalance).mockClear();
+
+            (walletManager.mainSigner.getSelfBalance as Mock).mockResolvedValue(
+                parseUnits("1", 18),
+            );
+            // the worker has some gas already, the topup fills the rest
+            (multiWalletState.client.getBalance as Mock).mockResolvedValueOnce(
+                parseUnits("0.04", 18),
+            );
+            const writeSigner = {
+                sendTx: vi.fn().mockResolvedValue({
+                    hash: "0x123",
+                    wait: vi.fn().mockResolvedValue({ status: "success" }),
+                }),
+            };
+            (walletManager.mainSigner.asWriteSigner as Mock).mockReturnValue(writeSigner);
+
+            const result = await walletManager.fundWallet(targetWallet);
+            assert(result.isOk());
+            expect(result.value.status?.message).toBe("Successfully topped up");
+
+            // the balances are read through the main signer and the state, on the read rpcs
+            expect(walletManager.mainSigner.getSelfBalance).toHaveBeenCalledTimes(1);
+            expect(multiWalletState.client.getBalance).toHaveBeenCalledWith({
+                address: targetWallet,
+            });
+            // the send goes out on the write rpcs
+            expect(writeSigner.sendTx).toHaveBeenCalledTimes(1);
+            expect(writeSigner.sendTx).toHaveBeenCalledWith({
+                to: targetWallet,
+                value: parseUnits("0.06", 18),
+            });
+            expect(walletManager.mainSigner.sendTx).not.toHaveBeenCalled();
         });
 
         it("should handle failed transactions", async () => {

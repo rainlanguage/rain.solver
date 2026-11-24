@@ -76,6 +76,10 @@ describe("Test sweep functions", () => {
             waitForReceipt: vi.fn(),
             sendTx: vi.fn(),
         } as any;
+
+        // the write signers are the signers themselves, as with no write rpc set
+        mockFromSigner.asWriteSigner = vi.fn(() => mockFromSigner);
+        mockToSigner.asWriteSigner = vi.fn(() => mockToSigner);
     });
 
     describe("Test transferTokenFrom", () => {
@@ -111,6 +115,41 @@ describe("Test sweep functions", () => {
                 value: 110n, // 110% of gas cost
             });
             expect(result).toEqual({ amount: 100n, txHash: "0xtransferhash" });
+        });
+
+        it("should send the gas topup and the transfer through the write signers when the write rpcs are set", async () => {
+            const fromWriteSigner = { writeContract: vi.fn().mockResolvedValue("0xtransferhash") };
+            const toWriteSigner = {
+                sendTx: vi.fn().mockResolvedValue({ hash: "0xhash", wait: vi.fn() }),
+            };
+            (mockFromSigner.asWriteSigner as Mock).mockReturnValue(fromWriteSigner);
+            (mockToSigner.asWriteSigner as Mock).mockReturnValue(toWriteSigner);
+            (mockFromSigner.readContract as Mock).mockResolvedValue(100n);
+            (mockFromSigner.getSelfBalance as Mock).mockResolvedValue(50n);
+            (mockFromSigner.estimateGasCost as Mock).mockResolvedValue({ totalGasCost: 100n });
+            (mockToSigner.waitForReceipt as Mock).mockResolvedValue({ status: "success" });
+            (mockFromSigner.waitForReceipt as Mock).mockResolvedValue({ status: "success" });
+
+            const result = await transferTokenFrom(mockFromSigner, mockToSigner, mockToken);
+
+            expect(result).toEqual({ amount: 100n, txHash: "0xtransferhash" });
+            // the sends go out on the write rpcs
+            expect(toWriteSigner.sendTx).toHaveBeenCalledWith({
+                to: mockFromSigner.account.address,
+                value: 110n,
+            });
+            expect(fromWriteSigner.writeContract).toHaveBeenCalledWith({
+                address: mockToken.address,
+                abi: expect.any(Array),
+                functionName: "transfer",
+                args: [mockToSigner.account.address, 100n],
+            });
+            expect(mockToSigner.sendTx).not.toHaveBeenCalled();
+            expect(mockFromSigner.writeContract).not.toHaveBeenCalled();
+            // the reads and the receipt waits stay on the read signers
+            expect(mockFromSigner.readContract).toHaveBeenCalledTimes(1);
+            expect(mockToSigner.waitForReceipt).toHaveBeenCalledWith({ hash: "0xhash" });
+            expect(mockFromSigner.waitForReceipt).toHaveBeenCalledWith({ hash: "0xtransferhash" });
         });
 
         it("should handle funding failure", async () => {

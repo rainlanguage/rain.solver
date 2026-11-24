@@ -117,7 +117,7 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
             );
 
             // perform the swap
-            const { wait } = await signer.sendTx({
+            const { wait } = await signer.asWriteSigner().sendTx({
                 to: rp4Address,
                 data: rpParams.data as `0x${string}`,
                 value: route.amountInBI,
@@ -138,7 +138,7 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
             args: [signer.account.address, details.orderbook as `0x${string}`],
         });
         if (topupAmount > allowance) {
-            const hash = await signer.writeContract({
+            const hash = await signer.asWriteSigner().writeContract({
                 address: vaultToken.address,
                 abi: erc20Abi,
                 functionName: "approve",
@@ -154,7 +154,7 @@ export async function fundVault(details: SelfFundVault, signer: RainSolverSigner
         }
 
         // deposit the topup amount into the vault
-        const hash = await signer.writeContract({
+        const hash = await signer.asWriteSigner().writeContract({
             address: details.orderbook as `0x${string}`,
             abi: [ABI.Orderbook.V4.Primary.Orderbook[4]],
             functionName: "deposit2",
