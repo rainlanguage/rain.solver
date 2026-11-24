@@ -1325,19 +1325,19 @@ describe("Test tryGetReceipt", () => {
         (mockSigner.state.client.getTransactionReceipt as Mock)
             .mockRejectedValueOnce(new Error("not found"))
             .mockResolvedValueOnce({ status: "success" });
-        // the watcher advances the block number twice
+        // the watcher advances the block number twice, a tick apart
         setTimeout(() => ((mockSigner.state as any).blockNumber = 101n), 50);
-        setTimeout(() => ((mockSigner.state as any).blockNumber = 102n), 250);
+        setTimeout(() => ((mockSigner.state as any).blockNumber = 102n), 500);
 
         const start = Date.now();
-        const result = await tryGetReceipt(mockSigner, "0xhash", 5_000, 500);
+        const result = await tryGetReceipt(mockSigner, "0xhash", 5_000, 2_000);
 
         expect(result).toEqual({ status: "success" });
         expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalledTimes(2);
         // two lookups right after the two new blocks
-        expect(Date.now() - start).toBeLessThan(1_000);
+        expect(Date.now() - start).toBeLessThan(1_200);
         // the block number is checked at a fifth of the polling interval
-        expect(sleepSpy).toHaveBeenCalledWith(100);
+        expect(sleepSpy).toHaveBeenCalledWith(400);
     });
 
     it("should not look up the receipt while the block number stays the same", async () => {
@@ -1345,14 +1345,15 @@ describe("Test tryGetReceipt", () => {
             status: "success",
         });
 
-        await expect(tryGetReceipt(mockSigner, "0xhash", 350, 100)).rejects.toBeInstanceOf(
+        await expect(tryGetReceipt(mockSigner, "0xhash", 700, 100)).rejects.toBeInstanceOf(
             WaitForTransactionReceiptTimeoutError,
         );
-        expect(sleepSpy).toHaveBeenCalledWith(20);
+        // a fifth of the polling interval is below the 300ms floor of the tick
+        expect(sleepSpy).toHaveBeenCalledWith(300);
         expect(mockSigner.state.client.getTransactionReceipt).not.toHaveBeenCalled();
     });
 
-    it("should default the polling interval to the block time and the timeout to 3 block times", async () => {
+    it("should default the polling interval to the block time and the timeout to 3 block times, at least 5s", async () => {
         (mockSigner.state.appOptions as any).blockTime = 500;
         (mockSigner.state.client.getTransactionReceipt as Mock).mockResolvedValue({
             status: "success",
@@ -1362,15 +1363,35 @@ describe("Test tryGetReceipt", () => {
         const start = Date.now();
         await tryGetReceipt(mockSigner, "0xhash");
 
-        // the tick is a fifth of the block time and the timeout is 3 block times
-        expect(sleepSpy).toHaveBeenCalledWith(100);
+        // a fifth of the block time is below the 300ms floor of the tick, and 3
+        // block times are below the 5s floor of the timeout
+        expect(sleepSpy).toHaveBeenCalledWith(300);
         expect(promiseTimeoutSpy).toHaveBeenCalledWith(
             expect.any(Promise),
-            1_500,
+            5_000,
             expect.any(Object),
         );
         expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalledTimes(1);
-        expect(Date.now() - start).toBeLessThan(400);
+        expect(Date.now() - start).toBeLessThan(600);
+    });
+
+    it("should default the timeout to 3 block times when that is above 5s", async () => {
+        (mockSigner.state.appOptions as any).blockTime = 2_000;
+        (mockSigner.state.client.getTransactionReceipt as Mock).mockResolvedValue({
+            status: "success",
+        });
+        setTimeout(() => ((mockSigner.state as any).blockNumber = 101n), 50);
+
+        await tryGetReceipt(mockSigner, "0xhash");
+
+        // a fifth of the block time and 3 block times are above the floors
+        expect(sleepSpy).toHaveBeenCalledWith(400);
+        expect(promiseTimeoutSpy).toHaveBeenCalledWith(
+            expect.any(Promise),
+            6_000,
+            expect.any(Object),
+        );
+        expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalledTimes(1);
     });
 
     it("should stop polling once the wait has timed out", async () => {
@@ -1380,7 +1401,7 @@ describe("Test tryGetReceipt", () => {
         const stopBlocks = startBlocks(5);
 
         try {
-            await expect(tryGetReceipt(mockSigner, "0xhash", 50, 10)).rejects.toBeInstanceOf(
+            await expect(tryGetReceipt(mockSigner, "0xhash", 700, 10)).rejects.toBeInstanceOf(
                 WaitForTransactionReceiptTimeoutError,
             );
             expect(mockSigner.busy).toBe(false);
@@ -1388,10 +1409,10 @@ describe("Test tryGetReceipt", () => {
             expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalled();
 
             // the dead wait must not keep polling the receipt in the background
-            // even though the block number keeps advancing
+            // even though the block number keeps advancing, for longer than a tick
             await new Promise((resolve) => setTimeout(resolve, 20));
             const calls = (mockSigner.state.client.getTransactionReceipt as Mock).mock.calls.length;
-            await new Promise((resolve) => setTimeout(resolve, 40));
+            await new Promise((resolve) => setTimeout(resolve, 400));
             expect((mockSigner.state.client.getTransactionReceipt as Mock).mock.calls.length).toBe(
                 calls,
             );
@@ -1413,18 +1434,18 @@ describe("Test tryGetReceipt", () => {
             }) // 3rd call error
             .mockResolvedValueOnce({ status: "success" }); // 4th call success
         const stopBlocks = startBlocks(40);
-        const result = await tryGetReceipt(mockSigner, "0xhash", 1_000, 150).finally(stopBlocks);
+        const result = await tryGetReceipt(mockSigner, "0xhash", 2_000, 150).finally(stopBlocks);
 
         expect(result).toEqual({ status: "success" });
         expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalledTimes(4);
         expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalledWith({
             hash: "0xhash",
         });
-        expect(sleepSpy).toHaveBeenCalledWith(30);
+        expect(sleepSpy).toHaveBeenCalledWith(300);
         expect(promiseTimeoutSpy).toHaveBeenCalledTimes(1);
         expect(promiseTimeoutSpy).toHaveBeenCalledWith(
             expect.any(Promise),
-            1000,
+            2000,
             expect.any(Object),
         );
         expect(mockSigner.busy).toBe(false);
@@ -1444,7 +1465,7 @@ describe("Test tryGetReceipt", () => {
         });
         setTimeout(() => ((mockSigner.state as any).blockNumber = 101n), 30);
 
-        await expect(tryGetReceipt(mockSigner, "0xhash", 150, 100)).rejects.toBeInstanceOf(
+        await expect(tryGetReceipt(mockSigner, "0xhash", 150, 300)).rejects.toBeInstanceOf(
             WaitForTransactionReceiptTimeoutError,
         );
 
@@ -1471,7 +1492,7 @@ describe("Test tryGetReceipt", () => {
             mockSigner.state.nonceCache.track("0xsender", "0xother");
             (mockSigner.getTransactionCount as Mock).mockResolvedValue(5);
 
-            await expect(tryGetReceipt(mockSigner, "0xhash", 150, 100)).rejects.toBeInstanceOf(
+            await expect(tryGetReceipt(mockSigner, "0xhash", 150, 300)).rejects.toBeInstanceOf(
                 WaitForTransactionReceiptTimeoutError,
             );
 
@@ -1491,7 +1512,7 @@ describe("Test tryGetReceipt", () => {
                 return 5;
             });
 
-            await expect(tryGetReceipt(mockSigner, "0xhash", 150, 100)).rejects.toBeInstanceOf(
+            await expect(tryGetReceipt(mockSigner, "0xhash", 150, 300)).rejects.toBeInstanceOf(
                 WaitForTransactionReceiptTimeoutError,
             );
 
@@ -1509,7 +1530,7 @@ describe("Test tryGetReceipt", () => {
         mockSigner.state.nonceCache.track("0xsender", "0xother");
         setTimeout(() => ((mockSigner.state as any).blockNumber = 101n), 30);
 
-        await tryGetReceipt(mockSigner, "0xhash", 1_000, 100);
+        await tryGetReceipt(mockSigner, "0xhash", 1_000, 300);
 
         expect(mockSigner.state.nonceCache.inflightCount("0xsender")).toBe(1);
         expect(mockSigner.busy).toBe(true);
@@ -1522,7 +1543,7 @@ describe("Test tryGetReceipt", () => {
         (mockSigner.getTransactionCount as Mock).mockRejectedValue(new Error("rpc down"));
         setTimeout(() => ((mockSigner.state as any).blockNumber = 101n), 30);
 
-        await expect(tryGetReceipt(mockSigner, "0xhash", 150, 100)).rejects.toBeInstanceOf(
+        await expect(tryGetReceipt(mockSigner, "0xhash", 150, 300)).rejects.toBeInstanceOf(
             WaitForTransactionReceiptTimeoutError,
         );
 
@@ -1536,7 +1557,7 @@ describe("Test tryGetReceipt", () => {
         });
         // a single new block before the timeout
         setTimeout(() => ((mockSigner.state as any).blockNumber = 101n), 30);
-        await tryGetReceipt(mockSigner, "0xhash", 150, 100).catch((err) => {
+        await tryGetReceipt(mockSigner, "0xhash", 500, 300).catch((err) => {
             expect(err).toBeInstanceOf(WaitForTransactionReceiptTimeoutError);
         });
 
@@ -1544,11 +1565,11 @@ describe("Test tryGetReceipt", () => {
         expect(mockSigner.state.client.getTransactionReceipt).toHaveBeenCalledWith({
             hash: "0xhash",
         });
-        expect(sleepSpy).toHaveBeenCalledWith(20);
+        expect(sleepSpy).toHaveBeenCalledWith(300);
         expect(promiseTimeoutSpy).toHaveBeenCalledTimes(1);
         expect(promiseTimeoutSpy).toHaveBeenCalledWith(
             expect.any(Promise),
-            150,
+            500,
             new WaitForTransactionReceiptTimeoutError({ hash: "0xhash" }),
         );
         expect(mockSigner.busy).toBe(false);

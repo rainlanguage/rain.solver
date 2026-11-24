@@ -455,13 +455,13 @@ export function getWriteSignerFrom(signer: RainSolverSigner): RainSolverSigner {
  * signer's cached nonce to the chain's mined tx count, see NonceCache.refresh
  * @param signer - The RainSolverSigner instance
  * @param hash - The transaction hash
- * @param timeout - The timeout in ms (default is 3 times the configured block time)
- * @param pollingInterval - The interval (in ms) the block number is checked at a fifth of (default is the configured block time)
+ * @param timeout - The timeout in ms (default is max of 3 times the configured block time and 5s)
+ * @param pollingInterval - The interval (in ms) the block number is checked at max of a fifth of blocktime and 300ms (default is the configured block time)
  */
 export async function tryGetReceipt(
     signer: RainSolverSigner,
     hash: `0x${string}`,
-    timeout = 3 * signer.state.appOptions.blockTime,
+    timeout = Math.max(3 * signer.state.appOptions.blockTime, 5000),
     pollingInterval = signer.state.appOptions.blockTime,
 ): Promise<TransactionReceipt> {
     // the poll loop runs only while the wait is unsettled, so a timed out
@@ -471,7 +471,7 @@ export async function tryGetReceipt(
         // ping "getTransactionReceipt" once per new block until "success" or "timeout"
         const result = await promiseTimeout(
             (async () => {
-                const tick = Math.floor(pollingInterval / 5);
+                const tick = Math.max(Math.floor(pollingInterval / 5), 300);
                 let lastBlockNumber = signer.state.blockNumber;
                 while (active) {
                     await sleep(tick);
