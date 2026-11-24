@@ -95,6 +95,8 @@ describe("Test fundVault", () => {
             sendTx: vi.fn(),
             waitForReceipt: vi.fn(),
         } as any;
+        // the write signer is the signer itself, as with no write rpc set
+        mockSigner.asWriteSigner = vi.fn(() => mockSigner);
 
         // setup vault details
         vaultDetails = {
@@ -184,6 +186,57 @@ describe("Test fundVault", () => {
         // verify dataFetcher methods were called for swap preparation
         expect(mockSigner.state.router.sushi!.update).toHaveBeenCalled();
         expect(mockSigner.state.router.sushi!.dataFetcher.fetchPoolsForToken).toHaveBeenCalled();
+    });
+
+    it("should send the swap, the approve and the deposit through the write signer when the write rpcs are set", async () => {
+        const writeSigner = {
+            sendTx: vi.fn().mockResolvedValue({
+                hash: "0xswap",
+                wait: vi.fn().mockResolvedValue({ status: "success" }),
+            }),
+            writeContract: vi
+                .fn()
+                .mockResolvedValueOnce("0xapprove")
+                .mockResolvedValueOnce("0xdeposit"),
+        };
+        mockSigner.asWriteSigner = vi.fn(() => writeSigner as any);
+        (mockSigner.readContract as Mock)
+            .mockResolvedValueOnce(parseUnits("50", 18)) // vault balance below threshold
+            .mockResolvedValueOnce(18) // decimals
+            .mockResolvedValueOnce("TEST") // symbol
+            .mockResolvedValueOnce(parseUnits("100", 18)) // insufficient token balance
+            .mockResolvedValueOnce(0n); // zero allowance
+        vi.mocked(Router.routeProcessor4Params).mockReturnValue({
+            data: "0xswapdata",
+            amountOutMin: parseUnits("950", 18),
+        } as any);
+        (mockSigner.waitForReceipt as Mock)
+            .mockResolvedValueOnce({ status: "success" }) // approve
+            .mockResolvedValueOnce({ status: "success" }); // deposit
+
+        const result = await fundVault(vaultDetails, mockSigner);
+
+        expect(result).toEqual({ txHash: "0xdeposit" });
+        // the sends go out on the write rpcs
+        expect(writeSigner.sendTx).toHaveBeenCalledWith({
+            to: "0xrp4",
+            data: "0xswapdata",
+            value: parseUnits("1", 18),
+        });
+        expect(writeSigner.writeContract).toHaveBeenNthCalledWith(
+            1,
+            expect.objectContaining({ functionName: "approve" }),
+        );
+        expect(writeSigner.writeContract).toHaveBeenNthCalledWith(
+            2,
+            expect.objectContaining({ functionName: "deposit2" }),
+        );
+        expect(mockSigner.sendTx).not.toHaveBeenCalled();
+        expect(mockSigner.writeContract).not.toHaveBeenCalled();
+        // the reads and the receipt waits stay on the read signer
+        expect(mockSigner.readContract).toHaveBeenCalledTimes(5);
+        expect(mockSigner.waitForReceipt).toHaveBeenNthCalledWith(1, { hash: "0xapprove" });
+        expect(mockSigner.waitForReceipt).toHaveBeenNthCalledWith(2, { hash: "0xdeposit" });
     });
 
     it("should fetch token details and cache them when not available", async () => {
